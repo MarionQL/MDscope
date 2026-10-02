@@ -1,0 +1,233 @@
+project:
+  name: synd4_baseline
+  output: results_memb
+
+trajectory:
+  # Raw frame index. This is ~100 ns only if the XTC spacing is 100 ps/frame.
+  start: 1000
+  stop: null
+  stride: 10
+  chunk_frames: 1000
+
+time:
+  # Leave null when the XTC contains correct timestamps.
+  dt_ps: null
+  origin_ps: 0.0
+
+systems:
+  synd4_glycolipids:
+    label: "Synd4 + Glycolipids"
+    topology: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_carbmemb/MDrun/rep1/step7_production.tpr
+    replicates:
+      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_carbmemb/final_traj/whole_system_rep1.xtc
+        label: rep1
+        plot_label: "Replicate 1"
+      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_carbmemb/final_traj/whole_system_rep2.xtc
+        label: rep2
+        plot_label: "Replicate 2"
+      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_carbmemb/final_traj/whole_system_rep3.xtc
+        label: rep3
+        plot_label: "Replicate 3"
+
+  synd4_no_glycolipids:
+    label: "Synd4 - Glycolipids"
+    topology: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_new_final/prod/step7_production.tpr
+    replicates:
+      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_new_final/final_traj/whole_system_rep1.xtc
+        label: rep1
+        plot_label: "Replicate 1"
+      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_new_final/final_traj/whole_system_rep2.xtc
+        label: rep2
+        plot_label: "Replicate 2"
+      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_new_final/final_traj/whole_system_rep3.xtc
+        label: rep3
+        plot_label: "Replicate 3"
+
+selections:
+  protein: "protein"
+  alignment: "protein and name CA and (chainID PROA and resid 146-170)"
+  features: "protein and name CA"
+  ligand: null
+
+  groups:
+    chain_A:
+      label: "Chain A"
+      selection: "protein and chainID PROA"
+      linestyle: "-"
+
+    chain_B:
+      label: "Chain B"
+      selection: "protein and chainID PROB"
+      linestyle: "--"
+
+analyses:
+  alignment:
+    enabled: true
+    # null falls back to selections.alignment above.
+    selection: null
+
+  rmsd:
+    enabled: true
+
+  rmsf:
+    enabled: true
+
+  radius_of_gyration:
+    enabled: true
+    selection: "protein and name CA"
+
+  density_1d:
+    enabled: true
+    axis: z
+    bin_width_A: 1.0
+    # Appropriate if whole_system_*.xtc is already centered in the box.
+    center_selection: null
+    selections:
+      water_oxygen:
+        label: "Water oxygen"
+        selection: "resname TIP3 and name OH2"
+        mode: number
+
+      protein_ca:
+        label: "Protein C-alpha"
+        selection: "protein and name CA"
+        mode: number
+        groups: true
+
+      acyl_tails:
+        label: "Lipid acyl tails"
+        selection: "resname POPC DPPC POPE POPI POPS PSM DOPC CER1 and name C2* C3* C*S C*F"
+        mode: number
+
+      lipid_headgroups:
+        label: "Lipid headgroups"
+        selection: "resname POPC DPPC POPE POPI POPS PSM DOPC and name P"
+        mode: number
+
+      cholesterol:
+        label: "Cholesterol"
+        selection: "resname CHL1"
+        mode: number
+
+      ceramide_headgroups:
+        label: "Ceramide headgroups"
+        selection: "chainID CER160 GM1a BGAL and name NF"
+        mode: number
+
+  membrane:
+    enabled: true
+    axis: z
+    headgroup_selection: "(resname POPC DPPC POPE POPI POPS PSM DOPC and name P) or (chainID CER160 BGAL GM1a and name NF)"
+    area_per_lipid:
+      enabled: true
+    thickness:
+      enabled: true
+    msd:
+      enabled: true
+      # null reuses membrane.headgroup_selection.
+      selection: null
+      include_3d: false
+      slope_start_fraction: 0.2
+
+  residue_membrane_distance:
+    enabled: true
+    selection: "protein and name CA and (resid 1-145 or resid 270-415)"
+    exclude_hydrogens: true
+    # The CA selection chooses residues; all heavy atoms in those residues
+    # are then used for the exact minimum-distance calculation.
+    expand_residue_atoms: true
+    initial_search_cutoff_A: 6.0
+    search_growth_factor: 2.0
+    fallback_block_atoms: 4096
+    contact_cutoff_A: 5.0
+    heatmap_max_A: null
+    groups: true
+    runs:
+      full_membrane:
+        label: "Full membrane"
+        membrane_selection: "resname POPC DPPC POPE POPI POPS PSM DOPC CHL1 CER1 or chainID BGAL GM1a CER160"
+
+      cer160_only:
+        label: "All ceramide-based lipids"
+        membrane_selection: "chainID BGAL GM1a CER160"
+
+  dssp:
+    enabled: true
+    selection: "protein"
+    guess_hydrogens: true
+    backend: serial
+
+  sasa:
+    enabled: false
+    selection: "protein"
+
+  salt_bridges:
+    enabled: true
+    cutoff_A: 4.0
+
+  hydrogen_bonds:
+    enabled: true
+    mode: protein_protein
+    d_h_cutoff_A: 1.2
+    d_a_cutoff_A: 3.0
+    angle_cutoff_deg: 150.0
+    update_selections: false
+
+  ligand_contacts:
+    enabled: false
+    cutoff_A: 4.0
+    save_atom_events: true
+
+  lifetimes:
+    enabled: true
+    gap_factor: 1.5
+
+statistics:
+  enabled: true
+  bootstrap_draws: 5000
+  ci: 0.95
+  seed: 2026
+
+  block:
+    method: moving
+    length: auto
+    tau_multiplier: 2.0
+    max_acf_lag: null
+
+  hierarchy:
+    block_within_replicate: true
+    resample_replicates: true
+
+  hypothesis_tests:
+    enabled: true
+    # Keep independent unless rep1 vs rep1, rep2 vs rep2, etc. were
+    # deliberately generated as matched simulation pairs.
+    design: independent
+    method: permutation
+    permutation_draws: 10000
+    exact_max_assignments: 100000
+    multiple_testing: fdr_bh
+
+cache:
+  # RMSF is disabled, so the aligned-coordinate cache is unnecessary here.
+  aligned_coordinates: true
+  dtype: float32
+  keep: true
+
+plots:
+  enabled: true
+  time_series: true
+  distributions: true
+  autocorrelation: true
+  bootstrap_tables: true
+  profiles: true
+  interactions: true
+  min_occupancy: 0.05
+  replicate_lightness_range: [0.28, 0.72]
+  font_sizes:
+    base: 13
+    title: 16
+    suptitle: 18
+    legend: 10
+    ticks: 11
+  dpi: 250
