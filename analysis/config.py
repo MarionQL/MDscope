@@ -61,6 +61,20 @@ DEFAULTS = {
                 "slope_start_fraction": 0.2
             },
         },
+        "membrane_order": {
+            "enabled": False,
+            "axis": "z",
+            "lipid_selection": None,
+            "exclude_resnames": ["CHOL", "CHL1"],
+            "hydrogen_cutoff_A": 1.25,
+            "min_carbons_per_tail": 4,
+            "per_lipid_type": True,
+            "tails": {
+                "sn1": {"carbon_pattern": r"^C2(\d+)$"},
+                "sn2": {"carbon_pattern": r"^C3(\d+)$"},
+            },
+            "lipid_overrides": {},
+        },
         "residue_membrane_distance": {
             "enabled": False,
             "selection": None,
@@ -478,6 +492,30 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
         frac = float((mem.get("msd", {}) or {}).get("slope_start_fraction", 0.2))
         if not 0 <= frac < 1:
             raise ValueError("membrane.msd.slope_start_fraction must be in [0, 1)")
+
+    order = cfg.get("analyses", {}).get("membrane_order", {})
+    if order.get("enabled"):
+        if str(order.get("axis", "z")).lower() not in {"x", "y", "z"}:
+            raise ValueError("membrane_order.axis must be x, y, or z")
+        if float(order.get("hydrogen_cutoff_A", 1.25)) <= 0:
+            raise ValueError("membrane_order.hydrogen_cutoff_A must be > 0")
+        if int(order.get("min_carbons_per_tail", 4)) < 1:
+            raise ValueError("membrane_order.min_carbons_per_tail must be >= 1")
+        tails = order.get("tails", {}) or {}
+        if not tails:
+            raise ValueError("membrane_order.tails must define at least one tail")
+        for tail, tail_spec in tails.items():
+            if not isinstance(tail_spec, dict) or not (
+                tail_spec.get("carbon_pattern") or tail_spec.get("carbon_names")
+            ):
+                raise ValueError(
+                    f"membrane_order.tails.{tail} requires carbon_pattern or carbon_names"
+                )
+            if tail_spec.get("carbon_names") and tail_spec.get("positions") is not None:
+                if len(tail_spec["carbon_names"]) != len(tail_spec["positions"]):
+                    raise ValueError(
+                        f"membrane_order.tails.{tail}.positions must match carbon_names"
+                    )
 
     if cfg["analyses"]["ligand_contacts"].get("enabled") and not cfg["selections"].get("ligand"):
         raise ValueError("ligand_contacts is enabled but selections.ligand is null")

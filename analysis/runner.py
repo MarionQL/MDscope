@@ -28,6 +28,7 @@ from .config import (
 )
 from .interactions import run_hydrogen_bonds
 from .interactions import postprocess_interactions
+from .membrane_order import membrane_order_timeseries, run_membrane_order
 from .plotting import plot_all
 from .profiles import run_residue_membrane_distance
 from .profiles import postprocess_structure_profiles, run_structure_profiles
@@ -125,7 +126,7 @@ def summarize_replicate(repout: Path, cfg: dict):
         )
 
     profile_ts, profile_group_ts = postprocess_structure_profiles(repout, cfg)
-    time_sources = [base] + profile_ts
+    time_sources = [base] + profile_ts + membrane_order_timeseries(repout)
     available_times =[
         table[
             "time_ps"
@@ -184,6 +185,11 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
         key = f"{prefix}-residue-membrane-{run.run_id}"
         if not state.complete(key):
             state.mark(key, run_residue_membrane_distance(rep, cfg, repout, run.spec, run.run_id))
+
+    if cfg["analyses"]["membrane_order"].get("enabled", False):
+        key = prefix + "-membrane-order"
+        if not state.complete(key):
+            state.mark(key, run_membrane_order(rep, cfg, repout))
 
     if (cfg["analyses"]["dssp"].get(
         "enabled",

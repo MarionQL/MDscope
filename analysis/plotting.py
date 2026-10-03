@@ -84,6 +84,11 @@ def _replicate_colors(cfg: dict, system: str) -> dict[str, tuple]:
 def _metric_meta(metric: str):
     if metric in METRIC_LABELS:
         return METRIC_LABELS[metric]
+    if metric == "lipid_order_mean":
+        return "Mean lipid acyl-chain order", "-S_CH"
+    if metric.startswith("lipid_order_") and metric.endswith("_mean"):
+        label = metric[len("lipid_order_"):-len("_mean")].replace("_", " ")
+        return f"Mean lipid order: {label}", "-S_CH"
     if metric.endswith("_count"):
         return metric.replace("_", " ").title(), "Count"
     if metric.endswith("_A"):
@@ -93,6 +98,17 @@ def _metric_meta(metric: str):
     if metric.endswith("_fraction"):
         return metric.replace("_", " ").title(), "Fraction"
     return metric.replace("_", " ").title(), metric
+
+
+def _profile_meta(profile_id: str) -> tuple[str, str, str]:
+    if profile_id.startswith("lipid_order__"):
+        parts = profile_id.split("__")
+        if len(parts) == 2:
+            title = f"Lipid order: {parts[1]}"
+        else:
+            title = f"Lipid order: {parts[1]} {parts[2]}"
+        return "Acyl-chain carbon position", "-S_CH", title
+    return "Profile position", "Value", profile_id.replace("__", " * ").replace("_", " ")
 
 
 def _subplot_grid(n: int):
@@ -371,6 +387,7 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
     for profile_id in reps["profile"].drop_duplicates():
         data = reps[reps.profile == profile_id]
         sysdata = systems_df[systems_df.profile == profile_id]
+        xlabel, ylabel, profile_title = _profile_meta(str(profile_id))
         stem = _safe(profile_id)
         fig, axes = _subplot_grid(len(systems))
         distributions, labels, colors_list = [], [], []
@@ -406,12 +423,12 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
                     alpha=0.18
                 )
             ax.set_title(system_label(cfg, system))
-            ax.set_xlabel("Profile position")
-            ax.set_ylabel("Value")
+            ax.set_xlabel(xlabel)
+            ax.set_ylabel(ylabel)
             ax.legend(frameon=False)
         for ax in axes[len(systems):]:
             ax.remove()
-        fig.suptitle(profile_id.replace("__", " * ").replace("_", " "))
+        fig.suptitle(profile_title)
         _save(fig, out / f"{stem}__profile.png", cfg)
 
         if distributions:
@@ -421,8 +438,8 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
                 body.set_facecolor(color)
                 body.set_alpha(0.6)
             ax.set_xticks(np.arange(1, len(labels) + 1), labels, rotation=25, ha="right")
-            ax.set_ylabel("Profile value")
-            ax.set_title(f"{profile_id}: value distribution")
+            ax.set_ylabel(ylabel)
+            ax.set_title(f"{profile_title}: value distribution")
             _save(fig, out / f"{stem}__distribution.png", cfg)
 
         comp = (
@@ -449,9 +466,9 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
                     alpha=0.18
                 )
             ax.axhline(0, color="0.4", lw=0.8)
-            ax.set_xlabel("Profile position")
-            ax.set_ylabel("Difference")
-            ax.set_title(f"{profile_id}: system differences")
+            ax.set_xlabel(xlabel)
+            ax.set_ylabel(f"Difference in {ylabel}")
+            ax.set_title(f"{profile_title}: system differences")
             ax.legend(frameon=False)
             _save(fig, out / f"{stem}__system_difference.png", cfg)
             rank_col = "q_value" if "q_value" in comp else "p_value"
@@ -471,7 +488,7 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
                 "q": ranked["q_value"] if "q_value" in ranked else np.nan,
             })
             _table_figure(
-                f"{profile_id}: pointwise comparison statistics",
+                f"{profile_title}: pointwise comparison statistics",
                 shown,
                 out / f"{stem}__comparison_table.png",
                 cfg,
@@ -520,7 +537,7 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
                 ),
             })
         _table_figure(
-            f"{profile_id}: hierarchical bootstrap statistics",
+            f"{profile_title}: hierarchical bootstrap statistics",
             pd.DataFrame(table_rows),
             out / f"{stem}__bootstrap_table.png",
             cfg,
