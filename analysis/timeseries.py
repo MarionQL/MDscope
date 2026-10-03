@@ -11,7 +11,6 @@ from pathlib import Path
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-from MDAnalysis import transformations
 from MDAnalysis.analysis import rms
 from MDAnalysis.lib.distances import minimize_vectors
 
@@ -435,19 +434,45 @@ def _valid_box(universe):
     return universe.dimensions if len(dims) >= 3 and np.all(dims[:3] > 0) else None
 
 
-def _install_alignment(mobile, reference, selection: str):
-    moving = mobile.select_atoms(selection)
-    fixed = reference.select_atoms(selection)
-    if not len(moving) or len(moving) != len(fixed):
+def _fit_transform(
+    mobile_fit: np.ndarray,
+    reference_fit: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return the unweighted rigid-body transform mobile -> reference."""
+    mobile_fit = np.asarray(mobile_fit, dtype=np.float64)
+    reference_fit = np.asarray(reference_fit, dtype=np.float64)
+    if mobile_fit.shape != reference_fit.shape:
         raise ValueError(
-            f"Invalid alignment selection {selection!r}: mobile={len(moving)}, "
-            f"reference={len(fixed)} atoms"
+            "Alignment coordinate arrays must have identical shapes: "
+            f"mobile={mobile_fit.shape}, reference={reference_fit.shape}"
         )
-    mobile.trajectory.add_transformations(
-        transformations.center_in_box(moving, center="mass"),
-        transformations.fit_rot_trans(moving, fixed),
-    )
-    return moving
+    if mobile_fit.ndim != 2 or mobile_fit.shape[1] != 3:
+        raise ValueError(
+            f"Alignment coordinates must have shape (N, 3), got {mobile_fit.shape}"
+        )
+    if len(mobile_fit) < 3:
+        raise ValueError("Alignment requires at least three atoms")
+    mobile_center = mobile_fit.mean(axis=0)
+    reference_center = reference_fit.mean(axis=0)
+    mobile_centered = mobile_fit - mobile_center
+    reference_centered = reference_fit - reference_center
+    covariance = mobile_centered.T @ reference_centered
+    u, _, vt = np.linalg.svd(covariance)
+    rotation = u @ vt
+    if np.linalg.det(rotation) < 0.0:
+        u[:, -1] *= -1.0
+        rotation = u @ vt
+    return mobile_center, rotation, reference_center
+
+
+def _apply_transform(
+    coordinates: np.ndarray,
+    transform: tuple[np.ndarray, np.ndarray, np.ndarray],
+) -> np.ndarray:
+    """Apply a previously calculated rigid-body transform."""
+    mobile_center, rotation, reference_center = transform
+    coordinates = np.asarray(coordinates, dtype=np.float64)
+    return (coordinates - mobile_center) @ rotation + reference_center
 
 
 def resolved_selection_counts(universe, cfg: dict) -> dict:
@@ -558,21 +583,33 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
     if not len(features):
         raise ValueError("Feature selection matched zero atoms")
 
-    fit = mda.Universe(str(rep.topology), str(rep.trajectory))
-    reference = mda.Universe(str(rep.topology), str(rep.trajectory))
-    reference.trajectory[0]
-    fit_alignment = _install_alignment(
-        fit,
-        reference,
-        alignment_selection
-    ) if alignment_enabled else fit.atoms[[]]
-    features_fit = fit.atoms[features.indices]
-    reference_features = reference.atoms[features.indices].positions.copy()
+    # Frame 0 is the structural reference for all alignment/RMSD calculations.
+    universe.trajectory[0]
+    alignment_atoms = (
+        universe.select_atoms(alignment_selection)
+        if alignment_enabled
+        else universe.atoms[[]]
+    )
+    if alignment_enabled and not len(alignment_atoms):
+        raise ValueError(
+            f"Alignment selection matched zero atoms: {alignment_selection}"
+        )
+    reference_alignment = (
+        alignment_atoms.positions.astype(np.float64, copy=True)
+        if alignment_enabled
+        else None
+    )
+    reference_features = features.positions.astype(np.float64, copy=True)
 
-    ligand = universe.select_atoms(selections["ligand"]) if selections.get("ligand") else None
-    ligand_fit = fit.atoms[ligand.indices] if ligand is not None and len(ligand) else None
+    ligand = (
+        universe.select_atoms(selections["ligand"])
+        if selections.get("ligand")
+        else None
+    )
     reference_ligand = (
-        reference.atoms[ligand.indices].positions.copy() if ligand_fit is not None else None
+        ligand.positions.astype(np.float64, copy=True)
+        if ligand is not None and len(ligand)
+        else None
     )
     salt_state = initialize_salt_bridges(universe, cfg)
     ligand_state = initialize_ligand_contacts(universe, protein, ligand, cfg)
@@ -596,12 +633,11 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
     start, stop, stride, chunk = (
         tr.get("start"), tr.get("stop"), int(tr["stride"]), int(tr["chunk_frames"])
     )
-    if start is not None:
-        universe.trajectory[int(start)]
-    membrane = initialize_membrane(universe, cfg)
     rmsf_acc = Welford((len(features), 3))
 
     groups = {}
+    # The universe is still on frame 0, so all copied coordinates below
+    # are reference coordinates.
     for group_id, group_spec in analysis_groups(cfg).items():
         atoms = universe.select_atoms(group_spec["selection"])
         measured = features.intersection(atoms)
@@ -609,23 +645,32 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
             raise ValueError(f"Analysis group {group_id!r} resolved to zero atoms/features")
         align_selection = group_spec.get("alignment_selection") if alignment_enabled else None
         if align_selection:
-            group_fit = mda.Universe(str(rep.topology), str(rep.trajectory))
-            group_reference = mda.Universe(str(rep.topology), str(rep.trajectory))
-            group_reference.trajectory[0]
-            _install_alignment(group_fit, group_reference, align_selection)
-            measure_fit = group_fit.atoms[measured.indices]
-            measure_ref = group_reference.atoms[measured.indices].positions.copy()
+            group_alignment = universe.select_atoms(str(align_selection))
+            if not len(group_alignment):
+                raise ValueError(
+                    f"Group {group_id!r} alignment selection matched zero atoms: "
+                    f"{align_selection}"
+                )
+            group_alignment_reference = group_alignment.positions.astype(
+                np.float64,
+                copy=True,
+            )
         else:
-            group_fit = None
-            measure_fit = fit.atoms[measured.indices]
-            measure_ref = reference.atoms[measured.indices].positions.copy()
+            group_alignment = None
+            group_alignment_reference = None
         groups[group_id] = {
-            "atoms": atoms, "measure": measured, "measure_fit": measure_fit, "fit": group_fit,
-            "reference": measure_ref, "rmsf": Welford((
-                len(measured),
-                3
-            )), "rg": rg_atoms.intersection(atoms),
+            "atoms": atoms,
+            "measure": measured,
+            "reference": measured.positions.astype(np.float64, copy=True),
+            "alignment": group_alignment,
+            "alignment_reference": group_alignment_reference,
+            "rmsf": Welford((len(measured), 3)),
+            "rg": rg_atoms.intersection(atoms),
         }
+
+    if start is not None:
+        universe.trajectory[int(start)]
+    membrane = initialize_membrane(universe, cfg)
 
     processed = part = 0
     if checkpoint.exists():
@@ -667,27 +712,74 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
         for density in densities:
             density.update(universe, tps)
         membrane_values = membrane_metrics(universe, membrane)
-        fit.trajectory[ts.frame]
+        if alignment_enabled:
+            global_transform = _fit_transform(
+                alignment_atoms.positions,
+                reference_alignment,
+            )
+            aligned_features = _apply_transform(
+                features.positions,
+                global_transform,
+            )
+        else:
+            global_transform = None
+            aligned_features = features.positions.astype(
+                np.float64,
+                copy=True,
+            )
+
         rmsd_value = (
             float(
                 rms.rmsd(
-                    features_fit.positions, reference_features, center=False, superposition=False
+                    aligned_features,
+                    reference_features,
+                    center=False,
+                    superposition=False,
                 )
             ) if cfg["analyses"]["rmsd"].get("enabled", True) else np.nan
         )
         rg_value = float(rg_atoms.radius_of_gyration()) if rg_spec.get("enabled", True) else np.nan
-        ligand_rmsd = float(rms.rmsd(
-            ligand_fit.positions,
-            reference_ligand,
-            center=False,
-            superposition=False
-        )) if reference_ligand is not None else np.nan
-        rmsf_acc.update(features_fit.positions.copy())
+        if reference_ligand is not None:
+            if alignment_enabled:
+                aligned_ligand = _apply_transform(
+                    ligand.positions,
+                    global_transform,
+                )
+            else:
+                aligned_ligand = ligand.positions.astype(
+                    np.float64,
+                    copy=True,
+                )
+            ligand_rmsd = float(rms.rmsd(
+                aligned_ligand,
+                reference_ligand,
+                center=False,
+                superposition=False,
+            ))
+        else:
+            ligand_rmsd = np.nan
+        rmsf_acc.update(aligned_features)
 
         for group_id, group in groups.items():
-            if group["fit"] is not None:
-                group["fit"].trajectory[ts.frame]
-            positions = group["measure_fit"].positions.copy()
+            if group["alignment"] is not None:
+                group_transform = _fit_transform(
+                    group["alignment"].positions,
+                    group["alignment_reference"],
+                )
+                positions = _apply_transform(
+                    group["measure"].positions,
+                    group_transform,
+                )
+            elif alignment_enabled:
+                positions = _apply_transform(
+                    group["measure"].positions,
+                    global_transform,
+                )
+            else:
+                positions = group["measure"].positions.astype(
+                    np.float64,
+                    copy=True,
+                )
             group["rmsf"].update(positions)
             group_rows.append({
                 "time_ps": tps, "group": group_id,
@@ -710,7 +802,7 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
         )
         ligand_rows.extend(new_contacts)
         row = {"time_ps": tps, "rmsd_A": rmsd_value, "radius_of_gyration_A": rg_value}
-        if ligand_fit is not None:
+        if reference_ligand is not None:
             row["ligand_rmsd_A"] = ligand_rmsd
         if cfg["analyses"]["ligand_contacts"].get("enabled", False):
             row["ligand_min_distance_A"] = ligand_min
@@ -718,7 +810,7 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
         row.update(membrane_values)
         rows.append(row)
         if cfg["cache"].get("aligned_coordinates", True):
-            coords.append(features_fit.positions.astype(
+            coords.append(aligned_features.astype(
                 cfg["cache"].get("dtype", "float32"),
                 copy=True
             ))
@@ -841,7 +933,7 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
         "topology_atoms": len(universe.atoms),
         "protein_atoms": len(protein),
         "feature_atoms": len(features),
-        "alignment_atoms": len(fit_alignment)
+        "alignment_atoms": len(alignment_atoms)
     }
 
 
