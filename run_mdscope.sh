@@ -2,7 +2,7 @@
 #SBATCH --job-name=mdscope_synd4
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=8
 #SBATCH --time=48:00:00
 #SBATCH -p normal_q
 #SBATCH -A bevanlab

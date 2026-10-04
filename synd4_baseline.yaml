@@ -19,13 +19,13 @@ systems:
     label: "Synd4 + Glycolipids"
     topology: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_carbmemb/MDrun/rep1/step7_production.tpr
     replicates:
-      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_carbmemb/final_traj/whole_system_rep1.xtc
+      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_carbmemb/final_traj/system-whole-rep1.xtc
         label: rep1
         plot_label: "Replicate 1"
-      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_carbmemb/final_traj/whole_system_rep2.xtc
+      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_carbmemb/final_traj/system-whole-rep2.xtc
         label: rep2
         plot_label: "Replicate 2"
-      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_carbmemb/final_traj/whole_system_rep3.xtc
+      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_carbmemb/final_traj/system-whole-rep3.xtc
         label: rep3
         plot_label: "Replicate 3"
 
@@ -33,13 +33,13 @@ systems:
     label: "Synd4 - Glycolipids"
     topology: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_new_final/prod/step7_production.tpr
     replicates:
-      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_new_final/final_traj/whole_system_rep1.xtc
+      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_new_final/final_traj/system-whole-rep1.xtc
         label: rep1
         plot_label: "Replicate 1"
-      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_new_final/final_traj/whole_system_rep2.xtc
+      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_new_final/final_traj/system-whole-rep2.xtc
         label: rep2
         plot_label: "Replicate 2"
-      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_new_final/final_traj/whole_system_rep3.xtc
+      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_new_final/final_traj/system-whole-rep3.xtc
         label: rep3
         plot_label: "Replicate 3"
 
