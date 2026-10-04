@@ -234,13 +234,22 @@ def _profiles(sites: list[OrderSite], spec: dict) -> list[OrderProfile]:
 
 
 def _profile_values(site_values: np.ndarray, profile: OrderProfile) -> np.ndarray:
-    valid = profile.site_bins >= 0
+    valid = (profile.site_bins >= 0) & np.isfinite(site_values)
     sums = np.bincount(
         profile.site_bins[valid],
         weights=site_values[valid],
         minlength=len(profile.positions),
     )
-    return sums / np.maximum(profile.bin_counts, 1.0)
+    counts = np.bincount(
+        profile.site_bins[valid],
+        minlength=len(profile.positions),
+    ).astype(float)
+    return np.divide(
+        sums,
+        counts,
+        out=np.full(len(profile.positions), np.nan, dtype=float),
+        where=counts > 0,
+    )
 
 
 def _atomic_npz(path: Path, **arrays) -> None:
@@ -265,7 +274,8 @@ def run_membrane_order(rep, cfg: dict, repout: Path) -> dict:
     axis = str(spec.get("axis", "z")).lower()
     axis_index = AXIS_INDEX[axis]
     universe = mda.Universe(str(rep.topology), str(rep.trajectory))
-    universe.trajectory[trajectory.get("start") or 0]
+    first_frame = trajectory.get("start")
+    universe.trajectory[0 if first_frame is None else int(first_frame)]
     sites = _candidate_sites(universe, spec)
     if not sites:
         raise ValueError(
@@ -304,7 +314,12 @@ def run_membrane_order(rep, cfg: dict, repout: Path) -> dict:
             minlength=len(sites),
         )
         valid_counts = np.bincount(pairs[:, 0][valid], minlength=len(sites)).astype(float)
-        site_values = site_sums / np.maximum(valid_counts, 1.0)
+        site_values = np.divide(
+            site_sums,
+            valid_counts,
+            out=np.full(len(sites), np.nan, dtype=float),
+            where=valid_counts > 0,
+        )
         row = {"time_ps": time_ps(ts, frame_index, cfg)}
         times.append(row["time_ps"])
         for profile in profiles:

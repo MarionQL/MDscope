@@ -6,7 +6,9 @@ statistics and figures.
 from __future__ import annotations
 
 import glob
+import hashlib
 import json
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -64,18 +66,41 @@ class RunState:
 
 def project_root(cfg: dict, config_path: str | Path) -> Path:
     path = Path(cfg["project"]["output"])
-    return path if path.is_absolute() else Path(config_path).resolve().parent / path
+    return (
+        path
+        if path.is_absolute()
+        else Path(config_path).resolve().parent / path
+    )
+
+
+def package_code_hash() -> str:
+    """Hash package source so restart markers invalidate after code edits."""
+    digest = hashlib.sha256()
+    package_dir = Path(__file__).resolve().parent
+    for path in sorted(package_dir.glob("*.py")):
+        digest.update(path.name.encode("ascii"))
+        digest.update(path.read_bytes())
+    return digest.hexdigest()[:16]
 
 
 def initialize(config_path: str | Path, cfg: dict):
     root = ensure_dir(project_root(cfg, config_path))
-    hash_value = config_hash({"config": cfg, "mdscope_version": __version__})
-    atomic_text(root / "resolved_config.yaml", yaml.safe_dump(cfg, sort_keys=False))
+    code_hash = package_code_hash()
+    hash_value = config_hash({
+        "config": cfg,
+        "mdscope_version": __version__,
+        "code_hash": code_hash,
+    })
+    atomic_text(
+        root / "resolved_config.yaml",
+        yaml.safe_dump(cfg, sort_keys=False),
+    )
     metadata = environment_metadata()
     metadata.update({
         "config_hash": hash_value,
+        "code_hash": code_hash,
         "config_path": str(Path(config_path).resolve()),
-        "mdscope_version": __version__
+        "mdscope_version": __version__,
     })
     atomic_json(root / "run_metadata.json", metadata)
     return root, RunState(root, hash_value)
@@ -100,7 +125,7 @@ def _merge_timeseries(tables: list[pd.DataFrame], group: bool = False) -> pd.Dat
     out = tables[0].sort_values(keys).drop_duplicates(keys, keep="last")
     for table in tables[1:]:
         table = table.sort_values(keys).drop_duplicates(keys, keep="last")
-        duplicate_metrics =[
+        duplicate_metrics = [
             col for col in table.columns if col in out.columns and col not in keys
         ]
         table = table.drop(columns=duplicate_metrics)
@@ -127,12 +152,12 @@ def summarize_replicate(repout: Path, cfg: dict):
 
     profile_ts, profile_group_ts = postprocess_structure_profiles(repout, cfg)
     time_sources = [base] + profile_ts + membrane_order_timeseries(repout)
-    available_times =[
+    available_times = [
         table[
             "time_ps"
         ].to_numpy(
             float
-        )for table in time_sources if table is not None and not table.empty and "time_ps" in table
+        ) for table in time_sources if table is not None and not table.empty and "time_ps" in table
     ]
     if not available_times:
         hb_counts = repout / "interactions" / "hydrogen_bonds" / "count_timeseries.parquet"
@@ -159,10 +184,38 @@ def summarize_replicate(repout: Path, cfg: dict):
         atomic_parquet(summary / "group_timeseries.parquet", grouped)
 
 
+def _replicate_state_prefix(rep) -> str:
+    identity_hash = config_hash({
+        "system": rep.system,
+        "replicate": rep.label,
+    })
+    return f"rep-{identity_hash}"
+
+
+def _prepare_replicate_output(
+    rep,
+    root: Path,
+    state: RunState,
+) -> Path:
+    repout = root / rep.system / rep.label
+    hash_file = repout / ".config_hash"
+    if repout.exists():
+        previous_hash = None
+        try:
+            previous_hash = hash_file.read_text().strip()
+        except OSError:
+            pass
+        if previous_hash != state.config_hash:
+            shutil.rmtree(repout)
+    repout = ensure_dir(repout)
+    atomic_text(hash_file, state.config_hash + "\n")
+    return repout
+
+
 def run_replicate(rep, cfg: dict, root: Path, state: RunState):
-    prefix = f"{rep.system}-{rep.label}"
-    repout = ensure_dir(root / rep.system / rep.label)
-    streaming_analyses =[
+    prefix = _replicate_state_prefix(rep)
+    repout = _prepare_replicate_output(rep, root, state)
+    streaming_analyses = [
         "rmsd",
         "rmsf",
         "radius_of_gyration",
@@ -174,7 +227,7 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     streaming_required = any(analysis_enabled(
         cfg,
         name
-    )for name in streaming_analyses) or bool(cfg.get(
+    ) for name in streaming_analyses) or bool(cfg.get(
         "cache",
         {}
     ).get("aligned_coordinates", False))
@@ -216,10 +269,27 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None):
     if root is None or state is None:
         root, state = initialize(config_path, cfg)
     replicates = list(iter_replicates(cfg, config_path))
-    system_repouts ={
-        system:[
-            root / rep.system / rep.label for rep in replicates if rep.system == system
-        ]for system in cfg["systems"]
+    incomplete = [
+        f"{rep.system}/{rep.label}"
+        for rep in replicates
+        if not state.complete(_replicate_state_prefix(rep) + "-summary")
+    ]
+    if incomplete:
+        raise RuntimeError(
+            "Cannot finalize before all replicates finish the current "
+            "configuration/code version. Incomplete: "
+            + ", ".join(incomplete)
+        )
+    project_summary = root / "project_summary"
+    if project_summary.exists():
+        shutil.rmtree(project_summary)
+    system_repouts = {
+        system: [
+            root / rep.system / rep.label
+            for rep in replicates
+            if rep.system == system
+        ]
+        for system in cfg["systems"]
     }
     # Finalization only consumes persisted tables/arrays: no
     # trajectories are reopened.

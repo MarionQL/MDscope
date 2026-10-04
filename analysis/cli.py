@@ -12,7 +12,7 @@ import MDAnalysis as mda
 import yaml
 
 from .config import analysis_runs, iter_replicates, load_config
-from .profiles import _index_hash, _without_hydrogens
+from .profiles import _without_hydrogens
 from .runner import finalize_project, run_all, run_one
 from .timeseries import resolved_selection_counts
 
@@ -21,7 +21,7 @@ def interactive_init(output="analysis.yaml"):
     print("MDscope configuration generator (analysis runs themselves are non-interactive).")
     name = input("Project name [mdscope_project]: ").strip() or "mdscope_project"
     topology = input("Topology path: ").strip()
-    trajectories =[
+    trajectories = [
         x.strip() for x in input("Trajectory paths, comma-separated: ").split(",") if x.strip()
     ]
     ligand = input("Ligand MDAnalysis selection (blank for none): ").strip() or None
@@ -68,11 +68,17 @@ def cmd_validate(args):
             f"  {system}: protein={counts['protein']}, "
             f"alignment={counts['alignment']}, features={counts['features']}"
         )
-        if counts["features"] == 0 or (cfg["analyses"]["alignment"].get(
-            "enabled",
-            True
-        ) and counts["alignment"] == 0):
-            raise ValueError(f"System {system!r} has a zero-atom structural selection")
+        if counts["protein"] == 0 or counts["features"] == 0:
+            raise ValueError(
+                f"System {system!r} has a zero-atom protein/feature selection"
+            )
+        if (
+            cfg["analyses"]["alignment"].get("enabled", True)
+            and counts["alignment"] == 0
+        ):
+            raise ValueError(
+                f"System {system!r} has a zero-atom alignment selection"
+            )
         for group_id, group in counts["groups"].items():
             print(
                 f"    group {group_id}: group={group['group_atoms']}, "
@@ -80,8 +86,17 @@ def cmd_validate(args):
                 f"alignment={group['alignment_atoms']}"
             )
             if not group["group_atoms"] or not group["feature_atoms"]:
-                raise ValueError(f"System {system!r}, group {group_id!r} resolves to zero atoms")
-        audits = []
+                raise ValueError(
+                    f"System {system!r}, group {group_id!r} resolves to zero atoms"
+                )
+            if (
+                cfg["analyses"]["alignment"].get("enabled", True)
+                and not group["alignment_atoms"]
+            ):
+                raise ValueError(
+                    f"System {system!r}, group {group_id!r} has a zero-atom "
+                    "alignment selection"
+                )
         for run in analysis_runs(cfg, "residue_membrane_distance"):
             membrane_selection = run.spec.get("membrane_selection") or "resname " + " ".join(map(
                 str,
@@ -96,16 +111,10 @@ def cmd_validate(args):
                     f"System {system!r}, residue-membrane run {run.run_id!r} "
                     "matched zero membrane atoms"
                 )
-            digest = _index_hash(membrane)
-            audits.append((run.run_id, digest))
-            print(f"    residue-membrane {run.run_id}: {len(membrane)} membrane atoms")
-        for i, (name_1, hash_1) in enumerate(audits):
-            for name_2, hash_2 in audits[i + 1:]:
-                if hash_1 == hash_2:
-                    raise ValueError(
-                        f"System {system!r}: residue-membrane runs {name_1!r} "
-                        f"and {name_2!r} select identical membrane atoms"
-                    )
+            print(
+                f"    residue-membrane {run.run_id}: "
+                f"{len(membrane)} membrane atoms"
+            )
 
 
 

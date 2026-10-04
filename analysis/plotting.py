@@ -62,7 +62,7 @@ def _save(fig, path: Path, cfg: dict):
 
 def _system_colors(cfg: dict) -> dict[str, tuple]:
     cmap = plt.get_cmap("tab10")
-    return{
+    return {
         system: mcolors.to_rgb(cfg["systems"][system].get("color", cmap(i % 10))) for i,
         system in enumerate(cfg["systems"])
     }
@@ -75,7 +75,7 @@ def _replicate_colors(cfg: dict, system: str) -> dict[str, tuple]:
     bounds = cfg.get("plots", {}).get("replicate_lightness_range", [0.28, 0.72])
     low, high = float(bounds[0]), float(bounds[1])
     levels = [light] if len(reps) == 1 else np.linspace(low, high, len(reps))
-    return{
+    return {
         rep["id"]: colorsys.hls_to_rgb(h, float(level), max(0.6, sat)) for rep,
         level in zip(reps, levels)
     }
@@ -608,7 +608,7 @@ def _plot_residue_distance_heatmaps(cfg: dict, root: Path, system_repouts: dict[
 
 
 def _interaction_key(data: pd.DataFrame) -> pd.Series:
-    metric_cols ={
+    metric_cols = {
         "n_events",
         "mean_lifetime_ps",
         "median_lifetime_ps",

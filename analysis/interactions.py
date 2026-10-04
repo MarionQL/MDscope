@@ -12,9 +12,62 @@ import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 from MDAnalysis.analysis.hydrogenbonds.hbond_analysis import HydrogenBondAnalysis
-from MDAnalysis.lib.distances import capped_distance
+from MDAnalysis.lib.distances import capped_distance, distance_array
 
 from .config import atomic_parquet, ensure_dir
+
+
+INTERACTION_KEY_COLUMNS = {
+    "salt_bridges": ["residue_1", "residue_2", "interaction_class"],
+    "ligand_residue": ["protein_residue"],
+    "ligand_atom_residue": ["ligand_atom", "protein_residue"],
+    "ligand_atom_atom": ["ligand_atom", "protein_atom"],
+    "hydrogen_bonds": [
+        "donor",
+        "hydrogen",
+        "acceptor",
+        "interaction_class",
+    ],
+}
+
+
+def interaction_key_columns(kind: str, table: pd.DataFrame | None = None) -> list[str]:
+    """Return stable identity columns for a persisted interaction family."""
+    if kind in INTERACTION_KEY_COLUMNS:
+        return list(INTERACTION_KEY_COLUMNS[kind])
+    if table is None or table.empty:
+        return []
+    excluded = {
+        "time_ps",
+        "distance_A",
+        "min_distance_A",
+        "angle_deg",
+        "scope",
+        "donor_chain",
+        "acceptor_chain",
+        "chain_1",
+        "chain_2",
+        "event_index",
+        "start_ps",
+        "end_ps",
+        "lifetime_ps",
+        "n_observations",
+        "left_censored",
+        "right_censored",
+        "completed",
+        "n_events",
+        "n_event_starts",
+        "n_completed_events",
+        "censored_event_fraction",
+        "event_rate_per_ns",
+        "mean_lifetime_ps",
+        "median_lifetime_ps",
+        "max_lifetime_ps",
+        "total_lifetime_ps",
+        "frames_present",
+        "occupancy",
+    }
+    return [column for column in table.columns if column not in excluded]
 
 
 def chain_label(atom) -> str:
@@ -150,7 +203,7 @@ def count_timeseries(
     if events.empty:
         base[f"{prefix}_total_count"] = 0
         return base
-    keys = key_cols or [col for col in events.columns if col not in{
+    keys = key_cols or [col for col in events.columns if col not in {
         "time_ps",
         "distance_A",
         "min_distance_A",
@@ -199,10 +252,29 @@ def summarize_interaction_kind(
         ) if not events.empty else pd.DataFrame(columns=["time_ps"] + keys)
     )
     times = np.sort(np.unique(np.asarray(all_times, float)))
-    nframes = max(1, len(times))
+    event_times = (
+        np.sort(np.unique(events["time_ps"].to_numpy(float)))
+        if not events.empty and "time_ps" in events
+        else np.array([], dtype=float)
+    )
+    if not len(times):
+        times = event_times
+    elif len(event_times):
+        indices = np.searchsorted(times, event_times)
+        clipped = np.minimum(indices, len(times) - 1)
+        matched = (indices < len(times)) & np.isclose(
+            times[clipped],
+            event_times,
+        )
+        if not np.all(matched):
+            raise ValueError(
+                "Interaction event times do not match the analysis time grid. "
+                "Check time.dt_ps and trajectory slicing."
+            )
+    nframes = len(times)
     dt = sample_dt(times)
     total_time_ps = nframes * dt if dt > 0 else 0.0
-    if present.empty:
+    if present.empty or nframes == 0:
         occupancy = pd.DataFrame(columns=keys + ["frames_present", "occupancy"])
     else:
         occupancy = present.groupby(
@@ -356,10 +428,37 @@ def initialize_ligand_contacts(universe, protein, ligand, cfg: dict):
         "protein": protein,
         "ligand": ligand,
         "cutoff_A": float(spec.get("cutoff_A", 4.0)),
-        "ligand_labels": np.asarray([atom_label(a) for a in ligand], dtype=object),
-        "protein_atom_labels": np.asarray([atom_label(a) for a in protein], dtype=object),
-        "protein_residue_labels": np.asarray([residue_label(a) for a in protein], dtype=object),
+        "save_atom_events": bool(spec.get("save_atom_events", True)),
+        "ligand_labels": np.asarray(
+            [atom_label(atom) for atom in ligand],
+            dtype=object,
+        ),
+        "protein_atom_labels": np.asarray(
+            [atom_label(atom) for atom in protein],
+            dtype=object,
+        ),
+        "protein_residue_labels": np.asarray(
+            [residue_label(atom) for atom in protein],
+            dtype=object,
+        ),
     }
+
+
+def _minimum_distance(left, right, box=None, block_atoms: int = 4096) -> float:
+    """Return the exact minimum distance without a full giant matrix."""
+    if not len(left) or not len(right):
+        return np.nan
+    minimum = np.inf
+    block_atoms = max(1, int(block_atoms))
+    for start in range(0, len(right), block_atoms):
+        stop = min(start + block_atoms, len(right))
+        distances = distance_array(
+            left.positions,
+            right.positions[start:stop],
+            box=box,
+        )
+        minimum = min(minimum, float(np.min(distances)))
+    return minimum
 
 
 def ligand_contact_events(state, time_ps: float, box=None):
@@ -371,17 +470,30 @@ def ligand_contact_events(state, time_ps: float, box=None):
         protein.positions,
         max_cutoff=state["cutoff_A"],
         box=box,
-        return_distances=True
+        return_distances=True,
     )
     if not len(pairs):
-        return np.nan, 0, []
-    li, pi = pairs[:, 0].astype(int), pairs[:, 1].astype(int)
+        return _minimum_distance(ligand, protein, box), 0, []
+
+    li = pairs[:, 0].astype(int)
+    pi = pairs[:, 1].astype(int)
     protein_residues = state["protein_residue_labels"]
-    rows = list(zip(
-        np.full(len(pairs), time_ps), state["ligand_labels"][li], state["protein_atom_labels"][pi],
-        protein_residues[pi], distances.astype(float),
-    ))
-    return float(np.min(distances)), int(len(np.unique(protein_residues[pi]))), rows
+    rows = []
+    if state.get("save_atom_events", True):
+        rows = list(
+            zip(
+                np.full(len(pairs), time_ps),
+                state["ligand_labels"][li],
+                state["protein_atom_labels"][pi],
+                protein_residues[pi],
+                distances.astype(float),
+            )
+        )
+    return (
+        float(np.min(distances)),
+        int(len(np.unique(protein_residues[pi]))),
+        rows,
+    )
 
 
 def run_hydrogen_bonds(rep, cfg: dict, repout: Path):
@@ -415,36 +527,47 @@ def run_hydrogen_bonds(rep, cfg: dict, repout: Path):
         raise RuntimeError(
             "Hydrogen-bond analysis failed. Use a bond-aware topology or "
             "explicit donor/hydrogen/acceptor selections."
-        )from exc
+        ) from exc
 
     arr = np.asarray(analysis.results.hbonds)
     out = ensure_dir(repout / "interactions" / "hydrogen_bonds")
+    analyzed_times = np.asarray(analysis.times, float)
+    if cfg.get("time", {}).get("dt_ps") is not None:
+        analyzed_times = (
+            float(cfg["time"].get("origin_ps", 0.0))
+            + np.arange(len(analyzed_times), dtype=float)
+            * float(cfg["time"]["dt_ps"])
+        )
     if arr.size == 0:
         atomic_parquet(
             out / "events.parquet",
-            pd.DataFrame(columns=[
-                "time_ps",
-                "donor",
-                "hydrogen",
-                "acceptor",
-                "donor_chain",
-                "acceptor_chain",
-                "scope",
-                "interaction_class",
-                "distance_A",
-                "angle_deg"
-            ])
+            pd.DataFrame(
+                columns=[
+                    "time_ps",
+                    "donor",
+                    "hydrogen",
+                    "acceptor",
+                    "donor_chain",
+                    "acceptor_chain",
+                    "scope",
+                    "interaction_class",
+                    "distance_A",
+                    "angle_deg",
+                ]
+            ),
         )
         atomic_parquet(
             out / "count_timeseries.parquet",
             pd.DataFrame({
-                "time_ps": np.asarray(analysis.times, float),
-                "hydrogen_bond_total_count": 0
-            })
+                "time_ps": analyzed_times,
+                "hydrogen_bond_total_count": 0,
+            }),
         )
         return
 
-    frame_to_time = dict(zip(np.asarray(analysis.frames, int), np.asarray(analysis.times, float)))
+    frame_to_time = dict(
+        zip(np.asarray(analysis.frames, int), analyzed_times)
+    )
     donor_idx, hydrogen_idx, acceptor_idx = arr[
         :,
         1
@@ -487,7 +610,7 @@ def run_hydrogen_bonds(rep, cfg: dict, repout: Path):
         out / "count_timeseries.parquet",
         count_timeseries(
             df,
-            np.asarray(analysis.times, float),
+            analyzed_times,
             "hydrogen_bond",
             "interaction_class",
             ["donor", "hydrogen", "acceptor", "interaction_class"]

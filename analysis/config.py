@@ -189,6 +189,15 @@ class Replicate:
     label: str
 
 
+def _validate_path_component(value: str, field: str) -> str:
+    value = str(value)
+    if not value or value in {".", ".."} or "/" in value or "\\" in value:
+        raise ValueError(
+            f"{field} must be a non-empty filesystem-safe name without / or \\"
+        )
+    return value
+
+
 def analysis_runs(cfg: dict, name: str) -> list[AnalysisRun]:
     raw = cfg.get("analyses", {}).get(name, {})
     raw = {"enabled": raw} if isinstance(raw, bool) else raw
@@ -197,7 +206,7 @@ def analysis_runs(cfg: dict, name: str) -> list[AnalysisRun]:
     runs = raw.get("runs")
     base = {k: deepcopy(v) for k, v in raw.items() if k != "runs"}
     if runs is None:
-        return[
+        return [
             AnalysisRun(
                 name, DEFAULT_INSTANCE_ID, str(
                     base.get("label", name.replace("_", " ").title())
@@ -215,7 +224,11 @@ def analysis_runs(cfg: dict, name: str) -> list[AnalysisRun]:
     enabled = bool(base.get("enabled", True))
     out = []
     for run_id, run_spec in runs.items():
-        if str(run_id) == DEFAULT_INSTANCE_ID:
+        run_id = _validate_path_component(
+            str(run_id),
+            f"analyses.{name}.runs run ID",
+        )
+        if run_id == DEFAULT_INSTANCE_ID:
             raise ValueError(
                 f"{DEFAULT_INSTANCE_ID!r} is reserved and cannot be used as a "
                 "named run"
@@ -229,8 +242,8 @@ def analysis_runs(cfg: dict, name: str) -> list[AnalysisRun]:
         if spec["enabled"]:
             out.append(AnalysisRun(
                 name,
-                str(run_id),
-                str(run_spec.get("label", str(run_id).replace("_", " ").title())),
+                run_id,
+                str(run_spec.get("label", run_id.replace("_", " ").title())),
                 spec
             ))
     return out
@@ -258,12 +271,20 @@ def iter_replicates(cfg: dict, config_path: str | Path):
 
 def analysis_groups(cfg: dict) -> dict[str, dict]:
     out = {}
-    for i, (
-        group_id,
-        raw,
-    ) in enumerate((cfg.get("selections", {}).get("groups", {}) or {}).items()):
+    for i, (group_id, raw) in enumerate(
+        (cfg.get("selections", {}).get("groups", {}) or {}).items()
+    ):
         spec = {"selection": raw} if isinstance(raw, str) else raw
-        out[str(group_id)] = {
+        if not isinstance(spec, dict):
+            raise ValueError(
+                f"selections.groups.{group_id} must be a selection string "
+                "or mapping"
+            )
+        group_id = _validate_path_component(
+            str(group_id),
+            "selections.groups group ID",
+        )
+        out[group_id] = {
             "selection": spec.get("selection"),
             "alignment_selection": spec.get("alignment_selection"),
             "label": str(spec.get("label", group_id)),
@@ -343,18 +364,29 @@ def atomic_text(path: str | Path, text: str) -> None:
 
 
 def atomic_parquet(path: str | Path, df: pd.DataFrame) -> None:
-    # Parquet keeps numeric outputs compact and typed; temporary output
-    # avoids accepting a truncated table after interruption.
+    # Use a unique temporary file so concurrent/aborted writers cannot
+    # collide, then atomically replace the destination.
     path = Path(path)
     ensure_dir(path.parent)
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=path.name + ".",
+        suffix=".tmp",
+        dir=path.parent,
+    )
+    os.close(fd)
+    tmp = Path(tmp_name)
     try:
-        df.to_parquet(tmp, index=False)
-    except ImportError as exc:
-        raise RuntimeError(
-            "Parquet output requires pyarrow (recommended) or fastparquet."
-        )from exc
-    os.replace(tmp, path)
+        try:
+            df.to_parquet(tmp, index=False)
+        except ImportError as exc:
+            raise RuntimeError(
+                "Parquet output requires pyarrow (recommended) or "
+                "fastparquet."
+            ) from exc
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
 
 
 def config_hash(obj: Any) -> str:
@@ -447,18 +479,55 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
         raise ValueError("trajectory.stride must be >= 1")
     if int(cfg["trajectory"].get("chunk_frames", 1000)) < 1:
         raise ValueError("trajectory.chunk_frames must be >= 1")
+    time_spec = cfg.get("time", {}) or {}
+    if time_spec.get("dt_ps") is not None:
+        dt_ps = float(time_spec["dt_ps"])
+        if not np.isfinite(dt_ps) or dt_ps <= 0:
+            raise ValueError("time.dt_ps must be a finite value > 0")
+    origin_ps = float(time_spec.get("origin_ps", 0.0))
+    if not np.isfinite(origin_ps):
+        raise ValueError("time.origin_ps must be finite")
     for name, spec in systems.items():
+        if not isinstance(name, str):
+            raise ValueError("System names must be strings")
+        _validate_path_component(name, "system name")
+        if not isinstance(spec, dict):
+            raise ValueError(f"System {name!r} must be a mapping")
         if not spec.get("topology") or not spec.get("replicates"):
-            raise ValueError(f"System {name!r} must define topology and at least one replicate")
+            raise ValueError(
+                f"System {name!r} must define topology and at least one replicate"
+            )
         top = Path(spec["topology"])
         top = top if top.is_absolute() else (base / top).resolve()
         if not top.exists():
             raise FileNotFoundError(top)
-        for rep in spec["replicates"]:
-            traj = Path(rep["trajectory"] if isinstance(rep, dict) else rep)
+        labels = []
+        for index, rep in enumerate(spec["replicates"], 1):
+            if isinstance(rep, dict):
+                if not rep.get("trajectory"):
+                    raise ValueError(
+                        f"System {name!r} replicate {index} is missing trajectory"
+                    )
+                trajectory_value = rep["trajectory"]
+                label = str(rep.get("label", f"rep{index}"))
+            else:
+                trajectory_value = rep
+                label = f"rep{index}"
+            _validate_path_component(
+                label,
+                f"System {name!r} replicate {index} label",
+            )
+            labels.append(label)
+            traj = Path(trajectory_value)
             traj = traj if traj.is_absolute() else (base / traj).resolve()
             if not traj.exists():
                 raise FileNotFoundError(traj)
+        duplicates = sorted({label for label in labels if labels.count(label) > 1})
+        if duplicates:
+            raise ValueError(
+                f"System {name!r} has duplicate replicate labels: "
+                + ", ".join(duplicates)
+            )
 
     align = cfg.get("analyses", {}).get("alignment", {})
     if align.get(
@@ -472,16 +541,46 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
 
     for run in analysis_runs(cfg, "density_1d"):
         if str(run.spec.get("axis", "z")).lower() not in {"x", "y", "z"}:
-            raise ValueError(f"density_1d[{run.run_id}].axis must be x, y, or z")
-        if float(run.spec.get("bin_width_A", 1.0)) <= 0 or not run.spec.get("selections"):
+            raise ValueError(
+                f"density_1d[{run.run_id}].axis must be x, y, or z"
+            )
+        selections = run.spec.get("selections") or {}
+        if float(run.spec.get("bin_width_A", 1.0)) <= 0 or not selections:
             raise ValueError(
                 f"density_1d[{run.run_id}] requires positive bin_width_A and "
                 "non-empty selections"
             )
+        if not isinstance(selections, dict):
+            raise ValueError(
+                f"density_1d[{run.run_id}].selections must be a mapping"
+            )
+        for selection_id, selection_spec in selections.items():
+            _validate_path_component(
+                str(selection_id),
+                f"density_1d[{run.run_id}] selection ID",
+            )
+            if isinstance(selection_spec, str):
+                continue
+            if not isinstance(selection_spec, dict):
+                raise ValueError(
+                    f"density_1d[{run.run_id}].selections.{selection_id} "
+                    "must be a selection string or mapping"
+                )
+            if not selection_spec.get("selection"):
+                raise ValueError(
+                    f"density_1d[{run.run_id}].selections.{selection_id} "
+                    "is missing selection"
+                )
+            mode = str(selection_spec.get("mode", "number")).lower()
+            if mode not in {"number", "mass"}:
+                raise ValueError(
+                    f"density_1d[{run.run_id}].selections.{selection_id}.mode "
+                    "must be number or mass"
+                )
 
     mem = cfg.get("analyses", {}).get("membrane", {})
     if mem.get("enabled"):
-        if str(mem.get("axis", "z")).lower() not in{
+        if str(mem.get("axis", "z")).lower() not in {
             "x",
             "y",
             "z"
@@ -554,15 +653,44 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
         raise ValueError("statistics.block.length must be 'auto' or an integer >= 1")
     if float(block.get("tau_multiplier", 2.0)) <= 0:
         raise ValueError("statistics.block.tau_multiplier must be > 0")
+    max_acf_lag = block.get("max_acf_lag")
+    if max_acf_lag is not None and int(max_acf_lag) < 1:
+        raise ValueError("statistics.block.max_acf_lag must be null or >= 1")
     tests = stats.get("hypothesis_tests", {}) or {}
     if tests.get("enabled", True):
-        if str(tests.get("design", "independent")) not in {"independent", "paired"}:
-            raise ValueError("statistics.hypothesis_tests.design must be independent or paired")
+        design = str(tests.get("design", "independent"))
+        if design not in {"independent", "paired"}:
+            raise ValueError(
+                "statistics.hypothesis_tests.design must be independent or "
+                "paired"
+            )
+        if design == "paired" and len(cfg.get("systems", {})) > 1:
+            label_sets = []
+            for system in cfg["systems"]:
+                labels = {
+                    spec["id"]
+                    for spec in replicate_specs(cfg, system)
+                }
+                label_sets.append((system, labels))
+            reference_system, reference_labels = label_sets[0]
+            for system, labels in label_sets[1:]:
+                if labels != reference_labels:
+                    raise ValueError(
+                        "paired hypothesis tests require identical replicate "
+                        f"labels across systems; {reference_system!r} and "
+                        f"{system!r} differ"
+                    )
         if str(tests.get("method", "permutation")) != "permutation":
             raise ValueError(
                 "statistics.hypothesis_tests.method currently supports only permutation"
             )
         if int(tests.get("permutation_draws", 10000)) < 100:
-            raise ValueError("statistics.hypothesis_tests.permutation_draws must be >= 100")
+            raise ValueError(
+                "statistics.hypothesis_tests.permutation_draws must be >= 100"
+            )
+        if int(tests.get("exact_max_assignments", 100000)) < 1:
+            raise ValueError(
+                "statistics.hypothesis_tests.exact_max_assignments must be >= 1"
+            )
         if str(tests.get("multiple_testing", "fdr_bh")) not in {"fdr_bh", "none"}:
             raise ValueError("statistics.hypothesis_tests.multiple_testing must be fdr_bh or none")

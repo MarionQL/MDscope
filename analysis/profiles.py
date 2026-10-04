@@ -41,6 +41,23 @@ def run_structure_profiles(rep, cfg: dict, repout: Path):
     ) and not cfg["analyses"]["sasa"].get("enabled", False):
         return
     universe = mda.Universe(str(rep.topology), str(rep.trajectory))
+    groups = analysis_groups(cfg)
+    if groups:
+        rows = []
+        for group_id, group_spec in groups.items():
+            atoms = universe.select_atoms(str(group_spec["selection"]))
+            rows.extend(
+                {
+                    "group": group_id,
+                    "topology_residue_index": int(residue.ix),
+                }
+                for residue in atoms.residues
+            )
+        if rows:
+            atomic_parquet(
+                ensure_dir(repout / "profiles") / "group_residues.parquet",
+                pd.DataFrame(rows).drop_duplicates(),
+            )
     if cfg["analyses"]["dssp"].get("enabled", False):
         _run_dssp(universe, cfg, repout)
     if cfg["analyses"]["sasa"].get("enabled", False):
@@ -212,10 +229,15 @@ def postprocess_structure_profiles(
     """
     whole, grouped = [], []
     raw_group = repout / "raw" / "group_residues.parquet"
-    group_map = pd.read_parquet(raw_group)[[
-        "group",
-        "topology_residue_index"
-    ]].drop_duplicates() if raw_group.exists() else None
+    profile_group = repout / "profiles" / "group_residues.parquet"
+    group_file = raw_group if raw_group.exists() else profile_group
+    group_map = (
+        pd.read_parquet(group_file)[
+            ["group", "topology_residue_index"]
+        ].drop_duplicates()
+        if group_file.exists()
+        else None
+    )
     dssp_file = repout / "profiles" / "dssp" / "assignments.parquet"
     if dssp_file.exists():
         data = pd.read_parquet(dssp_file)
@@ -383,7 +405,7 @@ def temporal_structure_profiles(repout: Path, cfg: dict) -> dict[str, dict]:
                     ), "labels": residues.residue.to_numpy(str), "reducer": "mean",
                 }
     return out
-DEFAULT_LIPID_RESNAMES =[
+DEFAULT_LIPID_RESNAMES = [
     "POPC",
     "POPE",
     "POPI",
@@ -430,8 +452,9 @@ def _minimum_by_residue_hybrid(
     n_residues,
     box,
     initial_cutoff_A,
+    search_growth_factor,
     query_block_atoms,
-    membrane_block_atoms
+    membrane_block_atoms,
 ):
     # First resolve residues that are already close to the membrane with
     # one inexpensive capped neighbor search. Any residue with a neighbor
@@ -461,8 +484,32 @@ def _minimum_by_residue_hybrid(
                 np.asarray(distances, float)
             )
 
-    # For residues farther from the membrane, calculate the exact minimum
-    # with MDAnalysis' optimized distance_array in fixed-size blocks.
+    # Give unresolved residues one expanded capped search before falling
+    # back to the exact blockwise distance matrix. This makes the configured
+    # search_growth_factor functional without allowing an unbounded pair list.
+    unresolved = ~np.isfinite(minima)
+    growth = max(float(search_growth_factor), 1.0)
+    if np.any(unresolved) and growth > 1.0:
+        expanded_cutoff = cutoff * growth
+        active = query_indices[unresolved[atom_to_residue]]
+        for qstart in range(0, len(active), query_block):
+            qindices = active[qstart:qstart + query_block]
+            pairs, distances = capped_distance(
+                query.positions[qindices],
+                membrane.positions,
+                max_cutoff=expanded_cutoff,
+                box=box,
+                return_distances=True,
+            )
+            if len(pairs):
+                np.minimum.at(
+                    minima,
+                    atom_to_residue[qindices[pairs[:, 0].astype(int)]],
+                    np.asarray(distances, float),
+                )
+
+    # For residues still farther from the membrane, calculate the exact
+    # minimum with MDAnalysis' optimized distance_array in fixed-size blocks.
     # Reuse the full-block result array to avoid repeated large allocations.
     unresolved = ~np.isfinite(minima)
     active = query_indices[unresolved[atom_to_residue]]
@@ -587,8 +634,9 @@ def run_residue_membrane_distance(
         matrix[i] = _minimum_by_residue_hybrid(
             query, membrane, atom_to_residue, len(residues), _valid_box(universe),
             spec.get("initial_search_cutoff_A", 6.0),
+            spec.get("search_growth_factor", 2.0),
             spec.get("query_block_atoms", 512),
-            spec.get("fallback_block_atoms", 4096)
+            spec.get("fallback_block_atoms", 4096),
         ).astype(np.float32)
     matrix.flush()
     del matrix

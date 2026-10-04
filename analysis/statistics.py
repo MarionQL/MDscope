@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 from .config import atomic_parquet, ensure_dir
-from .interactions import interaction_tables, sample_dt
+from .interactions import interaction_key_columns, interaction_tables, sample_dt
 from .membrane_order import temporal_membrane_order_profiles
 from .timeseries import temporal_density_profiles
 from .profiles import temporal_residue_membrane_profiles, temporal_structure_profiles
@@ -141,6 +141,38 @@ def _hierarchical(
     draw_idx = rng.integers(0, stack.shape[1], size=(draws, nrep))
     selected = stack[reps, draw_idx]
     return (np.nanmedian if reducer == "median" else np.nanmean)(selected, axis=1)
+
+
+def _hierarchical_difference(
+    rep_draws_a: dict[str, np.ndarray],
+    rep_draws_b: dict[str, np.ndarray],
+    draws: int,
+    rng: np.random.Generator,
+    reducer: str = "mean",
+    resample: bool = True,
+) -> np.ndarray:
+    """Bootstrap a paired system difference while preserving replicate pairs."""
+    labels = sorted(set(rep_draws_a) & set(rep_draws_b))
+    if not labels:
+        return np.array([])
+    stack_a = np.stack([np.asarray(rep_draws_a[label], float) for label in labels])
+    stack_b = np.stack([np.asarray(rep_draws_b[label], float) for label in labels])
+    if stack_a.shape[2:] != stack_b.shape[2:]:
+        raise ValueError("Paired bootstrap arrays have incompatible shapes")
+    nrep = len(labels)
+    selected_reps = (
+        rng.integers(0, nrep, size=(draws, nrep))
+        if resample
+        else np.broadcast_to(np.arange(nrep), (draws, nrep))
+    )
+    draw_a = rng.integers(0, stack_a.shape[1], size=(draws, nrep))
+    draw_b = rng.integers(0, stack_b.shape[1], size=(draws, nrep))
+    differences = (
+        stack_b[selected_reps, draw_b]
+        - stack_a[selected_reps, draw_a]
+    )
+    reduce = np.nanmedian if reducer == "median" else np.nanmean
+    return reduce(differences, axis=1)
 
 
 def _ci(draws, level: float) -> tuple[float, float]:
@@ -299,8 +331,14 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
         for repout in reps:
             local_rows, local_acf = [], []
             for (group, metric), table in collect_time_series(repout).items():
-                values = finite(table.value)
-                meta = _temporal(values, table.time_ps, cfg)
+                values = pd.to_numeric(table["value"], errors="coerce").to_numpy(float)
+                times = pd.to_numeric(table["time_ps"], errors="coerce").to_numpy(float)
+                valid = np.isfinite(values) & np.isfinite(times)
+                values = values[valid]
+                times = times[valid]
+                if not len(values):
+                    continue
+                meta = _temporal(values, times, cfg)
                 mean_boot = _block_bootstrap(
                     values,
                     meta["block_length_frames"],
@@ -334,7 +372,7 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
                 }
                 rep_rows.append(row)
                 local_rows.append(row)
-                cache[(system, repout.name, group, metric)] ={
+                cache[(system, repout.name, group, metric)] = {
                     "mean": mean_boot,
                     "median": med_boot
                 }
@@ -403,17 +441,76 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
         gid = None if pd.isna(group) else str(group)
         available = [s for s in system_repouts if (s, gid, metric) in sys_boot]
         for s1, s2 in combinations(available, 2):
-            dmean = sys_boot[(s2, gid, metric)]["mean"] - sys_boot[(s1, gid, metric)]["mean"]
-            dmed = sys_boot[(s2, gid, metric)]["median"] - sys_boot[(s1, gid, metric)]["median"]
+            sub = rep[
+                (rep.metric == metric)
+                & (rep.group.fillna("") == (gid or ""))
+            ]
+            amap = {
+                str(row.replicate): float(row.mean)
+                for row in sub[sub.system == s1].itertuples()
+            }
+            bmap = {
+                str(row.replicate): float(row.mean)
+                for row in sub[sub.system == s2].itertuples()
+            }
+            amed = {
+                str(row.replicate): float(row.median)
+                for row in sub[sub.system == s1].itertuples()
+            }
+            bmed = {
+                str(row.replicate): float(row.median)
+                for row in sub[sub.system == s2].itertuples()
+            }
+            paired = (
+                stats.get("hypothesis_tests", {}).get("design", "independent")
+                == "paired"
+            )
+            if paired:
+                mean_draws_a = {
+                    rep_id: cache[(s1, rep_id, gid, metric)]["mean"]
+                    for rep_id in amap
+                }
+                mean_draws_b = {
+                    rep_id: cache[(s2, rep_id, gid, metric)]["mean"]
+                    for rep_id in bmap
+                }
+                median_draws_a = {
+                    rep_id: cache[(s1, rep_id, gid, metric)]["median"]
+                    for rep_id in amed
+                }
+                median_draws_b = {
+                    rep_id: cache[(s2, rep_id, gid, metric)]["median"]
+                    for rep_id in bmed
+                }
+                dmean = _hierarchical_difference(
+                    mean_draws_a,
+                    mean_draws_b,
+                    draws,
+                    rng,
+                    "mean",
+                    resample,
+                )
+                dmed = _hierarchical_difference(
+                    median_draws_a,
+                    median_draws_b,
+                    draws,
+                    rng,
+                    "median",
+                    resample,
+                )
+            else:
+                dmean = (
+                    sys_boot[(s2, gid, metric)]["mean"]
+                    - sys_boot[(s1, gid, metric)]["mean"]
+                )
+                dmed = (
+                    sys_boot[(s2, gid, metric)]["median"]
+                    - sys_boot[(s1, gid, metric)]["median"]
+                )
             mlo, mhi = _ci(dmean, level)
             dlo, dhi = _ci(dmed, level)
             pgt, plt = _direction(dmean)
             dpgt, dplt = _direction(dmed)
-            sub = rep[(rep.metric == metric) & (rep.group.fillna("") == (gid or ""))]
-            amap = {str(r.replicate): float(r.mean) for r in sub[sub.system == s1].itertuples()}
-            bmap = {str(r.replicate): float(r.mean) for r in sub[sub.system == s2].itertuples()}
-            amed = {str(r.replicate): float(r.median) for r in sub[sub.system == s1].itertuples()}
-            bmed = {str(r.replicate): float(r.median) for r in sub[sub.system == s2].itertuples()}
             comps.append({"system_1": s1, "system_2": s2, "group": gid, "metric": metric,
                           "mean_difference_system2_minus_system1": float(np.mean(dmean)),
                           "mean_difference_ci_low": mlo, "mean_difference_ci_high": mhi,
@@ -434,16 +531,36 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
         atomic_parquet(outdir / "system_comparisons.parquet", comp)
 
 
-def _rmsf_profile(coords: np.ndarray, residues) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    labels, residx = np.unique(np.asarray(residues, str), return_inverse=True)
-    var = np.var(coords, axis=0, ddof=1) if len(coords) > 1 else np.full(coords.shape[1:], np.nan)
-    atom = np.sqrt(np.sum(var, axis=1))
+def _rmsf_profile(
+    coords: np.ndarray,
+    residues,
+    residue_indices=None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return residue RMSF in first-occurrence/topology order."""
+    residue_labels = np.asarray(residues, str)
+    grouping = (
+        np.asarray(residue_indices, int)
+        if residue_indices is not None
+        else residue_labels
+    )
+    residx, unique_groups = pd.factorize(grouping, sort=False)
+    labels = np.asarray(
+        [residue_labels[np.flatnonzero(residx == i)[0]] for i in range(len(unique_groups))],
+        dtype=str,
+    )
+    if len(coords):
+        var = np.var(coords, axis=0, ddof=0)
+        atom = np.sqrt(np.sum(var, axis=1))
+    else:
+        atom = np.full(coords.shape[1], np.nan)
     counts = np.bincount(residx, minlength=len(labels))
-    return np.bincount(
-        residx,
-        weights=atom,
-        minlength=len(labels)
-    ) / np.maximum(counts, 1), labels, residx
+    residue_rmsf = np.divide(
+        np.bincount(residx, weights=atom, minlength=len(labels)),
+        counts,
+        out=np.full(len(labels), np.nan, dtype=float),
+        where=counts > 0,
+    )
+    return residue_rmsf, labels, residx
 
 
 def _prepare_profile(spec: dict, cfg: dict, draws: int, rng: np.random.Generator) -> dict:
@@ -468,25 +585,37 @@ def _prepare_profile(spec: dict, cfg: dict, draws: int, rng: np.random.Generator
     residues = np.asarray(spec["atom_residues"], str)
     signal = np.sqrt(np.mean(np.sum((coords - np.mean(coords, axis=0)) ** 2, axis=2), axis=1))
     meta = _temporal(signal, times, cfg)
-    point, labels, residx = _rmsf_profile(coords, residues)
+    point, labels, residx = _rmsf_profile(
+        coords,
+        residues,
+        spec.get("atom_residue_indices"),
+    )
     weights = _block_weights(
         len(coords),
         meta["block_length_frames"],
         draws,
         rng
     ).astype(np.float32)
-    mean = np.einsum("dn,nac->dac", weights, coords, optimize=True) / len(coords)
-    second = np.einsum("dn,nac->dac", weights, coords * coords, optimize=True)
-    atom = np.sqrt(np.sum(
-        np.maximum((second - len(coords) * mean * mean) / max(1, len(coords) - 1), 0),
-        axis=2
-    ))
+    mean = (
+        np.einsum("dn,nac->dac", weights, coords, optimize=True)
+        / len(coords)
+    )
+    second = (
+        np.einsum("dn,nac->dac", weights, coords * coords, optimize=True)
+        / len(coords)
+    )
+    atom = np.sqrt(
+        np.sum(
+            np.maximum(second - mean * mean, 0.0),
+            axis=2,
+        )
+    )
     boot = (
         np.stack(
             [np.bincount(residx, weights=row, minlength=len(labels)) for row in atom]
         ) / np.maximum(np.bincount(residx, minlength=len(labels)), 1)
     )
-    return{
+    return {
         "positions": np.arange(len(labels), dtype=float),
         "labels": labels,
         "point": point,
@@ -504,87 +633,160 @@ def collect_temporal_profiles(repout: Path, cfg: dict) -> dict[str, dict]:
     return out
 
 
-def analyze_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]) -> None:
+def _profile_label_map(item: dict) -> dict[str, int]:
+    labels = [str(label) for label in item["labels"]]
+    if len(labels) != len(set(labels)):
+        raise ValueError(
+            "Profile labels must be unique within each profile for "
+            "cross-replicate alignment"
+        )
+    return {label: i for i, label in enumerate(labels)}
+
+
+def _common_profile_axis(items: list[dict]) -> tuple[np.ndarray, np.ndarray, list[np.ndarray]]:
+    """Align profile columns by label instead of silently truncating them."""
+    if not items:
+        return np.array([], float), np.array([], str), []
+    maps = [_profile_label_map(item) for item in items]
+    reference_labels = [str(label) for label in items[0]["labels"]]
+    common = [
+        label
+        for label in reference_labels
+        if all(label in mapping for mapping in maps[1:])
+    ]
+    if not common:
+        return np.array([], float), np.array([], str), []
+    reference_map = maps[0]
+    positions = np.asarray(
+        [items[0]["positions"][reference_map[label]] for label in common],
+        float,
+    )
+    indices = [
+        np.asarray([mapping[label] for label in common], dtype=int)
+        for mapping in maps
+    ]
+    return positions, np.asarray(common, dtype=str), indices
+
+
+def analyze_profiles(
+    cfg: dict,
+    root: Path,
+    system_repouts: dict[str, list[Path]],
+) -> None:
     if not cfg.get("statistics", {}).get("enabled", True):
         return
     stats = cfg["statistics"]
-    draws, level = int(stats.get("bootstrap_draws", 2000)), float(stats.get("ci", 0.95))
+    draws = int(stats.get("bootstrap_draws", 2000))
+    level = float(stats.get("ci", 0.95))
     rng = np.random.default_rng(int(stats.get("seed", 2026)) + 1)
     resample = stats.get("hierarchy", {}).get("resample_replicates", True)
     outdir = ensure_dir(root / "project_summary" / "statistics" / "profiles")
-    sources ={
-        (s, r.name): collect_temporal_profiles(r, cfg) for s,
-        reps in system_repouts.items() for r in reps
+    sources = {
+        (system, repout.name): collect_temporal_profiles(repout, cfg)
+        for system, reps in system_repouts.items()
+        for repout in reps
     }
-    profiles = sorted(set().union(*(set(v) for v in sources.values()))) if sources else []
-    rep_points, rep_summary, sys_points, sys_summary, comps = [], [], [], [], []
+    profiles = (
+        sorted(set().union(*(set(value) for value in sources.values())))
+        if sources
+        else []
+    )
+    rep_points = []
+    rep_summary = []
+    sys_points = []
+    sys_summary = []
+    comps = []
+
     for profile in profiles:
         prepared = {}
         for system, reps in system_repouts.items():
             for repout in reps:
-                if profile not in sources[(system, repout.name)]:
+                source = sources[(system, repout.name)]
+                if profile not in source:
                     continue
-                item = _prepare_profile(sources[(system, repout.name)][profile], cfg, draws, rng)
+                item = _prepare_profile(source[profile], cfg, draws, rng)
                 prepared[(system, repout.name)] = item
-                rep_points.extend({
-                    "system": system,
-                    "replicate": repout.name,
-                    "profile": profile,
-                    "position": float(pos),
-                    "position_label": str(label),
-                    "value": float(value),
-                }
-                                  for pos, label, value in zip(
-                                      item["positions"],
-                                      item["labels"],
-                                      item["point"]
-                                  ))
+                rep_points.extend(
+                    {
+                        "system": system,
+                        "replicate": repout.name,
+                        "profile": profile,
+                        "position": float(position),
+                        "position_label": str(label),
+                        "value": float(value),
+                    }
+                    for position, label, value in zip(
+                        item["positions"],
+                        item["labels"],
+                        item["point"],
+                    )
+                )
                 lo, hi = _ci(np.nanmean(item["draws"], axis=1), level)
                 rep_summary.append({
                     "system": system,
                     "replicate": repout.name,
                     "profile": profile,
                     **_describe(item["point"]),
-                                    "mean_profile_ci_low": lo, "mean_profile_ci_high": hi,
-                                    **{
-                                        k: v for k,
-                                        v in item["temporal"].items() if k != "acf"
-                                    }, "bootstrap_draws": draws, "ci_level": level})
-        sys_boot = {}
+                    "mean_profile_ci_low": lo,
+                    "mean_profile_ci_high": hi,
+                    **{
+                        key: value
+                        for key, value in item["temporal"].items()
+                        if key != "acf"
+                    },
+                    "bootstrap_draws": draws,
+                    "ci_level": level,
+                })
+
+        system_profiles = {}
         for system, reps in system_repouts.items():
-            items = [prepared[(system, r.name)] for r in reps if (system, r.name) in prepared]
-            if not items:
+            rep_items = [
+                (repout.name, prepared[(system, repout.name)])
+                for repout in reps
+                if (system, repout.name) in prepared
+            ]
+            if not rep_items:
                 continue
-            npos = min(len(x["point"]) for x in items)
+            items = [item for _, item in rep_items]
+            positions, labels, column_indices = _common_profile_axis(items)
+            if not len(labels):
+                continue
+            aligned_draws = [
+                item["draws"][:, indices]
+                for item, indices in zip(items, column_indices)
+            ]
+            aligned_points = [
+                item["point"][indices]
+                for item, indices in zip(items, column_indices)
+            ]
             boot = _hierarchical(
-                [x["draws"][:, :npos] for x in items],
+                aligned_draws,
                 draws,
                 rng,
                 "mean",
-                resample
+                resample,
             )
-            point = np.nanmean(np.stack([x["point"][:npos] for x in items]), axis=0)
-            sys_boot[system] = boot
+            point = np.nanmean(np.stack(aligned_points), axis=0)
             alpha = (1 - level) / 2
             low, high = np.nanquantile(boot, [alpha, 1 - alpha], axis=0)
-            for j, (
-                pos,
-                label,
-            ) in enumerate(
-                zip(items[0]["positions"][:npos], items[0]["labels"][:npos])
-            ):
+            for index, (position, label) in enumerate(zip(positions, labels)):
                 sys_points.append({
                     "system": system,
                     "profile": profile,
-                    "position": float(pos),
+                    "position": float(position),
                     "position_label": str(label),
                     "n_replicates": len(items),
-                                   "mean": float(point[j]),
-                                   "median": float(np.nanmedian([x["point"][j] for x in items])),
-                                   "mean_ci_low": float(low[j]), "mean_ci_high": float(high[j]),
-                                   "bootstrap_draws": draws, "ci_level": level})
+                    "mean": float(point[index]),
+                    "median": float(
+                        np.nanmedian([values[index] for values in aligned_points])
+                    ),
+                    "mean_ci_low": float(low[index]),
+                    "mean_ci_high": float(high[index]),
+                    "bootstrap_draws": draws,
+                    "ci_level": level,
+                })
             glo, ghi = _ci(np.nanmean(boot, axis=1), level)
-            rows = [x["temporal"] for x in items]
+            temporal_rows = [item["temporal"] for item in items]
             sys_summary.append({
                 "system": system,
                 "profile": profile,
@@ -592,63 +794,129 @@ def analyze_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
                 "mean_profile_value": float(np.nanmean(point)),
                 "mean_profile_ci_low": glo,
                 "mean_profile_ci_high": ghi,
-                **_range_meta(rows),
+                **_range_meta(temporal_rows),
                 "bootstrap_draws": draws,
                 "ci_level": level,
             })
-        available = [s for s in system_repouts if s in sys_boot]
-        for s1, s2 in combinations(available, 2):
-            npos = min(sys_boot[s1].shape[1], sys_boot[s2].shape[1])
-            delta = sys_boot[s2][:, :npos] - sys_boot[s1][:, :npos]
+            system_profiles[system] = {
+                "draws": boot,
+                "positions": positions,
+                "labels": labels,
+                "rep_draws": {
+                    rep_name: item["draws"][:, indices]
+                    for (rep_name, item), indices in zip(
+                        rep_items,
+                        column_indices,
+                    )
+                },
+            }
+
+        available = [system for system in system_repouts if system in system_profiles]
+        for system_1, system_2 in combinations(available, 2):
+            sys_1 = system_profiles[system_1]
+            sys_2 = system_profiles[system_2]
+            map_1 = {str(label): i for i, label in enumerate(sys_1["labels"])}
+            map_2 = {str(label): i for i, label in enumerate(sys_2["labels"])}
+            common_labels = [
+                str(label)
+                for label in sys_1["labels"]
+                if str(label) in map_2
+            ]
+            if not common_labels:
+                continue
+            idx_1 = np.asarray([map_1[label] for label in common_labels], int)
+            idx_2 = np.asarray([map_2[label] for label in common_labels], int)
+            paired = (
+                stats.get("hypothesis_tests", {}).get("design", "independent")
+                == "paired"
+            )
+            if paired:
+                rep_draws_1 = {
+                    rep: values[:, idx_1]
+                    for rep, values in sys_1["rep_draws"].items()
+                }
+                rep_draws_2 = {
+                    rep: values[:, idx_2]
+                    for rep, values in sys_2["rep_draws"].items()
+                }
+                delta = _hierarchical_difference(
+                    rep_draws_1,
+                    rep_draws_2,
+                    draws,
+                    rng,
+                    "mean",
+                    resample,
+                )
+            else:
+                delta = (
+                    sys_2["draws"][:, idx_2]
+                    - sys_1["draws"][:, idx_1]
+                )
+            if not len(delta):
+                continue
             alpha = (1 - level) / 2
             low, high = np.nanquantile(delta, [alpha, 1 - alpha], axis=0)
-            ref = next(x for (s, _), x in prepared.items() if s == s1)
-            for j in range(npos):
-                amap ={
-                    rep: x["point"][j] for (s, rep),
-                    x in prepared.items() if s == s1 and j < len(x["point"])
-                }
-                bmap ={
-                    rep: x["point"][j] for (s, rep),
-                    x in prepared.items() if s == s2 and j < len(x["point"])
-                }
-                pgt, plt = _direction(delta[:, j])
+
+            for index, label in enumerate(common_labels):
+                position = float(sys_1["positions"][idx_1[index]])
+                amap = {}
+                bmap = {}
+                for (system, replicate), item in prepared.items():
+                    label_map = _profile_label_map(item)
+                    if label not in label_map:
+                        continue
+                    value = float(item["point"][label_map[label]])
+                    if not np.isfinite(value):
+                        continue
+                    if system == system_1:
+                        amap[replicate] = value
+                    elif system == system_2:
+                        bmap[replicate] = value
+                pgt, plt = _direction(delta[:, index])
                 comps.append({
-                    "system_1": s1,
-                    "system_2": s2,
+                    "system_1": system_1,
+                    "system_2": system_2,
                     "profile": profile,
-                    "position": float(ref["positions"][j]),
-                    "position_label": str(ref["labels"][j]),
-                              "difference_system2_minus_system1": float(np.nanmean(delta[
-                                  :,
-                                  j
-                              ])), "difference_ci_low": float(low[j]),
-                              "difference_ci_high": float(high[j]),
-                              "probability_difference_gt_0": pgt,
-                              "probability_difference_lt_0": plt,
-                              "p_value": _permutation(amap, bmap, cfg, rng),
-                              "bootstrap_draws": draws, "ci_level": level})
+                    "position": position,
+                    "position_label": label,
+                    "difference_system2_minus_system1": float(
+                        np.nanmean(delta[:, index])
+                    ),
+                    "difference_ci_low": float(low[index]),
+                    "difference_ci_high": float(high[index]),
+                    "probability_difference_gt_0": pgt,
+                    "probability_difference_lt_0": plt,
+                    "p_value": _permutation(amap, bmap, cfg, rng),
+                    "bootstrap_draws": draws,
+                    "ci_level": level,
+                })
+
     outputs = [
         ("replicate_profiles.parquet", rep_points),
         ("replicate_profile_statistics.parquet", rep_summary),
-(
-                   "system_profiles.parquet",
-                   sys_points
-               ), ("system_profile_statistics.parquet", sys_summary)]
+        ("system_profiles.parquet", sys_points),
+        ("system_profile_statistics.parquet", sys_summary),
+    ]
     for name, rows in outputs:
         if rows:
             atomic_parquet(outdir / name, pd.DataFrame(rows))
+
     comp = pd.DataFrame(comps)
     if not comp.empty:
-        if stats.get(
-            "hypothesis_tests",
-            {}
-        ).get(
-            "multiple_testing",
-            "fdr_bh"
-        ) == "fdr_bh": comp = _fdr(comp, "p_value", "q_value", ["system_1", "system_2", "profile"])
+        if (
+            stats.get("hypothesis_tests", {}).get(
+                "multiple_testing",
+                "fdr_bh",
+            )
+            == "fdr_bh"
+        ):
+            comp = _fdr(
+                comp,
+                "p_value",
+                "q_value",
+                ["system_1", "system_2", "profile"],
+            )
         atomic_parquet(outdir / "system_comparisons.parquet", comp)
-
 
 def _interaction_bootstrap(
     times,
@@ -759,28 +1027,6 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
             kinds.update(tables)
     rep_rows, sys_rows, comps = [], [], []
     weight_cache = {}
-    metric_cols = {
-        "time_ps",
-        "event_index",
-        "start_ps",
-        "end_ps",
-        "lifetime_ps",
-        "n_observations",
-        "left_censored",
-        "right_censored",
-        "completed",
-        "n_events",
-        "n_event_starts",
-        "n_completed_events",
-        "censored_event_fraction",
-        "event_rate_per_ns",
-        "mean_lifetime_ps",
-        "median_lifetime_ps",
-        "max_lifetime_ps",
-        "total_lifetime_ps",
-        "frames_present",
-        "occupancy",
-    }
     for kind in sorted(kinds):
         interactions, prepared = set(), {}
         for key, (times, tables) in sources.items():
@@ -788,14 +1034,21 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
             presence = tab.get("presence", pd.DataFrame()).copy()
             life = tab.get("lifetimes", pd.DataFrame()).copy()
             base = presence if not presence.empty else life
-            keys = [c for c in base.columns if c not in metric_cols]
+            keys = interaction_key_columns(kind, base)
+            missing = [column for column in keys if column not in base.columns]
+            if missing:
+                raise ValueError(
+                    f"Interaction table {kind!r} is missing identity columns: "
+                    + ", ".join(missing)
+                )
             for table in (presence, life):
                 if not table.empty:
-                    table["interaction"] = table[keys].astype(str).agg(
-                        " | ".join,
-                        axis=1
-                    ) if keys else "interaction"
-                    interactions.update(table.interaction)
+                    table["interaction"] = (
+                        table[keys].astype(str).agg(" | ".join, axis=1)
+                        if keys
+                        else "interaction"
+                    )
+                    interactions.update(table["interaction"])
             prepared[key] = (times, presence, life)
         for interaction in sorted(interactions):
             repdata = {}
@@ -847,7 +1100,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                 items = [(
                     r.name,
                     repdata[(system, r.name)]
-                )for r in reps if (system, r.name) in repdata]
+                ) for r in reps if (system, r.name) in repdata]
                 if not items:
                     continue
                 sys_boot[system] = {}
@@ -887,14 +1140,48 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
             available = [s for s in system_repouts if s in sys_boot]
             for s1, s2 in combinations(available, 2):
                 for metric in sorted(set(sys_boot[s1]) & set(sys_boot[s2])):
-                    delta = sys_boot[s2][metric] - sys_boot[s1][metric]
+                    paired = (
+                        stats.get("hypothesis_tests", {}).get(
+                            "design",
+                            "independent",
+                        )
+                        == "paired"
+                    )
+                    if paired:
+                        rep_draws_1 = {
+                            rep: data[0][metric]
+                            for (system, rep), data in repdata.items()
+                            if system == s1 and np.isfinite(data[1][metric])
+                        }
+                        rep_draws_2 = {
+                            rep: data[0][metric]
+                            for (system, rep), data in repdata.items()
+                            if system == s2 and np.isfinite(data[1][metric])
+                        }
+                        reducer = (
+                            "median"
+                            if metric == "median_lifetime_ps"
+                            else "mean"
+                        )
+                        delta = _hierarchical_difference(
+                            rep_draws_1,
+                            rep_draws_2,
+                            draws,
+                            rng,
+                            reducer,
+                            resample,
+                        )
+                    else:
+                        delta = sys_boot[s2][metric] - sys_boot[s1][metric]
+                    if not len(delta):
+                        continue
                     lo, hi = _ci(delta, level)
                     pgt, plt = _direction(delta)
-                    amap ={
+                    amap = {
                         rep: data[1][metric] for (sys, rep),
                         data in repdata.items() if sys == s1 and np.isfinite(data[1][metric])
                     }
-                    bmap ={
+                    bmap = {
                         rep: data[1][metric] for (sys, rep),
                         data in repdata.items() if sys == s2 and np.isfinite(data[1][metric])
                     }

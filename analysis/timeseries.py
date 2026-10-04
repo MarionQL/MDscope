@@ -94,7 +94,7 @@ def initialize_membrane(universe, cfg: dict) -> MembraneState:
     centers = [(
         int(res.ix),
         float((state.headgroups & res.atoms).center_of_mass()[state.ai])
-    )for res in state.headgroups.residues]
+    ) for res in state.headgroups.residues]
     midpoint = float(np.median([value for _, value in centers]))
     state.upper_resix = np.asarray([ix for ix, value in centers if value >= midpoint], int)
     state.lower_resix = np.asarray([ix for ix, value in centers if value < midpoint], int)
@@ -148,15 +148,15 @@ def membrane_metrics(universe, state: MembraneState) -> dict[str, float]:
             0.5 * (out["area_per_lipid_upper_A2"] + out["area_per_lipid_lower_A2"])
         )
     if state.thickness:
-        delta = (
-            abs(
-                float(
-                    state.upper_atoms.center_of_mass()[state.ai]
-                ) - float(state.lower_atoms.center_of_mass()[state.ai])
-            )
+        delta = abs(
+            float(state.upper_atoms.center_of_mass()[state.ai])
+            - float(state.lower_atoms.center_of_mass()[state.ai])
         )
         length = float(dims[state.ai])
-        out["membrane_thickness_A"] = min(delta, length - delta) if length > 0 else delta
+        if length > 0:
+            delta %= length
+            delta = min(delta, length - delta)
+        out["membrane_thickness_A"] = delta
     if state.msd:
         current = _residue_centers(state.msd_residue_atoms)
         # Accumulate minimum-image step vectors so lipids crossing
@@ -189,6 +189,16 @@ class DensityTarget:
     density_sum: np.ndarray
     frames: int = 0
     frame_density: list[np.ndarray] = field(default_factory=list)
+
+
+def _center_coordinate(atoms, axis_index: int) -> float:
+    try:
+        center = atoms.center_of_mass()
+    except (AttributeError, ValueError, TypeError):
+        center = atoms.center_of_geometry()
+    if not np.all(np.isfinite(center)):
+        center = atoms.center_of_geometry()
+    return float(center[axis_index])
 
 
 class DensityProfileAccumulator:
@@ -269,9 +279,9 @@ class DensityProfileAccumulator:
         if length <= 0 or np.any(dims <= 0):
             return
         origin = (
-            float(
-                self.center_atoms.center_of_mass()[self.ai]
-            ) if self.center_atoms is not None else length / 2.0
+            _center_coordinate(self.center_atoms, self.ai)
+            if self.center_atoms is not None
+            else length / 2.0
         )
         cross_area = float(getattr(universe.trajectory.ts, "volume", np.prod(dims))) / length
         volume = cross_area * np.diff(self.edges)
@@ -421,9 +431,9 @@ class Welford:
         self.M2 += delta * (values - self.mean)
 
     def rmsf(self):
-        if self.n < 2:
+        if self.n < 1:
             return np.full(self.mean.shape[0], np.nan)
-        return np.sqrt((self.M2 / (self.n - 1)).sum(axis=1))
+        return np.sqrt((self.M2 / self.n).sum(axis=1))
 
 
 def _valid_box(universe):
@@ -489,7 +499,7 @@ def resolved_selection_counts(universe, cfg: dict) -> dict:
         universe.select_atoms(alignment_selection) if alignment_enabled else universe.atoms[[]]
     )
     features = universe.select_atoms(selections.get("features") or alignment_selection)
-    out ={
+    out = {
         "protein": len(protein),
         "alignment": len(alignment),
         "features": len(features),
@@ -502,7 +512,7 @@ def resolved_selection_counts(universe, cfg: dict) -> dict:
             universe.select_atoms(group["alignment_selection"]) if alignment_enabled
             and group.get("alignment_selection") else alignment
         )
-        out["groups"][group_id] ={
+        out["groups"][group_id] = {
             "group_atoms": len(atoms),
             "feature_atoms": len(measured),
             "alignment_atoms": len(align_atoms)
@@ -628,7 +638,7 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
         cfg,
         run.spec,
         run.run_id
-    )for run in analysis_runs(cfg, "density_1d")]
+    ) for run in analysis_runs(cfg, "density_1d")]
     tr = cfg["trajectory"]
     start, stop, stride, chunk = (
         tr.get("start"), tr.get("stop"), int(tr["stride"]), int(tr["chunk_frames"])
@@ -697,7 +707,7 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
                 cfg,
                 run.spec,
                 run.run_id
-            )for run in analysis_runs(cfg, "density_1d")]
+            ) for run in analysis_runs(cfg, "density_1d")]
             for density in densities:
                 density.clear_frame_parts(repout)
             if start is not None:
@@ -782,16 +792,25 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
                 )
             group["rmsf"].update(positions)
             group_rows.append({
-                "time_ps": tps, "group": group_id,
-                "rmsd_A": float(rms.rmsd(
-                    positions,
-                    group["reference"],
-                    center=False,
-                    superposition=False
-                )),
-                "radius_of_gyration_A": float(
-                    group["rg"].radius_of_gyration()
-                ) if len(group["rg"]) else np.nan,
+                "time_ps": tps,
+                "group": group_id,
+                "rmsd_A": (
+                    float(
+                        rms.rmsd(
+                            positions,
+                            group["reference"],
+                            center=False,
+                            superposition=False,
+                        )
+                    )
+                    if cfg["analyses"]["rmsd"].get("enabled", True)
+                    else np.nan
+                ),
+                "radius_of_gyration_A": (
+                    float(group["rg"].radius_of_gyration())
+                    if rg_spec.get("enabled", True) and len(group["rg"])
+                    else np.nan
+                ),
             })
 
         salt_rows.extend(salt_bridge_events(salt_state, tps, _valid_box(universe)))
@@ -876,59 +895,92 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
             cache / "feature_atoms.parquet",
             pd.DataFrame({
                 "atom_index": features.indices,
+                "topology_residue_index": features.resindices,
                 "residue": [residue_label(atom) for atom in features],
-                "atom_name": features.names
+                "atom_name": features.names,
             })
         )
 
     rmsf_values = rmsf_acc.rmsf()
-    atomic_parquet(raw / "rmsf.parquet", pd.DataFrame({
-        "atom_index": features.indices, "residue": [residue_label(atom) for atom in features],
-        "atom_name": features.names,
-        "rmsf_A": rmsf_values,
-        "equivalent_bfactor_A2": (8.0 * np.pi ** 2 / 3.0) * rmsf_values ** 2,
-    }))
+    rmsf_enabled = cfg["analyses"]["rmsf"].get("enabled", True)
+    if rmsf_enabled:
+        atomic_parquet(
+            raw / "rmsf.parquet",
+            pd.DataFrame({
+                "atom_index": features.indices,
+                "topology_residue_index": features.resindices,
+                "residue": [residue_label(atom) for atom in features],
+                "atom_name": features.names,
+                "rmsf_A": rmsf_values,
+                "equivalent_bfactor_A2": (
+                    (8.0 * np.pi ** 2 / 3.0) * rmsf_values ** 2
+                ),
+            }),
+        )
     group_rmsf = []
     group_residues = []
     for group_id, group in groups.items():
-        group_rmsf.extend(
-            (group_id, int(atom.index), residue_label(atom), atom.name, float(value)) for atom,
-            value in zip(group["measure"], group["rmsf"].rmsf())
+        if rmsf_enabled:
+            group_rmsf.extend(
+                (
+                    group_id,
+                    int(atom.index),
+                    int(atom.resindex),
+                    residue_label(atom),
+                    atom.name,
+                    float(value),
+                )
+                for atom, value in zip(group["measure"], group["rmsf"].rmsf())
+            )
+        group_residues.extend(
+            (group_id, int(res.ix), str(res.resname), int(res.resid))
+            for res in group["atoms"].residues
         )
-        group_residues.extend((
-            group_id,
-            int(res.ix),
-            str(res.resname),
-            int(res.resid)
-        )for res in group["atoms"].residues)
     if group_rmsf:
         atomic_parquet(
             raw / "group_rmsf.parquet",
             pd.DataFrame(
                 group_rmsf,
-                columns=["group", "atom_index", "residue", "atom_name", "rmsf_A"]
-            )
+                columns=[
+                    "group",
+                    "atom_index",
+                    "topology_residue_index",
+                    "residue",
+                    "atom_name",
+                    "rmsf_A",
+                ],
+            ),
         )
+    if group_residues:
         atomic_parquet(
             raw / "group_residues.parquet",
             pd.DataFrame(
                 group_residues,
-                columns=["group", "topology_residue_index", "resname", "resid"]
-            ).drop_duplicates()
+                columns=[
+                    "group",
+                    "topology_residue_index",
+                    "resname",
+                    "resid",
+                ],
+            ).drop_duplicates(),
         )
     for density in densities:
         density.finalize(repout)
 
-    try:
-        bfactor = (8.0 * np.pi ** 2 / 3.0) * rmsf_values ** 2
-        if not hasattr(universe.atoms, "tempfactors"):
-            universe.add_TopologyAttr("tempfactors", np.zeros(len(universe.atoms)))
-        universe.atoms.tempfactors = 0.0
-        features.tempfactors = bfactor
-        protein.write(str(raw / "rmsf_bfactor.pdb"))
-    except Exception as exc:
-        print(f"Warning: could not write RMSF B-factor PDB: {exc}")
-    return{
+    if rmsf_enabled:
+        try:
+            bfactor = (8.0 * np.pi ** 2 / 3.0) * rmsf_values ** 2
+            if not hasattr(universe.atoms, "tempfactors"):
+                universe.add_TopologyAttr(
+                    "tempfactors",
+                    np.zeros(len(universe.atoms)),
+                )
+            universe.atoms.tempfactors = 0.0
+            features.tempfactors = bfactor
+            protein.write(str(raw / "rmsf_bfactor.pdb"))
+        except Exception as exc:
+            print(f"Warning: could not write RMSF B-factor PDB: {exc}")
+    return {
         "frames": processed,
         "topology_atoms": len(universe.atoms),
         "protein_atoms": len(protein),
@@ -981,9 +1033,9 @@ def _flush(raw, cache, rows, group_rows, salt_rows, ligand_rows, coords, times, 
 
 
 def temporal_rmsf_profiles(repout: Path, cfg: dict) -> dict[str, dict]:
-    """
-    Load aligned coordinates needed for block-bootstrap RMSF profiles.
-    """
+    """Load aligned coordinates needed for block-bootstrap RMSF profiles."""
+    if not cfg["analyses"]["rmsf"].get("enabled", True):
+        return {}
     cache = Path(repout) / "cache"
     atom_file = cache / "feature_atoms.parquet"
     parts = sorted(cache.glob("aligned-part-*.npz"))
@@ -1000,6 +1052,11 @@ def temporal_rmsf_profiles(repout: Path, cfg: dict) -> dict[str, dict]:
             "times": times,
             "coords": xyz,
             "atom_indices": atoms["atom_index"].to_numpy(int),
+            "atom_residue_indices": (
+                atoms["topology_residue_index"].to_numpy(int)
+                if "topology_residue_index" in atoms
+                else None
+            ),
             "atom_residues": atoms["residue"].astype(str).to_numpy(),
             "reducer": "rmsf",
         }
@@ -1009,7 +1066,7 @@ def temporal_rmsf_profiles(repout: Path, cfg: dict) -> dict[str, dict]:
         group_atoms = pd.read_parquet(group_file)
         index_lookup = {int(atom): i for i, atom in enumerate(atoms["atom_index"].to_numpy(int))}
         for group_id, group in group_atoms.groupby("group", sort=False):
-            columns =[
+            columns = [
                 index_lookup[
                     int(atom)
                 ]for atom in group["atom_index"].to_numpy(int) if int(atom) in index_lookup
@@ -1019,7 +1076,14 @@ def temporal_rmsf_profiles(repout: Path, cfg: dict) -> dict[str, dict]:
                     "times": times,
                     "coords": xyz[:, columns, :],
                     "atom_indices": atoms.iloc[columns]["atom_index"].to_numpy(int),
-                    "atom_residues": atoms.iloc[columns]["residue"].astype(str).to_numpy(),
+                    "atom_residue_indices": (
+                        atoms.iloc[columns]["topology_residue_index"].to_numpy(int)
+                        if "topology_residue_index" in atoms
+                        else None
+                    ),
+                    "atom_residues": (
+                        atoms.iloc[columns]["residue"].astype(str).to_numpy()
+                    ),
                     "reducer": "rmsf",
                 }
     return out
