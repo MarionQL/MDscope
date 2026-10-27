@@ -164,9 +164,10 @@ def summarize_replicate(repout: Path, cfg: dict):
         ) for table in time_sources if table is not None and not table.empty and "time_ps" in table
     ]
     if not available_times:
-        hb_counts = repout / "interactions" / "hydrogen_bonds" / "count_timeseries.parquet"
-        if hb_counts.exists():
-            available_times.append(pd.read_parquet(hb_counts)["time_ps"].to_numpy(float))
+        for kind in ("hydrogen_bonds","lipid_hydrogen_bonds"):
+            counts=repout/"interactions"/kind/"count_timeseries.parquet"
+            if counts.exists():
+                available_times.append(pd.read_parquet(counts)["time_ps"].to_numpy(float))
     all_times = (
         np.sort(
             np.unique(np.concatenate(available_times))
