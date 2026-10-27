@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 from .config import analysis_groups, analysis_runs, atomic_parquet,ensure_dir,time_ps
 from .progress import track
+from .fused_membrane import FusedMembrane, enabled_names as fused_enabled_names
 from .alignment import _apply_transform,_fit_transform,_valid_box
 from .rmsd import compute_rmsd
 from .rmsf import Welford
@@ -177,6 +178,7 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
     if start is not None:
         universe.trajectory[int(start)]
     membrane = initialize_membrane(universe, cfg)
+    fused = FusedMembrane(universe, cfg, repout) if fused_enabled_names(cfg) else None
 
     processed = part = 0
     if checkpoint.exists():
@@ -206,11 +208,17 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
             ) for run in analysis_runs(cfg, "density_1d")]
             for density in densities:
                 density.clear_frame_parts(repout)
+            if fused is not None:
+                fused.prune_from(0)
             if start is not None:
                 universe.trajectory[int(start)]
             membrane = initialize_membrane(universe, cfg)
             processed = part = 0
 
+    if fused is not None:
+        # Keep only chunks committed by the streaming checkpoint. An interrupted
+        # chunk may have been written just before a crash and must be replayed.
+        fused.prune_from(part)
     first = (0 if start is None else int(start)) + processed * stride
     rows, group_rows, salt_rows, ligand_rows, coords, coord_times = [], [], [], [], [], []
     frames=universe.trajectory[slice(first,stop,stride)]
@@ -218,6 +226,10 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
                     desc=f"{rep.system}/{rep.label}: streaming",
                     enabled=cfg.get("progress",{}).get("enabled",True)):
         tps = time_ps(ts, processed, cfg)
+        # Membrane observers must consume raw wrapped coordinates, not aligned
+        # protein coordinates. All three analyses share this exact frame.
+        if fused is not None:
+            fused.update(ts, processed)
         for density in densities:
             density.update(universe, tps)
         membrane_values = membrane_metrics(universe, membrane)
@@ -343,6 +355,8 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
             )
             for density in densities:
                 density.flush_frames(repout, part)
+            if fused is not None:
+                fused.flush(part)
             rows, group_rows, salt_rows, ligand_rows, coords, coord_times = [], [], [], [], [], []
             part += 1
             _checkpoint_payload(
@@ -371,6 +385,8 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
         )
         for density in densities:
             density.flush_frames(repout, part)
+        if fused is not None:
+            fused.flush(part)
         part += 1
         _checkpoint_payload(
             checkpoint,
@@ -382,6 +398,8 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
             densities,
             membrane
         )
+
+    fused_results = fused.finalize() if fused is not None else {}
 
     if cfg["cache"].get("aligned_coordinates", True):
         atomic_parquet(
@@ -478,7 +496,8 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
         "topology_atoms": len(universe.atoms),
         "protein_atoms": len(protein),
         "feature_atoms": len(features),
-        "alignment_atoms": len(alignment_atoms)
+        "alignment_atoms": len(alignment_atoms),
+        "fused_membrane": fused_results,
     }
 
 
