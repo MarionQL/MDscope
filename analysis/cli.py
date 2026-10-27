@@ -15,6 +15,8 @@ from .config import analysis_runs, iter_replicates, load_config
 from .profiles import _without_hydrogens
 from .runner import finalize_project, run_all, run_one, project_root
 from .report import generate_report
+from .hs_topology import discover_covalent_hs
+from .mechanistic_common import sequence_matches
 from .timeseries import resolved_selection_counts
 
 
@@ -98,6 +100,58 @@ def cmd_validate(args):
                     f"System {system!r}, group {group_id!r} has a zero-atom "
                     "alignment selection"
                 )
+        mechanism = cfg.get("analyses", {}).get("sdc4_mechanisms", {})
+        if mechanism.get("enabled", False):
+            for kind in ("tm_chains", "ectodomains"):
+                for label, selection in mechanism[kind].items():
+                    atoms = universe.select_atoms(selection)
+                    if len(atoms) < 4:
+                        raise ValueError(
+                            f"{system}: SDC4 {kind}.{label} matched only {len(atoms)} atoms"
+                        )
+                    print(f"    SDC4 {kind}.{label}: {len(atoms)} atoms")
+            ca = universe.select_atoms(
+                mechanism.get("motif_selection") or
+                cfg["selections"]["protein"] + " and name CA"
+            )
+            motifs = sequence_matches(ca, mechanism.get("motifs") or {"NxIP": "N.IP"})
+            if mechanism.get("require_motifs", True) and not motifs:
+                raise ValueError(f"{system}: no NxIP motif found in topology sequence")
+            print(f"    SDC4 NxIP motifs: {list(motifs)}")
+            lipid_owners = set()
+            for name, selection in mechanism["lipid_anchors"].items():
+                atoms = universe.select_atoms(selection)
+                if not len(atoms):
+                    if mechanism.get("allow_absent_species", False):
+                        print(f"    SDC4 lipid {name}: absent (permitted)")
+                        continue
+                    raise ValueError(f"{system}: missing SDC4 lipid {name}")
+                ids = set(map(int, atoms.resindices))
+                if ids & lipid_owners:
+                    raise ValueError(f"{system}: overlapping SDC4 lipid anchor selections")
+                lipid_owners.update(ids)
+                print(f"    SDC4 lipid {name}: {len(ids)} molecules")
+            for name, selection in mechanism.get("ion_selections", {}).items():
+                count = len(universe.select_atoms(selection))
+                if not count:
+                    raise ValueError(f"{system}: ion selection {name} matched zero atoms")
+                print(f"    SDC4 ion {name}: {count} atoms")
+            if (mechanism.get("hs_auto") or {}).get("enabled"):
+                hs, sites, audit = discover_covalent_hs(
+                    universe, mechanism["hs_auto"]
+                )
+                for name, item in audit.items():
+                    print(
+                        f"    HS {name}: {item['glycan_residues']} glycan residues "
+                        f"covalently linked to {item['protein_chain']}:"
+                        f"{item['protein_resid']} {item['protein_atom']}"
+                    )
+            elif mechanism.get("hs_chains"):
+                for name, selection in mechanism["hs_chains"].items():
+                    if not len(universe.select_atoms(selection)):
+                        raise ValueError(f"{system}: HS chain {name} selection empty")
+            else:
+                print("    WARNING: SDC4 has no mapped HS chains; HS metrics will be absent")
         for kind in ("bilayer_normal","lipid_enrichment"):
             extension=cfg.get("analyses",{}).get(kind,{})
             if not extension.get("enabled",False):
