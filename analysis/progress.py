@@ -1,7 +1,6 @@
 """Progress reporting for long MD trajectories (optional tqdm, safe batch fallback)."""
 from __future__ import annotations
 import sys
-import time
 from contextlib import contextmanager
 
 @contextmanager
@@ -17,12 +16,9 @@ def progress(iterable, *, total=None, desc="", enabled=True):
         from tqdm.auto import tqdm
     except ImportError:
         tqdm = None
-    if tqdm is not None:
-        with tqdm(iterable, total=total, desc=desc, unit="frame",
-                  disable=not sys.stderr.isatty()) as bar:
+    if tqdm is not None and sys.stderr.isatty():
+        with tqdm(iterable, total=total, desc=desc, unit="frame") as bar:
             yield bar
-        if not sys.stderr.isatty():
-            print(f"{desc}: completed", file=sys.stderr, flush=True)
         return
     class Milestones:
         def __iter__(self):
