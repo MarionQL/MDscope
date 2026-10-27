@@ -162,6 +162,7 @@ def run_lipid_hydrogen_bonds(rep, cfg, repout):
 
 
 def write_lipid_hydrogen_bonds(universe, cfg, repout, raw, frames, times, atoms, molecule_ids, atom_species):
+    spec = cfg["analyses"]["lipid_hydrogen_bonds"]
     times = np.asarray(times, float)
     if cfg.get("time", {}).get("dt_ps") is not None:
         times = cfg["time"].get("origin_ps", 0.) + np.arange(len(times)) * float(cfg["time"]["dt_ps"])
