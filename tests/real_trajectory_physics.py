@@ -177,6 +177,7 @@ def geometry_audit(system, topology, trajectory):
     out = ROOT / system / "physics"
     out.mkdir(parents=True, exist_ok=True)
     frames.to_parquet(out / "geometry_per_frame.parquet", index=False)
+    transition_details = transition_geometry(u, tracker, species, initial, changed_lipids, out)
     timer["geometry_total_s"] = time.perf_counter()-begin
     report = {
         "n_frames": len(frame_records),
@@ -184,6 +185,7 @@ def geometry_audit(system, topology, trajectory):
         "species_counts": dict(Counter(species)),
         "max_leaflet_changes": int(max(changed_counts)),
         "frames_with_leaflet_changes": int(sum(c > 0 for c in changed_counts)),
+        "transition_geometry": transition_details,
         "changed_lipids": [dict(v, transitions=int(transition_counts[k]))
                            for k, v in changed_lipids.items()],
         "initial_upper_species": dict(Counter(species[initial])),
@@ -204,6 +206,65 @@ def geometry_audit(system, topology, trajectory):
     del u
     gc.collect()
     return report
+
+
+def transition_geometry(u, tracker, species, reference, changed_lipids, out):
+    """Check sterol O3 crossings against phosphate-defined bilayer midplane.
+
+    A change in the nearest leaflet alone does not establish sterol flip-flop.
+    Record both O3 position relative to the membrane midplane and the O3-C17
+    molecular orientation for manual inspection.
+    """
+    if not changed_lipids:
+        return {}
+    records = []
+    phospho = np.isin(species, ["POPC", "POPE", "POPI", "POPS", "DOPC", "DPPC", "PSM"])
+    def circ_mean(z, L):
+        angle = 2 * np.pi * z / L
+        return float(np.arctan2(np.sin(angle).mean(), np.cos(angle).mean())
+                     * L / (2*np.pi) % L)
+    def signed_delta(z, center, L):
+        return float((z-center+L/2) % L - L/2)
+    for lipid in changed_lipids.values():
+        res = u.residues[int(lipid["resindex"])]
+        head = res.atoms.select_atoms("name O3")
+        tail = res.atoms.select_atoms("name C17")
+        assert len(head) == 1, "Expected one cholesterol O3 anchor"
+        assert len(tail) == 1, "Expected one cholesterol C17 orientation atom"
+        for frame, ts in enumerate(u.trajectory):
+            L = float(ts.dimensions[2])
+            xyz = centers(tracker)
+            current, _ = aligned_leaflets(xyz[:,2], L, reference)
+            top = circ_mean(xyz[phospho & current,2], L)
+            bottom = circ_mean(xyz[phospho & ~current,2], L)
+            midpoint = (top + signed_delta(bottom, top, L)/2) % L
+            head_z = float(head.positions[0,2])
+            tail_z = float(tail.positions[0,2])
+            records.append({
+                "resindex": int(lipid["resindex"]), "species": str(lipid["species"]),
+                "frame": frame, "time_ps": float(ts.time),
+                "head_z_A": head_z, "tail_z_A": tail_z,
+                "head_minus_tail_z_A": signed_delta(head_z, tail_z, L),
+                "signed_head_midplane_A": signed_delta(head_z, midpoint, L),
+                "upper_phosphate_center_z_A": top,
+                "lower_phosphate_center_z_A": bottom,
+                "midplane_z_A": midpoint,
+            })
+    data = pd.DataFrame(records)
+    data.to_parquet(out / "changed_lipid_orientation.parquet", index=False)
+    summary = {}
+    for key, sub in data.groupby("resindex"):
+        signed = sub.signed_head_midplane_A.to_numpy(float)
+        orient = sub.head_minus_tail_z_A.to_numpy(float)
+        summary[str(int(key))] = {
+            "head_midplane_crossings": int(np.count_nonzero(np.sign(signed[1:]) != np.sign(signed[:-1]))),
+            "orientation_sign_changes": int(np.count_nonzero(np.sign(orient[1:]) != np.sign(orient[:-1]))),
+            "head_midplane_min_A": float(signed.min()),
+            "head_midplane_max_A": float(signed.max()),
+            "head_minus_tail_min_A": float(orient.min()),
+            "head_minus_tail_max_A": float(orient.max()),
+        }
+    return summary
 
 
 def hbond_audit(system, topology, trajectory):
