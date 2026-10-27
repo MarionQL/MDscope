@@ -55,23 +55,23 @@ python -m mdscope.analysis.cli finalize analysis.yaml
 The project output directory contains the resolved configuration and environment metadata so a completed analysis can be audited later.
 
 For the full two-condition, six-replicate SDC4 mechanism analysis, see
-[\`synd4_full_mechanisms.yaml\`](synd4_full_mechanisms.yaml) and
-[\`REPORT.md\`](REPORT.md). The original system/trajectory paths are
+[`synd4_full_mechanisms.yaml`](synd4_full_mechanisms.yaml) and
+[`REPORT.md`](REPORT.md). The original system/trajectory paths are
 unchanged; the expanded analysis writes to a separate results directory.
 
-When \`report.enabled: true\`, finalization creates:
+When `report.enabled: true`, finalization creates:
 
-\`\`\`text
+```text
 project_summary/report/MDscope_evidence_report.pdf
 project_summary/report/MDscope_review_bundle.zip
-\`\`\`
+```
 
 To regenerate just these files from existing finalized outputs (no XTC
 re-read, no project summary archiving):
 
-\`\`\`bash
+```bash
 python -m mdscope.analysis.cli report synd4_full_mechanisms.yaml
-\`\`\`
+```
 
 
 # YAML configuration
