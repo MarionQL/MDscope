@@ -154,19 +154,32 @@ def _fixed_ch_pairs(universe, sites: list[OrderSite], cutoff: float):
         )
     hydrogens = universe.atoms[hydrogen_indices]
     box = _valid_box(universe)
-    pairs = capped_distance(
-        carbon_atoms.positions,
-        hydrogens.positions,
-        max_cutoff=float(cutoff),
-        box=box,
-        return_distances=False,
-    )
-    if not len(pairs):
-        raise ValueError("membrane_order found no C-H pairs within hydrogen_cutoff_A")
-    same_residue = (
-        carbon_atoms.resindices[pairs[:, 0]] == hydrogens.resindices[pairs[:, 1]]
-    )
-    pairs = np.asarray(pairs[same_residue], dtype=np.int32)
+    # Prefer chemically exact C-H connectivity when topology bonds exist.
+    # A radius search can otherwise spuriously associate nearby non-bonded H atoms.
+    try:
+        topology_bonds=np.asarray(universe.bonds.indices,dtype=np.int64)
+    except (NoDataError,AttributeError):
+        topology_bonds=None
+    if topology_bonds is not None and len(topology_bonds):
+        ci=np.full(len(universe.atoms),-1,dtype=np.int32)
+        hi=np.full(len(universe.atoms),-1,dtype=np.int32)
+        ci[carbon_atoms.indices]=np.arange(len(carbon_atoms),dtype=np.int32)
+        hi[hydrogens.indices]=np.arange(len(hydrogens),dtype=np.int32)
+        forward=np.stack([ci[topology_bonds[:,0]],hi[topology_bonds[:,1]]],axis=1)
+        reverse=np.stack([ci[topology_bonds[:,1]],hi[topology_bonds[:,0]]],axis=1)
+        pairs=np.concatenate([forward,reverse])
+        pairs=pairs[np.all(pairs>=0,axis=1)]
+        if not len(pairs):
+            raise ValueError("No bonded C-H pairs in selected lipid tails")
+    else:
+        # Explicit fallback for PDBs without bond connectivity.
+        pairs=capped_distance(
+            carbon_atoms.positions,hydrogens.positions,max_cutoff=float(cutoff),
+            box=box,return_distances=False)
+        if not len(pairs):
+            raise ValueError("membrane_order found no C-H pairs within hydrogen_cutoff_A")
+    same_residue=carbon_atoms.resindices[pairs[:,0]] == hydrogens.resindices[pairs[:,1]]
+    pairs=np.asarray(pairs[same_residue],dtype=np.int32)
     if not len(pairs):
         raise ValueError("membrane_order found no same-residue C-H pairs")
 
