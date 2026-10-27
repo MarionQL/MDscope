@@ -8,6 +8,7 @@ on:
     paths:
       - "tests/real_trajectory_smoke.py"
       - "tests/real_sdc4_mechanisms.py"
+      - "tests/real_hs_topology_audit.py"
       - "analysis/sdc4_mechanisms.py"
       - "analysis/shared_states.py"
       - "analysis/mechanistic_common.py"
@@ -62,6 +63,9 @@ jobs:
           gh release download test-data-v1 --repo MarionQL/MDscope --dir real_test_data
           ls -lh real_test_data
           df -h .
+      - name: Audit HS topology chain IDs and covalent attachment sites
+        run: |
+          PYTHONPATH="$PWD/_ci_alias" python tests/real_hs_topology_audit.py
       - name: Run real-trajectory analysis on both systems
         run: |
           mkdir -p _ci_alias
