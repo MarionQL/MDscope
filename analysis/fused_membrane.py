@@ -354,17 +354,26 @@ class FusedMembrane:
             # Read one profile at a time; avoid materializing all profiles
             # for the entire trajectory simultaneously.
             index_rows = []
+            # Read each compressed chunk once rather than reopening and
+            # decompressing it separately for every lipid-order profile.
+            profile_chunks = [[] for _ in o["profiles"]]
+            time_chunks = []
+            for path in parts:
+                with np.load(path, allow_pickle=False) as data:
+                    time_chunks.append(data["time_ps"].astype(float))
+                    for i in range(len(o["profiles"])):
+                        profile_chunks[i].append(
+                            data[f"profile_{i:04d}"].astype(np.float32)
+                        )
+            all_times = (
+                np.concatenate(time_chunks) if time_chunks else np.array([], float)
+            )
             for i, profile in enumerate(o["profiles"]):
-                arrays = []
-                times = []
-                for path in parts:
-                    with np.load(path, allow_pickle=False) as data:
-                        arrays.append(data[f"profile_{i:04d}"].astype(np.float32))
-                        times.append(data["time_ps"].astype(float))
+                arrays = profile_chunks[i]
                 filename = f"profile-{i:04d}.npz"
                 _atomic_npz(
                     out / filename,
-                    time_ps=np.concatenate(times) if times else np.array([], float),
+                    time_ps=all_times,
                     values=np.concatenate(arrays, axis=0) if arrays else np.empty(
                         (0, len(profile.positions)), np.float32
                     ),
