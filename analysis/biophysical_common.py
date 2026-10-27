@@ -64,14 +64,3 @@ def leaflet_groups(atoms,axis=2):
     if len(gaps)==0:raise ValueError("Need at least two lipid residues for leaflets")
     cut=(vals[np.argmax(gaps)]+vals[np.argmax(gaps)+1])/2
     return {int(r.ix):("upper" if w>cut else "lower") for r,w in zip(residues,wrapped)}
-
-def linear_diffusion(times_ps,msd_A2,start_fraction=.2,end_fraction=.8):
-    """Fit 2D MSD slope: D[nm²/ns] = slope[Å²/ps]*10/4."""
-    t=np.asarray(times_ps,float);y=np.asarray(msd_A2,float)
-    ok=np.isfinite(t)&np.isfinite(y)
-    if np.count_nonzero(ok)<5:return np.nan
-    t,y=t[ok],y[ok]
-    low=t[0]+start_fraction*(t[-1]-t[0]);high=t[0]+end_fraction*(t[-1]-t[0])
-    fit=(t>=low)&(t<=high)
-    if fit.sum()<4:return np.nan
-    return float(np.polyfit(t[fit],y[fit],1)[0]*2.5)
