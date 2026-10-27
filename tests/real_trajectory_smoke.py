@@ -21,6 +21,7 @@ from mdscope.analysis.config import Replicate, load_config
 from mdscope.analysis.membrane_order import run_membrane_order
 from mdscope.analysis.bilayer_normal import run_bilayer_normal
 from mdscope.analysis.lipid_enrichment import run_lipid_enrichment
+from mdscope.analysis.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
 
 DATA = Path(os.environ.get("MDSCOPE_REAL_DATA", "real_test_data")).resolve()
 ROOT = Path(os.environ.get("MDSCOPE_REAL_OUTPUT", "real_test_results")).resolve()
@@ -240,6 +241,22 @@ def compare_fused_to_independent(system, config, topology, trajectory):
                             np.testing.assert_array_equal(a[key], b[key])
         checks[name] = {"status": "identical_within_tolerance", "frames": 40}
         print(f"FUSED PARITY {system}/{name}: PASS", flush=True)
+    # The fused MDAnalysis HBA uses the same detector, stepped once per
+    # streaming frame. Compare all events, time-series and molecule exclusions
+    # against the original independent trajectory traversal.
+    run_lipid_hydrogen_bonds(rep, cfg, independent)
+    for file in ("events.parquet", "count_timeseries.parquet", "molecule_audit.parquet"):
+        actual = pd.read_parquet(fused / "interactions/lipid_hydrogen_bonds" / file)
+        expected = pd.read_parquet(independent / "interactions/lipid_hydrogen_bonds" / file)
+        pd.testing.assert_frame_equal(
+            actual, expected, check_dtype=False,
+            check_exact=False, rtol=1e-6, atol=1e-6,
+            obj=f"{system}/lipid_hydrogen_bonds/{file}",
+        )
+    checks["lipid_hydrogen_bonds"] = {"status": "identical_within_tolerance"}
+    print(f"FUSED PARITY {system}/lipid_hydrogen_bonds: PASS", flush=True)
+    ext_timing = json.loads((fused / "fused_extensions_timings.json").read_text())
+    assert "lipid_hydrogen_bonds" in ext_timing["enabled"]
     timing = json.loads((fused / "fused_membrane_timings.json").read_text())
     assert timing["shared_anchor_mappings"] == 1
     stages = json.loads((fused / "stage_timings.json").read_text())["stages"]
