@@ -199,7 +199,8 @@ def hbond_audit(system, topology, trajectory):
     assert (molecule_species == Counter({"GM1a":24, "BGAL":58}) if system == "carb_sdc4"
             else molecule_species == Counter({"CER160":82}))
     map_s = time.perf_counter()-start
-    del u
+    selected_count = len(selected)
+    del selected, u
     gc.collect()
     cfg = {
         "trajectory": {"start": 0, "stop": 20, "stride": 1},
@@ -228,7 +229,7 @@ def hbond_audit(system, topology, trajectory):
         assert events.distance_A.max() <= 3.0001
         assert events.angle_deg.min() >= 149.999
     report = {
-        "n_frames": 20, "selected_atoms": len(selected),
+        "n_frames": 20, "selected_atoms": selected_count,
         "n_molecules": molecule_count, "species": dict(molecule_species),
         "molecule_mapping_s": map_s, "hbond_20_frames_s": elapsed,
         "events": result["events"], "audit": audit,
