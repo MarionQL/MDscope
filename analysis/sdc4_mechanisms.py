@@ -376,8 +376,14 @@ class SDC4Mechanisms:
             ag = info["atoms"]
             own = info["resindices"]
             # Avoid calling adjacent backbone atoms "occlusion".
-            near_res = set(own.tolist())
-            protein_other = self.protein[~np.isin(self.protein.resindices, list(near_res))]
+            # Adjacent backbone residues are covalent/near-covalent neighbors,
+            # not evidence that an NxIP motif is functionally occluded.
+            near_res = set(
+                int(j) for ix in own for j in range(max(0, int(ix)-2), int(ix)+3)
+            )
+            protein_other = self.protein[
+                ~np.isin(self.protein.resindices, list(near_res))
+            ]
             contacts = _contacts(ag, protein_other, self.contact_A, box)
             glycan_all = self.u.atoms[np.unique(np.concatenate([
                 g.indices for g in self.hs.values()
