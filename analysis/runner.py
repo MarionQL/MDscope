@@ -36,6 +36,9 @@ from .profiles import run_residue_membrane_distance
 from .profiles import postprocess_structure_profiles, run_structure_profiles
 from .statistics import analyze_project
 from .timeseries import run_streaming_pass
+from .local_environment import run_local_environment
+from .lipid_diffusion import run_lipid_diffusion
+from .coupling_screen import screen_couplings
 
 
 class RunState:
@@ -152,6 +155,9 @@ def summarize_replicate(repout: Path, cfg: dict):
 
     profile_ts, profile_group_ts = postprocess_structure_profiles(repout, cfg)
     time_sources = [base] + profile_ts + membrane_order_timeseries(repout)
+    local_path = repout / 'extensions' / 'local_environment' / 'timeseries.parquet'
+    if local_path.exists():
+        time_sources.append(pd.read_parquet(local_path))
     available_times = [
         table[
             "time_ps"
@@ -259,6 +265,11 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     ) and not state.complete(prefix + "-hydrogen-bonds"):
         run_hydrogen_bonds(rep, cfg, repout)
         state.mark(prefix + "-hydrogen-bonds")
+    for name, fn in [('local_environment',run_local_environment),('lipid_diffusion',run_lipid_diffusion)]:
+        if cfg.get('analyses',{}).get(name,{}).get('enabled',False):
+            key=prefix+'-'+name
+            if not state.complete(key):
+                state.mark(key,fn(rep,cfg,repout))
     if not state.complete(prefix + "-summary"):
         summarize_replicate(repout, cfg)
         state.mark(prefix + "-summary")
@@ -295,6 +306,8 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None):
     # trajectories are reopened.
     analyze_project(cfg, root, system_repouts)
     plot_all(cfg, root, system_repouts)
+    if cfg.get('analyses',{}).get('coupling_screen',{}).get('enabled',False):
+        screen_couplings(cfg,root,system_repouts)
     return root
 
 
