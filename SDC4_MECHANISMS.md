@@ -54,7 +54,14 @@ Add this under \`analyses:\` in \`synd4_baseline.yaml\`, adjusting all selectors
       Ca: "resname CAL"
 
     # Explicitly supply a one-to-one HS chain -> protein attachment mapping.
-    # Empty maps permit geometry-only testing; HS outputs require both maps.
+    # Or enable hs_auto above for bond-verified glycan component discovery.
+    # Empty maps without hs_auto permit geometry-only testing.
+    hs_auto:
+      enabled: true
+      glycan_selection: "resname AGLCNA AIDOA BGLCA BGAL BXYL and chainID PROA PROB"
+      attachment_selection: "protein and resname SER and name OG"
+      min_glycan_residues: 3
+      expected_chains: 6
     hs_chains: {}
     hs_attachment_sites: {}
     # Example only after checking the TPR topology:
@@ -177,3 +184,19 @@ Project-level (when \`shared_states.enabled\`):
 The scalar \`timeseries.parquet\` columns are also merged into MDscope's
 existing \`summary/timeseries.parquet\` and analyzed by the existing
 replicate-aware statistics framework. No new trajectory pass is added.
+
+
+## Automatic covalent HS chain discovery
+
+In the original carb/no-carb TPRs, each SDC4 protomer has three
+covalently attached HS chains but the sugar residues share the same
+`chainID` as the core protein. MDscope's `hs_auto` uses the TPR bond
+graph to separate glycan-only connected components and requires exactly
+one covalent protein attachment per glycan. The two audited topologies
+have attachments PROA S39/S61/S63 and PROB S309/S331/S333. The
+`selection_audit.json` includes per-chain protein attachment details.
+The auto-discovery refuses missing or ambiguous attachments; it does
+not infer attachments from spatial proximity.
+
+See `synd4_full_mechanisms.yaml` for the complete configuration and
+`REPORT.md` for PDF evidence-report generation and upload guidance.
