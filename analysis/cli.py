@@ -97,6 +97,38 @@ def cmd_validate(args):
                     f"System {system!r}, group {group_id!r} has a zero-atom "
                     "alignment selection"
                 )
+        for kind in ("bilayer_normal","lipid_enrichment"):
+            extension=cfg.get("analyses",{}).get(kind,{})
+            if not extension.get("enabled",False):
+                continue
+            lipid_residues=set()
+            matched=0
+            for species,selection in extension.get("species_selections",{}).items():
+                atoms=universe.select_atoms(str(selection))
+                if not len(atoms):
+                    if extension.get("allow_absent_species",False):
+                        print(f"    {kind}: {species} absent (permitted)")
+                        continue
+                    raise ValueError(f"{system}: {kind} species {species} matched no atoms")
+                ids=set(map(int,atoms.resindices))
+                if lipid_residues.intersection(ids):
+                    raise ValueError(f"{system}: {kind} lipid anchor residue selections overlap")
+                lipid_residues.update(ids)
+                matched+=len(ids)
+                print(f"    {kind}: {species} {len(ids)} lipid anchors")
+            if matched<4:
+                raise ValueError(f"{system}: {kind} requires >=4 lipid anchors")
+            if kind=="lipid_enrichment":
+                protein=universe.select_atoms(str(
+                    extension.get("protein_selection") or cfg["selections"]["protein"]))
+                if not len(protein):
+                    raise ValueError(f"{system}: lipid enrichment protein selection matched no atoms")
+        hb=cfg.get("analyses",{}).get("lipid_hydrogen_bonds",{})
+        if hb.get("enabled",False):
+            lipid=universe.select_atoms(str(hb["lipid_selection"]))
+            if not len(lipid):
+                raise ValueError(f"{system}: lipid H-bond selection matched no atoms")
+            print(f"    lipid_hydrogen_bonds: {len(lipid)} lipid atoms")
         for run in analysis_runs(cfg, "residue_membrane_distance"):
             membrane_selection = run.spec.get("membrane_selection") or "resname " + " ".join(map(
                 str,
