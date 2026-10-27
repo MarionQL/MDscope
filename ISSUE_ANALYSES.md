@@ -80,13 +80,14 @@ analyses:
     enabled: true
     lipid_selection: "resname POPC POPE POPI DOPC DPPC PSM CHL1"
     exclude_same_residue: true
+    exclude_same_molecule: true
     d_a_cutoff_A: 3.0
     angle_cutoff_deg: 150.0
     # hydrogens_sel: "..." # use explicit selection if auto-detection fails
     # acceptors_sel: "..."
 ```
 
-This performs **one** MDAnalysis HydrogenBondAnalysis over all selected lipids, then distinguishes unordered lipid-type pairs (e.g. POPC–POPE and POPC–POPC), excluding within-the-same-residue bonds by default. This includes interspecies pairs as well as within-species bonds. If a glycolipid is represented by several covalently linked residues, exclusion by residue index is not equivalent to exclusion by whole lipid molecule. Such systems require molecule-specific selections/IDs for a truly intermolecular interpretation.
+This performs **one** MDAnalysis HydrogenBondAnalysis over all selected lipids, then distinguishes unordered lipid-type pairs (e.g. POPC–POPE and POPC–POPC). It now excludes **all bonds within the same covalently connected lipid molecule** by default, even when that molecule spans multiple glycan residues. The molecule IDs are derived from topology bonds; chain IDs identify glycolipid *species*, not individual molecules. Select complete lipid molecules, not only their carbohydrate headgroups, so the connected-component graph is complete. The output includes `molecule_audit.parquet` with counts of excluded same-residue and cross-residue intramolecular events.
 
 Events live in `interactions/lipid_hydrogen_bonds/events.parquet`; the common occupancy/lifetime statistics and interaction plot pipeline processes them identically to other H bonds.
 
@@ -123,6 +124,14 @@ analyses:
 
 Reuse the same `species_selections` for `lipid_enrichment`. In the **+headgroup** test topology, there are 24 GM1a and 58 BGAL ceramide anchors and no free CER160 chain anchors. In the **no-headgroup** control, there are 82 CER160 chain anchors and no GM1a/BGAL chain anchors. `allow_absent_species: true` is required when using one shared selection map across both systems.
 
-This mapping is specific to the uploaded TPRs and should be revalidated for other CHARMM-GUI builds. The lipid–lipid H-bond routine currently excludes same **residue**, not all interactions within one multi-residue glycosphingolipid; avoid interpreting such events as intermolecular until a molecule-level exclusion is implemented.
+This mapping is specific to the uploaded TPRs and should be revalidated for other CHARMM-GUI builds. The lipid–lipid H-bond routine now uses bonded connected components to exclude intramolecular events. For full glycosphingolipids, use a complete selection such as `(resname POPC POPE POPI POPS DOPC DPPC PSM CHL1) or (chainID GM1a BGAL CER160)`; **do not** use `resname BGAL` alone, because it also selects HS-associated carbohydrate residues. A topology with explicit covalent bonds (e.g. TPR) is required.
 
-GitHub Actions runs the optional `tests/real_trajectory_smoke.py` against the two reference systems. Eight-frame smoke tests confirm runtime compatibility and finite numeric outputs; they do **not** validate physical convergence, long-lag kinetics, or statistical significance.
+GitHub Actions runs the optional `tests/real_trajectory_smoke.py` against the two reference systems. The initial eight-frame smoke tests confirmed runtime compatibility and finite numeric outputs; they do **not** validate physical convergence, long-lag kinetics, or statistical significance.
+
+## Full-length physical audit and performance profiling
+
+`tests/real_trajectory_physics.py` reads **all** frames of both published TPR/XTC test systems for leaflet continuity, local normal fitting, PBC invariance, and lipid enrichment. It explicitly shifts subsets of lipid and protein atoms by entire box vectors and checks that the physical observables do not change. It compares the naive protein center to the circular, periodic-aware center and records how often their enrichment counts differ. A separate 20-frame hydrogen-bond test uses complete GM1a/BGAL/CER160 chains and checks bonded molecule counts and removal of within-molecule H-bonds.
+
+Per-analysis timing is recorded in `<system>/<replicate>/stage_timings.json`. Full-frame audit timings and peak resident memory are in `physical_audit.json` and `<system>/physics/geometry_per_frame.parquet`. These are single-run wall times on GitHub-hosted CPU hardware, not portable throughput benchmarks. They are useful for prioritizing improvements but should be remeasured on the intended HPC system.
+
+**Interpretation:** a 200-frame audit tests input geometry, selection stability and PBC invariance, not independent-replicate statistical significance or convergence. For protein-centered enrichment, prefer a transmembrane-domain selection rather than the whole extracellular protein when the biological question is membrane recruitment. The lipid-order module still assigns leaflet profiles from the first analyzed frame; check the leaflet-change audit before interpreting those profiles on trajectories with actual flip-flop.
