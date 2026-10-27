@@ -41,9 +41,13 @@ def run_hydrogen_bonds(rep, cfg: dict, repout: Path):
             "explicit donor/hydrogen/acceptor selections."
         ) from exc
 
+    return write_hydrogen_bonds(universe, cfg, repout, analysis.results.hbonds, analysis.frames, analysis.times)
+
+
+def write_hydrogen_bonds(universe, cfg, repout, arr, frames, times):
     arr = np.asarray(analysis.results.hbonds)
     out = ensure_dir(repout / "interactions" / "hydrogen_bonds")
-    analyzed_times = np.asarray(analysis.times, float)
+    analyzed_times = np.asarray(times, float)
     if cfg.get("time", {}).get("dt_ps") is not None:
         analyzed_times = (
             float(cfg["time"].get("origin_ps", 0.0))
@@ -78,7 +82,7 @@ def run_hydrogen_bonds(rep, cfg: dict, repout: Path):
         return
 
     frame_to_time = dict(
-        zip(np.asarray(analysis.frames, int), analyzed_times)
+        zip(np.asarray(frames, int), analyzed_times)
     )
     donor_idx, hydrogen_idx, acceptor_idx = arr[
         :,
