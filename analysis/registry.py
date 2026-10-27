@@ -57,4 +57,8 @@ def additional_time_series(repout:Path,cfg):
         path=Path(repout)/task.scalar_output
         if path.exists():
             output.append(pd.read_parquet(path))
+    if cfg.get("analyses", {}).get("sdc4_mechanisms", {}).get("enabled", False):
+        path = Path(repout) / "extensions/sdc4_mechanisms/timeseries.parquet"
+        if path.exists():
+            output.append(pd.read_parquet(path))
     return output
