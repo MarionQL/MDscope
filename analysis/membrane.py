@@ -27,6 +27,8 @@ class MembraneState:
     thickness: bool = False
     msd: bool = False
     msd_include_3d: bool = False
+    msd_remove_drift: bool = False
+    msd_atoms: object = None
     msd_residue_atoms: list | None = None
     msd_resindices: np.ndarray | None = None
     msd_upper_mask: np.ndarray | None = None
