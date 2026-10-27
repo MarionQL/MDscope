@@ -8,15 +8,31 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import minimize_vectors
+from MDAnalysis.exceptions import NoDataError
 from .config import atomic_parquet
 
-def _residue_centers(residue_atoms):
-    return np.stack([atoms.center_of_mass() for atoms in residue_atoms])
+def _residue_centers(atoms):
+    """Vectorized center per selected residue, preserving MDAnalysis residue order.
+
+    MDAnalysis implements compound centers in NumPy rather than making one
+    Python AtomGroup/COM call per lipid per frame. Preserve the original
+    center-of-geometry fallback for missing or invalid masses.
+    """
+    try:
+        result = np.asarray(atoms.center_of_mass(compound="residues"), dtype=float)
+    except (AttributeError, ValueError, TypeError, NoDataError):
+        result = np.asarray(atoms.center_of_geometry(compound="residues"), dtype=float)
+    invalid = ~np.all(np.isfinite(result), axis=1)
+    if np.any(invalid):
+        geometric = np.asarray(atoms.center_of_geometry(compound="residues"), dtype=float)
+        result[invalid] = geometric[invalid]
+    return result
 
 def initialize_msd(universe,state,spec):
     msd = spec.get("msd", {}) or {}
     state.msd = bool(msd.get("enabled", False))
     state.msd_include_3d = bool(msd.get("include_3d", False))
+    state.msd_remove_drift = bool(msd.get("remove_drift", False))
     if state.msd:
         if universe.dimensions is None or not np.all(np.asarray(
             universe.dimensions[:3],
@@ -26,27 +42,31 @@ def initialize_msd(universe,state,spec):
         atoms = universe.select_atoms(str(msd.get("selection") or spec["headgroup_selection"]))
         if not len(atoms):
             raise ValueError("membrane.msd.selection matched zero atoms")
-        state.msd_residue_atoms = [atoms & residue.atoms for residue in atoms.residues]
-        state.msd_resindices = np.asarray([int(residue.ix) for residue in atoms.residues], int)
+        state.msd_atoms = atoms
+        state.msd_resindices = np.asarray(atoms.residues.ix, dtype=int)
         state.msd_upper_mask = np.isin(state.msd_resindices, state.upper_resix)
         state.msd_lower_mask = np.isin(state.msd_resindices, state.lower_resix)
         if not np.all(state.msd_upper_mask | state.msd_lower_mask):
             raise ValueError(
                 "membrane.msd.selection includes residues outside the leaflet classification"
             )
-        state.msd_last_positions = _residue_centers(state.msd_residue_atoms)
+        state.msd_last_positions = _residue_centers(state.msd_atoms)
         state.msd_displacements = np.zeros_like(state.msd_last_positions)
 
 def msd_metrics(universe,state):
     out={}
     if state.msd:
-        current = _residue_centers(state.msd_residue_atoms)
+        current = _residue_centers(state.msd_atoms)
         # Accumulate minimum-image step vectors so lipids crossing
         # periodic boundaries do not create artificial MSD jumps.
-        state.msd_displacements += minimize_vectors(
+        step = np.asarray(minimize_vectors(
             current - state.msd_last_positions,
             universe.dimensions
-        )
+        ), dtype=float)
+        if state.msd_remove_drift:
+            # Subtract common translation in the lipid reference frame.
+            step -= step.mean(axis=0, keepdims=True)
+        state.msd_displacements += step
         state.msd_last_positions = current
         lateral = [i for i in range(3) if i != state.ai]
         lateral_sq = np.sum(state.msd_displacements[:, lateral] ** 2, axis=1)
