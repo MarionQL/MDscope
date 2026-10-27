@@ -5,7 +5,7 @@ def test_module_exports_and_compatibility():
     from mdscope.analysis import (streaming,rmsd,rmsf,msd,membrane,density_1d,
         alignment,radius_of_gyration,dssp,sasa,residue_membrane_distance,
         salt_bridges,hydrogen_bonds,ligand_contacts,interaction_tables,
-        membrane_order,local_environment,registry)
+        membrane_order,bilayer_normal,local_environment,registry)
     from mdscope.analysis.runner import run_all,run_one,finalize_project
     from mdscope.analysis.cli import main
     from mdscope.analysis.statistics import analyze_project
