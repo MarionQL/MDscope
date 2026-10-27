@@ -58,6 +58,7 @@ def test_lipid_hb_tabulation_excludes_same_residue():
     u=mda.Universe.empty(4,n_residues=2,atom_resindex=[0,0,1,1],trajectory=True)
     u.add_TopologyAttr("names",["O","H","O","H"])
     u.add_TopologyAttr("resnames",["POPC","POPE"])
+    u.add_TopologyAttr("resids",[1,2])
     arr=np.array([[0,0,1,2,2.7,180],[0,0,1,0,2.0,170]],float)
     table=tabulate_events(arr,u.atoms,[0],[10.],exclude_same_residue=True)
     assert len(table)==1
