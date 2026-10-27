@@ -11,6 +11,14 @@ for system,filename in (
 ):
     u=mda.Universe(str(root/filename))
     print(f"HS_TOPOLOGY {system}: atoms={len(u.atoms)} bonds={len(u.bonds)}",flush=True)
+    residues, counts = np.unique(u.atoms.resnames, return_counts=True)
+    print(f"ION_AUDIT {system}: all resnames={list(zip(residues.tolist(), counts.tolist()))}", flush=True)
+    for selection in (
+        "resname SOD", "resname CLA", "resname NA", "resname CL",
+        "resname POT", "resname CAL", "name SOD", "name CLA",
+        "name NA", "name CL", "name POT", "name CAL",
+    ):
+        print(f"ION_AUDIT {system}: {selection}={len(u.select_atoms(selection))}",flush=True)
     prot=u.select_atoms("protein")
     prot_ids=set(prot.indices.tolist())
     candidate=u.select_atoms(
