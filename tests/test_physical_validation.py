@@ -8,6 +8,7 @@ from mdscope.analysis.lipid_geometry import (
 from mdscope.analysis.lipid_enrichment import enrichment_frame
 from mdscope.analysis.bilayer_normal import fit_local_normals
 from mdscope.analysis.lipid_hydrogen_bonds import lipid_molecule_map, tabulate_events
+from mdscope.analysis.interaction_tables import INTERACTION_KEY_COLUMNS
 
 
 BOX = np.array([100., 100., 100., 90., 90., 90.])
@@ -115,3 +116,9 @@ def test_glycolipid_cross_residue_intramolecular_hbonds_excluded():
     assert len(events) == 1
     assert events.iloc[0]["species_pair"] == "BGAL__GM1a"
     assert events.iloc[0]["donor_molecule_id"] != events.iloc[0]["acceptor_molecule_id"]
+
+
+def test_lipid_hbond_lifetime_identity_includes_bonded_molecule_ids():
+    keys = INTERACTION_KEY_COLUMNS["lipid_hydrogen_bonds"]
+    assert "donor_molecule_id" in keys
+    assert "acceptor_molecule_id" in keys
