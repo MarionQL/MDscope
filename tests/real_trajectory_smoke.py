@@ -17,6 +17,10 @@ import pandas as pd
 import yaml
 
 from mdscope.analysis.runner import run_one
+from mdscope.analysis.config import Replicate, load_config
+from mdscope.analysis.membrane_order import run_membrane_order
+from mdscope.analysis.bilayer_normal import run_bilayer_normal
+from mdscope.analysis.lipid_enrichment import run_lipid_enrichment
 
 DATA = Path(os.environ.get("MDSCOPE_REAL_DATA", "real_test_data")).resolve()
 ROOT = Path(os.environ.get("MDSCOPE_REAL_OUTPUT", "real_test_results")).resolve()
@@ -186,6 +190,66 @@ def check_outputs(system: str):
     return result
 
 
+
+def compare_fused_to_independent(system, config, topology, trajectory):
+    """Scientific parity: fused production outputs vs original three readers.
+
+    The reference computations intentionally reopen the XTC *only in CI*.
+    Production never calls them after the fused streaming stage.
+    """
+    cfg = load_config(config)
+    rep = Replicate(system, 1, topology, trajectory, "rep1")
+    fused = ROOT / system / system / "rep1"
+    independent = ROOT / f"{system}_independent"
+    independent.mkdir(parents=True, exist_ok=True)
+    checks = {}
+    for name, fn, path in (
+        ("membrane_order", run_membrane_order, "profiles/membrane_order"),
+        ("bilayer_normal", run_bilayer_normal, "extensions/bilayer_normal"),
+        ("lipid_enrichment", run_lipid_enrichment, "extensions/lipid_enrichment"),
+    ):
+        fn(rep, cfg, independent)
+        left = fused / path
+        right = independent / path
+        files = ["timeseries.parquet"]
+        if name == "membrane_order":
+            files += ["site_mapping.parquet", "profile_index.parquet"]
+        if name == "lipid_enrichment":
+            files += ["counts.parquet", "selection_audit.parquet"]
+        for file in files:
+            actual = pd.read_parquet(left / file)
+            expected = pd.read_parquet(right / file)
+            # Exact column order and row identity are part of the public API.
+            pd.testing.assert_frame_equal(
+                actual, expected, check_dtype=False,
+                check_exact=False, rtol=1e-6, atol=1e-6,
+                obj=f"{system}/{name}/{file}",
+            )
+        if name == "membrane_order":
+            index = pd.read_parquet(left / "profile_index.parquet")
+            for file in index["file"]:
+                with np.load(left / file) as a, np.load(right / file) as b:
+                    assert set(a.files) == set(b.files)
+                    for key in a.files:
+                        if a[key].dtype.kind in "fiu":
+                            np.testing.assert_allclose(
+                                a[key], b[key], rtol=1e-6, atol=1e-6,
+                                equal_nan=True, err_msg=f"{system}/{file}/{key}"
+                            )
+                        else:
+                            np.testing.assert_array_equal(a[key], b[key])
+        checks[name] = {"status": "identical_within_tolerance", "frames": 40}
+        print(f"FUSED PARITY {system}/{name}: PASS", flush=True)
+    timing = json.loads((fused / "fused_membrane_timings.json").read_text())
+    assert timing["shared_anchor_mappings"] == 1
+    stages = json.loads((fused / "stage_timings.json").read_text())["stages"]
+    assert "streaming" in {row["stage"] for row in stages}
+    assert not {"membrane-order", "bilayer_normal", "lipid_enrichment"}.intersection(
+        row["stage"] for row in stages
+    )
+    return {"checks": checks, "shared_anchor_mappings": timing["shared_anchor_mappings"],
+            "fused_compute_seconds": timing["compute_seconds_by_analysis"]}
+
 def main():
     report = {}
     failed = False
@@ -198,8 +262,9 @@ def main():
             print(f"Running forty-frame MDscope integration: {system}", flush=True)
             run_one(config, 0)
             outputs = check_outputs(system)
+            parity = compare_fused_to_independent(system, config, topology, trajectory)
             report[system] = {"status": "passed", "species": sorted(species),
-                              "outputs": outputs}
+                              "outputs": outputs, "fused_parity": parity}
         except Exception as exc:
             failed = True
             traceback.print_exc()
