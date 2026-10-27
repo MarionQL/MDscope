@@ -319,6 +319,11 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
             if not extension_outputs[name].is_file():
                 raise RuntimeError(f"Missing fused output: {extension_outputs[name]}")
             key = prefix + "-" + extension_keys[name]
+            if key.endswith("-profiles") and not all(
+                item in extension_names for item in ("dssp", "sasa")
+                if cfg["analyses"][item].get("enabled", False)
+            ):
+                continue
             if not state.complete(key):
                 state.mark(key, {"fused_into": "streaming" if streaming_required and not missing
                                  else "fused-extensions-fallback"})
