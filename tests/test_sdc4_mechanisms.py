@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 from MDAnalysis.coordinates.memory import MemoryReader
 
-from mdscope.analysis.sdc4_mechanisms import SDC4Mechanisms, _local_surface
+from mdscope.analysis.sdc4_mechanisms import SDC4Mechanisms, _local_surface, _normal_order_setup, _order_by_residue
 from mdscope.analysis.shared_states import fit_shared_states
 
 
@@ -205,3 +205,31 @@ def test_shared_state_model_replicate_balance_and_sampling(tmp_path):
     assert len(pd.read_parquet(folder / "sampling_diagnostics.parquet")) == 4
     model = json.loads((folder / "model.json").read_text())
     assert model["n_replicates"] == 4
+
+
+def test_local_lipid_order_matches_minus_sch_convention():
+    u = mda.Universe.empty(
+        8, n_residues=2,
+        atom_resindex=[0, 0, 0, 0, 1, 1, 1, 1],
+        trajectory=True,
+    )
+    u.add_TopologyAttr("names", ["C21", "H21", "C22", "H22"] * 2)
+    u.add_TopologyAttr("resnames", ["POPC", "POPC"])
+    u.add_TopologyAttr("resids", [1, 2])
+    u.add_TopologyAttr("bonds", [(0, 1), (2, 3), (4, 5), (6, 7)])
+    xyz = np.asarray([
+        [1, 1, 1], [1, 1, 2], [3, 1, 1], [3, 1, 2],
+        [8, 1, 1], [9, 1, 1], [8, 3, 1], [9, 3, 1],
+    ], np.float32)
+    u.load_new(xyz[None], format=MemoryReader,
+               dimensions=np.array([[100, 100, 100, 90, 90, 90]]))
+    setup = _normal_order_setup(u, {
+        "enabled": True, "lipid_selection": "resname POPC",
+        "min_carbons_per_tail": 2,
+        "tails": {"sn1": {"carbon_pattern": r"^C2(\d+)$"}},
+    })
+    ids, values = _order_by_residue(
+        setup, np.array([100., 100., 100., 90., 90., 90.]), 2
+    )
+    assert len(ids) == 2
+    np.testing.assert_allclose(values, [-1.0, 0.5], atol=1e-8)
