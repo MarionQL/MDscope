@@ -16,6 +16,9 @@ on:
       - "analysis/streaming.py"
       - "analysis/fused_membrane.py"
       - "analysis/fused_extensions.py"
+      - "analysis/fused_distance.py"
+      - "analysis/fused_all.py"
+      - "analysis/residue_membrane_distance.py"
       - "analysis/hydrogen_bonds.py"
       - "analysis/local_environment.py"
       - "analysis/dssp.py"
@@ -73,6 +76,7 @@ jobs:
             real_test_results/*/*/rep1/stage_timings.json
             real_test_results/*/*/rep1/fused_membrane_timings.json
             real_test_results/*/*/rep1/fused_extensions_timings.json
+            real_test_results/*/*/rep1/fused_distance_timings.json
             real_test_results/physical_audit.json
             real_test_results/*/physics/geometry_per_frame.parquet
             real_test_results/*/physics/changed_lipid_orientation.parquet
