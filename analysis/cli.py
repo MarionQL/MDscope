@@ -13,7 +13,8 @@ import yaml
 
 from .config import analysis_runs, iter_replicates, load_config
 from .profiles import _without_hydrogens
-from .runner import finalize_project, run_all, run_one
+from .runner import finalize_project, run_all, run_one, project_root
+from .report import generate_report
 from .timeseries import resolved_selection_counts
 
 
@@ -169,6 +170,18 @@ def main():
     p = sub.add_parser("finalize")
     p.add_argument("config")
     p.set_defaults(func=lambda a: print(finalize_project(a.config)))
+    p = sub.add_parser("report", help="Rebuild PDF/ZIP from existing finalized tables without re-running or archiving")
+    p.add_argument("config")
+    def _report(args):
+        cfg = load_config(args.config)
+        root = project_root(cfg, args.config)
+        reps = list(iter_replicates(cfg, args.config))
+        outputs = {
+            system: [root / rep.system / rep.label for rep in reps if rep.system == system]
+            for system in cfg["systems"]
+        }
+        print(generate_report(cfg, root, outputs, force=True))
+    p.set_defaults(func=_report)
     args = parser.parse_args()
     args.func(args)
 
