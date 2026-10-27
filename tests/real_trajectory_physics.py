@@ -70,6 +70,9 @@ def geometry_audit(system, topology, trajectory):
     max_wrap_normal_diff = 0.
     max_wrap_center_diff = 0.
     changed_counts = []
+    changed_lipids = {}
+    transition_counts = Counter()
+    previous_leaf = None
     previous_time = None
     sampled = {0, 1, 2, 5, 10, 20, 40, 80, 120, 160, len(u.trajectory)-1}
     naive_center_disagreement = 0
@@ -81,6 +84,22 @@ def geometry_audit(system, topology, trajectory):
         current, changes = aligned_leaflets(xyz[:, 2], float(ts.dimensions[2]), initial)
         seconds(timer, "leaflet_assignment_s", t0)
         changed_counts.append(changes)
+        for j in np.flatnonzero(current != initial):
+            key = str(int(indices[j]))
+            entry = changed_lipids.setdefault(key, {
+                "resindex": int(indices[j]), "species": str(species[j]),
+                "n_frames_changed": 0, "first_changed_frame": i,
+                "first_changed_time_ps": float(ts.time),
+                "first_changed_z_A": float(xyz[j, 2]),
+            })
+            entry["n_frames_changed"] += 1
+            entry["last_changed_frame"] = i
+            entry["last_changed_time_ps"] = float(ts.time)
+            entry["last_changed_z_A"] = float(xyz[j, 2])
+        if previous_leaf is not None:
+            for j in np.flatnonzero(current != previous_leaf):
+                transition_counts[str(int(indices[j]))] += 1
+        previous_leaf = current.copy()
         t0 = time.perf_counter()
         center = periodic_center(protein.positions, ts.dimensions)
         seconds(timer, "periodic_protein_center_s", t0)
@@ -165,6 +184,12 @@ def geometry_audit(system, topology, trajectory):
         "species_counts": dict(Counter(species)),
         "max_leaflet_changes": int(max(changed_counts)),
         "frames_with_leaflet_changes": int(sum(c > 0 for c in changed_counts)),
+        "changed_lipids": [dict(v, transitions=int(transition_counts[k]))
+                           for k, v in changed_lipids.items()],
+        "initial_upper_species": dict(Counter(species[initial])),
+        "initial_lower_species": dict(Counter(species[~initial])),
+        "final_upper_species": dict(Counter(species[previous_leaf])),
+        "final_lower_species": dict(Counter(species[~previous_leaf])),
         "max_wrap_center_diff_A": max_wrap_center_diff,
         "max_wrap_enrichment_count_diff": max_wrap_enrichment_diff,
         "max_wrap_normal_diff_deg": max_wrap_normal_diff,
