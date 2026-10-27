@@ -7,6 +7,10 @@ on:
     branches: [main]
     paths:
       - "tests/real_trajectory_smoke.py"
+      - "tests/real_sdc4_mechanisms.py"
+      - "analysis/sdc4_mechanisms.py"
+      - "analysis/shared_states.py"
+      - "analysis/mechanistic_common.py"
       - "tests/real_trajectory_physics.py"
       - "analysis/lipid_geometry.py"
       - "analysis/lipid_enrichment.py"
@@ -63,6 +67,9 @@ jobs:
           mkdir -p _ci_alias
           ln -s "$PWD" _ci_alias/mdscope
           PYTHONPATH="$PWD/_ci_alias" python tests/real_trajectory_smoke.py
+      - name: Validate SDC4 geometry and lipid maps on real TPR/XTC inputs
+        run: |
+          PYTHONPATH="$PWD/_ci_alias" python tests/real_sdc4_mechanisms.py
       - name: Full-length physical audit and stage benchmarks
         run: |
           PYTHONPATH="$PWD/_ci_alias" python tests/real_trajectory_physics.py
@@ -83,6 +90,8 @@ jobs:
             real_test_results/*/physics/interactions/lipid_hydrogen_bonds/*.parquet
             real_test_results/*.yaml
             real_test_results/*/*/rep1/summary/*.parquet
+            real_test_results/sdc4_mechanisms_smoke/*/extensions/sdc4_mechanisms/*.parquet
+            real_test_results/sdc4_mechanisms_smoke/*/extensions/sdc4_mechanisms/*.json
             real_test_results/*/*/rep1/extensions/*/timeseries.parquet
             real_test_results/*/*/rep1/interactions/lipid_hydrogen_bonds/count_timeseries.parquet
           if-no-files-found: warn

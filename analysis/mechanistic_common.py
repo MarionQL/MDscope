@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 import numpy as np
+from MDAnalysis.exceptions import NoDataError
 from MDAnalysis.lib.distances import capped_distance, distance_array, minimize_vectors
 
 AA3 = dict(zip(
@@ -31,7 +32,7 @@ def heavy(atoms):
     try:
         elements = np.asarray(atoms.elements, str)
         return atoms[np.char.upper(elements) != "H"]
-    except (AttributeError, ValueError, NotImplementedError):
+    except (AttributeError, ValueError, NotImplementedError, NoDataError):
         return atoms[np.array([not re.match(r"^([0-9]+)?H", str(n), re.I)
                                for n in atoms.names], dtype=bool)]
 
