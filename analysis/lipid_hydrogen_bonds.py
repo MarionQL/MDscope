@@ -158,10 +158,15 @@ def run_lipid_hydrogen_bonds(rep, cfg, repout):
         raise RuntimeError(
             "Lipid H-bond analysis requires explicit H atoms/bond connectivity; verify selections"
         ) from exc
-    times = np.asarray(hba.times, float)
+    return write_lipid_hydrogen_bonds(universe, cfg, repout, hba.results.hbonds, hba.frames, hba.times, atoms, molecule_ids, atom_species)
+
+
+def write_lipid_hydrogen_bonds(universe, cfg, repout, raw, frames, times, atoms, molecule_ids, atom_species):
+    spec = cfg["analyses"]["lipid_hydrogen_bonds"]
+    times = np.asarray(times, float)
     if cfg.get("time", {}).get("dt_ps") is not None:
         times = cfg["time"].get("origin_ps", 0.) + np.arange(len(times)) * float(cfg["time"]["dt_ps"])
-    raw = np.asarray(hba.results.hbonds)
+    raw = np.asarray(raw)
     if raw.size:
         donors = raw[:, 1].astype(int)
         acceptors = raw[:, 3].astype(int)
@@ -171,7 +176,7 @@ def run_lipid_hydrogen_bonds(rep, cfg, repout):
         same_molecule = np.array([], bool)
         same_residue = np.array([], bool)
     df = tabulate_events(
-        raw, universe.atoms, hba.frames, times,
+        raw, universe.atoms, frames, times,
         exclude_same_residue=bool(spec.get("exclude_same_residue", True)),
         molecule_ids=molecule_ids, atom_species=atom_species,
         exclude_same_molecule=bool(spec.get("exclude_same_molecule", True)),

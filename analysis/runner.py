@@ -39,6 +39,9 @@ from .profiles import postprocess_structure_profiles, run_structure_profiles
 from .statistics import analyze_project
 from .streaming import run_streaming_pass
 from .fused_membrane import enabled_names as fused_enabled_names, run_fused_membrane
+from .fused_extensions import enabled_names as extension_enabled_names, run_fused_extensions
+from .fused_distance import enabled_names as distance_enabled_names, run_fused_distances
+from .fused_all import run_fused_only
 from .registry import specialized_tasks,additional_time_series
 from .msd import summarize_diffusion, summarize_project_diffusion
 from .coupling_screen import screen_couplings
@@ -262,6 +265,33 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
         state.mark(prefix + "-stream", run_streaming_pass(rep, cfg, root, state.config_hash))
         stage_timings.append({"stage": "streaming", "seconds": perf_counter() - t0})
 
+    # Without protein streaming, run *all* optional observer families in
+    # one shared frame loop instead of three separate fallback traversals.
+    if not streaming_required:
+        pending_outputs = []
+        for name in fused_enabled_names(cfg):
+            pending_outputs.append({
+                "membrane_order": repout / "profiles" / "membrane_order" / "timeseries.parquet",
+                "bilayer_normal": repout / "extensions" / "bilayer_normal" / "timeseries.parquet",
+                "lipid_enrichment": repout / "extensions" / "lipid_enrichment" / "timeseries.parquet",
+            }[name])
+        for name in extension_enabled_names(cfg):
+            pending_outputs.append({
+                "hydrogen_bonds": repout / "interactions" / "hydrogen_bonds" / "events.parquet",
+                "lipid_hydrogen_bonds": repout / "interactions" / "lipid_hydrogen_bonds" / "events.parquet",
+                "dssp": repout / "profiles" / "dssp" / "assignments.parquet",
+                "sasa": repout / "profiles" / "sasa" / "residue_sasa.parquet",
+                "local_environment": repout / "extensions" / "local_environment" / "timeseries.parquet",
+            }[name])
+        for run_id in distance_enabled_names(cfg):
+            pending_outputs.append(
+                repout / "profiles" / "residue_membrane_distance" / run_id / "distance_matrix_A.npy"
+            )
+        if any(not path.exists() for path in pending_outputs):
+            t0 = perf_counter()
+            run_fused_only(rep, cfg, repout)
+            stage_timings.append({"stage": "fused-only", "seconds": perf_counter() - t0})
+
     # These analyses are observers of the existing streaming frames, not
     # separate trajectory readers. For geometry-only systems, one shared
     # fallback pass is sufficient. Keep legacy task markers for resume.
@@ -293,8 +323,75 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
                 state.mark(key, {"fused_into": "streaming" if streaming_required and not need_fallback
                                  else "fused-membrane-fallback"})
 
+    extension_names = extension_enabled_names(cfg)
+    if extension_names:
+        extension_outputs = {
+            "hydrogen_bonds": repout / "interactions" / "hydrogen_bonds" / "events.parquet",
+            "lipid_hydrogen_bonds": repout / "interactions" / "lipid_hydrogen_bonds" / "events.parquet",
+            "dssp": repout / "profiles" / "dssp" / "assignments.parquet",
+            "sasa": repout / "profiles" / "sasa" / "residue_sasa.parquet",
+            "local_environment": repout / "extensions" / "local_environment" / "timeseries.parquet",
+        }
+        missing = [name for name in extension_names if not extension_outputs[name].exists()]
+        if missing:
+            t0 = perf_counter()
+            run_fused_extensions(rep, cfg, repout)
+            stage_timings.append({"stage": "fused-extensions-fallback", "seconds": perf_counter() - t0})
+        extension_keys = {
+            "hydrogen_bonds": "hydrogen-bonds",
+            "lipid_hydrogen_bonds": "lipid_hydrogen_bonds",
+            "dssp": "profiles",
+            "sasa": "profiles",
+            "local_environment": "local_environment",
+        }
+        for name in extension_names:
+            if not extension_outputs[name].is_file():
+                raise RuntimeError(f"Missing fused output: {extension_outputs[name]}")
+            key = prefix + "-" + extension_keys[name]
+            if key.endswith("-profiles") and not all(
+                item in extension_names for item in ("dssp", "sasa")
+                if cfg["analyses"][item].get("enabled", False)
+            ):
+                continue
+            if not state.complete(key):
+                state.mark(key, {"fused_into": "streaming" if streaming_required and not missing
+                                 else "fused-extensions-fallback"})
+
+    distance_names = distance_enabled_names(cfg)
+    if distance_names:
+        expected = {
+            run_id: repout / "profiles" / "residue_membrane_distance" / run_id / "distance_matrix_A.npy"
+            for run_id in distance_names
+        }
+        missing = [name for name, path in expected.items() if not path.exists()]
+        if missing:
+            t0 = perf_counter()
+            run_fused_distances(rep, cfg, repout)
+            stage_timings.append({"stage": "fused-distances-fallback", "seconds": perf_counter() - t0})
+        for run_id, path in expected.items():
+            if not path.is_file():
+                raise RuntimeError(f"Missing fused residue-distance output: {path}")
+            key = prefix + "-residue-membrane-" + run_id
+            if not state.complete(key):
+                state.mark(key, {"fused_into": "streaming" if streaming_required and not missing
+                                 else "fused-distances-fallback"})
+
     for task in specialized_tasks(cfg):
+        if task.key.startswith("residue-membrane-") and task.key[len("residue-membrane-"):] in distance_names:
+            continue
         if task.key in {"membrane-order", "bilayer_normal", "lipid_enrichment"}:
+            continue
+        if task.key in {"hydrogen-bonds", "lipid_hydrogen_bonds", "local_environment"} and {
+            "hydrogen-bonds": "hydrogen_bonds",
+            "lipid_hydrogen_bonds": "lipid_hydrogen_bonds",
+            "local_environment": "local_environment",
+        }[task.key] in extension_names:
+            continue
+        if task.key == "profiles" and all(
+            name in extension_names
+            for name in ("dssp", "sasa")
+            if cfg["analyses"][name].get("enabled", False)
+        ):
             continue
         key=prefix+"-"+task.key
         if not state.complete(key):

@@ -152,7 +152,8 @@ def run_residue_membrane_distance(
     cfg: dict,
     repout: Path,
     spec: dict | None = None,
-    run_id: str = DEFAULT_INSTANCE_ID
+    run_id: str = DEFAULT_INSTANCE_ID,
+    precomputed_parts: Path | None = None,
 ) -> dict:
     spec = spec if spec is not None else cfg["analyses"]["residue_membrane_distance"]
     if not spec.get("enabled", False):
@@ -217,7 +218,15 @@ def run_residue_membrane_distance(
     )
     tr = cfg["trajectory"]
     frame_slice = slice(tr.get("start"), tr.get("stop"), int(tr.get("stride", 1)))
-    nframes = len(universe.trajectory[frame_slice])
+    if precomputed_parts is None:
+        nframes = len(universe.trajectory[frame_slice])
+        part_paths = []
+    else:
+        part_paths = sorted(Path(precomputed_parts).glob("part-*.npz"))
+        nframes = 0
+        for path in part_paths:
+            with np.load(path, allow_pickle=False) as data:
+                nframes += len(data["time_ps"])
     if not nframes:
         raise ValueError(
             "residue_membrane_distance trajectory slice contains zero frames"
@@ -233,17 +242,33 @@ def run_residue_membrane_distance(
         shape=(nframes, len(residues))
     )
     times = np.empty(nframes, float)
-    for i, ts in enumerate(track(universe.trajectory[frame_slice],total=nframes,
-                desc=f"{rep.system}/{rep.label}: residue distances",
-                enabled=cfg.get("progress",{}).get("enabled",True))):
-        times[i] = time_ps(ts, i, cfg)
-        matrix[i] = _minimum_by_residue_hybrid(
-            query, membrane, atom_to_residue, len(residues), _valid_box(universe),
-            spec.get("initial_search_cutoff_A", 6.0),
-            spec.get("search_growth_factor", 2.0),
-            spec.get("query_block_atoms", 512),
-            spec.get("fallback_block_atoms", 4096),
-        ).astype(np.float32)
+    if precomputed_parts is None:
+        for i, ts in enumerate(track(universe.trajectory[frame_slice],total=nframes,
+                    desc=f"{rep.system}/{rep.label}: residue distances",
+                    enabled=cfg.get("progress",{}).get("enabled",True))):
+            times[i] = time_ps(ts, i, cfg)
+            matrix[i] = _minimum_by_residue_hybrid(
+                query, membrane, atom_to_residue, len(residues), _valid_box(universe),
+                spec.get("initial_search_cutoff_A", 6.0),
+                spec.get("search_growth_factor", 2.0),
+                spec.get("query_block_atoms", 512),
+                spec.get("fallback_block_atoms", 4096),
+            ).astype(np.float32)
+    else:
+        # Rebuild the exact original memory-mapped output from checkpointed
+        # per-frame distance chunks; never iterate the XTC a second time.
+        offset = 0
+        for path in part_paths:
+            with np.load(path, allow_pickle=False) as data:
+                values = data["values"]
+                t = data["time_ps"]
+                if values.ndim != 2 or values.shape != (len(t), len(residues)):
+                    raise ValueError(f"Invalid fused residue distance chunk: {path}")
+                matrix[offset:offset + len(t)] = values
+                times[offset:offset + len(t)] = t
+                offset += len(t)
+        if offset != nframes:
+            raise RuntimeError("Fused distance chunk count mismatch")
     matrix.flush()
     del matrix
     tmp.replace(matrix_path)
