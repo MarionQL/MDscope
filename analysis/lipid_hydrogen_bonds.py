@@ -52,24 +52,28 @@ def run_lipid_hydrogen_bonds(rep,cfg,repout):
     selection=str(spec.get("lipid_selection","resname POPC POPE POPI DOPC DPPC PSM CHL1 BGAL GM1a CER160 CER1"))
     atoms=universe.select_atoms(selection)
     if not len(atoms):raise ValueError("lipid_hydrogen_bonds.lipid_selection matched no atoms")
+    hydrogen_sel=spec.get("hydrogens_sel")
+    acceptor_sel=spec.get("acceptors_sel")
+    if hydrogen_sel is None or acceptor_sel is None:
+        # Guess BEFORE building the working analysis: versions <=2.9 do not
+        # reliably rebuild selected AtomGroups when selectors are reassigned.
+        guesser=HydrogenBondAnalysis(
+            universe,donors_sel=None,hydrogens_sel="name __MDSCOPE_NONE__",
+            acceptors_sel="name __MDSCOPE_NONE__",update_selections=False)
+        if hydrogen_sel is None:hydrogen_sel=guesser.guess_hydrogens(selection)
+        if acceptor_sel is None:acceptor_sel=guesser.guess_acceptors(selection)
+    if not hydrogen_sel or not acceptor_sel:
+        raise ValueError("No lipid donor hydrogens/acceptors inferred; supply explicit selectors")
     hba=HydrogenBondAnalysis(
         universe,
         donors_sel=spec.get("donors_sel"),
-        hydrogens_sel=spec.get("hydrogens_sel"),
-        acceptors_sel=spec.get("acceptors_sel"),
+        hydrogens_sel=hydrogen_sel,
+        acceptors_sel=acceptor_sel,
         d_h_cutoff=float(spec.get("d_h_cutoff_A",1.2)),
         d_a_cutoff=float(spec.get("d_a_cutoff_A",3.0)),
         d_h_a_angle_cutoff=float(spec.get("angle_cutoff_deg",150.0)),
         update_selections=bool(spec.get("update_selections",False)),
     )
-    # Constrain every donor H and acceptor to selected lipids; with bonded
-    # topology donors follow the selected hydrogen. User selections override.
-    if spec.get("hydrogens_sel") is None:
-        hba.hydrogens_sel=hba.guess_hydrogens(selection)
-    if spec.get("acceptors_sel") is None:
-        hba.acceptors_sel=hba.guess_acceptors(selection)
-    if not hba.hydrogens_sel or not hba.acceptors_sel:
-        raise ValueError("Could not identify lipid donor hydrogens/acceptors; provide explicit selections")
     tr=cfg["trajectory"]
     try:
         hba.run(start=tr.get("start"),stop=tr.get("stop"),step=int(tr.get("stride",1)))
