@@ -66,6 +66,7 @@ jobs:
             real_test_results/*/*/rep1/stage_timings.json
             real_test_results/physical_audit.json
             real_test_results/*/physics/geometry_per_frame.parquet
+            real_test_results/*/physics/changed_lipid_orientation.parquet
             real_test_results/*/physics/interactions/lipid_hydrogen_bonds/*.parquet
             real_test_results/*.yaml
             real_test_results/*/*/rep1/summary/*.parquet
