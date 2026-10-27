@@ -363,10 +363,10 @@ def run_membrane_order(rep, cfg: dict, repout: Path) -> dict:
                 values = _profile_values(site_values, profile)
                 profile_values[profile.profile_id].append(values.astype(np.float32))
                 row[_metric_name(profile.profile_id)] = float(np.nanmean(values)) if np.any(np.isfinite(values)) else np.nan
-            if profile.profile_id in {"lipid_order__sn1", "lipid_order__sn2"}:
-                position3 = np.flatnonzero(profile.positions == 3)
-                if len(position3):
-                    row[f"lipid_order_{profile.profile_id.split('__')[1]}_position3_mean"] = float(values[position3[0]])
+                if profile.profile_id in {"lipid_order__sn1", "lipid_order__sn2"}:
+                    position3 = np.flatnonzero(profile.positions == 3)
+                    if len(position3):
+                        row[f"lipid_order_{profile.profile_id.split('__')[1]}_position3_mean"] = float(values[position3[0]])
             tail_metrics = [
                 row[_metric_name(profile.profile_id)]
                 for profile in profiles
