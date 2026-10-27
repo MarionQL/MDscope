@@ -745,3 +745,37 @@ export MDSCOPE_PROGRESS_EVERY_PERCENT=1
 These settings do not alter which frames are analyzed or how the scientific
 observables are computed. Already-running jobs continue using the Python
 code loaded at job startup; submit a new job to use an updated checkout.
+
+
+### SLURM progress and source checkout
+
+`run_mdscope.sh` runs the checked-out `MDscope.analysis.cli`, not the separately
+installed lowercase `mdscope` package. Submit from this repository after
+`git pull --ff-only origin main`. The default configuration is
+`synd4_full_mechanisms.yaml`; provide a YAML path as the first `sbatch`
+script argument to override it. Before submitting, create the SLURM log
+directory with `mkdir -p slurm-out/mdscope` (SLURM opens log files before
+executing the script). The script combines stderr into the `.out` file so
+batch progress and exceptions are visible together. It prints imported source
+paths and the checkout commit for reproducibility. Batch progress reports
+every 1% by default; `MDSCOPE_PROGRESS_EVERY_PERCENT` overrides the interval.
+
+### Membrane MSD coordinates and drift
+
+Membrane MSD is computed directly from **raw coordinates** in the one-pass
+trajectory reader, before fitting/alignment for protein RMSD/RMSF. The aligned
+feature-coordinate cache is **not** used for MSD. Supply the original
+unrotated, non-protein-centered MD trajectory and its compatible topology.
+Protein centering performed **before writing the input trajectory** can change
+lab-frame displacement and cannot be reliably reconstructed by MDscope.
+Minimum-image frame-to-frame steps account for periodic wrapping, provided
+per-sampled-frame displacement stays below half the box length. The membrane
+MSD is a single-origin descriptive estimator, not a multi-origin estimator.
+
+Optional `analyses.membrane.msd.remove_drift: true` subtracts the instantaneous
+mean displacement of selected lipid residue centers in each step (the
+lipid-frame reference). This reduces common translation artifacts but changes
+the physical reference frame and introduces a small finite-population bias;
+leave it disabled when laboratory-frame MSD is desired. The option is included
+in the configuration hash and is restart-safe. For scientific interpretation,
+check membrane drift, trajectory preprocessing, and the fit regime.
