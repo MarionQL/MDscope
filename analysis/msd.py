@@ -100,3 +100,42 @@ def summarize_diffusion(repout:Path,cfg):
                          "method":"single_origin_msd_slope","fit_start_fraction":begin,
                          "fit_end_fraction":end,**stats})
     if rows:atomic_parquet(Path(repout)/"summary"/"diffusion_coefficients.parquet",pd.DataFrame(rows))
+
+def summarize_project_diffusion(root:Path,system_repouts:dict,cfg):
+    """Collect independent replica slope estimates and create publication-ready D tables."""
+    chunks=[]
+    for system,reps in system_repouts.items():
+        for repout in reps:
+            f=Path(repout)/"summary"/"diffusion_coefficients.parquet"
+            if f.exists():chunks.append(pd.read_parquet(f))
+    if not chunks:return
+    all_data=pd.concat(chunks,ignore_index=True)
+    out=Path(root)/"project_summary"/"diffusion"
+    out.mkdir(parents=True,exist_ok=True)
+    atomic_parquet(out/"replicate_coefficients.parquet",all_data)
+    grouped=(all_data.groupby(["system","metric"],sort=True)["diffusion_nm2_ns"]
+             .agg(n_replicates="count",mean="mean",sd="std",median="median",minimum="min",maximum="max")
+             .reset_index())
+    grouped["interpretation"]="replicate_level_descriptive_no_significance"
+    atomic_parquet(out/"system_coefficients.parquet",grouped)
+    # Coefficients are replicate-derived summaries, unlike framewise observables:
+    # show independent replicate points; never violin-plot frames as replicas.
+    if cfg.get("plots",{}).get("enabled",True):
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        fig,ax=plt.subplots(figsize=(max(6,1.4*len(grouped)),4.8))
+        labels=[];ticks=[]
+        for i,((system,metric),data) in enumerate(all_data.groupby(["system","metric"],sort=True)):
+            vals=data["diffusion_nm2_ns"].dropna().to_numpy(float)
+            if not len(vals):continue
+            ax.scatter(np.full(len(vals),i),vals,s=45,alpha=.85)
+            ax.plot([i-.22,i+.22],[vals.mean(),vals.mean()],lw=2.5,color="black")
+            labels.append(system+"\n"+metric.replace("membrane_msd_lateral","lateral"))
+            ticks.append(i)
+        ax.set_xticks(ticks,labels,rotation=25,ha="right")
+        ax.set_ylabel("Lateral diffusion coefficient (nm²/ns)")
+        ax.set_title("Diffusion from existing single-origin MSD: replicate estimates")
+        fig.tight_layout()
+        fig.savefig(out/"diffusion_coefficients.png",dpi=int(cfg.get("plots",{}).get("dpi",250)))
+        plt.close(fig)
