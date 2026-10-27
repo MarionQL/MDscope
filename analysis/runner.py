@@ -37,7 +37,7 @@ from .profiles import postprocess_structure_profiles, run_structure_profiles
 from .statistics import analyze_project
 from .streaming import run_streaming_pass
 from .registry import specialized_tasks,additional_time_series
-from .msd import summarize_diffusion
+from .msd import summarize_diffusion, summarize_project_diffusion
 from .coupling_screen import screen_couplings
 
 
@@ -281,6 +281,7 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None):
     # trajectories are reopened.
     analyze_project(cfg, root, system_repouts)
     plot_all(cfg, root, system_repouts)
+    summarize_project_diffusion(root,system_repouts,cfg)
     if cfg.get('analyses',{}).get('coupling_screen',{}).get('enabled',False):
         screen_couplings(cfg,root,system_repouts)
     return root
