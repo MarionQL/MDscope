@@ -90,6 +90,7 @@ def _cfg():
                 "CHL1": "resname CHL1 and name O3",
             },
             "lipid_contact_selection": "resname POPC GM1a BGAL CHL1",
+            "surface_anchor_species": ["POPC", "GM1a", "BGAL", "CHL1"],
             "water_oxygen_selection": "resname TIP3 and name OH2",
             "ion_selections": {"Na": "resname SOD"},
             "motif_selection": "protein and name CA",
@@ -140,7 +141,8 @@ def test_sdc4_observer_and_checkpoint_recovery(tmp_path):
         assert np.all(np.isfinite(data["sdc4_ectodomain_A_height_A"]))
         assert "sdc4_motif_NxIP_PROA_1_steric_occlusion_fraction" in data
         assert "sdc4_hs_A1_hydration_water_count" in data
-        assert "sdc4_local_thickness_A" in data
+        assert np.all(np.isfinite(data["sdc4_local_thickness_A"]))
+        assert "sdc4_ectodomain_A_membrane_contact_state" in data
         with np.load(out / "lipid_density_maps.npz", allow_pickle=False) as maps:
             assert int(maps["nframes"]) == 4
             assert int(maps["counts"].sum()) <= 4*20
