@@ -38,3 +38,8 @@ def progress(iterable, *, total=None, desc="", enabled=True):
                     print(f"{desc}: {count} frames",file=sys.stderr,flush=True)
                 yield frame
     yield Milestones()
+
+def track(iterable, *, total=None, desc="", enabled=True):
+    """Generator wrapper for long pre-existing loops without changing body indentation."""
+    with progress(iterable,total=total,desc=desc,enabled=enabled) as wrapped:
+        yield from wrapped
