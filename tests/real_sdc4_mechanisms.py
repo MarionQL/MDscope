@@ -68,7 +68,7 @@ def run():
                 "expected_chains": 6,
             },
             "water_oxygen_selection": "resname TIP3 and name OH2",
-            "ion_selections": {"Na": "resname SOD"},
+            "ion_selections": {"K": "resname POT", "Cl": "resname CLA"},
             "lipid_anchors": species,
             # Use only headgroup anchors for this small smoke, not a full
             # membrane-contact definition.
