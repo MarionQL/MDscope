@@ -1,4 +1,4 @@
-"""Per-frame local lipid contacts, annular enrichment, motif accessibility, HS proximity.
+"""Per-frame protein-lipid/HS contacts and motif proximity.\n\n    Leaflet-normalized enrichment is owned by lipid_enrichment.py, not duplicated here.
 
 All scalar observables are written into MDscope's normal summary time series,
 so they inherit identical hierarchical bootstrap and plotting code.
@@ -7,7 +7,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import distance_array
-from .biophysical_common import heavy,box_of,residue_pairs,lateral_distance,sequence_motifs
+from .biophysical_common import heavy,box_of,residue_pairs,sequence_motifs
 from .config import atomic_parquet,ensure_dir,time_ps
 
 def run_local_environment(rep,cfg,repout):
@@ -24,7 +24,6 @@ def run_local_environment(rep,cfg,repout):
     anchor=heavy(u.select_atoms(settings.get("anchor_selection","protein and name CA and (resid 151-170 or resid 349-368)")))
     if not len(anchor):anchor=prot
     cutoff=float(settings.get("contact_cutoff_A",5.0))
-    annulus=float(settings.get("annulus_A",12.0))
     motifs=sequence_motifs(prot.residues,settings.get("motifs",{"nxip":"N.IP","gxxxg":"G...G","hs_candidate":"SG"}))
     motif_groups={}
     for hit in motifs:
@@ -50,19 +49,6 @@ def run_local_environment(rep,cfg,repout):
             a,b=np.unique(cp[:,0],return_counts=True)
             for resid,n in zip(a,b):
                 per_res.append((t,int(resid),int(n)))
-        if box is not None:
-            # Lipid geometric centers, each residue exactly once, with lateral PBC.
-            centers=np.stack([r.atoms.center_of_geometry() for r in lip.residues])
-            anchor_center=anchor.center_of_geometry()[None,:]
-            planar=lateral_distance(centers,anchor_center,box)
-            inside=planar[:,0]<=annulus
-            labels=np.asarray(lip.residues.resnames).astype(str)
-            for species in grouped:
-                mask=labels==species
-                observed=inside[mask].mean() if np.any(mask) else np.nan
-                baseline=inside.mean() if len(inside) else np.nan
-                row["local_"+species+"_enrichment"]=float(observed/baseline) if baseline>0 else np.nan
-                row["local_"+species+"_annular_fraction"]=float(observed)
         for species,atoms in grouped.items():
             hits=residue_pairs(prot,atoms,cutoff,box)
             row["local_"+species+"_contact_residues_count"]=len(np.unique(hits[:,0])) if len(hits) else 0
