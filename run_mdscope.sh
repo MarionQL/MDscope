@@ -28,6 +28,8 @@ source /apps/common/software/Miniconda3/24.7.1-0/etc/profile.d/conda.sh
 conda activate mdanalysis
 export PYTHONUNBUFFERED=1
 export MDSCOPE_PROGRESS_EVERY_PERCENT="${MDSCOPE_PROGRESS_EVERY_PERCENT:-1}"
+# Enable lightweight trajectory/analysis timing during SLURM runs by default.
+export MDSCOPE_PROFILE="${MDSCOPE_PROFILE:-1}"
 MDSCOPE_ROOT="/projects/bevanlab/students/marionlopresti/hepsulf_MD"
 export PYTHONPATH="${MDSCOPE_ROOT}:${PYTHONPATH:-}"
 
