@@ -9,6 +9,7 @@ import glob
 import hashlib
 import json
 import shutil
+from time import perf_counter
 from pathlib import Path
 
 import numpy as np
@@ -238,6 +239,7 @@ def _prepare_replicate_output(
 def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     prefix = _replicate_state_prefix(rep)
     repout = _prepare_replicate_output(rep, root, state)
+    stage_timings = []
     streaming_analyses = [
         "rmsd",
         "rmsf",
@@ -255,16 +257,29 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
         {}
     ).get("aligned_coordinates", False))
     if streaming_required and not state.complete(prefix + "-stream"):
+        t0 = perf_counter()
         state.mark(prefix + "-stream", run_streaming_pass(rep, cfg, root, state.config_hash))
+        stage_timings.append({"stage": "streaming", "seconds": perf_counter() - t0})
 
     for task in specialized_tasks(cfg):
         key=prefix+"-"+task.key
         if not state.complete(key):
+            t0 = perf_counter()
             result=task.run(rep,cfg,repout)
             state.mark(key,result if isinstance(result,dict) else {})
+            stage_timings.append({"stage": task.key, "seconds": perf_counter() - t0})
     if not state.complete(prefix + "-summary"):
+        t0 = perf_counter()
         summarize_replicate(repout, cfg)
         state.mark(prefix + "-summary")
+        stage_timings.append({"stage": "summary", "seconds": perf_counter() - t0})
+    if stage_timings:
+        atomic_json(repout / "stage_timings.json", {
+            "system": rep.system, "replicate": rep.label,
+            "stages": stage_timings,
+        })
+        for item in stage_timings:
+            print(f"TIMING {rep.system}/{rep.label} {item['stage']}: {item['seconds']:.3f} s", flush=True)
 
 
 def finalize_project(config_path: str | Path, cfg=None, root=None, state=None):

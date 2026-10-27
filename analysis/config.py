@@ -124,6 +124,7 @@ DEFAULTS = {
                                  "donors_sel": None, "hydrogens_sel": None, "acceptors_sel": None,
                                  "d_h_cutoff_A": 1.2, "d_a_cutoff_A": 3.0,
                                  "angle_cutoff_deg": 150.0,"exclude_same_residue": True,
+                                 "exclude_same_molecule": True,
                                  "update_selections": False},
         "salt_bridges": {"enabled": True, "cutoff_A": 4.0},
         "ligand_contacts": {"enabled": False, "cutoff_A": 4.0, "save_atom_events": True},

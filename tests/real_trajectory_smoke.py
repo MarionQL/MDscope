@@ -91,14 +91,14 @@ def inspect(system: str, topology: Path, trajectory: Path) -> dict:
 
 
 def build_config(system: str, topology: Path, trajectory: Path, species: dict) -> Path:
-    # Restrict all analyses to the first eight frames. We are checking that
+    # Restrict all analyses to the first forty frames. We are checking that
     # real TPR+XTC inputs execute, NOT estimating equilibrated observables.
     lipid_types = [name for name in ("POPC", "POPE", "DOPC", "DPPC", "POPI", "PSM") if name in species]
     assert lipid_types
     lipid_sel = "resname " + " ".join(lipid_types[:2])
     cfg = {
         "project": {"name": f"real_smoke_{system}", "output": str(ROOT / system)},
-        "trajectory": {"start": 0, "stop": 8, "stride": 1, "chunk_frames": 4},
+        "trajectory": {"start": 0, "stop": 40, "stride": 1, "chunk_frames": 10},
         "progress": {"enabled": True},
         "systems": {system: {"topology": str(topology),
                              "replicates": [{"trajectory": str(trajectory), "label": "rep1"}]}},
@@ -195,7 +195,7 @@ def main():
             assert topology.is_file() and trajectory.is_file()
             species = inspect(system, topology, trajectory)
             config = build_config(system, topology, trajectory, species)
-            print(f"Running eight-frame MDscope integration: {system}", flush=True)
+            print(f"Running forty-frame MDscope integration: {system}", flush=True)
             run_one(config, 0)
             outputs = check_outputs(system)
             report[system] = {"status": "passed", "species": sorted(species),

@@ -7,7 +7,18 @@ on:
     branches: [main]
     paths:
       - "tests/real_trajectory_smoke.py"
+      - "tests/real_trajectory_physics.py"
+      - "analysis/lipid_geometry.py"
+      - "analysis/lipid_enrichment.py"
+      - "analysis/bilayer_normal.py"
+      - "analysis/lipid_hydrogen_bonds.py"
+      - "analysis/runner.py"
+      - "analysis/membrane_order.py"
       - ".github/workflows/real-trajectory-smoke.yml"
+
+concurrency:
+  group: real-trajectory-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -15,7 +26,7 @@ permissions:
 jobs:
   real-trajectory-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 55
     env:
       PYTHONUNBUFFERED: "1"
       MDSCOPE_REAL_DATA: real_test_data
@@ -42,6 +53,9 @@ jobs:
           mkdir -p _ci_alias
           ln -s "$PWD" _ci_alias/mdscope
           PYTHONPATH="$PWD/_ci_alias" python tests/real_trajectory_smoke.py
+      - name: Full-length physical audit and stage benchmarks
+        run: |
+          PYTHONPATH="$PWD/_ci_alias" python tests/real_trajectory_physics.py
       - name: Upload diagnostic reports and sample output
         if: always()
         uses: actions/upload-artifact@v4
@@ -49,6 +63,11 @@ jobs:
           name: mdscope-real-trajectory-smoke
           path: |
             real_test_results/**/smoke_report.json
+            real_test_results/*/*/rep1/stage_timings.json
+            real_test_results/physical_audit.json
+            real_test_results/*/physics/geometry_per_frame.parquet
+            real_test_results/*/physics/changed_lipid_orientation.parquet
+            real_test_results/*/physics/interactions/lipid_hydrogen_bonds/*.parquet
             real_test_results/*.yaml
             real_test_results/*/*/rep1/summary/*.parquet
             real_test_results/*/*/rep1/extensions/*/timeseries.parquet

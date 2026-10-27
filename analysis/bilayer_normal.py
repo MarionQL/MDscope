@@ -10,7 +10,7 @@ import pandas as pd
 import MDAnalysis as mda
 from MDAnalysis.lib.distances import capped_distance,minimize_vectors
 from .config import ensure_dir,atomic_parquet,time_ps
-from .lipid_geometry import anchor_groups,centers
+from .lipid_geometry import anchor_groups,centers,aligned_leaflets
 from .progress import progress
 
 def fit_local_normals(xyz,upper,box,radius=15.,min_neighbors=5,normal=2):
@@ -67,9 +67,14 @@ def run_bilayer_normal(rep,cfg,repout):
                   enabled=cfg.get("progress",{}).get("enabled",True)) as iterator:
         for k,ts in enumerate(iterator):
             t=time_ps(ts,k,cfg)
-            angles,neighbors=fit_local_normals(centers(groups),upper,u.dimensions,radius,minimum,axis)
-            frame={"time_ps":t,"bilayer_normal_valid_fraction":float(np.mean(np.isfinite(angles)))}
-            for leaf,mask in (("upper",upper),("lower",~upper)):
+            xyz = centers(groups)
+            current_upper, changes = aligned_leaflets(
+                xyz[:, axis], float(u.dimensions[axis]), upper
+            )
+            angles,neighbors=fit_local_normals(xyz,current_upper,u.dimensions,radius,minimum,axis)
+            frame={"time_ps":t,"bilayer_normal_valid_fraction":float(np.mean(np.isfinite(angles))),
+                   "bilayer_normal_leaflet_changes": changes}
+            for leaf,mask in (("upper",current_upper),("lower",~current_upper)):
                 values=angles[mask];valid=values[np.isfinite(values)]
                 frame[f"bilayer_normal_{leaf}_mean_deg"]=float(np.mean(valid)) if len(valid) else np.nan
                 frame[f"bilayer_normal_{leaf}_sd_deg"]=float(np.std(valid)) if len(valid)>1 else np.nan

@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import MDAnalysis as mda
 from .config import atomic_parquet,ensure_dir,time_ps
-from .lipid_geometry import anchor_groups,centers,lateral_distances
+from .lipid_geometry import anchor_groups,centers,lateral_distances,periodic_center,aligned_leaflets
 from .progress import progress
 
 def shell_fold(observed,local_total,bulk_count,bulk_total):
@@ -62,8 +62,13 @@ def run_lipid_enrichment(rep,cfg,repout):
         for k,ts in enumerate(iterator):
             t=time_ps(ts,k,cfg)
             box=np.asarray(u.dimensions,float)
-            vals=enrichment_frame(species,leaf,centers(groups),protein.center_of_geometry(),box,inner,outer,normal)
-            row={"time_ps":t}
+            anchors = centers(groups)
+            current_leaf, changes = aligned_leaflets(anchors[:, normal], float(box[normal]), leaf)
+            # A Cartesian center_of_geometry is incorrect for a protein dimer
+            # straddling a periodic boundary. Use a circular lattice center.
+            center = periodic_center(protein.positions, box)
+            vals=enrichment_frame(species,current_leaf,anchors,center,box,inner,outer,normal)
+            row={"time_ps":t, "lipid_enrichment_leaflet_changes": changes}
             for value in vals:
                 name=f"lipid_enrichment_{value['species']}_{value['leaflet']}"
                 row[name+"_fold"]=value["enrichment_fold"]

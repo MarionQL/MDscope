@@ -16,7 +16,10 @@ INTERACTION_KEY_COLUMNS = {
         "acceptor",
         "interaction_class",
     ],
-    "lipid_hydrogen_bonds": ["donor","hydrogen","acceptor","interaction_class"],
+    "lipid_hydrogen_bonds": [
+        "donor_molecule_id", "acceptor_molecule_id",
+        "donor", "hydrogen", "acceptor", "interaction_class",
+    ],
 }
 
 
@@ -347,7 +350,8 @@ def postprocess_interactions(
         events=pd.read_parquet(lipid_hb_file)
         hb_dir=repout/"interactions"/"lipid_hydrogen_bonds"
         summarize_interaction_kind(events,
-            ["donor","hydrogen","acceptor","interaction_class"],
+            ["donor_molecule_id","acceptor_molecule_id",
+             "donor","hydrogen","acceptor","interaction_class"],
             base_times,gap_factor,hb_dir)
         counts_path=hb_dir/"count_timeseries.parquet"
         if counts_path.exists():
