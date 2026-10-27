@@ -58,10 +58,14 @@ def anchor_groups(u,spec):
     for name,selection in selections.items():
         atoms=u.select_atoms(str(selection))
         if not len(atoms):
+            if spec.get("allow_absent_species", False):
+                continue
             raise ValueError(f"Lipid species {name!r} selection matched zero atoms: {selection}")
         for residue in atoms.residues:
             part=atoms.intersection(residue.atoms)
             species.append(str(name));resindices.append(int(residue.ix));atom_groups.append(part)
+    if not atom_groups:
+        raise ValueError("No lipid anchors matched; check species selections")
     if len(resindices)!=len(set(resindices)):
         raise ValueError("species_selections overlap on lipid residues")
     indexes=np.concatenate([g.indices for g in atom_groups])
