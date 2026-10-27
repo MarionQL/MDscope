@@ -110,13 +110,14 @@ def _tail_spec(spec: dict, resname: str, tail: str) -> dict:
 def _candidate_sites(universe, spec: dict) -> list[OrderSite]:
     selection = spec.get("lipid_selection")
     atoms = universe.select_atoms(str(selection)) if selection else universe.atoms
-    allowed_resindices = set(map(int, atoms.resindices))
     excluded = {str(name) for name in spec.get("exclude_resnames", [])}
     tails = list((spec.get("tails", {}) or {}).keys())
     minimum = int(spec.get("min_carbons_per_tail", 4))
     sites = []
-    for residue in universe.residues:
-        if int(residue.ix) not in allowed_resindices or str(residue.resname) in excluded:
+    # Iterate selected residues only: full hydrated TPRs contain hundreds of
+    # thousands of water residues and scanning all of them is unnecessary.
+    for residue in atoms.residues:
+        if str(residue.resname) in excluded:
             continue
         for tail in tails:
             tail_spec = _tail_spec(spec, str(residue.resname), tail)
