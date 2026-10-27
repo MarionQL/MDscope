@@ -2,8 +2,8 @@
 
 On Slurm, emit newline-delimited, flushed stderr progress with elapsed time,
 processing speed and estimated time remaining. No additional trajectory reads.
-Override reporting cadence with MDSCOPE_PROGRESS_EVERY_FRAMES and
-MDSCOPE_PROGRESS_EVERY_PERCENT (positive integers).
+Override the percentage cadence with MDSCOPE_PROGRESS_EVERY_PERCENT or the
+unknown-length frame cadence with MDSCOPE_PROGRESS_EVERY_FRAMES (positive integers).
 """
 from __future__ import annotations
 
@@ -31,9 +31,9 @@ def _duration(seconds: float) -> str:
 def progress(iterable, *, total=None, desc="", enabled=True):
     """Yield a wrapped iterable without changing trajectory access or memory use.
 
-    Interactive terminals use tqdm. Batch jobs report at each 1% OR every
-    25 completed frames (whichever comes first), with an ETA based on the
-    measured average throughput since this stage started.
+    Interactive terminals use tqdm with 1% minimum visual updates. Batch jobs
+    with known totals report every 1% (default), while unknown-length jobs
+    report every 25 completed frames. ETA uses measured mean throughput.
     """
     if not enabled:
         yield iterable
@@ -43,12 +43,12 @@ def progress(iterable, *, total=None, desc="", enabled=True):
     except ImportError:
         tqdm = None
     if tqdm is not None and sys.stderr.isatty():
-        with tqdm(iterable, total=total, desc=desc, unit="frame") as bar:
+        with tqdm(iterable, total=total, desc=desc, unit="frame", mininterval=0.0,\n                  miniters=max(1, (total + 99) // 100) if total else 1) as bar:
             yield bar
         return
 
-    every_frames = _cadence("MDSCOPE_PROGRESS_EVERY_FRAMES", 25)
-    every_percent = _cadence("MDSCOPE_PROGRESS_EVERY_PERCENT", 1)
+    every_frames = _cadence("MDSCOPE_PROGRESS_EVERY_FRAMES", 25) if not total else None
+    every_percent = _cadence("MDSCOPE_PROGRESS_EVERY_PERCENT", 1) if total else None
 
     class Milestones:
         def __iter__(self):
@@ -64,10 +64,10 @@ def progress(iterable, *, total=None, desc="", enabled=True):
                 # Yield before measuring/reporting so the frame's analysis
                 # computation is included in elapsed time and ETA.
                 yield frame
-                bucket = (int(100 * count / total) // every_percent
+                bucket = ((100 * count // total) // every_percent
                           if total is not None and total > 0 else 0)
                 report = (
-                    count % every_frames == 0
+                    (total is None or total <= 0) and count % every_frames == 0
                     or (total is not None and total > 0
                         and (bucket > last_percent_bucket or count == total))
                 )
