@@ -171,6 +171,11 @@ class SDC4Mechanisms:
         if len(self.tm) != 2 or set(self.tm) != set(self.ecto):
             raise ValueError("Supply exactly two matching tm_chains and ectodomains (A/B)")
         self.chain_names = tuple(self.tm)
+        self.tm_heavy = {
+            k: heavy(universe.atoms[np.isin(universe.atoms.resindices,
+                                            v.resindices)])
+            for k, v in self.tm.items()
+        }
         self.hs_auto_audit = {}
         if (s.get("hs_auto") or {}).get("enabled", False):
             self.hs, self.attach, self.hs_auto_audit = discover_covalent_hs(
@@ -386,7 +391,25 @@ class SDC4Mechanisms:
             float(np.sign(np.dot(cross, separation)))
             if np.all(np.isfinite(cross)) else np.nan
         )
+        tm1, tm2 = self.tm_heavy[first], self.tm_heavy[second]
+        interface_hits = _contacts(tm1, tm2, self.contact_A, box)
+        row["sdc4_tm_interface_residue_pairs"] = (
+            len(np.unique(np.column_stack((
+                tm1.resindices[interface_hits[:, 0]],
+                tm2.resindices[interface_hits[:, 1]],
+            )), axis=0)) if len(interface_hits) else 0
+        )
         g1, g2 = self.gxxxg[first], self.gxxxg[second]
+        for name, motif, opposite in (
+            (first, g1, tm2), (second, g2, tm1)
+        ):
+            motif_hits = _contacts(motif, opposite, self.contact_A, box)
+            row[f"sdc4_gxxxg_{name}_to_other_tm_residue_pairs"] = (
+                len(np.unique(np.column_stack((
+                    motif.resindices[motif_hits[:, 0]],
+                    opposite.resindices[motif_hits[:, 1]],
+                )), axis=0)) if len(motif_hits) else 0
+            )
         ghits = _contacts(g1, g2, self.contact_A, box)
         row["sdc4_gxxxg_interface_atom_contacts"] = len(ghits)
         row["sdc4_gxxxg_interface_residue_pairs"] = (
