@@ -95,3 +95,34 @@ Events live in `interactions/lipid_hydrogen_bonds/events.parquet`; the common oc
 Tests include circular leaflet assignment across periodic z, an ideal tilted membrane plane, enrichment denominator correctness, carbon-profile selection, pair canonicalization, and progression fallback. Automated CI checks imports and the synthetic streaming trajectory too.
 
 These tests **do not** establish physical validity on your large, heterogeneous neuronal bilayers. In particular: verify anchors, leaflet assignment, coordinate wrapping, headgroup chemistry and acceptor/donor guesses using TPR+XTC before treating output as manuscript-ready. With three independent replicates, interpret confidence intervals and between-replicate variability, not frame-pooled statistical significance.
+
+## Validated Syndecan-4 TPR selections (test-data-v1, October 2026)
+
+Real GROMACS TPR/XTC smoke tests on both published reference systems confirmed that **the glycolipid molecule names are chain IDs, not residue names**. Do not use `resname GM1a` to select ganglioside molecules: it matches zero atoms in the glycolipid-containing topology. Likewise, `resname BGAL` includes carbohydrate residues outside the BGAL glycolipid chains (e.g., HS glycans), and is not a molecule-specific lipid selection.
+
+For the published test systems, the following ceramide anchors each identify one physical glycosphingolipid/ceramide molecule:
+
+```yaml
+analyses:
+  bilayer_normal:
+    enabled: true
+    allow_absent_species: true
+    species_selections:
+      POPC: "resname POPC and name P"
+      POPE: "resname POPE and name P"
+      POPS: "resname POPS and name P"
+      POPI: "resname POPI and name P"
+      DOPC: "resname DOPC and name P"
+      DPPC: "resname DPPC and name P"
+      PSM: "resname PSM and name P"
+      CHL1: "resname CHL1 and name O3"
+      GM1a: "chainID GM1a and resname CER160 and name NF"
+      BGAL: "chainID BGAL and resname CER160 and name NF"
+      CER160: "chainID CER160 and resname CER160 and name NF"
+```
+
+Reuse the same `species_selections` for `lipid_enrichment`. In the **+headgroup** test topology, there are 24 GM1a and 58 BGAL ceramide anchors and no free CER160 chain anchors. In the **no-headgroup** control, there are 82 CER160 chain anchors and no GM1a/BGAL chain anchors. `allow_absent_species: true` is required when using one shared selection map across both systems.
+
+This mapping is specific to the uploaded TPRs and should be revalidated for other CHARMM-GUI builds. The lipid–lipid H-bond routine currently excludes same **residue**, not all interactions within one multi-residue glycosphingolipid; avoid interpreting such events as intermolecular until a molecule-level exclusion is implemented.
+
+GitHub Actions runs the optional `tests/real_trajectory_smoke.py` against the two reference systems. Eight-frame smoke tests confirm runtime compatibility and finite numeric outputs; they do **not** validate physical convergence, long-lag kinetics, or statistical significance.
