@@ -176,6 +176,13 @@ def check_outputs(system: str):
         else:
             result[name] = {"files": len(list(path.rglob("*")))}
         print(f"OUTPUT {system} {name}: {result[name]}", flush=True)
+    events_path = rep / "interactions" / "lipid_hydrogen_bonds" / "events.parquet"
+    assert events_path.is_file(), f"{system}: missing lipid H-bond events table"
+    events = pd.read_parquet(events_path)
+    result["lipid_hbond_events"] = len(events)
+    print(f"H-BOND EVENTS {system}: {len(events)}", flush=True)
+    counts = pd.read_parquet(paths["lipid_hbonds"])
+    print(f"H-BOND COUNTS {system}: {counts.head().to_dict('records')}", flush=True)
     return result
 
 
