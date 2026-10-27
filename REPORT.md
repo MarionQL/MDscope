@@ -18,7 +18,7 @@ The new YAML enables:
 - Ectodomain height, tilt and membrane-contact states
 - Sequence-derived NxIP occlusion and direct motif SASA (protein-only)
 - **Six individual covalently attached HS chains** with orientation, direct
-  glycan-lipid contacts, hydration and Na/Cl coordination
+  glycan-lipid contacts, hydration and K/Cl coordination
 - TM crossing, generic helix-helix interface and per-chain GXXXG contacts
 - Local membrane thickness, quadratic curvature and C-H order
 - One shared conformational-state model across all six replicates
@@ -133,6 +133,6 @@ helix-helix and each available motif-to-opposite-TM contacts instead of
 mislabeling a nonexistent second GXXXG motif.
 
 **Before a long production analysis:** run `validate` and verify that
-the selected atoms, six HS attachments, NxIP motifs, ion names, lipid
+the selected atoms, six HS attachments, NxIP motifs, K/Cl ion names, lipid
 anchor counts and time window are as intended. This is especially
 important if the topology was rebuilt.
