@@ -779,3 +779,18 @@ the physical reference frame and introduces a small finite-population bias;
 leave it disabled when laboratory-frame MSD is desired. The option is included
 in the configuration hash and is restart-safe. For scientific interpretation,
 check membrane drift, trajectory preprocessing, and the fit regime.
+
+### Performance profiling
+
+Set `MDSCOPE_PROFILE=1` to write `streaming_phase_profile.json` in each
+replicate output directory. The profile separates trajectory-frame decoding,
+fused membrane observers, extensions, distance observers, membrane metrics,
+alignment, density, and contact updates. Each family also writes its own
+more detailed timing JSON where supported. The shipped SLURM script enables
+this low-overhead profiling by default; set `MDSCOPE_PROFILE=0` to disable.
+Compare profiles across replicates by **seconds per analyzed frame**, while
+also recording CPU allocation, system atom count, storage and sampled frames.
+A GPU allocation does not accelerate ordinary NumPy/MDAnalysis analyses.
+Synthetic microbenchmarks can be run with
+`pytest -q -s tests/test_performance_benchmarks.py`; these check numerical
+equivalence and print measured timings without brittle fixed timing thresholds.
