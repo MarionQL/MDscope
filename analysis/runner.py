@@ -42,6 +42,8 @@ from .fused_membrane import enabled_names as fused_enabled_names, run_fused_memb
 from .fused_extensions import enabled_names as extension_enabled_names, run_fused_extensions
 from .fused_distance import enabled_names as distance_enabled_names, run_fused_distances
 from .fused_all import run_fused_only
+from .sdc4_mechanisms import enabled as sdc4_enabled, run_sdc4_mechanisms
+from .shared_states import fit_shared_states
 from .registry import specialized_tasks,additional_time_series
 from .msd import summarize_diffusion, summarize_project_diffusion
 from .coupling_screen import screen_couplings
@@ -287,6 +289,8 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
             pending_outputs.append(
                 repout / "profiles" / "residue_membrane_distance" / run_id / "distance_matrix_A.npy"
             )
+        if sdc4_enabled(cfg):
+            pending_outputs.append(repout / "extensions/sdc4_mechanisms/timeseries.parquet")
         if any(not path.exists() for path in pending_outputs):
             t0 = perf_counter()
             run_fused_only(rep, cfg, repout)
@@ -376,6 +380,20 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
                 state.mark(key, {"fused_into": "streaming" if streaming_required and not missing
                                  else "fused-distances-fallback"})
 
+    if sdc4_enabled(cfg):
+        output = repout / "extensions/sdc4_mechanisms/timeseries.parquet"
+        if not output.is_file():
+            t0 = perf_counter()
+            run_sdc4_mechanisms(rep, cfg, repout)
+            stage_timings.append({"stage": "sdc4-mechanisms-fallback",
+                                  "seconds": perf_counter() - t0})
+        if not output.is_file():
+            raise RuntimeError(f"Missing SDC4 mechanism output: {output}")
+        key = prefix + "-sdc4-mechanisms"
+        if not state.complete(key):
+            state.mark(key, {"fused_into": "streaming" if streaming_required
+                             else "fused-only"})
+
     for task in specialized_tasks(cfg):
         if task.key.startswith("residue-membrane-") and task.key[len("residue-membrane-"):] in distance_names:
             continue
@@ -446,6 +464,7 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None):
     analyze_project(cfg, root, system_repouts)
     plot_all(cfg, root, system_repouts)
     plot_lipid_enrichment_matrix(cfg,root)
+    fit_shared_states(cfg, root, system_repouts)
     summarize_project_diffusion(root,system_repouts,cfg)
     if cfg.get('analyses',{}).get('coupling_screen',{}).get('enabled',False):
         screen_couplings(cfg,root,system_repouts)
