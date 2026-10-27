@@ -11,6 +11,7 @@ replicates for system-level confidence intervals.
 from __future__ import annotations
 
 from pathlib import Path
+from collections import defaultdict
 import json
 
 import numpy as np
@@ -191,7 +192,7 @@ def fit_shared_states(cfg, root, system_repouts):
             "duration_ps": float(times[-1] - times[0]) if n > 1 else 0.,
         })
         hs_names = sorted({
-            name.split("_")[2]
+            name[len("sdc4_hs_"):-len("_hydration_water_per_heavy_atom")]
             for name in df.columns if name.startswith("sdc4_hs_")
             and name.endswith("_hydration_water_per_heavy_atom")
         })
@@ -255,5 +256,3 @@ def fit_shared_states(cfg, root, system_repouts):
     })
     return out
 
-
-from collections import defaultdict
