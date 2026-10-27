@@ -59,6 +59,7 @@ DEFAULTS = {
                 "enabled": False,
                 "selection": None,
                 "include_3d": False,
+                "remove_drift": False,
                 "slope_start_fraction": 0.2,
                 "slope_end_fraction": 0.8
             },
