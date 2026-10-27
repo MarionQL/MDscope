@@ -65,6 +65,16 @@ def inspect(system: str, topology: Path, trajectory: Path) -> dict:
     for name in ("GM1a", "BGAL", "CER160"):
         n = len(u.select_atoms(f"segid {name}"))
         print(f"segid {name} atoms={n}", flush=True)
+    for name in ("GM1a", "BGAL", "CER160"):
+        try:
+            n = len(u.select_atoms(f"chainID {name}"))
+            print(f"chainID {name} atoms={n}", flush=True)
+        except Exception as exc:
+            print(f"chainID {name} unavailable: {type(exc).__name__}", flush=True)
+    print("non-water residue counts (top 25):", flush=True)
+    from collections import Counter
+    nonwater = Counter(str(r.resname) for r in u.residues if str(r.resname) != "TIP3")
+    print(nonwater.most_common(25), flush=True)
     assert len(species) >= 2, "Insufficient lipid anchors for a bilayer test"
     del u
     gc.collect()
@@ -72,14 +82,14 @@ def inspect(system: str, topology: Path, trajectory: Path) -> dict:
 
 
 def build_config(system: str, topology: Path, trajectory: Path, species: dict) -> Path:
-    # Restrict all analyses to the first two frames. We are checking that
+    # Restrict all analyses to the first eight frames. We are checking that
     # real TPR+XTC inputs execute, NOT estimating equilibrated observables.
     lipid_types = [name for name in ("POPC", "POPE", "DOPC", "DPPC", "POPI", "PSM") if name in species]
     assert lipid_types
     lipid_sel = "resname " + " ".join(lipid_types[:2])
     cfg = {
         "project": {"name": f"real_smoke_{system}", "output": str(ROOT / system)},
-        "trajectory": {"start": 0, "stop": 2, "stride": 1, "chunk_frames": 2},
+        "trajectory": {"start": 0, "stop": 8, "stride": 1, "chunk_frames": 4},
         "progress": {"enabled": True},
         "systems": {system: {"topology": str(topology),
                              "replicates": [{"trajectory": str(trajectory), "label": "rep1"}]}},
@@ -147,6 +157,13 @@ def check_outputs(system: str):
             df = pd.read_parquet(path)
             assert not df.empty, f"{system}: empty {name} output"
             result[name] = {"rows": len(df), "columns": len(df.columns)}
+            if name in {"order", "normal", "enrichment"}:
+                metrics = df.select_dtypes(include="number").drop(columns=["time_ps"], errors="ignore")
+                finite = int(np.isfinite(metrics.to_numpy(dtype=float)).sum())
+                result[name]["finite_metric_values"] = finite
+                print(f"NUMERICS {system} {name}: finite={finite} / {metrics.size}", flush=True)
+                assert finite > 0, f"{system}: all {name} numeric metrics are non-finite"
+                print(f"SAMPLE {system} {name}: {df.iloc[0].to_dict()}", flush=True)
         else:
             result[name] = {"files": len(list(path.rglob("*")))}
         print(f"OUTPUT {system} {name}: {result[name]}", flush=True)
@@ -162,7 +179,7 @@ def main():
             assert topology.is_file() and trajectory.is_file()
             species = inspect(system, topology, trajectory)
             config = build_config(system, topology, trajectory, species)
-            print(f"Running two-frame MDscope integration: {system}", flush=True)
+            print(f"Running eight-frame MDscope integration: {system}", flush=True)
             run_one(config, 0)
             outputs = check_outputs(system)
             report[system] = {"status": "passed", "species": sorted(species),
