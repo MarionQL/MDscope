@@ -41,6 +41,9 @@ Add this under \`analyses:\` in \`synd4_baseline.yaml\`, adjusting all selectors
       BGAL: "chainID BGAL and resname CER160 and name NF"
       CER160: "chainID CER160 and resname CER160 and name NF"
     allow_absent_species: true
+    # Thickness/curvature use comparable P-group surface anchors only,
+    # avoiding artifactual height shifts from cholesterol O3 or ceramide NF.
+    surface_anchor_species: [POPC, POPE, POPI, DOPC, DPPC, PSM]
     lipid_contact_selection: >-
       resname POPC POPE POPI DOPC DPPC PSM CHL1
       or chainID GM1a BGAL CER160
@@ -112,7 +115,7 @@ Maps are **not** corrected for the protein-excluded accessible area.
 | Endpoint | Output/interpretation |
 |---|---|
 | Lipid enrichment and density maps | Per-leaflet GM1a/BGAL/cholesterol/phospholipid maps centered on TM midpoint, plus the existing annular \`lipid_enrichment\` fold values when enabled |
-| Ectodomain height/tilt/contact | CA-center height relative to extracellular leaflet, terminal-to-terminal tilt to the outward membrane normal, and fraction of ectodomain atoms contacting selected lipid atoms |
+| Ectodomain height/tilt/contact | CA-center height relative to extracellular leaflet, terminal-to-terminal tilt to the outward membrane normal, binary membrane-contact state and fraction of ectodomain atoms contacting selected lipid atoms |
 | NxIP accessibility | Regex matches actual CA-derived topology sequence by chain; reports fraction of motif heavy atoms with protein/HS/lipid steric neighbors within cutoff. This is an **occlusion proxy**, not a ligand-binding free energy. When `sasa.enabled`, the observer also joins the existing FreeSASA motif residue SASA, calculated with that analysis's atom selection |
 | Individual HS orientation/contacts | Attachment-to-distal-terminus orientation cosine, extension, direct HS–lipid contacts and separate attachment-site contacts; distal end chosen by attachment proximity on the first analyzed frame |
 | TM crossing and GXXXG | PCA helix-axis crossing angle, handedness and cross-chain GXXXG heavy-atom/residue contacts; no GXXXG motif produces zero contacts unless \`require_gxxxg\` is true |
@@ -133,7 +136,8 @@ or a dedicated branched-glycan end-to-end definition before interpreting
 orientation.
 
 The local membrane model requires an **orthorhombic, z-normal** box. It
-fits a quadratic height field and reports a small-slope curvature proxy in
+uses only `surface_anchor_species` for thickness/curvature to avoid mixing
+chemically different headgroup heights. It fits a quadratic height field and reports a small-slope curvature proxy in
 Å⁻¹; it is not a full triangulated-surface mean-curvature calculation.
 For local order, tail sites use explicit bonded C–H pairs and the same
 minus-S_CH convention as the original lipid order analysis. Curvature and
