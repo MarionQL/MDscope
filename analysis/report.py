@@ -38,7 +38,10 @@ KEY_METRICS = (
     "sdc4_ectodomain_A_tilt_deg", "sdc4_ectodomain_B_tilt_deg",
     "sdc4_ectodomain_A_membrane_contact_state",
     "sdc4_ectodomain_B_membrane_contact_state",
-    "sdc4_tm_crossing_angle_deg", "sdc4_gxxxg_interface_residue_pairs",
+    "sdc4_tm_crossing_angle_deg", "sdc4_tm_interface_residue_pairs",
+    "sdc4_gxxxg_A_to_other_tm_residue_pairs",
+    "sdc4_gxxxg_B_to_other_tm_residue_pairs",
+    "sdc4_gxxxg_interface_residue_pairs",
     "sdc4_local_thickness_A", "sdc4_local_upper_curvature_Ainv",
     "sdc4_local_lower_curvature_Ainv", "sdc4_local_minus_SCH",
 )
