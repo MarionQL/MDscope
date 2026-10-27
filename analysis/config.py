@@ -186,6 +186,11 @@ DEFAULTS = {
             "multiple_testing": "fdr_bh",
         },
     },
+    "report": {"enabled": False, "bundle_enabled": True,
+               "max_metrics_per_section": 35, "max_hs_key_metrics": 20,
+               "max_conditioned_rows": 80, "include_lipid_maps": True,
+               "map_species": ["GM1a", "BGAL", "CHL1", "CER160"],
+               "sample_frames_per_replicate": 250},
     "cache": {"aligned_coordinates": True, "dtype": "float32", "keep": True},
     "plots": {
         "enabled": True,
@@ -731,6 +736,16 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
     shared = cfg["analyses"].get("shared_states", {})
     if shared.get("enabled") and not mechanisms.get("enabled"):
         raise ValueError("shared_states requires sdc4_mechanisms.enabled")
+    report = cfg.get("report", {})
+    if report.get("enabled"):
+        for key in ("max_metrics_per_section", "max_hs_key_metrics",
+                    "max_conditioned_rows", "sample_frames_per_replicate"):
+            if int(report.get(key, 1)) < 1:
+                raise ValueError(f"report.{key} must be >= 1")
+        species = report.get("map_species", [])
+        if species is not None and (not isinstance(species, list)
+                                    or any(not isinstance(x, str) for x in species)):
+            raise ValueError("report.map_species must be a list of names")
     stats = cfg.get("statistics", {})
     if int(stats.get("bootstrap_draws", 2000)) < 100:
         raise ValueError("statistics.bootstrap_draws must be >= 100")
