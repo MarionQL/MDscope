@@ -131,6 +131,9 @@ DEFAULTS = {
             "protein_selection": None,
             "tm_chains": {}, "ectodomains": {},
             "hs_chains": {}, "hs_attachment_sites": {},
+            "hs_auto": {"enabled": False, "glycan_selection": None,
+                        "attachment_selection": None,
+                        "min_glycan_residues": 3, "expected_chains": None},
             "lipid_anchors": {}, "allow_absent_species": False,
             "surface_anchor_species": ["POPC", "POPE", "POPI", "POPS", "DOPC", "DPPC", "PSM"],
             "lipid_contact_selection": None,
@@ -186,6 +189,11 @@ DEFAULTS = {
             "multiple_testing": "fdr_bh",
         },
     },
+    "report": {"enabled": False, "bundle_enabled": True,
+               "max_metrics_per_section": 35, "max_hs_key_metrics": 20,
+               "max_conditioned_rows": 80, "include_lipid_maps": True,
+               "map_species": ["GM1a", "BGAL", "CHL1", "CER160"],
+               "sample_frames_per_replicate": 250},
     "cache": {"aligned_coordinates": True, "dtype": "float32", "keep": True},
     "plots": {
         "enabled": True,
@@ -707,7 +715,15 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
         sites = mechanisms.get("hs_attachment_sites") or {}
         if not isinstance(tm, dict) or len(tm) != 2 or set(tm) != set(ecto):
             raise ValueError("sdc4_mechanisms needs two matching tm_chains and ectodomains")
-        if not isinstance(hs, dict) or not isinstance(sites, dict) or set(hs) != set(sites):
+        hs_auto = mechanisms.get("hs_auto") or {}
+        if hs_auto.get("enabled"):
+            if hs or sites:
+                raise ValueError("Use hs_auto OR explicit hs_chains/hs_attachment_sites, not both")
+            if not hs_auto.get("glycan_selection") or not hs_auto.get("attachment_selection"):
+                raise ValueError("hs_auto requires glycan_selection and attachment_selection")
+            if int(hs_auto.get("min_glycan_residues", 3)) < 2:
+                raise ValueError("hs_auto.min_glycan_residues must be >=2")
+        elif not isinstance(hs, dict) or not isinstance(sites, dict) or set(hs) != set(sites):
             raise ValueError("sdc4_mechanisms.hs_chains and hs_attachment_sites must match")
         for group in (tm, ecto, hs, sites):
             for key, selection in group.items():
@@ -718,7 +734,7 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
             raise ValueError("sdc4_mechanisms requires lipid_anchors and lipid_contact_selection")
         if not mechanisms.get("surface_anchor_species") or not isinstance(mechanisms["surface_anchor_species"], list):
             raise ValueError("sdc4_mechanisms.surface_anchor_species must be a nonempty list")
-        if hs and not mechanisms.get("water_oxygen_selection"):
+        if (hs or hs_auto.get("enabled")) and not mechanisms.get("water_oxygen_selection"):
             raise ValueError("HS hydration requires water_oxygen_selection")
         if str(mechanisms.get("axis", "z")).lower() != "z":
             raise ValueError("sdc4_mechanisms supports z-normal membranes only")
@@ -731,6 +747,16 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
     shared = cfg["analyses"].get("shared_states", {})
     if shared.get("enabled") and not mechanisms.get("enabled"):
         raise ValueError("shared_states requires sdc4_mechanisms.enabled")
+    report = cfg.get("report", {})
+    if report.get("enabled"):
+        for key in ("max_metrics_per_section", "max_hs_key_metrics",
+                    "max_conditioned_rows", "sample_frames_per_replicate"):
+            if int(report.get(key, 1)) < 1:
+                raise ValueError(f"report.{key} must be >= 1")
+        species = report.get("map_species", [])
+        if species is not None and (not isinstance(species, list)
+                                    or any(not isinstance(x, str) for x in species)):
+            raise ValueError("report.map_species must be a list of names")
     stats = cfg.get("statistics", {})
     if int(stats.get("bootstrap_draws", 2000)) < 100:
         raise ValueError("statistics.bootstrap_draws must be >= 100")

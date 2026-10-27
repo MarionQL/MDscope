@@ -1,0 +1,401 @@
+project:
+  name: synd4_full_mechanisms
+  # Separate directory prevents overwriting/archiving the existing baseline run.
+  output: results_memb_full_mechanisms
+
+trajectory:
+  # Raw frame index. This is ~100 ns only if the XTC spacing is 100 ps/frame.
+  start: 1000
+  stop: null
+  stride: 10
+  chunk_frames: 1000
+
+time:
+  # Leave null when the XTC contains correct timestamps.
+  dt_ps: null
+  origin_ps: 0.0
+
+systems:
+  synd4_glycolipids:
+    label: "Synd4 + Glycolipids"
+    topology: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_carbmemb/MDrun/rep1/step7_production.tpr
+    replicates:
+      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_carbmemb/final_traj/system-whole-rep1.xtc
+        label: rep1
+        plot_label: "Replicate 1"
+      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_carbmemb/final_traj/system-whole-rep2.xtc
+        label: rep2
+        plot_label: "Replicate 2"
+      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_carbmemb/final_traj/system-whole-rep3.xtc
+        label: rep3
+        plot_label: "Replicate 3"
+
+  synd4_no_glycolipids:
+    label: "Synd4 - Glycolipids"
+    topology: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_new_final/prod/step7_production.tpr
+    replicates:
+      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_new_final/final_traj/system-whole-rep1.xtc
+        label: rep1
+        plot_label: "Replicate 1"
+      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_new_final/final_traj/system-whole-rep2.xtc
+        label: rep2
+        plot_label: "Replicate 2"
+      - trajectory: /projects/bevanlab/students/marionlopresti/hepsulf_MD/synd4_new_final/final_traj/system-whole-rep3.xtc
+        label: rep3
+        plot_label: "Replicate 3"
+
+selections:
+  protein: "protein"
+  alignment: "protein and name CA and (chainID PROA and resid 146-170)"
+  features: "protein and name CA"
+  ligand: null
+
+  groups:
+    chain_A:
+      label: "Chain A"
+      selection: "protein and chainID PROA"
+      linestyle: "-"
+
+    chain_B:
+      label: "Chain B"
+      selection: "protein and chainID PROB"
+      linestyle: "--"
+
+analyses:
+  alignment:
+    enabled: true
+    # null falls back to selections.alignment above.
+    selection: null
+
+  rmsd:
+    enabled: true
+
+  rmsf:
+    enabled: true
+
+  radius_of_gyration:
+    enabled: true
+    selection: "protein and name CA"
+
+  density_1d:
+    enabled: true
+    axis: z
+    bin_width_A: 1.0
+    # Appropriate if whole_system_*.xtc is already centered in the box.
+    center_selection: null
+    selections:
+      water_oxygen:
+        label: "Water oxygen"
+        selection: "resname TIP3 and name OH2"
+        mode: number
+
+      protein_ca:
+        label: "Protein C-alpha"
+        selection: "protein and name CA"
+        mode: number
+        groups: true
+
+      acyl_tails:
+        label: "Lipid acyl tails"
+        selection: "resname POPC DPPC POPE POPI POPS PSM DOPC CER1 and name C2* C3* C*S C*F"
+        mode: number
+
+      lipid_headgroups:
+        label: "Lipid headgroups"
+        selection: "resname POPC DPPC POPE POPI POPS PSM DOPC and name P"
+        mode: number
+
+      cholesterol:
+        label: "Cholesterol"
+        selection: "resname CHL1"
+        mode: number
+
+      ceramide_headgroups:
+        label: "Ceramide headgroups"
+        selection: "chainID CER160 GM1a BGAL and name NF"
+        mode: number
+
+  membrane:
+    enabled: true
+    axis: z
+    headgroup_selection: "(resname POPC DPPC POPE POPI POPS PSM DOPC and name P) or (chainID CER160 BGAL GM1a and name NF)"
+    area_per_lipid:
+      enabled: true
+    thickness:
+      enabled: true
+    msd:
+      enabled: true
+      # null reuses membrane.headgroup_selection.
+      selection: null
+      include_3d: false
+      slope_start_fraction: 0.2
+
+
+  # All-atom lipid C-H orientational order. Same lipid selection is reused
+  # for local receptor-centered order; explicit hydrogens and TPR bonds required.
+  membrane_order:
+    enabled: true
+    axis: z
+    lipid_selection: "resname POPC DPPC POPE POPI POPS PSM DOPC"
+    min_carbons_per_tail: 4
+    per_lipid_type: true
+    per_leaflet: true
+    leaflet_anchor_selection: "resname POPC DPPC POPE POPI POPS PSM DOPC and name P"
+
+  # Local headgroup surface-normal deviations; missing species are
+  # expected in the no-glycolipid condition.
+  bilayer_normal:
+    enabled: true
+    axis: z
+    allow_absent_species: true
+    neighbor_radius_A: 15.0
+    min_neighbors: 5
+    save_lipid_angles: false
+    species_selections:
+      POPC: "resname POPC and name P"
+      DPPC: "resname DPPC and name P"
+      POPE: "resname POPE and name P"
+      POPI: "resname POPI and name P"
+      POPS: "resname POPS and name P"
+      PSM: "resname PSM and name P"
+      DOPC: "resname DOPC and name P"
+      CHL1: "resname CHL1 and name O3"
+      GM1a: "chainID GM1a and resname CER160 and name NF"
+      BGAL: "chainID BGAL and resname CER160 and name NF"
+      CER160: "chainID CER160 and resname CER160 and name NF"
+
+  # Leaflet-normalized near-SDC4 lipid enrichment/depletion, plus
+  # the protein-centered 2D maps in sdc4_mechanisms below.
+  lipid_enrichment:
+    enabled: true
+    axis: z
+    allow_absent_species: true
+    protein_selection: "protein and name CA and (chainID PROA or chainID PROB)"
+    inner_radius_A: 0.0
+    outer_radius_A: 20.0
+    species_selections:
+      POPC: "resname POPC and name P"
+      DPPC: "resname DPPC and name P"
+      POPE: "resname POPE and name P"
+      POPI: "resname POPI and name P"
+      POPS: "resname POPS and name P"
+      PSM: "resname PSM and name P"
+      DOPC: "resname DOPC and name P"
+      CHL1: "resname CHL1 and name O3"
+      GM1a: "chainID GM1a and resname CER160 and name NF"
+      BGAL: "chainID BGAL and resname CER160 and name NF"
+      CER160: "chainID CER160 and resname CER160 and name NF"
+
+  # Whole lipid molecules (not just headgroups), with bonded-component
+  # exclusion for intermolecular lipid-lipid hydrogen bonds.
+  lipid_hydrogen_bonds:
+    enabled: true
+    lipid_selection: "(resname POPC DPPC POPE POPI POPS PSM DOPC CHL1) or (chainID GM1a BGAL CER160)"
+    d_h_cutoff_A: 1.2
+    d_a_cutoff_A: 3.0
+    angle_cutoff_deg: 150.0
+    exclude_same_residue: true
+    exclude_same_molecule: true
+    update_selections: false
+
+  # Eight SDC4 mechanism endpoints. These PROA/PROB ranges were verified
+  # on the two published old-build TPRs, NOT on future rebuilt systems.
+  sdc4_mechanisms:
+    enabled: true
+    axis: z
+    protein_selection: "protein"
+    tm_chains:
+      A: "protein and chainID PROA and resid 146:170 and name CA"
+      B: "protein and chainID PROB and resid 344:368 and name CA"
+    ectodomains:
+      A: "protein and chainID PROA and resid 1:145 and name CA"
+      B: "protein and chainID PROB and resid 270:343 and name CA"
+
+    # Real TPR bond audit verified exactly six covalently attached HS
+    # chains: PROA S39/S61/S63 and PROB S309/S331/S333.
+    # HS sugars share the PROA/PROB chainIDs; chainID alone cannot
+    # distinguish the individual HS chains. The topology bond graph can.
+    hs_auto:
+      enabled: true
+      glycan_selection: "resname AGLCNA AIDOA BGLCA BGAL BXYL and chainID PROA PROB"
+      attachment_selection: "protein and resname SER and name OG"
+      min_glycan_residues: 3
+      expected_chains: 6
+    hs_chains: {}
+    hs_attachment_sites: {}
+
+    lipid_anchors:
+      POPC: "resname POPC and name P"
+      DPPC: "resname DPPC and name P"
+      POPE: "resname POPE and name P"
+      POPI: "resname POPI and name P"
+      POPS: "resname POPS and name P"
+      PSM: "resname PSM and name P"
+      DOPC: "resname DOPC and name P"
+      CHL1: "resname CHL1 and name O3"
+      GM1a: "chainID GM1a and resname CER160 and name NF"
+      BGAL: "chainID BGAL and resname CER160 and name NF"
+      CER160: "chainID CER160 and resname CER160 and name NF"
+    allow_absent_species: true
+    # Compare local bilayer surfaces using chemically equivalent P anchors.
+    surface_anchor_species: [POPC, DPPC, POPE, POPI, POPS, PSM, DOPC]
+    lipid_contact_selection: "(resname POPC DPPC POPE POPI POPS PSM DOPC CHL1) or (chainID GM1a BGAL CER160)"
+    water_oxygen_selection: "resname TIP3 and name OH2"
+    ion_selections:
+      K: "resname POT"
+      Cl: "resname CLA"
+
+    motif_selection: "protein and name CA"
+    motifs:
+      NxIP: "N.IP"
+    require_motifs: true
+    # Real TPR audit found a GXXXG match in PROA, but none in the
+    # selected PROB TM sequence. Report this rather than inventing one.
+    require_gxxxg: false
+    contact_cutoff_A: 5.0
+    hydration_cutoff_A: 3.5
+    ion_cutoff_A: 4.0
+    map_extent_A: 40.0
+    map_bin_A: 2.0
+    local_radius_A: 20.0
+    local_min_lipids: 8
+    local_order:
+      enabled: true
+      lipid_selection: "resname POPC DPPC POPE POPI POPS PSM DOPC"
+      min_carbons_per_tail: 4
+
+  # Fit one state model across all six replicates and both conditions.
+  shared_states:
+    enabled: true
+    n_states: 3
+    seed: 2026
+    training_frames_per_replicate: 2000
+    bootstrap_draws: 1000
+    min_complete_fraction: 0.90
+    block_frames: null
+    features:
+      - sdc4_ectodomain_A_height_A
+      - sdc4_ectodomain_B_height_A
+      - sdc4_ectodomain_A_tilt_deg
+      - sdc4_ectodomain_B_tilt_deg
+      - sdc4_tm_crossing_angle_deg
+      - sdc4_local_thickness_A
+
+  residue_membrane_distance:
+    enabled: true
+    selection: "protein and name CA and (resid 1-145 or resid 270-415)"
+    exclude_hydrogens: true
+    # The CA selection chooses residues; all heavy atoms in those residues
+    # are then used for the exact minimum-distance calculation.
+    expand_residue_atoms: true
+    initial_search_cutoff_A: 6.0
+    search_growth_factor: 2.0
+    fallback_block_atoms: 4096
+    contact_cutoff_A: 5.0
+    heatmap_max_A: null
+    groups: true
+    runs:
+      full_membrane:
+        label: "Full membrane"
+        membrane_selection: "resname POPC DPPC POPE POPI POPS PSM DOPC CHL1 CER1 or chainID BGAL GM1a CER160"
+
+      cer160_only:
+        label: "All ceramide-based lipids"
+        membrane_selection: "chainID BGAL GM1a CER160"
+
+  dssp:
+    enabled: true
+    selection: "protein"
+    guess_hydrogens: true
+    backend: serial
+
+  # Required for direct NxIP solvent-accessible surface area (protein-only).
+  # Requires: pip install freesasa
+  sasa:
+    enabled: true
+    selection: "protein"
+
+  salt_bridges:
+    enabled: true
+    cutoff_A: 4.0
+
+  hydrogen_bonds:
+    enabled: true
+    mode: protein_protein
+    d_h_cutoff_A: 1.2
+    d_a_cutoff_A: 3.0
+    angle_cutoff_deg: 150.0
+    update_selections: false
+
+  ligand_contacts:
+    enabled: false
+    cutoff_A: 4.0
+    save_atom_events: true
+
+  lifetimes:
+    enabled: true
+    gap_factor: 1.5
+
+statistics:
+  enabled: true
+  bootstrap_draws: 5000
+  ci: 0.95
+  seed: 2026
+
+  block:
+    method: moving
+    length: auto
+    tau_multiplier: 2.0
+    max_acf_lag: null
+
+  hierarchy:
+    block_within_replicate: true
+    resample_replicates: true
+
+  hypothesis_tests:
+    enabled: true
+    # Keep independent unless rep1 vs rep1, rep2 vs rep2, etc. were
+    # deliberately generated as matched simulation pairs.
+    design: independent
+    method: permutation
+    permutation_draws: 10000
+    exact_max_assignments: 100000
+    multiple_testing: fdr_bh
+
+
+# Automatically created at finalization, after all replicates complete.
+# The PDF is readable on its own; the ZIP adds full-precision tables and
+# bounded per-replicate time-series samples for detailed follow-up.
+report:
+  enabled: true
+  bundle_enabled: true
+  max_metrics_per_section: 35
+  max_hs_key_metrics: 20
+  max_conditioned_rows: 80
+  include_lipid_maps: true
+  map_species: [GM1a, BGAL, CHL1, CER160]
+  sample_frames_per_replicate: 250
+
+cache:
+  # RMSF is disabled, so the aligned-coordinate cache is unnecessary here.
+  aligned_coordinates: true
+  dtype: float32
+  keep: true
+
+plots:
+  enabled: true
+  time_series: true
+  distributions: true
+  autocorrelation: true
+  bootstrap_tables: true
+  profiles: true
+  interactions: true
+  min_occupancy: 0.05
+  replicate_lightness_range: [0.28, 0.72]
+  font_sizes:
+    base: 13
+    title: 16
+    suptitle: 18
+    legend: 10
+    ticks: 11
+  dpi: 250

@@ -61,12 +61,18 @@ def run():
             "enabled": True, "axis": "z",
             "tm_chains": tm, "ectodomains": ecto,
             "hs_chains": {}, "hs_attachment_sites": {},
+            "hs_auto": {
+                "enabled": True,
+                "glycan_selection": "resname AGLCNA AIDOA BGLCA BGAL BXYL and chainID PROA PROB",
+                "attachment_selection": "protein and resname SER and name OG",
+                "expected_chains": 6,
+            },
+            "water_oxygen_selection": "resname TIP3 and name OH2",
+            "ion_selections": {"K": "resname POT", "Cl": "resname CLA"},
             "lipid_anchors": species,
             # Use only headgroup anchors for this small smoke, not a full
             # membrane-contact definition.
-            "lipid_contact_selection": " or ".join(
-                f"({selection})" for selection in species.values()
-            ),
+            "lipid_contact_selection": "(resname POPC POPE POPI POPS DOPC DPPC PSM CHL1) or (chainID GM1a BGAL CER160)",
             "motif_selection": "protein and name CA",
             "motifs": {"NxIP": "N.IP"},
             "require_motifs": False, "require_gxxxg": False,
@@ -92,6 +98,9 @@ def run():
         assert len(df) == 4
         assert np.all(np.isfinite(df["sdc4_tm_crossing_angle_deg"]))
         assert np.all(np.isfinite(df["sdc4_ectodomain_A_height_A"]))
+        assert result["n_hs_chains"] == 6
+        assert "sdc4_hs_PROA_S39_hydration_water_count" in df
+        assert "sdc4_hs_PROB_S333_lipid_contact_lipids" in df
         with np.load(out / "extensions/sdc4_mechanisms/lipid_density_maps.npz") as maps:
             assert int(maps["nframes"]) == 4
             assert maps["counts"].sum() > 0
