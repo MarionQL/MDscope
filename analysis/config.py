@@ -27,6 +27,7 @@ MULTI_RUN_ANALYSES = {"density_1d", "residue_membrane_distance"}
 
 DEFAULTS = {
     "project": {"name": "mdscope_project", "output": "mdscope_results"},
+    "progress": {"enabled": True},
     "trajectory": {"start": None, "stop": None, "stride": 1, "chunk_frames": 1000},
     "time": {"dt_ps": None, "origin_ps": 0.0},
     "selections": {
@@ -70,6 +71,8 @@ DEFAULTS = {
             "hydrogen_cutoff_A": 1.25,
             "min_carbons_per_tail": 4,
             "per_lipid_type": True,
+            "per_leaflet": True,
+            "leaflet_anchor_selection": None,
             "tails": {
                 "sn1": {"carbon_pattern": r"^C2(\d+)$"},
                 "sn2": {"carbon_pattern": r"^C3(\d+)$"},
@@ -109,6 +112,16 @@ DEFAULTS = {
             "n_workers": None,
             "n_parts": None,
         },
+        "bilayer_normal": {"enabled": False, "axis": "z", "species_selections": {},
+                           "neighbor_radius_A": 15.0, "min_neighbors": 5},
+        "lipid_enrichment": {"enabled": False, "axis": "z", "species_selections": {},
+                             "protein_selection": None,
+                             "inner_radius_A": 0.0, "outer_radius_A": 15.0},
+        "lipid_hydrogen_bonds": {"enabled": False, "lipid_selection": None,
+                                 "donors_sel": None, "hydrogens_sel": None, "acceptors_sel": None,
+                                 "d_h_cutoff_A": 1.2, "d_a_cutoff_A": 3.0,
+                                 "angle_cutoff_deg": 150.0,"exclude_same_residue": True,
+                                 "update_selections": False},
         "salt_bridges": {"enabled": True, "cutoff_A": 4.0},
         "ligand_contacts": {"enabled": False, "cutoff_A": 4.0, "save_atom_events": True},
         "hydrogen_bonds": {
@@ -641,6 +654,23 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
                 f"residue_membrane_distance[{run.run_id}] requires "
                 "membrane_selection or lipid_resnames"
             )
+
+    for analysis_name in ("lipid_enrichment","bilayer_normal"):
+        ext = cfg["analyses"].get(analysis_name, {})
+        if ext.get("enabled"):
+            if not ext.get("species_selections") or not isinstance(ext.get("species_selections"), dict):
+                raise ValueError(f"{analysis_name}.species_selections must define lipid species anchor selections")
+            if str(ext.get("axis","z")).lower() not in {"x","y","z"}:
+                raise ValueError(f"{analysis_name}.axis must be x, y, or z")
+    enrich = cfg["analyses"].get("lipid_enrichment",{})
+    if enrich.get("enabled") and not (0<=float(enrich.get("inner_radius_A",0))<float(enrich.get("outer_radius_A",15))):
+        raise ValueError("lipid_enrichment radii require 0 <= inner < outer")
+    normal = cfg["analyses"].get("bilayer_normal",{})
+    if normal.get("enabled") and (float(normal.get("neighbor_radius_A",15))<=0 or int(normal.get("min_neighbors",5))<3):
+        raise ValueError("bilayer_normal requires positive radius and >=3 neighbors")
+    lipid_hb = cfg["analyses"].get("lipid_hydrogen_bonds",{})
+    if lipid_hb.get("enabled") and not lipid_hb.get("lipid_selection"):
+        raise ValueError("lipid_hydrogen_bonds.lipid_selection is required")
 
     stats = cfg.get("statistics", {})
     if int(stats.get("bootstrap_draws", 2000)) < 100:
