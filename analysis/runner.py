@@ -198,6 +198,18 @@ def _replicate_state_prefix(rep) -> str:
     return f"rep-{identity_hash}"
 
 
+def _archive_previous_output(source: Path, archive_root: Path, label: str) -> Path:
+    """Archive stale results rather than silently deleting expensive MD analyses."""
+    ensure_dir(archive_root)
+    candidate=archive_root / label
+    index=1
+    while candidate.exists():
+        candidate=archive_root / f"{label}-{index}"
+        index+=1
+    source.rename(candidate)
+    return candidate
+
+
 def _prepare_replicate_output(
     rep,
     root: Path,
@@ -212,7 +224,10 @@ def _prepare_replicate_output(
         except OSError:
             pass
         if previous_hash != state.config_hash:
-            shutil.rmtree(repout)
+            prior = previous_hash or "unknown_hash"
+            archived=_archive_previous_output(
+                repout,root/".archives"/"replicates"/rep.system/rep.label,prior)
+            print(f"Archived previous replicate output: {archived}")
     repout = ensure_dir(repout)
     atomic_text(hash_file, state.config_hash + "\n")
     return repout
@@ -268,7 +283,8 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None):
         )
     project_summary = root / "project_summary"
     if project_summary.exists():
-        shutil.rmtree(project_summary)
+        archived=_archive_previous_output(project_summary,root/".archives"/"project_summary",state.config_hash)
+        print(f"Archived previous project summary: {archived}")
     system_repouts = {
         system: [
             root / rep.system / rep.label
