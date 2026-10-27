@@ -22,6 +22,7 @@ from mdscope.analysis.membrane_order import run_membrane_order
 from mdscope.analysis.bilayer_normal import run_bilayer_normal
 from mdscope.analysis.lipid_enrichment import run_lipid_enrichment
 from mdscope.analysis.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
+from mdscope.analysis.residue_membrane_distance import run_residue_membrane_distance
 
 DATA = Path(os.environ.get("MDSCOPE_REAL_DATA", "real_test_data")).resolve()
 ROOT = Path(os.environ.get("MDSCOPE_REAL_OUTPUT", "real_test_results")).resolve()
@@ -137,7 +138,14 @@ def build_config(system: str, topology: Path, trajectory: Path, species: dict) -
                 "enabled": True, "lipid_selection": lipid_sel,
                 "exclude_same_residue": True,
             },
-            "residue_membrane_distance": {"enabled": False},
+            "residue_membrane_distance": {
+                "enabled": True,
+                "selection": "protein and name CA and resid 150:170",
+                "expand_residue_atoms": False,
+                "membrane_selection": "resname POPC and name P",
+                "exclude_hydrogens": True,
+                "groups": False,
+            },
             "dssp": {"enabled": False},
             "sasa": {"enabled": False},
             "salt_bridges": {"enabled": False},
@@ -257,6 +265,25 @@ def compare_fused_to_independent(system, config, topology, trajectory):
     print(f"FUSED PARITY {system}/lipid_hydrogen_bonds: PASS", flush=True)
     ext_timing = json.loads((fused / "fused_extensions_timings.json").read_text())
     assert "lipid_hydrogen_bonds" in ext_timing["enabled"]
+    # Exact per-residue minimum distances and all metadata must be
+    # invariant to whether the frames were read independently.
+    run_residue_membrane_distance(rep, cfg, independent)
+    left = fused / "profiles/residue_membrane_distance/default"
+    right = independent / "profiles/residue_membrane_distance/default"
+    for filename in ("distance_matrix_A.npy", "time_ps.npy", "membrane_atom_indices.npy"):
+        np.testing.assert_allclose(
+            np.load(left / filename), np.load(right / filename),
+            rtol=1e-6, atol=1e-6, equal_nan=True,
+            err_msg=f"{system}/residue_membrane_distance/{filename}",
+        )
+    for filename in ("median_profile.parquet", "residues.parquet", "selection_audit.parquet"):
+        pd.testing.assert_frame_equal(
+            pd.read_parquet(left / filename), pd.read_parquet(right / filename),
+            check_dtype=False, check_exact=False, rtol=1e-6, atol=1e-6,
+            obj=f"{system}/residue_membrane_distance/{filename}",
+        )
+    checks["residue_membrane_distance"] = {"status": "identical_within_tolerance"}
+    print(f"FUSED PARITY {system}/residue_membrane_distance: PASS", flush=True)
     timing = json.loads((fused / "fused_membrane_timings.json").read_text())
     assert timing["shared_anchor_mappings"] == 1
     stages = json.loads((fused / "stage_timings.json").read_text())["stages"]
