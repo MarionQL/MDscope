@@ -26,6 +26,7 @@ from .lipid_geometry import anchor_groups, aligned_leaflets, periodic_center
 from .mechanistic_common import heavy, nearest, selected, sequence_matches, unit
 from .membrane_order import _candidate_sites, _fixed_ch_pairs, _atomic_npz
 from .progress import track
+from .hs_topology import discover_covalent_hs
 
 
 def enabled(cfg):
@@ -170,10 +171,17 @@ class SDC4Mechanisms:
         if len(self.tm) != 2 or set(self.tm) != set(self.ecto):
             raise ValueError("Supply exactly two matching tm_chains and ectodomains (A/B)")
         self.chain_names = tuple(self.tm)
-        self.hs = { _id(k): heavy(selected(universe, v, required=True))
-                    for k, v in (s.get("hs_chains") or {}).items() }
-        self.attach = { _id(k): selected(universe, v, required=True)
-                       for k, v in (s.get("hs_attachment_sites") or {}).items() }
+        self.hs_auto_audit = {}
+        if (s.get("hs_auto") or {}).get("enabled", False):
+            self.hs, self.attach, self.hs_auto_audit = discover_covalent_hs(
+                universe, s["hs_auto"]
+            )
+            self.hs = {k: heavy(v) for k, v in self.hs.items()}
+        else:
+            self.hs = { _id(k): heavy(selected(universe, v, required=True))
+                        for k, v in (s.get("hs_chains") or {}).items() }
+            self.attach = { _id(k): selected(universe, v, required=True)
+                           for k, v in (s.get("hs_attachment_sites") or {}).items() }
         if set(self.hs) != set(self.attach):
             raise ValueError("Each HS chain requires a matching hs_attachment_sites selection")
         self.lipid_spec = {
@@ -262,6 +270,7 @@ class SDC4Mechanisms:
             "tm_atom_counts": {k: len(v) for k, v in self.tm.items()},
             "ectodomain_atom_counts": {k: len(v) for k, v in self.ecto.items()},
             "hs_atom_counts": {k: len(v) for k, v in self.hs.items()},
+            "hs_covalent_attachment_audit": self.hs_auto_audit,
             "hs_distal_resindices": {k: v.resindices.tolist()
                                      for k, v in self.hs_distal.items()},
             "motif_resindices": {k: v["resindices"].tolist()
