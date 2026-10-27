@@ -69,14 +69,16 @@ jobs:
       - name: Audit HS topology chain IDs and covalent attachment sites
         run: |
           PYTHONPATH="$PWD/_ci_alias" python tests/real_hs_topology_audit.py
-      - name: Run real-trajectory analysis on both systems
+      - name: Prepare MDscope package import alias
         run: |
           mkdir -p _ci_alias
           ln -s "$PWD" _ci_alias/mdscope
-          PYTHONPATH="$PWD/_ci_alias" python tests/real_trajectory_smoke.py
       - name: Validate full production YAML selections on both real topologies
         run: |
           PYTHONPATH="$PWD/_ci_alias" python tests/real_full_config_validate.py
+      - name: Run real-trajectory analysis on both systems
+        run: |
+          PYTHONPATH="$PWD/_ci_alias" python tests/real_trajectory_smoke.py
       - name: Validate SDC4 geometry and lipid maps on real TPR/XTC inputs
         run: |
           PYTHONPATH="$PWD/_ci_alias" python tests/real_sdc4_mechanisms.py
