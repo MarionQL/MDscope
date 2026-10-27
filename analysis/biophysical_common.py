@@ -38,7 +38,7 @@ def sequence_motifs(residues,patterns):
     """Return chain-local sequence matches; never match across chain boundaries."""
     chains={}
     for r in residues:
-        key=str(getattr(r,"segid","") or "unknown")
+        key=str(getattr(r,"chainID","") or getattr(r,"segid","") or "unknown")
         chains.setdefault(key,[]).append(r)
     out=[]
     for chain,rs in chains.items():
@@ -66,7 +66,7 @@ def leaflet_groups(atoms,axis=2):
     return {int(r.ix):("upper" if w>cut else "lower") for r,w in zip(residues,wrapped)}
 
 def linear_diffusion(times_ps,msd_A2,start_fraction=.2,end_fraction=.8):
-    """Fit 2D MSD slope: D[nm²/ns] = slope[Å²/ps]*0.1/4."""
+    """Fit 2D MSD slope: D[nm²/ns] = slope[Å²/ps]*10/4."""
     t=np.asarray(times_ps,float);y=np.asarray(msd_A2,float)
     ok=np.isfinite(t)&np.isfinite(y)
     if np.count_nonzero(ok)<5:return np.nan
@@ -74,4 +74,4 @@ def linear_diffusion(times_ps,msd_A2,start_fraction=.2,end_fraction=.8):
     low=t[0]+start_fraction*(t[-1]-t[0]);high=t[0]+end_fraction*(t[-1]-t[0])
     fit=(t>=low)&(t<=high)
     if fit.sum()<4:return np.nan
-    return float(np.polyfit(t[fit],y[fit],1)[0]*0.1/4)
+    return float(np.polyfit(t[fit],y[fit],1)[0]*2.5)
