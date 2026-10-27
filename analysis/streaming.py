@@ -10,6 +10,7 @@ import pandas as pd
 from .config import analysis_groups, analysis_runs, atomic_parquet,ensure_dir,time_ps
 from .progress import track
 from .fused_membrane import FusedMembrane, enabled_names as fused_enabled_names
+from .fused_extensions import FusedExtensions, enabled_names as extension_enabled_names
 from .alignment import _apply_transform,_fit_transform,_valid_box
 from .rmsd import compute_rmsd
 from .rmsf import Welford
@@ -179,6 +180,7 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
         universe.trajectory[int(start)]
     membrane = initialize_membrane(universe, cfg)
     fused = FusedMembrane(universe, cfg, repout) if fused_enabled_names(cfg) else None
+    extensions = FusedExtensions(universe, cfg, repout) if extension_enabled_names(cfg) else None
 
     processed = part = 0
     if checkpoint.exists():
@@ -210,11 +212,15 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
                 density.clear_frame_parts(repout)
             if fused is not None:
                 fused.prune_from(0)
+            if extensions is not None:
+                extensions.prune_from(0)
             if start is not None:
                 universe.trajectory[int(start)]
             membrane = initialize_membrane(universe, cfg)
             processed = part = 0
 
+    if extensions is not None:
+        extensions.prune_from(part)
     if fused is not None:
         # Keep only chunks committed by the streaming checkpoint. An interrupted
         # chunk may have been written just before a crash and must be replayed.
@@ -230,6 +236,8 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
         # protein coordinates. All three analyses share this exact frame.
         if fused is not None:
             fused.update(ts, processed)
+        if extensions is not None:
+            extensions.update(ts, processed)
         for density in densities:
             density.update(universe, tps)
         membrane_values = membrane_metrics(universe, membrane)
@@ -357,6 +365,8 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
                 density.flush_frames(repout, part)
             if fused is not None:
                 fused.flush(part)
+            if extensions is not None:
+                extensions.flush(part)
             rows, group_rows, salt_rows, ligand_rows, coords, coord_times = [], [], [], [], [], []
             part += 1
             _checkpoint_payload(
@@ -387,6 +397,8 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
             density.flush_frames(repout, part)
         if fused is not None:
             fused.flush(part)
+        if extensions is not None:
+            extensions.flush(part)
         part += 1
         _checkpoint_payload(
             checkpoint,
@@ -400,6 +412,7 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
         )
 
     fused_results = fused.finalize() if fused is not None else {}
+    extension_results = extensions.finalize() if extensions is not None else {}
 
     if cfg["cache"].get("aligned_coordinates", True):
         atomic_parquet(
@@ -498,6 +511,7 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
         "feature_atoms": len(features),
         "alignment_atoms": len(alignment_atoms),
         "fused_membrane": fused_results,
+        "fused_extensions": extension_results,
     }
 
 
