@@ -720,3 +720,28 @@ Prior results with a mismatched code/configuration hash are archived in `.archiv
 ## Lipid analyses from issues #1–#5
 
 The optional membrane extensions include leaflet-resolved C–H order profiles, terminal/Slurm progress indicators, local bilayer-normal deviation, protein-centered lipid enrichment/depletion, and lipid–lipid hydrogen-bond events grouped by lipid type. See [ISSUE_ANALYSES.md](ISSUE_ANALYSES.md) for YAML examples, precise definitions, saved tables and limitations. They use the existing MDscope replicate-aware statistical engine and plot conventions.
+
+
+### Monitoring progress in Slurm
+
+In a noninteractive Slurm job, MDscope writes newline-delimited progress to
+**stderr** (the `#SBATCH --error` file), not a terminal `tqdm` bar.
+It reports every **1% or 25 completed frames**, whichever comes first,
+including elapsed time, average frames/second and estimated time remaining
+for the current trajectory stage. The estimate may fluctuate while the
+analysis warms up and does not include final plotting/statistics.
+
+```bash
+tail -f slurm-out/mdscope/mdscope_synd4-<jobid>_<taskid>.err
+```
+
+Optional environment overrides in the Slurm script (positive integers):
+
+```bash
+export MDSCOPE_PROGRESS_EVERY_FRAMES=25
+export MDSCOPE_PROGRESS_EVERY_PERCENT=1
+```
+
+These settings do not alter which frames are analyzed or how the scientific
+observables are computed. Already-running jobs continue using the Python
+code loaded at job startup; submit a new job to use an updated checkout.
