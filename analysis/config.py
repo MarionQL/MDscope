@@ -126,6 +126,28 @@ DEFAULTS = {
                                  "angle_cutoff_deg": 150.0,"exclude_same_residue": True,
                                  "exclude_same_molecule": True,
                                  "update_selections": False},
+        "sdc4_mechanisms": {
+            "enabled": False, "axis": "z",
+            "protein_selection": None,
+            "tm_chains": {}, "ectodomains": {},
+            "hs_chains": {}, "hs_attachment_sites": {},
+            "lipid_anchors": {}, "allow_absent_species": False,
+            "lipid_contact_selection": None,
+            "water_oxygen_selection": None, "ion_selections": {},
+            "motif_selection": None, "motifs": {"NxIP": "N.IP"},
+            "require_motifs": True, "require_gxxxg": False,
+            "map_extent_A": 40.0, "map_bin_A": 2.0,
+            "local_radius_A": 20.0, "local_min_lipids": 8,
+            "contact_cutoff_A": 5.0, "hydration_cutoff_A": 3.5,
+            "ion_cutoff_A": 4.0,
+            "local_order": {"enabled": False, "lipid_selection": None},
+        },
+        "shared_states": {
+            "enabled": False, "features": None,
+            "n_states": 3, "seed": 2026, "bootstrap_draws": 300,
+            "training_frames_per_replicate": 2000,
+            "min_complete_fraction": 0.90, "block_frames": None,
+        },
         "salt_bridges": {"enabled": True, "cutoff_A": 4.0},
         "ligand_contacts": {"enabled": False, "cutoff_A": 4.0, "save_atom_events": True},
         "hydrogen_bonds": {
@@ -676,6 +698,36 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
     if lipid_hb.get("enabled") and not lipid_hb.get("lipid_selection"):
         raise ValueError("lipid_hydrogen_bonds.lipid_selection is required")
 
+    mechanisms = cfg["analyses"].get("sdc4_mechanisms", {})
+    if mechanisms.get("enabled"):
+        tm = mechanisms.get("tm_chains") or {}
+        ecto = mechanisms.get("ectodomains") or {}
+        hs = mechanisms.get("hs_chains") or {}
+        sites = mechanisms.get("hs_attachment_sites") or {}
+        if not isinstance(tm, dict) or len(tm) != 2 or set(tm) != set(ecto):
+            raise ValueError("sdc4_mechanisms needs two matching tm_chains and ectodomains")
+        if not isinstance(hs, dict) or not isinstance(sites, dict) or set(hs) != set(sites):
+            raise ValueError("sdc4_mechanisms.hs_chains and hs_attachment_sites must match")
+        for group in (tm, ecto, hs, sites):
+            for key, selection in group.items():
+                _validate_path_component(str(key), "sdc4 mechanism group")
+                if not isinstance(selection, str) or not selection.strip():
+                    raise ValueError("SDC4 group selections must be nonempty strings")
+        if not mechanisms.get("lipid_anchors") or not mechanisms.get("lipid_contact_selection"):
+            raise ValueError("sdc4_mechanisms requires lipid_anchors and lipid_contact_selection")
+        if hs and not mechanisms.get("water_oxygen_selection"):
+            raise ValueError("HS hydration requires water_oxygen_selection")
+        if str(mechanisms.get("axis", "z")).lower() != "z":
+            raise ValueError("sdc4_mechanisms supports z-normal membranes only")
+        if float(mechanisms.get("map_extent_A", 40)) <= 0 or float(mechanisms.get("map_bin_A", 2)) <= 0:
+            raise ValueError("sdc4_mechanisms map extent and bin size must be positive")
+        if int(mechanisms.get("local_min_lipids", 8)) < 8:
+            raise ValueError("sdc4_mechanisms.local_min_lipids must be >= 8")
+        if mechanisms.get("local_order", {}).get("enabled") and not mechanisms["local_order"].get("lipid_selection"):
+            raise ValueError("sdc4_mechanisms.local_order.lipid_selection is required")
+    shared = cfg["analyses"].get("shared_states", {})
+    if shared.get("enabled") and not mechanisms.get("enabled"):
+        raise ValueError("shared_states requires sdc4_mechanisms.enabled")
     stats = cfg.get("statistics", {})
     if int(stats.get("bootstrap_draws", 2000)) < 100:
         raise ValueError("statistics.bootstrap_draws must be >= 100")
