@@ -134,7 +134,7 @@ def check_outputs(system: str):
     rep = ROOT / system / system / "rep1"
     paths = {
         "streaming": rep / "summary" / "timeseries.parquet",
-        "order": rep / "profiles" / "membrane_order" / "default",
+        "order": rep / "profiles" / "membrane_order" / "timeseries.parquet",
         "normal": rep / "extensions" / "bilayer_normal" / "timeseries.parquet",
         "enrichment": rep / "extensions" / "lipid_enrichment" / "timeseries.parquet",
         "enrichment_counts": rep / "extensions" / "lipid_enrichment" / "counts.parquet",
