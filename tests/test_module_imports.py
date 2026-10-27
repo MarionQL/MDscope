@@ -17,4 +17,13 @@ def test_module_exports_and_compatibility():
     assert timeseries.temporal_density_profiles is density_1d.temporal_density_profiles
     assert profiles.run_residue_membrane_distance is residue_membrane_distance.run_residue_membrane_distance
     assert interactions.run_hydrogen_bonds is hydrogen_bonds.run_hydrogen_bonds
+    from mdscope.analysis.observables import msd as nested_msd
+    from mdscope.analysis.observables import bilayer_normal as nested_normals
+    from mdscope.analysis.observables import lipid_enrichment as nested_enrichment
+    from mdscope.analysis.reporting import coupling_screen as nested_coupling
+    from mdscope.analysis import lipid_enrichment, coupling_screen
+    assert msd.msd_metrics is nested_msd.msd_metrics
+    assert bilayer_normal.fit_local_normals is nested_normals.fit_local_normals
+    assert lipid_enrichment.enrichment_frame is nested_enrichment.enrichment_frame
+    assert coupling_screen.screen_couplings is nested_coupling.screen_couplings
     assert callable(registry.specialized_tasks)
