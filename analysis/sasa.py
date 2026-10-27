@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from .profile_common import _residue_label
+from .progress import track
 from .config import ensure_dir,atomic_parquet,time_ps
 def _freesasa_structure(atoms):
     try:
@@ -39,9 +40,9 @@ def _run_sasa(universe, cfg: dict, repout: Path):
         count=len(atoms)
     )
     rows = []
-    for frame_index, ts in enumerate(
-        universe.trajectory[tr.get("start"):tr.get("stop"):int(tr["stride"])]
-    ):
+    frames=universe.trajectory[tr.get("start"):tr.get("stop"):int(tr["stride"])]
+    for frame_index, ts in enumerate(track(frames,total=len(frames),desc="SASA",
+                enabled=cfg.get("progress",{}).get("enabled",True))):
         # FreeSASA's structure stores coordinates, so it must be rebuilt
         # after each trajectory update.
         freesasa, structure = _freesasa_structure(atoms)
