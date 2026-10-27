@@ -132,6 +132,7 @@ DEFAULTS = {
             "tm_chains": {}, "ectodomains": {},
             "hs_chains": {}, "hs_attachment_sites": {},
             "lipid_anchors": {}, "allow_absent_species": False,
+            "surface_anchor_species": ["POPC", "POPE", "POPI", "POPS", "DOPC", "DPPC", "PSM"],
             "lipid_contact_selection": None,
             "water_oxygen_selection": None, "ion_selections": {},
             "motif_selection": None, "motifs": {"NxIP": "N.IP"},
@@ -715,6 +716,8 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
                     raise ValueError("SDC4 group selections must be nonempty strings")
         if not mechanisms.get("lipid_anchors") or not mechanisms.get("lipid_contact_selection"):
             raise ValueError("sdc4_mechanisms requires lipid_anchors and lipid_contact_selection")
+        if not mechanisms.get("surface_anchor_species") or not isinstance(mechanisms["surface_anchor_species"], list):
+            raise ValueError("sdc4_mechanisms.surface_anchor_species must be a nonempty list")
         if hs and not mechanisms.get("water_oxygen_selection"):
             raise ValueError("HS hydration requires water_oxygen_selection")
         if str(mechanisms.get("axis", "z")).lower() != "z":
