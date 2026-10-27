@@ -5,8 +5,26 @@ For full glycosphingolipids with several carbohydrate residues, select an
 atom belonging to the ceramide anchor, not every carbohydrate residue.
 """
 from __future__ import annotations
+from dataclasses import dataclass
 import numpy as np
 from MDAnalysis.lib.distances import minimize_vectors
+
+@dataclass
+class AnchorTracker:
+    """Fixed atom->lipid reduction, reuses NumPy bincount across frames."""
+    atoms: object
+    owner: np.ndarray
+    counts: np.ndarray
+
+    def __len__(self):
+        return len(self.counts)
+
+    def positions(self):
+        xyz=self.atoms.positions.astype(float,copy=False)
+        return np.column_stack([
+            np.bincount(self.owner,weights=xyz[:,axis],minlength=len(self.counts))/self.counts
+            for axis in range(3)
+        ])
 
 def classify_leaflets(z, length):
     """Two-cluster circular partition robust to a bilayer crossing periodic z."""
@@ -46,17 +64,21 @@ def anchor_groups(u,spec):
             species.append(str(name));resindices.append(int(residue.ix));atom_groups.append(part)
     if len(resindices)!=len(set(resindices)):
         raise ValueError("species_selections overlap on lipid residues")
-    coords=np.stack([g.center_of_geometry() for g in atom_groups])
+    indexes=np.concatenate([g.indices for g in atom_groups])
+    owner=np.repeat(np.arange(len(atom_groups)),[len(g) for g in atom_groups])
+    tracker=AnchorTracker(u.atoms[indexes],owner,
+                          np.bincount(owner,minlength=len(atom_groups)))
+    coords=tracker.positions()
     if np.any(~np.isfinite(coords)):raise ValueError("Non-finite anchor coordinates")
     normal={"x":0,"y":1,"z":2}[str(spec.get("axis","z")).lower()]
     box=np.asarray(u.dimensions,float)
     if box.shape!=(6,) or np.any(box[:3]<=0):
         raise ValueError("Lipid anchors require a periodic simulation box")
     leaf=classify_leaflets(coords[:,normal],float(box[normal]))
-    return np.asarray(species,str),np.asarray(resindices,int),atom_groups,leaf
+    return np.asarray(species,str),np.asarray(resindices,int),tracker,leaf
 
 def centers(groups):
-    return np.stack([g.center_of_geometry() for g in groups])
+    return groups.positions() if isinstance(groups,AnchorTracker) else np.stack([g.center_of_geometry() for g in groups])
 
 def planar_offsets(points,reference,box,normal=2):
     delta=minimize_vectors(np.asarray(points,float)-np.asarray(reference,float),np.asarray(box,float))
