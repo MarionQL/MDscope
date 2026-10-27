@@ -113,12 +113,17 @@ Maps are **not** corrected for the protein-excluded accessible area.
 |---|---|
 | Lipid enrichment and density maps | Per-leaflet GM1a/BGAL/cholesterol/phospholipid maps centered on TM midpoint, plus the existing annular \`lipid_enrichment\` fold values when enabled |
 | Ectodomain height/tilt/contact | CA-center height relative to extracellular leaflet, terminal-to-terminal tilt to the outward membrane normal, and fraction of ectodomain atoms contacting selected lipid atoms |
-| NxIP accessibility | Regex matches actual CA-derived topology sequence by chain; reports fraction of motif heavy atoms with protein/HS/lipid steric neighbors within cutoff. This is an **occlusion proxy**, not a ligand-binding free energy or direct SASA |
+| NxIP accessibility | Regex matches actual CA-derived topology sequence by chain; reports fraction of motif heavy atoms with protein/HS/lipid steric neighbors within cutoff. This is an **occlusion proxy**, not a ligand-binding free energy. When `sasa.enabled`, the observer also joins the existing FreeSASA motif residue SASA, calculated with that analysis's atom selection |
 | Individual HS orientation/contacts | Attachment-to-distal-terminus orientation cosine, extension, direct HS–lipid contacts and separate attachment-site contacts; distal end chosen by attachment proximity on the first analyzed frame |
 | TM crossing and GXXXG | PCA helix-axis crossing angle, handedness and cross-chain GXXXG heavy-atom/residue contacts; no GXXXG motif produces zero contacts unless \`require_gxxxg\` is true |
 | HS hydration/ions | Unique water oxygens within hydration cutoff per HS heavy atom and unique ions within coordination cutoff; contact-conditioned within-replicate means. These are coordination proxies, **not** electrostatic free energies |
 | Local membrane structure | Local leaflet separation, per-leaflet quadratic height-field curvature approximation, and optional local minus-S_CH averaged equally per lipid |
 | Shared conformational states | Replicate-balanced standardized k-means across all conditions, per-replicate state populations, replicate-bootstrap system means, within-replicate moving-block intervals, transitions, and first/second-half JS divergence |
+
+When interpreting motif SASA, note that a protein-only SASA calculation does not
+include HS/lipid shielding; the steric occlusion metric reports these
+separately. Adjacent sequence neighbors (±2 residues) are excluded from
+protein occlusion to avoid trivial backbone contacts.
 
 The ectodomain terminal direction assumes the supplied CA selection is in
 **N-to-C order**, with the N terminus distal to the membrane. For branched
