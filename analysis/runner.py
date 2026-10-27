@@ -155,7 +155,7 @@ def summarize_replicate(repout: Path, cfg: dict):
 
     profile_ts, profile_group_ts = postprocess_structure_profiles(repout, cfg)
     time_sources = [base] + profile_ts + membrane_order_timeseries(repout)
-    time_sources.extend(additional_time_series(repout))
+    time_sources.extend(additional_time_series(repout,cfg))
     available_times = [
         table[
             "time_ps"
