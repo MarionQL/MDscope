@@ -38,7 +38,7 @@ def enabled_names(cfg):
             continue
         # MDAnalysis parallel DSSP runs have different worker semantics.
         # Keep their existing specialized implementation.
-        if name == "dssp" and specs[name].get("backend", "serial") != "serial":
+        if name in {"dssp", "sasa"} and specs.get("dssp", {}).get("enabled", False) and specs["dssp"].get("backend", "serial") != "serial":
             continue
         names.append(name)
     return tuple(names)
