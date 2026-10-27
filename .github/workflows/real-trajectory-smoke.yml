@@ -20,6 +20,11 @@ on:
       - "analysis/lipid_enrichment.py"
       - "analysis/bilayer_normal.py"
       - "analysis/lipid_hydrogen_bonds.py"
+      - "analysis/msd.py"
+      - "analysis/membrane.py"
+      - "analysis/observables/**"
+      - "analysis/core/**"
+      - "analysis/profiling.py"
       - "analysis/runner.py"
       - "analysis/streaming.py"
       - "analysis/fused_membrane.py"
@@ -49,6 +54,7 @@ jobs:
       PYTHONUNBUFFERED: "1"
       MDSCOPE_REAL_DATA: real_test_data
       MDSCOPE_REAL_OUTPUT: real_test_results
+      MDSCOPE_PROFILE: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -93,6 +99,7 @@ jobs:
           path: |
             real_test_results/**/smoke_report.json
             real_test_results/*/*/rep1/stage_timings.json
+            real_test_results/*/*/rep1/streaming_phase_profile.json
             real_test_results/*/*/rep1/fused_membrane_timings.json
             real_test_results/*/*/rep1/fused_extensions_timings.json
             real_test_results/*/*/rep1/fused_distance_timings.json
