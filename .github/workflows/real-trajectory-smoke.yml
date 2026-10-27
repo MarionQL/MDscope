@@ -1,0 +1,57 @@
+name: MDscope real GROMACS trajectory smoke test
+
+# Opt-in: release downloads are ~1.6 GB. Do not run on every ordinary PR.
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "tests/real_trajectory_smoke.py"
+      - ".github/workflows/real-trajectory-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  real-trajectory-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      PYTHONUNBUFFERED: "1"
+      MDSCOPE_REAL_DATA: real_test_data
+      MDSCOPE_REAL_OUTPUT: real_test_results
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install MDscope analysis dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy pandas pyarrow pyyaml matplotlib 'MDAnalysis==2.9.0'
+      - name: Download paired real trajectories and TPR files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p real_test_data
+          gh release download test-data-v1 --repo MarionQL/MDscope --dir real_test_data
+          ls -lh real_test_data
+          df -h .
+      - name: Run real-trajectory analysis on both systems
+        run: |
+          mkdir -p _ci_alias
+          ln -s "$PWD" _ci_alias/mdscope
+          PYTHONPATH="$PWD/_ci_alias" python tests/real_trajectory_smoke.py
+      - name: Upload diagnostic reports and sample output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mdscope-real-trajectory-smoke
+          path: |
+            real_test_results/**/smoke_report.json
+            real_test_results/*.yaml
+            real_test_results/*/*/rep1/summary/*.parquet
+            real_test_results/*/*/rep1/extensions/*/timeseries.parquet
+            real_test_results/*/*/rep1/interactions/lipid_hydrogen_bonds/count_timeseries.parquet
+          if-no-files-found: warn
+          retention-days: 7
