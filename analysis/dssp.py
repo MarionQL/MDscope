@@ -32,7 +32,7 @@ def _run_dssp(universe, cfg: dict, repout: Path):
             kwargs["n_workers"] = int(spec["n_workers"])
         if spec.get("n_parts") is not None:
             kwargs["n_parts"] = int(spec["n_parts"])
-    analysis.run(**kwargs)
+    analysis.run(verbose=bool(cfg.get("progress",{}).get("enabled",True)),**kwargs)
     residues = list(atoms.select_atoms("protein").residues)
     resids = np.asarray(analysis.results.resids)
     if len(residues) != len(resids):

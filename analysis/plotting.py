@@ -103,10 +103,7 @@ def _metric_meta(metric: str):
 def _profile_meta(profile_id: str) -> tuple[str, str, str]:
     if profile_id.startswith("lipid_order__"):
         parts = profile_id.split("__")
-        if len(parts) == 2:
-            title = f"Lipid order: {parts[1]}"
-        else:
-            title = f"Lipid order: {parts[1]} {parts[2]}"
+        title = "Lipid order: " + " ".join(parts[1:])
         return "Acyl-chain carbon position", "-S_CH", title
     return "Profile position", "Value", profile_id.replace("__", " * ").replace("_", " ")
 

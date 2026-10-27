@@ -13,6 +13,8 @@ from MDAnalysis.exceptions import NoDataError
 from MDAnalysis.lib.distances import capped_distance, minimize_vectors
 
 from .config import atomic_parquet, ensure_dir, time_ps
+from .lipid_geometry import classify_leaflets
+from .progress import progress
 
 
 AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
@@ -152,19 +154,32 @@ def _fixed_ch_pairs(universe, sites: list[OrderSite], cutoff: float):
         )
     hydrogens = universe.atoms[hydrogen_indices]
     box = _valid_box(universe)
-    pairs = capped_distance(
-        carbon_atoms.positions,
-        hydrogens.positions,
-        max_cutoff=float(cutoff),
-        box=box,
-        return_distances=False,
-    )
-    if not len(pairs):
-        raise ValueError("membrane_order found no C-H pairs within hydrogen_cutoff_A")
-    same_residue = (
-        carbon_atoms.resindices[pairs[:, 0]] == hydrogens.resindices[pairs[:, 1]]
-    )
-    pairs = np.asarray(pairs[same_residue], dtype=np.int32)
+    # Prefer chemically exact C-H connectivity when topology bonds exist.
+    # A radius search can otherwise spuriously associate nearby non-bonded H atoms.
+    try:
+        topology_bonds=np.asarray(universe.bonds.indices,dtype=np.int64)
+    except (NoDataError,AttributeError):
+        topology_bonds=None
+    if topology_bonds is not None and len(topology_bonds):
+        ci=np.full(len(universe.atoms),-1,dtype=np.int32)
+        hi=np.full(len(universe.atoms),-1,dtype=np.int32)
+        ci[carbon_atoms.indices]=np.arange(len(carbon_atoms),dtype=np.int32)
+        hi[hydrogens.indices]=np.arange(len(hydrogens),dtype=np.int32)
+        forward=np.stack([ci[topology_bonds[:,0]],hi[topology_bonds[:,1]]],axis=1)
+        reverse=np.stack([ci[topology_bonds[:,1]],hi[topology_bonds[:,0]]],axis=1)
+        pairs=np.concatenate([forward,reverse])
+        pairs=pairs[np.all(pairs>=0,axis=1)]
+        if not len(pairs):
+            raise ValueError("No bonded C-H pairs in selected lipid tails")
+    else:
+        # Explicit fallback for PDBs without bond connectivity.
+        pairs=capped_distance(
+            carbon_atoms.positions,hydrogens.positions,max_cutoff=float(cutoff),
+            box=box,return_distances=False)
+        if not len(pairs):
+            raise ValueError("membrane_order found no C-H pairs within hydrogen_cutoff_A")
+    same_residue=carbon_atoms.resindices[pairs[:,0]] == hydrogens.resindices[pairs[:,1]]
+    pairs=np.asarray(pairs[same_residue],dtype=np.int32)
     if not len(pairs):
         raise ValueError("membrane_order found no same-residue C-H pairs")
 
@@ -187,10 +202,13 @@ def _profile_definition(
     sites: list[OrderSite],
     tail: str,
     resname: str | None = None,
+    leaflet: str | None = None,
+    leaflet_by_residue: dict[int, str] | None = None,
 ) -> OrderProfile | None:
     selected = np.array(
         [
             site.tail == tail and (resname is None or site.resname == resname)
+            and (leaflet is None or (leaflet_by_residue or {}).get(site.residue_index)==leaflet)
             for site in sites
         ],
         dtype=bool,
@@ -205,7 +223,8 @@ def _profile_definition(
             site_bins[i] = position_to_bin[site.position]
     valid_bins = site_bins[site_bins >= 0]
     counts = np.bincount(valid_bins, minlength=len(positions)).astype(float)
-    profile_id = f"lipid_order__{tail}" if resname is None else f"lipid_order__{resname}__{tail}"
+    parts = ["lipid_order"] + ([resname] if resname is not None else []) + [tail] + ([leaflet] if leaflet is not None else [])
+    profile_id = "__".join(parts)
     return OrderProfile(
         profile_id,
         positions.astype(float),
@@ -215,7 +234,7 @@ def _profile_definition(
     )
 
 
-def _profiles(sites: list[OrderSite], spec: dict) -> list[OrderProfile]:
+def _profiles(sites: list[OrderSite], spec: dict, leaflet_by_residue=None) -> list[OrderProfile]:
     tails = sorted({site.tail for site in sites})
     profiles = [
         profile
@@ -230,6 +249,20 @@ def _profiles(sites: list[OrderSite], spec: dict) -> list[OrderProfile]:
             for tail in tails
             if (profile := _profile_definition(sites, tail, resname)) is not None
         )
+    if spec.get("per_leaflet", True) and leaflet_by_residue is not None:
+        for leaf in ("upper", "lower"):
+            profiles.extend(
+                profile for tail in tails
+                if (profile := _profile_definition(sites, tail, leaflet=leaf,
+                            leaflet_by_residue=leaflet_by_residue)) is not None
+            )
+            if spec.get("per_lipid_type", True):
+                profiles.extend(
+                    profile for name in sorted({site.resname for site in sites})
+                    for tail in tails
+                    if (profile := _profile_definition(sites, tail, name, leaf,
+                                  leaflet_by_residue)) is not None
+                )
     return profiles
 
 
@@ -262,9 +295,7 @@ def _atomic_npz(path: Path, **arrays) -> None:
 
 def _metric_name(profile_id: str) -> str:
     parts = profile_id.split("__")
-    if len(parts) == 2:
-        return f"lipid_order_{parts[1]}_mean"
-    return f"lipid_order_{parts[1]}_{parts[2]}_mean"
+    return "lipid_order_" + "_".join(parts[1:]) + "_mean"
 
 
 def run_membrane_order(rep, cfg: dict, repout: Path) -> dict:
@@ -287,7 +318,24 @@ def run_membrane_order(rep, cfg: dict, repout: Path) -> dict:
         sites,
         float(spec.get("hydrogen_cutoff_A", 1.25)),
     )
-    profiles = _profiles(sites, spec)
+    leaflet_by_residue = None
+    if spec.get("per_leaflet", True):
+        representative = {}
+        for site in sorted(sites, key=lambda item: (item.residue_index, item.position)):
+            representative.setdefault(site.residue_index, site.atom_index)
+        indices = np.asarray(list(representative), int)
+        coords = universe.atoms[list(representative.values())].positions.copy()
+        anchor_selection = spec.get("leaflet_anchor_selection")
+        if anchor_selection:
+            selected = universe.select_atoms(str(anchor_selection))
+            for i, index in enumerate(indices):
+                matching = selected[selected.resindices == index]
+                if len(matching):
+                    coords[i] = matching.center_of_geometry()
+        leaf = classify_leaflets(coords[:, axis_index], float(universe.dimensions[axis_index]))
+        leaflet_by_residue = {int(ix): "upper" if flag else "lower"
+                              for ix, flag in zip(indices, leaf)}
+    profiles = _profiles(sites, spec, leaflet_by_residue)
     if not profiles:
         raise ValueError("membrane_order found no usable sn-1/sn-2 order profiles")
 
@@ -297,43 +345,49 @@ def run_membrane_order(rep, cfg: dict, repout: Path) -> dict:
     frames = universe.trajectory[
         trajectory.get("start"):trajectory.get("stop"):int(trajectory["stride"])
     ]
-    for frame_index, ts in enumerate(frames):
-        vectors = hydrogens.positions[pairs[:, 1]] - carbons.positions[pairs[:, 0]]
-        box = _valid_box(universe)
-        if box is not None:
-            vectors = minimize_vectors(vectors, box)
-        norms = np.linalg.norm(vectors, axis=1)
-        valid = norms > 0
-        minus_s_ch = np.full(len(pairs), np.nan, dtype=float)
-        cosine = vectors[valid, axis_index] / norms[valid]
-        s_ch = 0.5 * (3.0 * cosine * cosine - 1.0)
-        minus_s_ch[valid] = -s_ch
-        site_sums = np.bincount(
-            pairs[:, 0][valid],
-            weights=minus_s_ch[valid],
-            minlength=len(sites),
-        )
-        valid_counts = np.bincount(pairs[:, 0][valid], minlength=len(sites)).astype(float)
-        site_values = np.divide(
-            site_sums,
-            valid_counts,
-            out=np.full(len(sites), np.nan, dtype=float),
-            where=valid_counts > 0,
-        )
-        row = {"time_ps": time_ps(ts, frame_index, cfg)}
-        times.append(row["time_ps"])
-        for profile in profiles:
-            values = _profile_values(site_values, profile)
-            profile_values[profile.profile_id].append(values.astype(np.float32))
-            row[_metric_name(profile.profile_id)] = float(np.nanmean(values))
-        tail_metrics = [
-            row[_metric_name(profile.profile_id)]
-            for profile in profiles
-            if profile.profile_id.count("__") == 1
-        ]
-        if tail_metrics:
-            row["lipid_order_mean"] = float(np.nanmean(tail_metrics))
-        frame_metrics.append(row)
+    with progress(frames, total=len(frames), desc=f"{rep.system}/{rep.label}: lipid order",
+                  enabled=cfg.get("progress", {}).get("enabled", True)) as iterator:
+        for frame_index, ts in enumerate(iterator):
+            vectors = hydrogens.positions[pairs[:, 1]] - carbons.positions[pairs[:, 0]]
+            box = _valid_box(universe)
+            if box is not None:
+                vectors = minimize_vectors(vectors, box)
+            norms = np.linalg.norm(vectors, axis=1)
+            valid = norms > 0
+            minus_s_ch = np.full(len(pairs), np.nan, dtype=float)
+            cosine = vectors[valid, axis_index] / norms[valid]
+            s_ch = 0.5 * (3.0 * cosine * cosine - 1.0)
+            minus_s_ch[valid] = -s_ch
+            site_sums = np.bincount(
+                pairs[:, 0][valid],
+                weights=minus_s_ch[valid],
+                minlength=len(sites),
+            )
+            valid_counts = np.bincount(pairs[:, 0][valid], minlength=len(sites)).astype(float)
+            site_values = np.divide(
+                site_sums,
+                valid_counts,
+                out=np.full(len(sites), np.nan, dtype=float),
+                where=valid_counts > 0,
+            )
+            row = {"time_ps": time_ps(ts, frame_index, cfg)}
+            times.append(row["time_ps"])
+            for profile in profiles:
+                values = _profile_values(site_values, profile)
+                profile_values[profile.profile_id].append(values.astype(np.float32))
+                row[_metric_name(profile.profile_id)] = float(np.nanmean(values)) if np.any(np.isfinite(values)) else np.nan
+                if profile.profile_id in {"lipid_order__sn1", "lipid_order__sn2"}:
+                    position3 = np.flatnonzero(profile.positions == 3)
+                    if len(position3):
+                        row[f"lipid_order_{profile.profile_id.split('__')[1]}_position3_mean"] = float(values[position3[0]])
+            tail_metrics = [
+                row[_metric_name(profile.profile_id)]
+                for profile in profiles
+                if profile.profile_id.count("__") == 1
+            ]
+            if tail_metrics:
+                row["lipid_order_mean"] = float(np.nanmean(tail_metrics))
+            frame_metrics.append(row)
 
     out = ensure_dir(Path(repout) / "profiles" / "membrane_order")
     atomic_parquet(out / "timeseries.parquet", pd.DataFrame(frame_metrics))

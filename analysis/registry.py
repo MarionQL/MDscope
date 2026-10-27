@@ -16,6 +16,9 @@ from .membrane_order import run_membrane_order
 from .structure_profiles import run_structure_profiles
 from .hydrogen_bonds import run_hydrogen_bonds
 from .local_environment import run_local_environment
+from .lipid_enrichment import run_lipid_enrichment
+from .bilayer_normal import run_bilayer_normal
+from .lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
 
 @dataclass(frozen=True)
 class AnalysisTask:
@@ -37,6 +40,14 @@ def specialized_tasks(cfg):
     if cfg.get("analyses",{}).get("local_environment",{}).get("enabled",False):
         yield AnalysisTask("local_environment",run_local_environment,
                            "extensions/local_environment/timeseries.parquet")
+
+    for name,fn in (("lipid_enrichment",run_lipid_enrichment),
+                    ("bilayer_normal",run_bilayer_normal),
+                    ("lipid_hydrogen_bonds",run_lipid_hydrogen_bonds)):
+        if cfg.get("analyses",{}).get(name,{}).get("enabled",False):
+            output=(f"extensions/{name}/timeseries.parquet"
+                    if name!="lipid_hydrogen_bonds" else None)
+            yield AnalysisTask(name,fn,output)
 
 def additional_time_series(repout:Path,cfg):
     """Discover scalar series from registered analysis output contracts."""

@@ -32,6 +32,7 @@ from .interactions import run_hydrogen_bonds
 from .interactions import postprocess_interactions
 from .membrane_order import membrane_order_timeseries, run_membrane_order
 from .plotting import plot_all
+from .membrane_figures import plot_lipid_enrichment_matrix
 from .profiles import run_residue_membrane_distance
 from .profiles import postprocess_structure_profiles, run_structure_profiles
 from .statistics import analyze_project
@@ -164,9 +165,10 @@ def summarize_replicate(repout: Path, cfg: dict):
         ) for table in time_sources if table is not None and not table.empty and "time_ps" in table
     ]
     if not available_times:
-        hb_counts = repout / "interactions" / "hydrogen_bonds" / "count_timeseries.parquet"
-        if hb_counts.exists():
-            available_times.append(pd.read_parquet(hb_counts)["time_ps"].to_numpy(float))
+        for kind in ("hydrogen_bonds","lipid_hydrogen_bonds"):
+            counts=repout/"interactions"/kind/"count_timeseries.parquet"
+            if counts.exists():
+                available_times.append(pd.read_parquet(counts)["time_ps"].to_numpy(float))
     all_times = (
         np.sort(
             np.unique(np.concatenate(available_times))
@@ -297,6 +299,7 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None):
     # trajectories are reopened.
     analyze_project(cfg, root, system_repouts)
     plot_all(cfg, root, system_repouts)
+    plot_lipid_enrichment_matrix(cfg,root)
     summarize_project_diffusion(root,system_repouts,cfg)
     if cfg.get('analyses',{}).get('coupling_screen',{}).get('enabled',False):
         screen_couplings(cfg,root,system_repouts)

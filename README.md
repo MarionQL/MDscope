@@ -689,3 +689,8 @@ RMSD and RMSF now live in separate modules (`analysis/rmsd.py` and `analysis/rms
 The existing `membrane.msd` code is retained in `analysis/msd.py` and now optionally produces **replicate-level diffusion coefficients** as well. Configure `analyses.membrane.msd.slope_start_fraction` (default `0.2`) and `slope_end_fraction` (default `0.8`). This is a descriptive **single-origin MSD** slope fit; it does not claim species-resolved or multi-origin diffusion, and it does not treat time-correlated frames as independent replicates.
 
 Prior results with a mismatched code/configuration hash are archived in `.archives/` instead of silently deleted. A significant refactor may still trigger expensive reanalysis: choose a new project.output path if you do not want the old results invalidated.
+
+
+## Lipid analyses from issues #1–#5
+
+The optional membrane extensions include leaflet-resolved C–H order profiles, terminal/Slurm progress indicators, local bilayer-normal deviation, protein-centered lipid enrichment/depletion, and lipid–lipid hydrogen-bond events grouped by lipid type. See [ISSUE_ANALYSES.md](ISSUE_ANALYSES.md) for YAML examples, precise definitions, saved tables and limitations. They use the existing MDscope replicate-aware statistical engine and plot conventions.
