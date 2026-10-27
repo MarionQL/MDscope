@@ -35,8 +35,8 @@ from .plotting import plot_all
 from .profiles import run_residue_membrane_distance
 from .profiles import postprocess_structure_profiles, run_structure_profiles
 from .statistics import analyze_project
-from .timeseries import run_streaming_pass
-from .local_environment import run_local_environment
+from .streaming import run_streaming_pass
+from .registry import specialized_tasks,additional_time_series
 from .msd import summarize_diffusion
 from .coupling_screen import screen_couplings
 
@@ -155,9 +155,7 @@ def summarize_replicate(repout: Path, cfg: dict):
 
     profile_ts, profile_group_ts = postprocess_structure_profiles(repout, cfg)
     time_sources = [base] + profile_ts + membrane_order_timeseries(repout)
-    local_path = repout / 'extensions' / 'local_environment' / 'timeseries.parquet'
-    if local_path.exists():
-        time_sources.append(pd.read_parquet(local_path))
+    time_sources.extend(additional_time_series(repout))
     available_times = [
         table[
             "time_ps"
@@ -242,36 +240,11 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     if streaming_required and not state.complete(prefix + "-stream"):
         state.mark(prefix + "-stream", run_streaming_pass(rep, cfg, root, state.config_hash))
 
-    for run in analysis_runs(cfg, "residue_membrane_distance"):
-        key = f"{prefix}-residue-membrane-{run.run_id}"
+    for task in specialized_tasks(cfg):
+        key=prefix+"-"+task.key
         if not state.complete(key):
-            state.mark(key, run_residue_membrane_distance(rep, cfg, repout, run.spec, run.run_id))
-
-    if cfg["analyses"]["membrane_order"].get("enabled", False):
-        key = prefix + "-membrane-order"
-        if not state.complete(key):
-            state.mark(key, run_membrane_order(rep, cfg, repout))
-
-    if (cfg["analyses"]["dssp"].get(
-        "enabled",
-        False
-    ) or cfg["analyses"]["sasa"].get(
-        "enabled",
-        False
-    )) and not state.complete(prefix + "-profiles"):
-        run_structure_profiles(rep, cfg, repout)
-        state.mark(prefix + "-profiles")
-    if cfg["analyses"]["hydrogen_bonds"].get(
-        "enabled",
-        False
-    ) and not state.complete(prefix + "-hydrogen-bonds"):
-        run_hydrogen_bonds(rep, cfg, repout)
-        state.mark(prefix + "-hydrogen-bonds")
-    for name, fn in [('local_environment',run_local_environment)]:
-        if cfg.get('analyses',{}).get(name,{}).get('enabled',False):
-            key=prefix+'-'+name
-            if not state.complete(key):
-                state.mark(key,fn(rep,cfg,repout))
+            result=task.run(rep,cfg,repout)
+            state.mark(key,result if isinstance(result,dict) else {})
     if not state.complete(prefix + "-summary"):
         summarize_replicate(repout, cfg)
         state.mark(prefix + "-summary")
