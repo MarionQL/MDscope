@@ -21,7 +21,7 @@ def diffusion_fit(lag_ps,msd,begin=.25,end=.75):
     a=t.min()+begin*np.ptp(t); b=t.min()+end*np.ptp(t)
     keep=(t>=a)&(t<=b)&np.isfinite(m)
     if keep.sum()<3:return np.nan
-    return float(np.polyfit(t[keep],m[keep],1)[0]*0.025)
+    return float(np.polyfit(t[keep],m[keep],1)[0]*2.5)
 
 def run_lipid_diffusion(rep,cfg,repout):
     import MDAnalysis as mda
@@ -69,4 +69,16 @@ def run_lipid_diffusion(rep,cfg,repout):
     out=ensure_dir(repout/"extensions"/"lipid_diffusion")
     atomic_parquet(out/"msd_by_species.parquet",pd.DataFrame(rows))
     atomic_parquet(out/"coefficients.parquet",pd.DataFrame(summ))
+    if spec.get("plots",True):
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        fig,ax=plt.subplots(figsize=(7.3,4.8))
+        for name,part in pd.DataFrame(rows).groupby("species"):
+            ax.plot(part["lag_ps"]/1000,part["msd_lateral_A2"]*.01,label=name)
+        ax.set(xlabel="Lag time (ns)",ylabel="Lateral MSD (nm²)",title="Multi-origin lateral diffusion")
+        ax.legend(frameon=False,ncol=2)
+        fig.tight_layout()
+        fig.savefig(out/"diffusion_msd.png",dpi=250)
+        plt.close(fig)
     return {"species":len(summ)}
