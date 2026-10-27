@@ -43,7 +43,8 @@ def progress(iterable, *, total=None, desc="", enabled=True):
     except ImportError:
         tqdm = None
     if tqdm is not None and sys.stderr.isatty():
-        with tqdm(iterable, total=total, desc=desc, unit="frame", mininterval=0.0,\n                  miniters=max(1, (total + 99) // 100) if total else 1) as bar:
+        with tqdm(iterable, total=total, desc=desc, unit="frame", mininterval=0.0,
+                  miniters=max(1, (total + 99) // 100) if total else 1) as bar:
             yield bar
         return
 
