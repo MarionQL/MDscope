@@ -38,7 +38,12 @@ def specialized_tasks(cfg):
         yield AnalysisTask("local_environment",run_local_environment,
                            "extensions/local_environment/timeseries.parquet")
 
-def additional_time_series(repout:Path):
-    """Canonical scalar output merger for registered extensions."""
-    table=Path(repout)/"extensions"/"local_environment"/"timeseries.parquet"
-    return [pd.read_parquet(table)] if table.exists() else []
+def additional_time_series(repout:Path,cfg):
+    """Discover scalar series from registered analysis output contracts."""
+    output=[]
+    for task in specialized_tasks(cfg):
+        if task.scalar_output is None:continue
+        path=Path(repout)/task.scalar_output
+        if path.exists():
+            output.append(pd.read_parquet(path))
+    return output
