@@ -39,6 +39,7 @@ from .profiles import postprocess_structure_profiles, run_structure_profiles
 from .statistics import analyze_project
 from .streaming import run_streaming_pass
 from .fused_membrane import enabled_names as fused_enabled_names, run_fused_membrane
+from .fused_extensions import enabled_names as extension_enabled_names, run_fused_extensions
 from .registry import specialized_tasks,additional_time_series
 from .msd import summarize_diffusion, summarize_project_diffusion
 from .coupling_screen import screen_couplings
@@ -293,8 +294,49 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
                 state.mark(key, {"fused_into": "streaming" if streaming_required and not need_fallback
                                  else "fused-membrane-fallback"})
 
+    extension_names = extension_enabled_names(cfg)
+    if extension_names:
+        extension_outputs = {
+            "hydrogen_bonds": repout / "interactions" / "hydrogen_bonds" / "events.parquet",
+            "lipid_hydrogen_bonds": repout / "interactions" / "lipid_hydrogen_bonds" / "events.parquet",
+            "dssp": repout / "profiles" / "dssp" / "assignments.parquet",
+            "sasa": repout / "profiles" / "sasa" / "residue_sasa.parquet",
+            "local_environment": repout / "extensions" / "local_environment" / "timeseries.parquet",
+        }
+        missing = [name for name in extension_names if not extension_outputs[name].exists()]
+        if missing:
+            t0 = perf_counter()
+            run_fused_extensions(rep, cfg, repout)
+            stage_timings.append({"stage": "fused-extensions-fallback", "seconds": perf_counter() - t0})
+        extension_keys = {
+            "hydrogen_bonds": "hydrogen-bonds",
+            "lipid_hydrogen_bonds": "lipid_hydrogen_bonds",
+            "dssp": "profiles",
+            "sasa": "profiles",
+            "local_environment": "local_environment",
+        }
+        for name in extension_names:
+            if not extension_outputs[name].is_file():
+                raise RuntimeError(f"Missing fused output: {extension_outputs[name]}")
+            key = prefix + "-" + extension_keys[name]
+            if not state.complete(key):
+                state.mark(key, {"fused_into": "streaming" if streaming_required and not missing
+                                 else "fused-extensions-fallback"})
+
     for task in specialized_tasks(cfg):
         if task.key in {"membrane-order", "bilayer_normal", "lipid_enrichment"}:
+            continue
+        if task.key in {"hydrogen-bonds", "lipid_hydrogen_bonds", "local_environment"} and {
+            "hydrogen-bonds": "hydrogen_bonds",
+            "lipid_hydrogen_bonds": "lipid_hydrogen_bonds",
+            "local_environment": "local_environment",
+        }[task.key] in extension_names:
+            continue
+        if task.key == "profiles" and all(
+            name in extension_names
+            for name in ("dssp", "sasa")
+            if cfg["analyses"][name].get("enabled", False)
+        ):
             continue
         key=prefix+"-"+task.key
         if not state.complete(key):
