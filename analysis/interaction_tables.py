@@ -16,6 +16,7 @@ INTERACTION_KEY_COLUMNS = {
         "acceptor",
         "interaction_class",
     ],
+    "lipid_hydrogen_bonds": ["donor","hydrogen","acceptor","interaction_class"],
 }
 
 
@@ -341,6 +342,16 @@ def postprocess_interactions(
         count_file = hb_dir / "count_timeseries.parquet"
         if count_file.exists():
             counts.append(pd.read_parquet(count_file))
+    lipid_hb_file=repout/"interactions"/"lipid_hydrogen_bonds"/"events.parquet"
+    if cfg.get("analyses",{}).get("lipid_hydrogen_bonds",{}).get("enabled",False) and lipid_hb_file.exists():
+        events=pd.read_parquet(lipid_hb_file)
+        hb_dir=repout/"interactions"/"lipid_hydrogen_bonds"
+        summarize_interaction_kind(events,
+            ["donor","hydrogen","acceptor","interaction_class"],
+            base_times,gap_factor,hb_dir)
+        counts_path=hb_dir/"count_timeseries.parquet"
+        if counts_path.exists():
+            counts.append(pd.read_parquet(counts_path))
     return counts
 
 
