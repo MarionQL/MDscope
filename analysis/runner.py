@@ -37,7 +37,7 @@ from .profiles import postprocess_structure_profiles, run_structure_profiles
 from .statistics import analyze_project
 from .timeseries import run_streaming_pass
 from .local_environment import run_local_environment
-from .lipid_diffusion import run_lipid_diffusion
+from .msd import summarize_diffusion
 from .coupling_screen import screen_couplings
 
 
@@ -186,6 +186,8 @@ def summarize_replicate(repout: Path, cfg: dict):
             if col != "time_ps" and (col.endswith("_count") or col.endswith("_residue_count")):
                 whole[col] = pd.to_numeric(whole[col], errors="coerce").fillna(0)
         atomic_parquet(summary / "timeseries.parquet", whole)
+        if cfg.get("analyses",{}).get("membrane",{}).get("enabled",False) and cfg.get("analyses",{}).get("membrane",{}).get("msd",{}).get("enabled",False):
+            summarize_diffusion(repout,cfg)
     if not grouped.empty:
         atomic_parquet(summary / "group_timeseries.parquet", grouped)
 
@@ -265,7 +267,7 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     ) and not state.complete(prefix + "-hydrogen-bonds"):
         run_hydrogen_bonds(rep, cfg, repout)
         state.mark(prefix + "-hydrogen-bonds")
-    for name, fn in [('local_environment',run_local_environment),('lipid_diffusion',run_lipid_diffusion)]:
+    for name, fn in [('local_environment',run_local_environment)]:
         if cfg.get('analyses',{}).get(name,{}).get('enabled',False):
             key=prefix+'-'+name
             if not state.complete(key):
