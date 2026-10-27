@@ -242,7 +242,7 @@ analyses:
     lipid_contact_selection: "(resname POPC DPPC POPE POPI POPS PSM DOPC CHL1) or (chainID GM1a BGAL CER160)"
     water_oxygen_selection: "resname TIP3 and name OH2"
     ion_selections:
-      Na: "resname SOD"
+      K: "resname POT"
       Cl: "resname CLA"
 
     motif_selection: "protein and name CA"
