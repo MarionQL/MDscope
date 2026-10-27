@@ -183,6 +183,17 @@ class SDC4Mechanisms:
         self.species, self.resindices, self.tracker, self.initial_leaf = anchor_groups(
             universe, self.lipid_spec
         )
+        # Thickness and curvature must use chemically comparable surface
+        # anchors. Mixing phospholipid P, cholesterol O3 and ceramide NF
+        # creates apparent height changes when species composition shifts.
+        self.surface_species = tuple(s.get("surface_anchor_species") or (
+            "POPC", "POPE", "POPI", "POPS", "DOPC", "DPPC", "PSM"
+        ))
+        self.surface_mask = np.isin(self.species, self.surface_species)
+        if np.count_nonzero(self.surface_mask & self.initial_leaf) < 4 or (
+            np.count_nonzero(self.surface_mask & ~self.initial_leaf) < 4
+        ):
+            raise ValueError("Need at least four comparable surface anchors per leaflet; check surface_anchor_species")
         self.lipid_contact = heavy(selected(
             universe, s.get("lipid_contact_selection"), required=True
         ))
@@ -257,6 +268,7 @@ class SDC4Mechanisms:
                                  for k, v in self.motifs.items()},
             "gxxxg_resindices": {k: v.residues.ix.tolist()
                                  for k, v in self.gxxxg.items()},
+            "surface_anchor_species": list(self.surface_species),
             "lipid_counts": {str(k): int(np.count_nonzero(self.species == k))
                              for k in sorted(set(self.species))},
             "map_rotation": "x axis TM chain 1 -> TM chain 2; y is +90 degree rotation",
@@ -294,15 +306,15 @@ class SDC4Mechanisms:
             self.map_baselines[j] += int(mask.sum()) / area_A2
         self.map_frames += 1
         row = {"time_ps": t, "sdc4_lipid_leaflet_changes": changed}
-        upper_z = _zmean(anchors[leaf, 2], box[2])
-        lower_z = _zmean(anchors[~leaf, 2], box[2])
+        upper_z = _zmean(anchors[leaf & self.surface_mask, 2], box[2])
+        lower_z = _zmean(anchors[~leaf & self.surface_mask, 2], box[2])
         mid_z = lower_z + .5 * _vector(
             [0., 0., lower_z], [0., 0., upper_z], box
         )[2]
         tm_z = float(midpoint[2])
         local = np.linalg.norm(dxy, axis=1) <= self.local_A
-        upper_local = local & leaf
-        lower_local = local & ~leaf
+        upper_local = local & leaf & self.surface_mask
+        lower_local = local & ~leaf & self.surface_mask
         for label, mask in (("upper", upper_local), ("lower", lower_local)):
             row[f"sdc4_local_{label}_n_lipids"] = int(mask.sum())
             if np.count_nonzero(mask) >= self.min_lipids:
@@ -349,6 +361,7 @@ class SDC4Mechanisms:
             prefix = f"sdc4_ectodomain_{chain}_"
             row[prefix + "height_A"] = float(height)
             row[prefix + "tilt_deg"] = tilt
+            row[prefix + "membrane_contact_state"] = int(len(hits) > 0)
             row[prefix + "lipid_contact_atom_fraction"] = (
                 len(np.unique(hits[:, 0])) / len(heavy(ag)) if len(hits) else 0.
             )
