@@ -51,7 +51,7 @@ def inspect(system: str, topology: Path, trajectory: Path) -> dict:
     species = {}
     for name, atom_name in (
         ("POPC", "P"), ("POPE", "P"), ("POPI", "P"),
-        ("DOPC", "P"), ("DPPC", "P"), ("PSM", "P"),
+        ("DOPC", "P"), ("DPPC", "P"), ("PSM", "P"), ("POPS", "P"),
         ("CHL1", "O3"),
     ):
         selection = f"resname {name} and name {atom_name}"
@@ -71,6 +71,15 @@ def inspect(system: str, topology: Path, trajectory: Path) -> dict:
             print(f"chainID {name} atoms={n}", flush=True)
         except Exception as exc:
             print(f"chainID {name} unavailable: {type(exc).__name__}", flush=True)
+    # Glycosphingolipids in these CHARMM-GUI topologies use a CER160
+    # ceramide anchor and carbohydrate residues in the same chainID.
+    # In the no-headgroup control the same CER160 residues are chainID CER160.
+    for name in ("GM1a", "BGAL", "CER160"):
+        selection = f"chainID {name} and resname CER160 and name NF"
+        n = len(u.select_atoms(selection))
+        print(f"ceramide_anchor {name}={n}", flush=True)
+        if n:
+            species[name] = selection
     print("non-water residue counts (top 25):", flush=True)
     from collections import Counter
     nonwater = Counter(str(r.resname) for r in u.residues if str(r.resname) != "TIP3")
