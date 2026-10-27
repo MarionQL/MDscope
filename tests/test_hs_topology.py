@@ -60,7 +60,7 @@ def test_hs_auto_rejects_incorrect_chain_count():
 
 
 def test_hs_auto_rejects_missing_covalent_attachment():
-    with pytest.raises(ValueError, match="no covalent protein attachment"):
+    with pytest.raises(ValueError, match="selections matched no glycan or attachment atoms"):
         discover_covalent_hs(_universe(), {
             "glycan_selection": "resname BXYL AGLCNA AIDOA",
             "attachment_selection": "resname SER and name CB",
