@@ -64,9 +64,15 @@ def run_lipid_hydrogen_bonds(rep,cfg,repout):
         if acceptor_sel is None:acceptor_sel=guesser.guess_acceptors(selection)
     if not hydrogen_sel or not acceptor_sel:
         raise ValueError("No lipid donor hydrogens/acceptors inferred; supply explicit selectors")
+    # Even explicit user overrides must remain inside the lipid set.
+    hydrogen_sel=f"({hydrogen_sel}) and ({selection})"
+    acceptor_sel=f"({acceptor_sel}) and ({selection})"
+    donor_sel=spec.get("donors_sel")
+    if donor_sel is not None:
+        donor_sel=f"({donor_sel}) and ({selection})"
     hba=HydrogenBondAnalysis(
         universe,
-        donors_sel=spec.get("donors_sel"),
+        donors_sel=donor_sel,
         hydrogens_sel=hydrogen_sel,
         acceptors_sel=acceptor_sel,
         d_h_cutoff=float(spec.get("d_h_cutoff_A",1.2)),
