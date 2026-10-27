@@ -54,7 +54,7 @@ analyses:
       CHL1: "resname CHL1 and name O3"
 ```
 
-Each selected species must be present in the corresponding system; omit absent species or use system-specific YAML files. The lipid selection must contain a representative anchor for each physical molecule. If lipids in the topology consist of multiple bonded residues, designate only the anchoring residue/atom. Use your actual membrane normal axis.
+By default every selected species must be present. For paired system configurations where GM1a/BGAL may be intentionally absent in the control, use `allow_absent_species: true` to skip missing species while still requiring at least one lipid species; missing categories are not silently interpreted as zero enrichment. The lipid selection must contain a representative anchor for each physical molecule. If lipids in the topology consist of multiple bonded residues, designate only the anchoring residue/atom. Use your actual membrane normal axis.
 
 **Normals**: fit a local plane to neighboring anchor atoms within the same leaflet using periodic coordinates and report its angular deviation from the configured global axis in degrees. This measures **local interfacial tilt/undulation**, not a lipid acyl-chain order parameter or a mechanical modulus. Lipids with insufficient neighbors are recorded as missing.
 
