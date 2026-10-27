@@ -54,6 +54,7 @@ def test_sasa_fused_vs_independent(monkeypatch, tmp_path):
     u.add_TopologyAttr("names", ["N", "CA", "C"] * 2)
     u.add_TopologyAttr("resnames", ["ALA", "ALA"])
     u.add_TopologyAttr("resids", [1, 2])
+    u.add_TopologyAttr("segids", ["SYSTEM"])
     first = np.arange(18, dtype=np.float32).reshape(6, 3) + 1
     frames = np.stack([first + i for i in range(4)])
     u.load_new(frames, format=MemoryReader,
