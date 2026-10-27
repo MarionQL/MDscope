@@ -58,6 +58,10 @@ def run_bilayer_normal(rep,cfg,repout):
     minimum=int(spec.get("min_neighbors",5))
     if radius<=0 or minimum<3:raise ValueError("neighbor_radius_A > 0 and min_neighbors >= 3")
     rows=[]; long=[]
+    out=ensure_dir(repout/"extensions"/"bilayer_normal")
+    save_detail=bool(spec.get("save_lipid_angles",False))
+    frame_chunk=max(1,int(spec.get("angle_chunk_frames",100)))
+    species_ids=np.unique(species)
     frames=u.trajectory[slice(tr.get("start"),tr.get("stop"),int(tr["stride"]))]
     with progress(frames,total=len(frames),desc=f"{rep.system}/{rep.label}: bilayer normals",
                   enabled=cfg.get("progress",{}).get("enabled",True)) as iterator:
@@ -69,15 +73,21 @@ def run_bilayer_normal(rep,cfg,repout):
                 values=angles[mask];valid=values[np.isfinite(values)]
                 frame[f"bilayer_normal_{leaf}_mean_deg"]=float(np.mean(valid)) if len(valid) else np.nan
                 frame[f"bilayer_normal_{leaf}_sd_deg"]=float(np.std(valid)) if len(valid)>1 else np.nan
-                for lipid in np.unique(species):
+                for lipid in species_ids:
                     idx=mask&(species==lipid)
                     v=angles[idx];v=v[np.isfinite(v)]
                     frame[f"bilayer_normal_{lipid}_{leaf}_mean_deg"]=float(np.mean(v)) if len(v) else np.nan
-                long.extend({"time_ps":t,"resindex":int(indices[i]),"species":species[i],
-                    "leaflet":leaf,"normal_deviation_deg":float(angles[i]),
-                    "n_neighbors":int(neighbors[i])} for i in np.flatnonzero(mask))
+                if save_detail:
+                    long.extend({"time_ps":t,"resindex":int(indices[i]),"species":species[i],
+                        "leaflet":leaf,"normal_deviation_deg":float(angles[i]),
+                        "n_neighbors":int(neighbors[i])} for i in np.flatnonzero(mask))
             rows.append(frame)
-    out=ensure_dir(repout/"extensions"/"bilayer_normal")
+            if save_detail and (k+1)%frame_chunk==0:
+                atomic_parquet(ensure_dir(out/"per_lipid")/f"angles_part_{k//frame_chunk:06d}.parquet",
+                               pd.DataFrame(long))
+                long.clear()
+    if long:
+        atomic_parquet(ensure_dir(out/"per_lipid")/f"angles_part_{len(rows)//frame_chunk:06d}.parquet",
+                       pd.DataFrame(long))
     atomic_parquet(out/"timeseries.parquet",pd.DataFrame(rows))
-    atomic_parquet(out/"lipid_angles.parquet",pd.DataFrame(long))
     return {"frames":len(rows),"n_lipids":len(groups)}
