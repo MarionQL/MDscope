@@ -35,7 +35,10 @@ from .plotting import plot_all
 from .profiles import run_residue_membrane_distance
 from .profiles import postprocess_structure_profiles, run_structure_profiles
 from .statistics import analyze_project
-from .timeseries import run_streaming_pass
+from .streaming import run_streaming_pass
+from .registry import specialized_tasks,additional_time_series
+from .msd import summarize_diffusion, summarize_project_diffusion
+from .coupling_screen import screen_couplings
 
 
 class RunState:
@@ -152,6 +155,7 @@ def summarize_replicate(repout: Path, cfg: dict):
 
     profile_ts, profile_group_ts = postprocess_structure_profiles(repout, cfg)
     time_sources = [base] + profile_ts + membrane_order_timeseries(repout)
+    time_sources.extend(additional_time_series(repout,cfg))
     available_times = [
         table[
             "time_ps"
@@ -180,6 +184,8 @@ def summarize_replicate(repout: Path, cfg: dict):
             if col != "time_ps" and (col.endswith("_count") or col.endswith("_residue_count")):
                 whole[col] = pd.to_numeric(whole[col], errors="coerce").fillna(0)
         atomic_parquet(summary / "timeseries.parquet", whole)
+        if cfg.get("analyses",{}).get("membrane",{}).get("enabled",False) and cfg.get("analyses",{}).get("membrane",{}).get("msd",{}).get("enabled",False):
+            summarize_diffusion(repout,cfg)
     if not grouped.empty:
         atomic_parquet(summary / "group_timeseries.parquet", grouped)
 
@@ -190,6 +196,18 @@ def _replicate_state_prefix(rep) -> str:
         "replicate": rep.label,
     })
     return f"rep-{identity_hash}"
+
+
+def _archive_previous_output(source: Path, archive_root: Path, label: str) -> Path:
+    """Archive stale results rather than silently deleting expensive MD analyses."""
+    ensure_dir(archive_root)
+    candidate=archive_root / label
+    index=1
+    while candidate.exists():
+        candidate=archive_root / f"{label}-{index}"
+        index+=1
+    source.rename(candidate)
+    return candidate
 
 
 def _prepare_replicate_output(
@@ -206,7 +224,10 @@ def _prepare_replicate_output(
         except OSError:
             pass
         if previous_hash != state.config_hash:
-            shutil.rmtree(repout)
+            prior = previous_hash or "unknown_hash"
+            archived=_archive_previous_output(
+                repout,root/".archives"/"replicates"/rep.system/rep.label,prior)
+            print(f"Archived previous replicate output: {archived}")
     repout = ensure_dir(repout)
     atomic_text(hash_file, state.config_hash + "\n")
     return repout
@@ -234,31 +255,11 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     if streaming_required and not state.complete(prefix + "-stream"):
         state.mark(prefix + "-stream", run_streaming_pass(rep, cfg, root, state.config_hash))
 
-    for run in analysis_runs(cfg, "residue_membrane_distance"):
-        key = f"{prefix}-residue-membrane-{run.run_id}"
+    for task in specialized_tasks(cfg):
+        key=prefix+"-"+task.key
         if not state.complete(key):
-            state.mark(key, run_residue_membrane_distance(rep, cfg, repout, run.spec, run.run_id))
-
-    if cfg["analyses"]["membrane_order"].get("enabled", False):
-        key = prefix + "-membrane-order"
-        if not state.complete(key):
-            state.mark(key, run_membrane_order(rep, cfg, repout))
-
-    if (cfg["analyses"]["dssp"].get(
-        "enabled",
-        False
-    ) or cfg["analyses"]["sasa"].get(
-        "enabled",
-        False
-    )) and not state.complete(prefix + "-profiles"):
-        run_structure_profiles(rep, cfg, repout)
-        state.mark(prefix + "-profiles")
-    if cfg["analyses"]["hydrogen_bonds"].get(
-        "enabled",
-        False
-    ) and not state.complete(prefix + "-hydrogen-bonds"):
-        run_hydrogen_bonds(rep, cfg, repout)
-        state.mark(prefix + "-hydrogen-bonds")
+            result=task.run(rep,cfg,repout)
+            state.mark(key,result if isinstance(result,dict) else {})
     if not state.complete(prefix + "-summary"):
         summarize_replicate(repout, cfg)
         state.mark(prefix + "-summary")
@@ -282,7 +283,8 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None):
         )
     project_summary = root / "project_summary"
     if project_summary.exists():
-        shutil.rmtree(project_summary)
+        archived=_archive_previous_output(project_summary,root/".archives"/"project_summary",state.config_hash)
+        print(f"Archived previous project summary: {archived}")
     system_repouts = {
         system: [
             root / rep.system / rep.label
@@ -295,6 +297,9 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None):
     # trajectories are reopened.
     analyze_project(cfg, root, system_repouts)
     plot_all(cfg, root, system_repouts)
+    summarize_project_diffusion(root,system_repouts,cfg)
+    if cfg.get('analyses',{}).get('coupling_screen',{}).get('enabled',False):
+        screen_couplings(cfg,root,system_repouts)
     return root
 
 

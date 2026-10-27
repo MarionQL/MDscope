@@ -284,7 +284,7 @@ membrane:
 | `msd.enabled` | Calculate lipid/residue MSD. |
 | `msd.selection` | Atoms used to define each tracked residue center. Defaults to the headgroup selection. |
 | `msd.include_3d` | Also output full 3D MSD; lateral MSD is always calculated when MSD is enabled. |
-| `msd.slope_start_fraction` | Reserved/configured start fraction for diffusion-slope interpretation; must lie in `[0,1)`. |
+| `msd.slope_start_fraction` | Start fraction of analyzed MSD interval used for the replica-level lateral diffusion slope fit; must be less than `slope_end_fraction`. |
 
 Leaflet identity is assigned from the first analyzed configuration and kept fixed. MSD accumulates minimum-image step vectors so crossing a periodic boundary does not create a false displacement jump.
 
@@ -680,3 +680,12 @@ For production MD comparisons:
 - Use `design: paired` only when replicate IDs are genuinely paired by the simulation design.
 - Keep `aligned_coordinates: true` when RMSF confidence intervals matter.
 - Treat effect size + hierarchical CI + replicate behavior as primary scientific evidence; use p/q-values as complementary inferential summaries.
+
+
+## Modular architecture and diffusion fits (experimental branch)
+
+RMSD and RMSF now live in separate modules (`analysis/rmsd.py` and `analysis/rmsf.py`). Other structural and interaction analyses are similarly split into single-purpose modules while `analysis/streaming.py` reads the XTC once for inexpensive framewise measurements. `analysis/registry.py` is the extension point for restartable specialized analyses. The existing statistics and plotting backends are **shared by output data structure**, not duplicated in individual analysis scripts. See [NEURONAL_EXTENSION.md](NEURONAL_EXTENSION.md) for a module map and contribution contract.
+
+The existing `membrane.msd` code is retained in `analysis/msd.py` and now optionally produces **replicate-level diffusion coefficients** as well. Configure `analyses.membrane.msd.slope_start_fraction` (default `0.2`) and `slope_end_fraction` (default `0.8`). This is a descriptive **single-origin MSD** slope fit; it does not claim species-resolved or multi-origin diffusion, and it does not treat time-correlated frames as independent replicates.
+
+Prior results with a mismatched code/configuration hash are archived in `.archives/` instead of silently deleted. A significant refactor may still trigger expensive reanalysis: choose a new project.output path if you do not want the old results invalidated.
