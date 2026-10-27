@@ -67,7 +67,7 @@ fold enrichment = (N_species,local / N_all,local) /
 
 where bulk means all selected lipids in the same leaflet, not an external experimental bulk sample. Values above 1 indicate enrichment; below 1 indicate depletion. A zero observed count yields fold 0, while an empty local annulus yields NaN. Outputs preserve numerator and denominator for audit. Local and bulk populations overlap by design, so this is a **compositional** enrichment, not a binding free energy.
 
-- `extensions/bilayer_normal/timeseries.parquet` and `lipid_angles.parquet`
+- `extensions/bilayer_normal/timeseries.parquet` and optional chunked `per_lipid/angles_part_*.parquet` (enable `save_lipid_angles`)
 - `extensions/lipid_enrichment/timeseries.parquet`, `counts.parquet`, `selection_audit.parquet`
 
 Scalar metrics automatically enter the existing `summary/timeseries.parquet`, project statistics and standard time-series figures.
