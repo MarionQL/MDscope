@@ -2,10 +2,10 @@
 
 ## Configuration
 
-Use **\`synd4_full_mechanisms.yaml\`**. It preserves the **same two systems,
+Use **`synd4_full_mechanisms.yaml`**. It preserves the **same two systems,
 topology paths and all six replicate XTC paths** as
-\`synd4_baseline.yaml\`. The output is separate:
-\`results_memb_full_mechanisms/\` (relative to the YAML directory), so the
+`synd4_baseline.yaml`. The output is separate:
+`results_memb_full_mechanisms/` (relative to the YAML directory), so the
 existing baseline outputs are not archived or overwritten.
 
 The new YAML enables:
@@ -37,8 +37,8 @@ covalent attachments were found:
 | PROB | SER 309 OG, SER 331 OG, SER 333 OG |
 
 Each protomer has three HS chains. **All three share the PROA or PROB
-chainID with the protein**; selecting \`chainID PROA\` alone would incorrectly
-merge three glycans and protein. \`hs_auto\` instead isolates connected
+chainID with the protein**; selecting `chainID PROA` alone would incorrectly
+merge three glycans and protein. `hs_auto` instead isolates connected
 components of glycan-only topology bonds and requires each component to
 have exactly one covalent attachment site. It checks that six chains were
 found and fails rather than silently omitting a chain.
@@ -51,41 +51,41 @@ residue numbering and glycosylation may differ.
 
 On Tinkercliffs or another host with the original topology/trajectory paths:
 
-\`\`\`bash
+```bash
 python -m pip install reportlab pillow freesasa
 python -m mdscope.analysis.cli validate synd4_full_mechanisms.yaml
 python -m mdscope.analysis.cli run synd4_full_mechanisms.yaml
-\`\`\`
+```
 
 Use the existing Slurm/array runner for individual replicates if preferred.
 After all six replicates have completed, run:
 
-\`\`\`bash
+```bash
 python -m mdscope.analysis.cli finalize synd4_full_mechanisms.yaml
-\`\`\`
+```
 
-**Note:** \`finalize\` recomputes and archives the previous project-level
-summary, whereas \`report\` below only regenerates the PDF/ZIP from
-existing tables. The full \`run\` command already finalizes automatically.
+**Note:** `finalize` recomputes and archives the previous project-level
+summary, whereas `report` below only regenerates the PDF/ZIP from
+existing tables. The full `run` command already finalizes automatically.
 
 ## Files to send back to ChatGPT
 
 Once all analyses and project-level finalization finish:
 
-\`\`\`text
+```text
 results_memb_full_mechanisms/
   project_summary/
     report/
       MDscope_evidence_report.pdf
       MDscope_review_bundle.zip
-\`\`\`
+```
 
-Upload **\`MDscope_evidence_report.pdf\`** to request an interpretation
+Upload **`MDscope_evidence_report.pdf`** to request an interpretation
 of the condition differences, state populations, HS/membrane mechanisms,
 and their statistical support.
 
 For deeper independent verification and new plots, upload
-**\`MDscope_review_bundle.zip\`** too. The ZIP contains:
+**`MDscope_review_bundle.zip`** too. The ZIP contains:
 
 - Full-precision statistical tables in CSV format
 - Shared-state model, centroids, assignments, populations and diagnostics
@@ -103,9 +103,9 @@ rigorous re-analysis of the underlying statistics.
 To regenerate **only** the report after finalization, without opening
 trajectories or archiving the project summary:
 
-\`\`\`bash
+```bash
 python -m mdscope.analysis.cli report synd4_full_mechanisms.yaml
-\`\`\`
+```
 
 ## Scientific and statistical limitations
 
@@ -132,7 +132,7 @@ audited older topology. The analysis therefore also reports generic
 helix-helix and each available motif-to-opposite-TM contacts instead of
 mislabeling a nonexistent second GXXXG motif.
 
-**Before a long production analysis:** run \`validate\` and verify that
+**Before a long production analysis:** run `validate` and verify that
 the selected atoms, six HS attachments, NxIP motifs, ion names, lipid
 anchor counts and time window are as intended. This is especially
 important if the topology was rebuilt.
