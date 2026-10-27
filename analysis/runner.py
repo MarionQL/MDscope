@@ -41,6 +41,7 @@ from .streaming import run_streaming_pass
 from .fused_membrane import enabled_names as fused_enabled_names, run_fused_membrane
 from .fused_extensions import enabled_names as extension_enabled_names, run_fused_extensions
 from .fused_distance import enabled_names as distance_enabled_names, run_fused_distances
+from .fused_all import run_fused_only
 from .registry import specialized_tasks,additional_time_series
 from .msd import summarize_diffusion, summarize_project_diffusion
 from .coupling_screen import screen_couplings
@@ -263,6 +264,33 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
         t0 = perf_counter()
         state.mark(prefix + "-stream", run_streaming_pass(rep, cfg, root, state.config_hash))
         stage_timings.append({"stage": "streaming", "seconds": perf_counter() - t0})
+
+    # Without protein streaming, run *all* optional observer families in
+    # one shared frame loop instead of three separate fallback traversals.
+    if not streaming_required:
+        pending_outputs = []
+        for name in fused_enabled_names(cfg):
+            pending_outputs.append({
+                "membrane_order": repout / "profiles" / "membrane_order" / "timeseries.parquet",
+                "bilayer_normal": repout / "extensions" / "bilayer_normal" / "timeseries.parquet",
+                "lipid_enrichment": repout / "extensions" / "lipid_enrichment" / "timeseries.parquet",
+            }[name])
+        for name in extension_enabled_names(cfg):
+            pending_outputs.append({
+                "hydrogen_bonds": repout / "interactions" / "hydrogen_bonds" / "events.parquet",
+                "lipid_hydrogen_bonds": repout / "interactions" / "lipid_hydrogen_bonds" / "events.parquet",
+                "dssp": repout / "profiles" / "dssp" / "assignments.parquet",
+                "sasa": repout / "profiles" / "sasa" / "residue_sasa.parquet",
+                "local_environment": repout / "extensions" / "local_environment" / "timeseries.parquet",
+            }[name])
+        for run_id in distance_enabled_names(cfg):
+            pending_outputs.append(
+                repout / "profiles" / "residue_membrane_distance" / run_id / "distance_matrix_A.npy"
+            )
+        if any(not path.exists() for path in pending_outputs):
+            t0 = perf_counter()
+            run_fused_only(rep, cfg, repout)
+            stage_timings.append({"stage": "fused-only", "seconds": perf_counter() - t0})
 
     # These analyses are observers of the existing streaming frames, not
     # separate trajectory readers. For geometry-only systems, one shared
