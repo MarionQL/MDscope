@@ -13,7 +13,7 @@ def test_slurm_reports_completed_frames_elapsed_and_eta(monkeypatch):
     stderr = _Stderr()
     monkeypatch.setattr(mod.sys, "stderr", stderr)
     monkeypatch.setenv("MDSCOPE_PROGRESS_EVERY_FRAMES", "25")
-    monkeypatch.setenv("MDSCOPE_PROGRESS_EVERY_PERCENT", "100")
+    monkeypatch.setenv("MDSCOPE_PROGRESS_EVERY_PERCENT", "1")
     clock = [0.]
     monkeypatch.setattr(mod, "perf_counter", lambda: clock[0])
 
