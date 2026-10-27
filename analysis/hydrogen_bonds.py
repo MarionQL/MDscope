@@ -45,7 +45,7 @@ def run_hydrogen_bonds(rep, cfg: dict, repout: Path):
 
 
 def write_hydrogen_bonds(universe, cfg, repout, arr, frames, times):
-    arr = np.asarray(analysis.results.hbonds)
+    arr = np.asarray(arr)
     out = ensure_dir(repout / "interactions" / "hydrogen_bonds")
     analyzed_times = np.asarray(times, float)
     if cfg.get("time", {}).get("dt_ps") is not None:
