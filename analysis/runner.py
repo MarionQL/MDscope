@@ -40,6 +40,7 @@ from .statistics import analyze_project
 from .streaming import run_streaming_pass
 from .fused_membrane import enabled_names as fused_enabled_names, run_fused_membrane
 from .fused_extensions import enabled_names as extension_enabled_names, run_fused_extensions
+from .fused_distance import enabled_names as distance_enabled_names, run_fused_distances
 from .registry import specialized_tasks,additional_time_series
 from .msd import summarize_diffusion, summarize_project_diffusion
 from .coupling_screen import screen_couplings
@@ -328,7 +329,28 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
                 state.mark(key, {"fused_into": "streaming" if streaming_required and not missing
                                  else "fused-extensions-fallback"})
 
+    distance_names = distance_enabled_names(cfg)
+    if distance_names:
+        expected = {
+            run_id: repout / "profiles" / "residue_membrane_distance" / run_id / "distance_matrix_A.npy"
+            for run_id in distance_names
+        }
+        missing = [name for name, path in expected.items() if not path.exists()]
+        if missing:
+            t0 = perf_counter()
+            run_fused_distances(rep, cfg, repout)
+            stage_timings.append({"stage": "fused-distances-fallback", "seconds": perf_counter() - t0})
+        for run_id, path in expected.items():
+            if not path.is_file():
+                raise RuntimeError(f"Missing fused residue-distance output: {path}")
+            key = prefix + "-residue-membrane-" + run_id
+            if not state.complete(key):
+                state.mark(key, {"fused_into": "streaming" if streaming_required and not missing
+                                 else "fused-distances-fallback"})
+
     for task in specialized_tasks(cfg):
+        if task.key.startswith("residue-membrane-") and task.key[len("residue-membrane-"):] in distance_names:
+            continue
         if task.key in {"membrane-order", "bilayer_normal", "lipid_enrichment"}:
             continue
         if task.key in {"hydrogen-bonds", "lipid_hydrogen_bonds", "local_environment"} and {
