@@ -45,6 +45,7 @@ from .fused_all import run_fused_only
 from .sdc4_mechanisms import enabled as sdc4_enabled, run_sdc4_mechanisms
 from .shared_states import fit_shared_states
 from .sdc4_figures import plot_sdc4_mechanisms
+from .report import generate_report
 from .registry import specialized_tasks,additional_time_series
 from .msd import summarize_diffusion, summarize_project_diffusion
 from .coupling_screen import screen_couplings
@@ -470,6 +471,11 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None):
     summarize_project_diffusion(root,system_repouts,cfg)
     if cfg.get('analyses',{}).get('coupling_screen',{}).get('enabled',False):
         screen_couplings(cfg,root,system_repouts)
+    report_result = generate_report(cfg, root, system_repouts)
+    if report_result:
+        print(f"REPORT PDF: {report_result['pdf']}", flush=True)
+        if report_result.get('bundle'):
+            print(f"REPORT BUNDLE: {report_result['bundle']}", flush=True)
     return root
 
 
