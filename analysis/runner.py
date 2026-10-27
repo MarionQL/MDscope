@@ -38,6 +38,7 @@ from .profiles import run_residue_membrane_distance
 from .profiles import postprocess_structure_profiles, run_structure_profiles
 from .statistics import analyze_project
 from .streaming import run_streaming_pass
+from .fused_membrane import enabled_names as fused_enabled_names, run_fused_membrane
 from .registry import specialized_tasks,additional_time_series
 from .msd import summarize_diffusion, summarize_project_diffusion
 from .coupling_screen import screen_couplings
@@ -261,7 +262,40 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
         state.mark(prefix + "-stream", run_streaming_pass(rep, cfg, root, state.config_hash))
         stage_timings.append({"stage": "streaming", "seconds": perf_counter() - t0})
 
+    # These analyses are observers of the existing streaming frames, not
+    # separate trajectory readers. For geometry-only systems, one shared
+    # fallback pass is sufficient. Keep legacy task markers for resume.
+    fused_names = fused_enabled_names(cfg)
+    if fused_names:
+        expected = {
+            "membrane_order": repout / "profiles" / "membrane_order" / "timeseries.parquet",
+            "bilayer_normal": repout / "extensions" / "bilayer_normal" / "timeseries.parquet",
+            "lipid_enrichment": repout / "extensions" / "lipid_enrichment" / "timeseries.parquet",
+        }
+        fused_keys = {
+            "membrane_order": "membrane-order",
+            "bilayer_normal": "bilayer_normal",
+            "lipid_enrichment": "lipid_enrichment",
+        }
+        # A completed streaming marker guarantees finalized observer outputs.
+        # If outputs are missing (or there was no protein streaming pass),
+        # rebuild them with exactly one independent shared pass.
+        need_fallback = any(not expected[name].exists() for name in fused_names)
+        if need_fallback:
+            t0 = perf_counter()
+            run_fused_membrane(rep, cfg, repout)
+            stage_timings.append({"stage": "fused-membrane-fallback", "seconds": perf_counter() - t0})
+        for name in fused_names:
+            if not expected[name].is_file():
+                raise RuntimeError(f"Missing fused membrane output: {expected[name]}")
+            key = prefix + "-" + fused_keys[name]
+            if not state.complete(key):
+                state.mark(key, {"fused_into": "streaming" if streaming_required and not need_fallback
+                                 else "fused-membrane-fallback"})
+
     for task in specialized_tasks(cfg):
+        if task.key in {"membrane-order", "bilayer_normal", "lipid_enrichment"}:
+            continue
         key=prefix+"-"+task.key
         if not state.complete(key):
             t0 = perf_counter()
