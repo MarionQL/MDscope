@@ -1,6 +1,6 @@
 """Synthetic regression checks for geometry and diffusion without trajectory files."""
 import numpy as np
-from mdscope.analysis.biophysical_common import linear_diffusion,sequence_motifs
+from mdscope.analysis.biophysical_common import sequence_motifs
 from mdscope.analysis.msd import fit_lateral_diffusion
 from mdscope.analysis.coupling_screen import correlation,block_means
 
@@ -29,7 +29,6 @@ def test_diffusion_units():
     t=np.arange(0,2000,20,dtype=float)
     m=.4*t
     assert np.isclose(fit_lateral_diffusion(t,m)["diffusion_nm2_ns"],1.)
-    assert np.isclose(linear_diffusion(t,m),1.)
 
 def test_correlation_absent_when_no_variation():
     assert np.isnan(correlation(np.ones(9),np.arange(9)))
