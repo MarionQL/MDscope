@@ -12,6 +12,8 @@ on:
       - "analysis/lipid_enrichment.py"
       - "analysis/bilayer_normal.py"
       - "analysis/lipid_hydrogen_bonds.py"
+      - "analysis/runner.py"
+      - "analysis/membrane_order.py"
       - ".github/workflows/real-trajectory-smoke.yml"
 
 concurrency:
@@ -61,6 +63,7 @@ jobs:
           name: mdscope-real-trajectory-smoke
           path: |
             real_test_results/**/smoke_report.json
+            real_test_results/*/*/rep1/stage_timings.json
             real_test_results/physical_audit.json
             real_test_results/*/physics/geometry_per_frame.parquet
             real_test_results/*/physics/interactions/lipid_hydrogen_bonds/*.parquet
