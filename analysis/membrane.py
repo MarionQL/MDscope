@@ -5,11 +5,9 @@ One shared frame pass updates this state; no duplicate diffusion/MSD trajectory 
 from __future__ import annotations
 from dataclasses import dataclass
 import numpy as np
-from MDAnalysis.lib.distances import minimize_vectors
+from .msd import initialize_msd,msd_metrics
 AXIS_INDEX = {'x':0,'y':1,'z':2}
-)
 
-AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
 
 # Membrane and density helpers live here because they are updated in the
 # same frame loop as the other time series.
@@ -80,28 +78,7 @@ def initialize_membrane(universe, cfg: dict) -> MembraneState:
     if not state.n_upper or not state.n_lower:
         raise ValueError("first-frame leaflet assignment produced an empty leaflet")
 
-    msd = spec.get("msd", {}) or {}
-    state.msd = bool(msd.get("enabled", False))
-    state.msd_include_3d = bool(msd.get("include_3d", False))
-    if state.msd:
-        if universe.dimensions is None or not np.all(np.asarray(
-            universe.dimensions[:3],
-            float
-        ) > 0):
-            raise ValueError("membrane MSD requires valid periodic box dimensions")
-        atoms = universe.select_atoms(str(msd.get("selection") or spec["headgroup_selection"]))
-        if not len(atoms):
-            raise ValueError("membrane.msd.selection matched zero atoms")
-        state.msd_residue_atoms = [atoms & residue.atoms for residue in atoms.residues]
-        state.msd_resindices = np.asarray([int(residue.ix) for residue in atoms.residues], int)
-        state.msd_upper_mask = np.isin(state.msd_resindices, state.upper_resix)
-        state.msd_lower_mask = np.isin(state.msd_resindices, state.lower_resix)
-        if not np.all(state.msd_upper_mask | state.msd_lower_mask):
-            raise ValueError(
-                "membrane.msd.selection includes residues outside the leaflet classification"
-            )
-        state.msd_last_positions = _residue_centers(state.msd_residue_atoms)
-        state.msd_displacements = np.zeros_like(state.msd_last_positions)
+    initialize_msd(universe,state,spec)
     return state
 
 
@@ -134,22 +111,5 @@ def membrane_metrics(universe, state: MembraneState) -> dict[str, float]:
             delta = min(delta, length - delta)
         out["membrane_thickness_A"] = delta
     if state.msd:
-        current = _residue_centers(state.msd_residue_atoms)
-        # Accumulate minimum-image step vectors so lipids crossing
-        # periodic boundaries do not create artificial MSD jumps.
-        state.msd_displacements += minimize_vectors(
-            current - state.msd_last_positions,
-            universe.dimensions
-        )
-        state.msd_last_positions = current
-        lateral = [i for i in range(3) if i != state.ai]
-        lateral_sq = np.sum(state.msd_displacements[:, lateral] ** 2, axis=1)
-        out["membrane_msd_lateral_A2"] = float(np.mean(lateral_sq))
-        out["membrane_msd_lateral_upper_A2"] = float(np.mean(lateral_sq[state.msd_upper_mask]))
-        out["membrane_msd_lateral_lower_A2"] = float(np.mean(lateral_sq[state.msd_lower_mask]))
-        if state.msd_include_3d:
-            total_sq = np.sum(state.msd_displacements ** 2, axis=1)
-            out["membrane_msd_3d_A2"] = float(np.mean(total_sq))
-            out["membrane_msd_3d_upper_A2"] = float(np.mean(total_sq[state.msd_upper_mask]))
-            out["membrane_msd_3d_lower_A2"] = float(np.mean(total_sq[state.msd_lower_mask]))
+        out.update(msd_metrics(universe,state))
     return out
