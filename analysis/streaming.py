@@ -8,6 +8,7 @@ import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 from .config import analysis_groups, analysis_runs, atomic_parquet,ensure_dir,time_ps
+from .progress import track
 from .alignment import _apply_transform,_fit_transform,_valid_box
 from .rmsd import compute_rmsd
 from .rmsf import Welford
@@ -212,7 +213,10 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
 
     first = (0 if start is None else int(start)) + processed * stride
     rows, group_rows, salt_rows, ligand_rows, coords, coord_times = [], [], [], [], [], []
-    for ts in universe.trajectory[slice(first, stop, stride)]:
+    frames=universe.trajectory[slice(first,stop,stride)]
+    for ts in track(frames,total=len(frames),
+                    desc=f"{rep.system}/{rep.label}: streaming",
+                    enabled=cfg.get("progress",{}).get("enabled",True)):
         tps = time_ps(ts, processed, cfg)
         for density in densities:
             density.update(universe, tps)
