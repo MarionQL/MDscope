@@ -347,6 +347,11 @@ def _build_pdf(path, cfg, root, system_repouts, options):
     if systems.empty:
         body("System statistics not available. Enable statistics and complete finalization.")
     else:
+        system_ids = list(system_repouts)
+        if len(system_ids) != 2:
+            body("The compact contrast table shows the first two configured systems; "
+                 "all pairwise comparisons are included in the ZIP.")
+        first, second = (system_ids + ["not_configured"])[:2]
         for category, metrics in _metric_groups(systems):
             sub(category)
             total = len(metrics)
@@ -354,37 +359,49 @@ def _build_pdf(path, cfg, root, system_repouts, options):
             if total > len(metrics):
                 body(f"Showing {len(metrics)} of {total} metrics; the companion "
                      "review ZIP contains all full-precision statistics.")
+            rows = [[
+                "Metric", first + " mean [CI]", second + " mean [CI]",
+                "Second minus first [CI]; p / q",
+            ]]
             for metric in metrics:
                 slice_ = systems[systems["metric"] == metric]
-                # The default scalar group has a null group. If group-specific
-                # variants exist, label them rather than silently merging.
-                group_names = slice_["group"].fillna("").astype(str).unique() \
-                    if "group" in slice_ else [""]
-                for group in group_names:
-                    part = slice_[
-                        slice_["group"].fillna("").astype(str) == group
-                    ] if "group" in slice_ else slice_
+                groups = (slice_["group"].fillna("").astype(str).unique()
+                          if "group" in slice_ else [""])
+                for group in groups:
+                    part = (slice_[slice_["group"].fillna("").astype(str) == group]
+                            if "group" in slice_ else slice_)
                     label = metric + (f" [{group}]" if group else "")
-                    rows = [["System", "Mean", "95% CI", "n reps"]]
+                    values = {}
                     for item in part.itertuples():
-                        rows.append([
-                            item.system, _fmt(item.mean),
-                            f"{_fmt(item.mean_ci_low)} to {_fmt(item.mean_ci_high)}",
-                            item.n_replicates,
-                        ])
-                    story.append(para(label, "ReportSmall"))
-                    table(rows, [175, 80, 155, 55])
+                        values[item.system] = (
+                            f"{_fmt(item.mean)} [{_fmt(item.mean_ci_low)}, "
+                            f"{_fmt(item.mean_ci_high)}]"
+                        )
+                    delta = "-"
                     if not comparisons.empty:
-                        match = comparisons[comparisons["metric"] == metric]
-                        if "group" in match:
-                            match = match[match["group"].fillna("").astype(str) == group]
-                        for c in match.itertuples():
-                            body(f"Contrast {c.system_2} minus {c.system_1}: "
-                                 f"{_fmt(c.mean_difference_system2_minus_system1)} "
-                                 f"(CI {_fmt(c.mean_difference_ci_low)} to "
-                                 f"{_fmt(c.mean_difference_ci_high)}); "
-                                 f"p={_fmt(c.mean_p_value)}, "
-                                 f"q={_fmt(getattr(c, 'mean_q_value', np.nan))}.")
+                        contrast = comparisons[
+                            (comparisons["metric"] == metric)
+                            & (comparisons["system_1"] == first)
+                            & (comparisons["system_2"] == second)
+                        ]
+                        if "group" in contrast:
+                            contrast = contrast[
+                                contrast["group"].fillna("").astype(str) == group
+                            ]
+                        if len(contrast):
+                            c = contrast.iloc[0]
+                            delta = (
+                                f"{_fmt(c['mean_difference_system2_minus_system1'])} "
+                                f"[{_fmt(c['mean_difference_ci_low'])}, "
+                                f"{_fmt(c['mean_difference_ci_high'])}]; "
+                                f"p={_fmt(c.get('mean_p_value'))} / "
+                                f"q={_fmt(c.get('mean_q_value'))}"
+                            )
+                    rows.append([
+                        label, values.get(first, "-"), values.get(second, "-"),
+                        delta,
+                    ])
+            table(rows, [180, 104, 104, 122])
     story.append(PageBreak())
 
     header("Replicate-level consistency: primary mechanistic metrics")
