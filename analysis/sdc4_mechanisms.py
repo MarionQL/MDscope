@@ -467,6 +467,24 @@ class SDC4Mechanisms:
             raise ValueError("No SDC4 mechanism frames were processed")
         df = pd.concat((pd.read_parquet(p) for p in parts), ignore_index=True)
         df = df.sort_values("time_ps").reset_index(drop=True)
+        # Optional direct motif SASA endpoint, using the *existing*
+        # FreeSASA calculation instead of recomputing SASA or reading XTC.
+        # Interpretation follows the atom selection used for global SASA.
+        sasa_file = self.repout / "profiles/sasa/residue_sasa.parquet"
+        if sasa_file.exists() and self.motifs:
+            sasa = pd.read_parquet(sasa_file)
+            if not sasa.empty:
+                for name, info in self.motifs.items():
+                    sub = sasa[sasa["topology_residue_index"].isin(
+                        info["resindices"]
+                    )]
+                    if not sub.empty:
+                        label = f"sdc4_motif_{name}_sasa_nm2"
+                        values = sub.groupby("time_ps", as_index=False)[
+                            "sasa_nm2"
+                        ].sum().rename(columns={"sasa_nm2": label})
+                        df = df.merge(values, on="time_ps", how="left",
+                                      validate="one_to_one")
         out = ensure_dir(self.repout / "extensions" / "sdc4_mechanisms")
         atomic_parquet(out / "timeseries.parquet", df)
         counts = np.zeros_like(self.map_counts)
