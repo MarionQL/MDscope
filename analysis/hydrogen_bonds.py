@@ -33,7 +33,8 @@ def run_hydrogen_bonds(rep, cfg: dict, repout: Path):
         update_selections=bool(spec.get("update_selections", False)),
     )
     try:
-        analysis.run(start=tr.get("start"), stop=tr.get("stop"), step=int(tr["stride"]))
+        analysis.run(start=tr.get("start"), stop=tr.get("stop"), step=int(tr["stride"]),
+                     verbose=bool(cfg.get("progress",{}).get("enabled",True)))
     except Exception as exc:
         raise RuntimeError(
             "Hydrogen-bond analysis failed. Use a bond-aware topology or "
