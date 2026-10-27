@@ -58,7 +58,8 @@ DEFAULTS = {
                 "enabled": False,
                 "selection": None,
                 "include_3d": False,
-                "slope_start_fraction": 0.2
+                "slope_start_fraction": 0.2,
+                "slope_end_fraction": 0.8
             },
         },
         "membrane_order": {
@@ -589,8 +590,9 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
                 "enabled membrane analysis requires axis x/y/z and headgroup_selection"
             )
         frac = float((mem.get("msd", {}) or {}).get("slope_start_fraction", 0.2))
-        if not 0 <= frac < 1:
-            raise ValueError("membrane.msd.slope_start_fraction must be in [0, 1)")
+        end_frac = float((mem.get("msd", {}) or {}).get("slope_end_fraction", 0.8))
+        if not 0 <= frac < end_frac <= 1:
+            raise ValueError("membrane.msd slope fractions require 0 <= start < end <= 1")
 
     order = cfg.get("analyses", {}).get("membrane_order", {})
     if order.get("enabled"):
