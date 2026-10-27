@@ -50,6 +50,28 @@ def _concat(parts):
     return pd.concat((pd.read_parquet(p) for p in parts), ignore_index=True) if parts else pd.DataFrame()
 
 
+def _profile_batches(profiles, frame_count, budget_bytes):
+    """Group profile exports by estimated float32 resident bytes.
+
+    A single very large profile is emitted alone; the budget is advisory
+    because concatenation and compressed NPZ writing need temporary arrays.
+    """
+    if budget_bytes <= 0:
+        raise ValueError("profile export memory budget must be positive")
+    batches, batch, resident = [], [], 0
+    for index, profile in enumerate(profiles):
+        estimate = int(frame_count) * len(profile.positions) * 4
+        if batch and resident + estimate > budget_bytes:
+            batches.append(batch)
+            batch, resident = [], 0
+        batch.append(index)
+        resident += estimate
+    if batch:
+        batches.append(batch)
+    return batches
+
+
+
 class FusedMembrane:
     """Stateful, chunk-flushed lipid observers sharing a single Universe."""
 
@@ -295,27 +317,6 @@ class FusedMembrane:
             match = re.search(r"part-(\d+)", path.name)
             if match and int(match.group(1)) >= next_part and path.is_file():
                 path.unlink()
-
-def _profile_batches(profiles, frame_count, budget_bytes):
-    """Group profile exports by estimated float32 resident bytes.
-
-    A single very large profile is emitted alone; the budget is advisory
-    because concatenation and compressed NPZ writing need temporary arrays.
-    """
-    if budget_bytes <= 0:
-        raise ValueError("profile export memory budget must be positive")
-    batches, batch, resident = [], [], 0
-    for index, profile in enumerate(profiles):
-        estimate = int(frame_count) * len(profile.positions) * 4
-        if batch and resident + estimate > budget_bytes:
-            batches.append(batch)
-            batch, resident = [], 0
-        batch.append(index)
-        resident += estimate
-    if batch:
-        batches.append(batch)
-    return batches
-
 
     def finalize(self):
         """Restore original output contracts from committed small chunk files."""
