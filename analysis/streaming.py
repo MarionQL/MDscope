@@ -10,6 +10,8 @@ import pandas as pd
 from .config import analysis_groups, analysis_runs, atomic_parquet,ensure_dir,time_ps
 from .progress import track
 from .profiling import PhaseProfiler
+from .core.trajectory_sources import open_msd_universe, paired_frames
+from .msd import initialize_msd
 from .fused_membrane import FusedMembrane, enabled_names as fused_enabled_names
 from .fused_extensions import FusedExtensions, enabled_names as extension_enabled_names
 from .fused_distance import FusedDistances, enabled_names as distance_enabled_names
@@ -183,6 +185,9 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
     if start is not None:
         universe.trajectory[int(start)]
     membrane = initialize_membrane(universe, cfg)
+    msd_universe = open_msd_universe(
+        rep, cfg, membrane, universe, 0 if start is None else int(start)
+    )
     fused = FusedMembrane(universe, cfg, repout) if fused_enabled_names(cfg) else None
     extensions = FusedExtensions(universe, cfg, repout) if extension_enabled_names(cfg) else None
     distances = FusedDistances(universe, cfg, repout) if distance_enabled_names(cfg) else None
@@ -227,6 +232,9 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
             if start is not None:
                 universe.trajectory[int(start)]
             membrane = initialize_membrane(universe, cfg)
+            if msd_universe is not None:
+                msd_universe.trajectory[0 if start is None else int(start)]
+                initialize_msd(msd_universe, membrane, cfg["analyses"]["membrane"])
             processed = part = 0
 
     if extensions is not None:
@@ -242,7 +250,12 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
     first = (0 if start is None else int(start)) + processed * stride
     rows, group_rows, salt_rows, ligand_rows, coords, coord_times = [], [], [], [], [], []
     frames=universe.trajectory[slice(first,stop,stride)]
-    for ts in track(profiler.frames(frames) if profiler.enabled else frames,
+    raw_msd_frames = (
+        msd_universe.trajectory[slice(first,stop,stride)]
+        if msd_universe is not None else None
+    )
+    input_frames = paired_frames(frames, raw_msd_frames)
+    for ts in track(profiler.frames(input_frames) if profiler.enabled else input_frames,
                     total=len(frames),
                     desc=f"{rep.system}/{rep.label}: streaming",
                     enabled=cfg.get("progress",{}).get("enabled",True)):
@@ -259,7 +272,9 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
             profiler.call("sdc4_mechanisms_update", sdc4.update, ts, processed)
         for density in densities:
             profiler.call("density_update", density.update, universe, tps)
-        membrane_values = profiler.call("membrane_metrics", membrane_metrics, universe, membrane)
+        membrane_values = profiler.call(
+            "membrane_metrics", membrane_metrics, universe, membrane, msd_universe
+        )
         if alignment_enabled:
             global_transform = profiler.call(
                 "protein_alignment_fit", _fit_transform,
