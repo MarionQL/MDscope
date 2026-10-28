@@ -1,5 +1,6 @@
 """Tiny trajectory regression: the streaming coordinator must still write RMSD and RMSF."""
 from copy import deepcopy
+import json
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -7,7 +8,8 @@ import MDAnalysis as mda
 from mdscope.analysis.config import DEFAULTS,Replicate
 from mdscope.analysis.streaming import run_streaming_pass
 
-def test_streaming_rmsd_rmsf_after_module_split(tmp_path):
+def test_streaming_rmsd_rmsf_after_module_split(tmp_path, monkeypatch):
+    monkeypatch.setenv("MDSCOPE_PROFILE", "1")
     pdb=tmp_path/"tiny.pdb"
     xyz=np.array([[10.,10.,10.],[13.,10.,10.],[10.,13.,10.],[10.,10.,13.]])
     lines=["CRYST1   50.000   50.000   50.000  90.00  90.00  90.00 P 1           1"]
@@ -48,3 +50,8 @@ def test_streaming_rmsd_rmsf_after_module_split(tmp_path):
     assert data["rmsd_A"].iloc[0]<1e-8
     rmsf=pd.read_parquet(raw/"rmsf.parquet")
     assert len(rmsf)==4 and np.isfinite(rmsf["rmsf_A"]).all()
+    profile = json.loads((raw.parent / "streaming_phase_profile.json").read_text())
+    assert profile["frames_completed"] == 8
+    stages = {row["stage"] for row in profile["timings"]}
+    assert {"initialization", "trajectory_decode", "other_frame_work",
+            "finalization"}.issubset(stages)
