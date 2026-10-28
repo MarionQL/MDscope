@@ -237,6 +237,7 @@ class Replicate:
     topology: Path
     trajectory: Path
     label: str
+    msd_trajectory: Path | None = None
 
 
 def _validate_path_component(value: str, field: str) -> str:
@@ -311,12 +312,17 @@ def iter_replicates(cfg: dict, config_path: str | Path):
         for i, rep in enumerate(spec["replicates"], 1):
             if isinstance(rep, dict):
                 traj = Path(rep["trajectory"])
+                msd_source = rep.get("msd_trajectory")
                 label = str(rep.get("label", f"rep{i}"))
             else:
                 traj = Path(rep)
+                msd_source = None
                 label = f"rep{i}"
             traj = traj if traj.is_absolute() else (base / traj).resolve()
-            yield Replicate(system, i, top, traj, label)
+            msd_path = Path(msd_source) if msd_source else None
+            if msd_path is not None and not msd_path.is_absolute():
+                msd_path = (base / msd_path).resolve()
+            yield Replicate(system, i, top, traj, label, msd_path)
 
 
 def analysis_groups(cfg: dict) -> dict[str, dict]:
@@ -572,6 +578,14 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
             traj = traj if traj.is_absolute() else (base / traj).resolve()
             if not traj.exists():
                 raise FileNotFoundError(traj)
+            if isinstance(rep, dict) and rep.get("msd_trajectory"):
+                msd_path = Path(rep["msd_trajectory"])
+                if not msd_path.is_absolute():
+                    msd_path = (base / msd_path).resolve()
+                if not msd_path.is_file():
+                    raise FileNotFoundError(
+                        f"Unmodified membrane MSD trajectory does not exist: {msd_path}"
+                    )
         duplicates = sorted({label for label in labels if labels.count(label) > 1})
         if duplicates:
             raise ValueError(
