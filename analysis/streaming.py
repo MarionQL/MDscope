@@ -188,6 +188,8 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
     msd_universe = open_msd_universe(
         rep, cfg, membrane, universe, 0 if start is None else int(start)
     )
+    if msd_universe is not None:
+        print(f"MSD original coordinate source: {rep.msd_trajectory}", flush=True)
     fused = FusedMembrane(universe, cfg, repout) if fused_enabled_names(cfg) else None
     extensions = FusedExtensions(universe, cfg, repout) if extension_enabled_names(cfg) else None
     distances = FusedDistances(universe, cfg, repout) if distance_enabled_names(cfg) else None
