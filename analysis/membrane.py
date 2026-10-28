@@ -84,7 +84,7 @@ def initialize_membrane(universe, cfg: dict) -> MembraneState:
     return state
 
 
-def membrane_metrics(universe, state: MembraneState) -> dict[str, float]:
+def membrane_metrics(universe, state: MembraneState, msd_universe=None) -> dict[str, float]:
     if not state.enabled:
         return {}
     dims = np.asarray(universe.dimensions[:3], float)
@@ -113,5 +113,5 @@ def membrane_metrics(universe, state: MembraneState) -> dict[str, float]:
             delta = min(delta, length - delta)
         out["membrane_thickness_A"] = delta
     if state.msd:
-        out.update(msd_metrics(universe,state))
+        out.update(msd_metrics(msd_universe if msd_universe is not None else universe, state))
     return out
