@@ -745,3 +745,73 @@ export MDSCOPE_PROGRESS_EVERY_PERCENT=1
 These settings do not alter which frames are analyzed or how the scientific
 observables are computed. Already-running jobs continue using the Python
 code loaded at job startup; submit a new job to use an updated checkout.
+
+
+### SLURM progress and source checkout
+
+`run_mdscope.sh` runs the checked-out `MDscope.analysis.cli`, not the separately
+installed lowercase `mdscope` package. Submit from this repository after
+`git pull --ff-only origin main`. The default configuration is
+`synd4_full_mechanisms.yaml`; provide a YAML path as the first `sbatch`
+script argument to override it. Before submitting, create the SLURM log
+directory with `mkdir -p slurm-out/mdscope` (SLURM opens log files before
+executing the script). The script combines stderr into the `.out` file so
+batch progress and exceptions are visible together. It prints imported source
+paths and the checkout commit for reproducibility. Batch progress reports
+every 1% by default; `MDSCOPE_PROGRESS_EVERY_PERCENT` overrides the interval.
+
+### Membrane MSD coordinates and drift
+
+MDscope performs protein alignment on copied feature arrays, leaving the input
+trajectory untouched within the frame loop. However, an input file that was
+**already protein-centered or rotated before loading** is not appropriate for
+lab-frame lipid diffusion, even if MDscope never changes the loaded coordinates.
+
+If other analyses require a preprocessed `system-whole`/protein-centered XTC,
+provide a separate original (unmodified) XTC for MSD under each replicate:
+
+```yaml
+systems:
+  example:
+    topology: /path/to/system.tpr
+    replicates:
+      - label: rep1
+        trajectory: /path/to/processed-or-centered.xtc
+        msd_trajectory: /path/to/original-unmodified.xtc
+```
+
+Only the enabled membrane MSD observer reads `msd_trajectory`; all other
+analyses continue to use `trajectory`. The two files must have identical atom
+ordering, frame count, sampled frame indices, and matching frame timestamps;
+MDscope raises an error rather than silently computing a mismatched MSD.
+This second reader incurs additional trajectory I/O. If the primary XTC is
+already suitable (unrotated, uncentered), omit `msd_trajectory` to preserve
+single-pass performance.
+
+MSD accumulates minimum-image displacement between analyzed frames and is a
+single-origin descriptive estimator, not a multi-origin estimator. For valid
+unwrapping, motion between sampled frames must stay below half the box length.
+Prefer molecule-whole lipids for coherent center calculations.
+
+Optional `analyses.membrane.msd.remove_drift: true` subtracts the instantaneous
+mean displacement of selected lipid residue centers in each step (the
+lipid-frame reference). This reduces common translation artifacts but changes
+the physical reference frame and introduces a small finite-population bias;
+leave it disabled when laboratory-frame MSD is desired. The option is included
+in the configuration hash and is restart-safe. For scientific interpretation,
+check membrane drift, trajectory preprocessing, and the fit regime.
+
+### Performance profiling
+
+Set `MDSCOPE_PROFILE=1` to write `streaming_phase_profile.json` in each
+replicate output directory. The profile separates trajectory-frame decoding,
+fused membrane observers, extensions, distance observers, membrane metrics,
+alignment, density, and contact updates. Each family also writes its own
+more detailed timing JSON where supported. The shipped SLURM script enables
+this low-overhead profiling by default; set `MDSCOPE_PROFILE=0` to disable.
+Compare profiles across replicates by **seconds per analyzed frame**, while
+also recording CPU allocation, system atom count, storage and sampled frames.
+A GPU allocation does not accelerate ordinary NumPy/MDAnalysis analyses.
+Synthetic microbenchmarks can be run with
+`pytest -q -s tests/test_performance_benchmarks.py`; these check numerical
+equivalence and print measured timings without brittle fixed timing thresholds.

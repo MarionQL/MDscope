@@ -9,6 +9,7 @@ regular protein streaming metrics are disabled.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from collections import defaultdict
@@ -47,6 +48,28 @@ def _parts(path, suffix):
 
 def _concat(parts):
     return pd.concat((pd.read_parquet(p) for p in parts), ignore_index=True) if parts else pd.DataFrame()
+
+
+def _profile_batches(profiles, frame_count, budget_bytes):
+    """Group profile exports by estimated float32 resident bytes.
+
+    A single very large profile is emitted alone; the budget is advisory
+    because concatenation and compressed NPZ writing need temporary arrays.
+    """
+    if budget_bytes <= 0:
+        raise ValueError("profile export memory budget must be positive")
+    batches, batch, resident = [], [], 0
+    for index, profile in enumerate(profiles):
+        estimate = int(frame_count) * len(profile.positions) * 4
+        if batch and resident + estimate > budget_bytes:
+            batches.append(batch)
+            batch, resident = [], 0
+        batch.append(index)
+        resident += estimate
+    if batch:
+        batches.append(batch)
+    return batches
+
 
 
 class FusedMembrane:
@@ -351,36 +374,48 @@ class FusedMembrane:
             ])
             atomic_parquet(out / "site_mapping.parquet", mapping)
             parts = _parts(self.cache / "order_profiles", ".npz")
-            # Read one profile at a time; avoid materializing all profiles
-            # for the entire trajectory simultaneously.
-            index_rows = []
-            # Read each compressed chunk once rather than reopening and
-            # decompressing it separately for every lipid-order profile.
-            profile_chunks = [[] for _ in o["profiles"]]
-            time_chunks = []
-            for path in parts:
-                with np.load(path, allow_pickle=False) as data:
-                    time_chunks.append(data["time_ps"].astype(float))
-                    for i in range(len(o["profiles"])):
-                        profile_chunks[i].append(
-                            data[f"profile_{i:04d}"].astype(np.float32)
-                        )
-            all_times = (
-                np.concatenate(time_chunks) if time_chunks else np.array([], float)
+            # Bound peak RAM: for large trajectory exports, loading every
+            # profile for every frame at once can swap or exhaust HPC nodes.
+            # On ordinary trajectories this forms one batch, retaining the
+            # faster single-pass chunk access from the previous optimization.
+            limit_mb = max(1, int(os.environ.get(
+                "MDSCOPE_ORDER_FINALIZE_MEMORY_MB", "256"
+            )))
+            batches = _profile_batches(
+                o["profiles"], len(series), limit_mb * 1024 * 1024
             )
-            for i, profile in enumerate(o["profiles"]):
-                arrays = profile_chunks[i]
-                filename = f"profile-{i:04d}.npz"
-                _atomic_npz(
-                    out / filename,
-                    time_ps=all_times,
-                    values=np.concatenate(arrays, axis=0) if arrays else np.empty(
-                        (0, len(profile.positions)), np.float32
-                    ),
-                    positions=profile.positions,
-                    labels=profile.labels,
-                )
-                index_rows.append({"profile": profile.profile_id, "file": filename})
+            index_rows = []
+            all_times = np.array([], float)
+            for batch_id, indices in enumerate(batches):
+                profile_chunks = {i: [] for i in indices}
+                time_chunks = []
+                for path in parts:
+                    with np.load(path, allow_pickle=False) as data:
+                        if batch_id == 0:
+                            time_chunks.append(data["time_ps"].astype(float))
+                        for i in indices:
+                            profile_chunks[i].append(
+                                data[f"profile_{i:04d}"].astype(np.float32)
+                            )
+                if batch_id == 0:
+                    all_times = (
+                        np.concatenate(time_chunks) if time_chunks
+                        else np.array([], float)
+                    )
+                for i in indices:
+                    profile = o["profiles"][i]
+                    arrays = profile_chunks.pop(i)
+                    filename = f"profile-{i:04d}.npz"
+                    _atomic_npz(
+                        out / filename,
+                        time_ps=all_times,
+                        values=np.concatenate(arrays, axis=0) if arrays else np.empty(
+                            (0, len(profile.positions)), np.float32
+                        ),
+                        positions=profile.positions,
+                        labels=profile.labels,
+                    )
+                    index_rows.append({"profile": profile.profile_id, "file": filename})
             atomic_parquet(out / "profile_index.parquet", pd.DataFrame(index_rows))
             result["membrane_order"] = {
                 "frames": len(series), "carbon_sites": len(sites),

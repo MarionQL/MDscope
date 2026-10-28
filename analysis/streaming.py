@@ -4,11 +4,15 @@ Compatibility: raw/summary output schema and checkpoint format retained.
 """
 from __future__ import annotations
 from pathlib import Path
+from time import perf_counter
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 from .config import analysis_groups, analysis_runs, atomic_parquet,ensure_dir,time_ps
 from .progress import track
+from .profiling import PhaseProfiler
+from .core.trajectory_sources import open_msd_universe, paired_frames
+from .msd import initialize_msd
 from .fused_membrane import FusedMembrane, enabled_names as fused_enabled_names
 from .fused_extensions import FusedExtensions, enabled_names as extension_enabled_names
 from .fused_distance import FusedDistances, enabled_names as distance_enabled_names
@@ -77,6 +81,8 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
     repout = ensure_dir(outroot / rep.system / rep.label)
     raw, cache = ensure_dir(repout / "raw"), ensure_dir(repout / "cache")
     checkpoint = cache / "stream_checkpoint.npz"
+    profiler = PhaseProfiler.from_environment()
+    setup_started = perf_counter() if profiler.enabled else None
     universe = mda.Universe(str(rep.topology), str(rep.trajectory))
     selections = cfg["selections"]
     protein = universe.select_atoms(selections["protein"])
@@ -181,6 +187,11 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
     if start is not None:
         universe.trajectory[int(start)]
     membrane = initialize_membrane(universe, cfg)
+    msd_universe = open_msd_universe(
+        rep, cfg, membrane, universe, 0 if start is None else int(start)
+    )
+    if msd_universe is not None:
+        print(f"MSD original coordinate source: {rep.msd_trajectory}", flush=True)
     fused = FusedMembrane(universe, cfg, repout) if fused_enabled_names(cfg) else None
     extensions = FusedExtensions(universe, cfg, repout) if extension_enabled_names(cfg) else None
     distances = FusedDistances(universe, cfg, repout) if distance_enabled_names(cfg) else None
@@ -225,6 +236,9 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
             if start is not None:
                 universe.trajectory[int(start)]
             membrane = initialize_membrane(universe, cfg)
+            if msd_universe is not None:
+                msd_universe.trajectory[0 if start is None else int(start)]
+                initialize_msd(msd_universe, membrane, cfg["analyses"]["membrane"])
             processed = part = 0
 
     if extensions is not None:
@@ -240,31 +254,44 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
     first = (0 if start is None else int(start)) + processed * stride
     rows, group_rows, salt_rows, ligand_rows, coords, coord_times = [], [], [], [], [], []
     frames=universe.trajectory[slice(first,stop,stride)]
-    for ts in track(frames,total=len(frames),
+    raw_msd_frames = (
+        msd_universe.trajectory[slice(first,stop,stride)]
+        if msd_universe is not None else None
+    )
+    input_frames = paired_frames(frames, raw_msd_frames)
+    if setup_started is not None:
+        profiler.add('initialization', perf_counter() - setup_started)
+    for ts in track(profiler.frames(input_frames) if profiler.enabled else input_frames,
+                    total=len(frames),
                     desc=f"{rep.system}/{rep.label}: streaming",
                     enabled=cfg.get("progress",{}).get("enabled",True)):
+        if profiler.enabled:
+            frame_started = perf_counter()
+            measured_before = sum(profiler.seconds.values())
         tps = time_ps(ts, processed, cfg)
         # Membrane observers must consume raw wrapped coordinates, not aligned
         # protein coordinates. All three analyses share this exact frame.
         if fused is not None:
-            fused.update(ts, processed)
+            profiler.call("fused_membrane_update", fused.update, ts, processed)
         if extensions is not None:
-            extensions.update(ts, processed)
+            profiler.call("fused_extensions_update", extensions.update, ts, processed)
         if distances is not None:
-            distances.update(ts, processed)
+            profiler.call("fused_distances_update", distances.update, ts, processed)
         if sdc4 is not None:
-            sdc4.update(ts, processed)
+            profiler.call("sdc4_mechanisms_update", sdc4.update, ts, processed)
         for density in densities:
-            density.update(universe, tps)
-        membrane_values = membrane_metrics(universe, membrane)
+            profiler.call("density_update", density.update, universe, tps)
+        membrane_values = profiler.call(
+            "membrane_metrics", membrane_metrics, universe, membrane, msd_universe
+        )
         if alignment_enabled:
-            global_transform = _fit_transform(
-                alignment_atoms.positions,
-                reference_alignment,
+            global_transform = profiler.call(
+                "protein_alignment_fit", _fit_transform,
+                alignment_atoms.positions, reference_alignment,
             )
-            aligned_features = _apply_transform(
-                features.positions,
-                global_transform,
+            aligned_features = profiler.call(
+                "feature_alignment_apply", _apply_transform,
+                features.positions, global_transform,
             )
         else:
             global_transform = None
@@ -342,11 +369,12 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
                 ),
             })
 
-        salt_rows.extend(salt_bridge_events(salt_state, tps, _valid_box(universe)))
-        ligand_min, ligand_count, new_contacts = ligand_contact_events(
-            ligand_state,
-            tps,
-            _valid_box(universe)
+        salt_rows.extend(profiler.call(
+            "salt_bridges", salt_bridge_events, salt_state, tps, _valid_box(universe)
+        ))
+        ligand_min, ligand_count, new_contacts = profiler.call(
+            "ligand_contacts", ligand_contact_events, ligand_state, tps,
+            _valid_box(universe),
         )
         ligand_rows.extend(new_contacts)
         row = {"time_ps": tps, "rmsd_A": rmsd_value, "radius_of_gyration_A": rg_value}
@@ -400,6 +428,11 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
                 membrane
             )
 
+        if profiler.enabled:
+            measured_during = sum(profiler.seconds.values()) - measured_before
+            profiler.add('other_frame_work', max(0., perf_counter() - frame_started - measured_during))
+
+    final_started = perf_counter() if profiler.enabled else None
     if rows or group_rows or salt_rows or ligand_rows or coords:
         _flush(
             raw,
@@ -530,6 +563,9 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
             protein.write(str(raw / "rmsf_bfactor.pdb"))
         except Exception as exc:
             print(f"Warning: could not write RMSF B-factor PDB: {exc}")
+    if final_started is not None:
+        profiler.add('finalization', perf_counter() - final_started)
+    profiler.write(repout / "streaming_phase_profile.json", frames=processed)
     return {
         "frames": processed,
         "topology_atoms": len(universe.atoms),
