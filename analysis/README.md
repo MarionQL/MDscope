@@ -15,10 +15,12 @@ not break during incremental organization.
   migrate incrementally only with scientific numerical regression tests and
   import compatibility checks.
 
-Raw-coordinate membrane observers execute before protein alignment in
-`streaming.py`. Never rotate or center the whole trajectory inside the
-shared frame loop: MSD depends on physical lipid displacements. Aligned
-protein feature coordinates are derived in separate arrays.
+Membrane observers execute before runtime protein alignment in `streaming.py`.
+Never rotate or center the whole trajectory inside the shared frame loop.
+A separate `msd_trajectory` replicate input may supply original raw coordinates
+for MSD when the primary input was already preprocessed; the readers are
+validated for frame/time synchronization. Aligned protein feature coordinates
+are derived in separate arrays.
 
 New code should import concrete implementations from their grouped packages.
 Legacy imports (for example `analysis.msd`) are intentionally supported
