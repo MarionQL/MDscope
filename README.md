@@ -762,15 +762,36 @@ every 1% by default; `MDSCOPE_PROGRESS_EVERY_PERCENT` overrides the interval.
 
 ### Membrane MSD coordinates and drift
 
-Membrane MSD is computed directly from **raw coordinates** in the one-pass
-trajectory reader, before fitting/alignment for protein RMSD/RMSF. The aligned
-feature-coordinate cache is **not** used for MSD. Supply the original
-unrotated, non-protein-centered MD trajectory and its compatible topology.
-Protein centering performed **before writing the input trajectory** can change
-lab-frame displacement and cannot be reliably reconstructed by MDscope.
-Minimum-image frame-to-frame steps account for periodic wrapping, provided
-per-sampled-frame displacement stays below half the box length. The membrane
-MSD is a single-origin descriptive estimator, not a multi-origin estimator.
+MDscope performs protein alignment on copied feature arrays, leaving the input
+trajectory untouched within the frame loop. However, an input file that was
+**already protein-centered or rotated before loading** is not appropriate for
+lab-frame lipid diffusion, even if MDscope never changes the loaded coordinates.
+
+If other analyses require a preprocessed `system-whole`/protein-centered XTC,
+provide a separate original (unmodified) XTC for MSD under each replicate:
+
+```yaml
+systems:
+  example:
+    topology: /path/to/system.tpr
+    replicates:
+      - label: rep1
+        trajectory: /path/to/processed-or-centered.xtc
+        msd_trajectory: /path/to/original-unmodified.xtc
+```
+
+Only the enabled membrane MSD observer reads `msd_trajectory`; all other
+analyses continue to use `trajectory`. The two files must have identical atom
+ordering, frame count, sampled frame indices, and matching frame timestamps;
+MDscope raises an error rather than silently computing a mismatched MSD.
+This second reader incurs additional trajectory I/O. If the primary XTC is
+already suitable (unrotated, uncentered), omit `msd_trajectory` to preserve
+single-pass performance.
+
+MSD accumulates minimum-image displacement between analyzed frames and is a
+single-origin descriptive estimator, not a multi-origin estimator. For valid
+unwrapping, motion between sampled frames must stay below half the box length.
+Prefer molecule-whole lipids for coherent center calculations.
 
 Optional `analyses.membrane.msd.remove_drift: true` subtracts the instantaneous
 mean displacement of selected lipid residue centers in each step (the
