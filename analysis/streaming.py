@@ -4,6 +4,7 @@ Compatibility: raw/summary output schema and checkpoint format retained.
 """
 from __future__ import annotations
 from pathlib import Path
+from time import perf_counter
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
@@ -81,6 +82,7 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
     raw, cache = ensure_dir(repout / "raw"), ensure_dir(repout / "cache")
     checkpoint = cache / "stream_checkpoint.npz"
     profiler = PhaseProfiler.from_environment()
+    setup_started = perf_counter() if profiler.enabled else None
     universe = mda.Universe(str(rep.topology), str(rep.trajectory))
     selections = cfg["selections"]
     protein = universe.select_atoms(selections["protein"])
@@ -257,10 +259,15 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
         if msd_universe is not None else None
     )
     input_frames = paired_frames(frames, raw_msd_frames)
+    if setup_started is not None:
+        profiler.add('initialization', perf_counter() - setup_started)
     for ts in track(profiler.frames(input_frames) if profiler.enabled else input_frames,
                     total=len(frames),
                     desc=f"{rep.system}/{rep.label}: streaming",
                     enabled=cfg.get("progress",{}).get("enabled",True)):
+        if profiler.enabled:
+            frame_started = perf_counter()
+            measured_before = sum(profiler.seconds.values())
         tps = time_ps(ts, processed, cfg)
         # Membrane observers must consume raw wrapped coordinates, not aligned
         # protein coordinates. All three analyses share this exact frame.
@@ -421,6 +428,11 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
                 membrane
             )
 
+        if profiler.enabled:
+            measured_during = sum(profiler.seconds.values()) - measured_before
+            profiler.add('other_frame_work', max(0., perf_counter() - frame_started - measured_during))
+
+    final_started = perf_counter() if profiler.enabled else None
     if rows or group_rows or salt_rows or ligand_rows or coords:
         _flush(
             raw,
@@ -551,6 +563,8 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
             protein.write(str(raw / "rmsf_bfactor.pdb"))
         except Exception as exc:
             print(f"Warning: could not write RMSF B-factor PDB: {exc}")
+    if final_started is not None:
+        profiler.add('finalization', perf_counter() - final_started)
     profiler.write(repout / "streaming_phase_profile.json", frames=processed)
     return {
         "frames": processed,
