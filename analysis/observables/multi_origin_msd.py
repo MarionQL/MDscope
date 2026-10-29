@@ -111,3 +111,33 @@ def multi_origin_diffusion(
         "msd_lateral_A2": msd,
         "origins_per_lag": (len(t) - lags).astype(int),
     }
+
+
+def fit_multi_origin_curve(lag_ps, msd_A2, *, fit_start_fraction=.2, fit_end_fraction=.8):
+    """Fit a previously computed multi-origin MSD, preserving lag semantics."""
+    t = np.asarray(lag_ps, float)
+    y = np.asarray(msd_A2, float)
+    if t.ndim != 1 or y.shape != t.shape or len(t) < 6:
+        raise ValueError("MSD curve needs at least six lag values")
+    if not np.all(np.isfinite(t)) or not np.all(np.isfinite(y)):
+        raise ValueError("MSD curve must be finite")
+    if np.any(np.diff(t) <= 0) or t[0] != 0:
+        raise ValueError("Lag times must increase from zero")
+    if not 0 <= fit_start_fraction < fit_end_fraction <= 1:
+        raise ValueError("Require 0 <= fit_start_fraction < fit_end_fraction <= 1")
+    low, high = t[-1] * fit_start_fraction, t[-1] * fit_end_fraction
+    mask = (t >= low) & (t <= high) & (t > 0)
+    if mask.sum() < 4:
+        raise ValueError("Multi-origin diffusion fit requires at least four lag points")
+    slope, intercept = np.polyfit(t[mask], y[mask], 1)
+    predicted = slope * t[mask] + intercept
+    ss = np.sum((y[mask] - predicted) ** 2)
+    total = np.sum((y[mask] - y[mask].mean()) ** 2)
+    return {
+        "diffusion_nm2_ns": float(slope * 2.5),
+        "slope_A2_ps": float(slope),
+        "intercept_A2": float(intercept),
+        "r_squared": float(1. - ss / total) if total > 0 else np.nan,
+        "fit_start_ps": float(low), "fit_end_ps": float(high),
+        "n_fit": int(mask.sum()),
+    }
