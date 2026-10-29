@@ -46,7 +46,7 @@ from .sdc4_mechanisms import enabled as sdc4_enabled, run_sdc4_mechanisms
 from .shared_states import fit_shared_states
 from .sdc4_figures import plot_sdc4_mechanisms
 from .report import generate_report
-from .registry import specialized_tasks,additional_time_series
+from .registry import specialized_tasks,additional_time_series,fused_output,fused_output_plan
 from .msd import summarize_diffusion, summarize_project_diffusion, summarize_project_multi_origin
 from .observables.multi_origin_pipeline import run_multi_origin_diffusion
 from .coupling_screen import screen_couplings
@@ -280,28 +280,8 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     # Without protein streaming, run *all* optional observer families in
     # one shared frame loop instead of three separate fallback traversals.
     if not streaming_required:
-        pending_outputs = []
-        for name in fused_enabled_names(cfg):
-            pending_outputs.append({
-                "membrane_order": repout / "profiles" / "membrane_order" / "timeseries.parquet",
-                "bilayer_normal": repout / "extensions" / "bilayer_normal" / "timeseries.parquet",
-                "lipid_enrichment": repout / "extensions" / "lipid_enrichment" / "timeseries.parquet",
-            }[name])
-        for name in extension_enabled_names(cfg):
-            pending_outputs.append({
-                "hydrogen_bonds": repout / "interactions" / "hydrogen_bonds" / "events.parquet",
-                "lipid_hydrogen_bonds": repout / "interactions" / "lipid_hydrogen_bonds" / "events.parquet",
-                "dssp": repout / "profiles" / "dssp" / "assignments.parquet",
-                "sasa": repout / "profiles" / "sasa" / "residue_sasa.parquet",
-                "local_environment": repout / "extensions" / "local_environment" / "timeseries.parquet",
-            }[name])
-        for run_id in distance_enabled_names(cfg):
-            pending_outputs.append(
-                repout / "profiles" / "residue_membrane_distance" / run_id / "distance_matrix_A.npy"
-            )
-        if sdc4_enabled(cfg):
-            pending_outputs.append(repout / "extensions/sdc4_mechanisms/timeseries.parquet")
-        if any(not path.exists() for path in pending_outputs):
+        pending_outputs = fused_output_plan(cfg, repout)
+        if any(not entry.path.is_file() for entry in pending_outputs):
             t0 = perf_counter()
             run_fused_only(rep, cfg, repout)
             stage_timings.append({"stage": "fused-only", "seconds": perf_counter() - t0})
@@ -311,57 +291,35 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     # fallback pass is sufficient. Keep legacy task markers for resume.
     fused_names = fused_enabled_names(cfg)
     if fused_names:
-        expected = {
-            "membrane_order": repout / "profiles" / "membrane_order" / "timeseries.parquet",
-            "bilayer_normal": repout / "extensions" / "bilayer_normal" / "timeseries.parquet",
-            "lipid_enrichment": repout / "extensions" / "lipid_enrichment" / "timeseries.parquet",
-        }
-        fused_keys = {
-            "membrane_order": "membrane-order",
-            "bilayer_normal": "bilayer_normal",
-            "lipid_enrichment": "lipid_enrichment",
-        }
+        expected = {name: fused_output(repout, name) for name in fused_names}
         # A completed streaming marker guarantees finalized observer outputs.
         # If outputs are missing (or there was no protein streaming pass),
         # rebuild them with exactly one independent shared pass.
-        need_fallback = any(not expected[name].exists() for name in fused_names)
+        need_fallback = any(not expected[name].path.is_file() for name in fused_names)
         if need_fallback:
             t0 = perf_counter()
             run_fused_membrane(rep, cfg, repout)
             stage_timings.append({"stage": "fused-membrane-fallback", "seconds": perf_counter() - t0})
         for name in fused_names:
-            if not expected[name].is_file():
-                raise RuntimeError(f"Missing fused membrane output: {expected[name]}")
-            key = prefix + "-" + fused_keys[name]
+            if not expected[name].path.is_file():
+                raise RuntimeError(f"Missing fused membrane output: {expected[name].path}")
+            key = prefix + "-" + expected[name].checkpoint_key
             if not state.complete(key):
                 state.mark(key, {"fused_into": "streaming" if streaming_required and not need_fallback
                                  else "fused-membrane-fallback"})
 
     extension_names = extension_enabled_names(cfg)
     if extension_names:
-        extension_outputs = {
-            "hydrogen_bonds": repout / "interactions" / "hydrogen_bonds" / "events.parquet",
-            "lipid_hydrogen_bonds": repout / "interactions" / "lipid_hydrogen_bonds" / "events.parquet",
-            "dssp": repout / "profiles" / "dssp" / "assignments.parquet",
-            "sasa": repout / "profiles" / "sasa" / "residue_sasa.parquet",
-            "local_environment": repout / "extensions" / "local_environment" / "timeseries.parquet",
-        }
-        missing = [name for name in extension_names if not extension_outputs[name].exists()]
+        extension_outputs = {name: fused_output(repout, name) for name in extension_names}
+        missing = [name for name in extension_names if not extension_outputs[name].path.is_file()]
         if missing:
             t0 = perf_counter()
             run_fused_extensions(rep, cfg, repout)
             stage_timings.append({"stage": "fused-extensions-fallback", "seconds": perf_counter() - t0})
-        extension_keys = {
-            "hydrogen_bonds": "hydrogen-bonds",
-            "lipid_hydrogen_bonds": "lipid_hydrogen_bonds",
-            "dssp": "profiles",
-            "sasa": "profiles",
-            "local_environment": "local_environment",
-        }
         for name in extension_names:
-            if not extension_outputs[name].is_file():
-                raise RuntimeError(f"Missing fused output: {extension_outputs[name]}")
-            key = prefix + "-" + extension_keys[name]
+            if not extension_outputs[name].path.is_file():
+                raise RuntimeError(f"Missing fused output: {extension_outputs[name].path}")
+            key = prefix + "-" + extension_outputs[name].checkpoint_key
             if key.endswith("-profiles") and not all(
                 item in extension_names for item in ("dssp", "sasa")
                 if cfg["analyses"][item].get("enabled", False)
@@ -374,24 +332,24 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     distance_names = distance_enabled_names(cfg)
     if distance_names:
         expected = {
-            run_id: repout / "profiles" / "residue_membrane_distance" / run_id / "distance_matrix_A.npy"
+            run_id: fused_output(repout, "residue_membrane_distance", run_id=run_id)
             for run_id in distance_names
         }
-        missing = [name for name, path in expected.items() if not path.exists()]
+        missing = [name for name, entry in expected.items() if not entry.path.is_file()]
         if missing:
             t0 = perf_counter()
             run_fused_distances(rep, cfg, repout)
             stage_timings.append({"stage": "fused-distances-fallback", "seconds": perf_counter() - t0})
-        for run_id, path in expected.items():
-            if not path.is_file():
-                raise RuntimeError(f"Missing fused residue-distance output: {path}")
-            key = prefix + "-residue-membrane-" + run_id
+        for run_id, entry in expected.items():
+            if not entry.path.is_file():
+                raise RuntimeError(f"Missing fused residue-distance output: {entry.path}")
+            key = prefix + "-" + entry.checkpoint_key
             if not state.complete(key):
                 state.mark(key, {"fused_into": "streaming" if streaming_required and not missing
                                  else "fused-distances-fallback"})
 
     if sdc4_enabled(cfg):
-        output = repout / "extensions/sdc4_mechanisms/timeseries.parquet"
+        output = fused_output(repout, "sdc4_mechanisms").path
         if not output.is_file():
             t0 = perf_counter()
             run_sdc4_mechanisms(rep, cfg, repout)
