@@ -17,10 +17,32 @@ three lengths and three angles.
 | `biophysical_common.sequence_motifs`, `mechanistic_common.sequence_matches`, `extended/common.sequence_hits` | Retain | Distinct nonoverlapping/overlapping match behavior, chain attribution and residue/object return contracts. |
 | `mechanistic_common.orientation_vector` and `extended/common.axis_from_ca` | Retain | Minimum length 3 versus 4, CA selection policy, and invalid-value conventions differ. |
 
-## Further work before closing issue
+## Validation coverage
 
-Add topology-backed tests for absent masses/elements, reordered residue IDs,
-selections spanning multi-residue glycolipids, empty groups and motif
-boundaries. Compare existing real-trajectory outputs before modifying other
-numerical implementations. No implicit change to COM/COG, axis conventions,
-leaflet estimators, or contact precision is authorized by this PR.
+- `tests/test_issue31_geometry_contracts.py`: independent MDAnalysis
+  reference for minimum-image PBC displacement in rectangular and triclinic
+  cells, circular centers crossing cell boundaries, invalid/empty geometry.
+- `tests/test_issue31_topology_contracts.py`: reordered atom-to-residue
+  ownership, absent mass/element attributes, empty selections, selection policy.
+- `tests/test_issue31_glycolipid_motifs.py`: one ceramide anchor per physical
+  glycolipid despite carbohydrate residues; wrapped versus unwrapped centers;
+  overlapping species selection rejection; chain-specific motif identities
+  and deliberate overlapping-match behavior.
+- `tests/test_issue31_contact_mass_contracts.py`: sparse atom/residue
+  contact agreement with independent MDAnalysis calls; self-exclusion;
+  COG fallback with missing mass and mass-weighted COM when masses exist.
+
+All comparisons preserve currently documented output semantics. The
+multi-residue fixture models distinct ceramide and sugar residues explicitly;
+it does not claim that chemically connected residues share an MDAnalysis
+`resindex`. Use a physical ceramide anchor for multi-residue species.
+
+## Further consolidation policy
+
+The remaining similarly named operations in the table above are **not**
+demonstrated duplicates: their scientifically observable outputs differ.
+No additional production-code merge is justified without selecting an
+explicit common scientific contract, comparing real data, and obtaining
+approval for any intentional numerical change. This issue's audit and
+targeted mathematically equivalent kernel extraction are complete once
+the CI/smoke suite verifies the added regression coverage.
