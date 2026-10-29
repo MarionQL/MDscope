@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import re
 import numpy as np
 from MDAnalysis.lib.distances import capped_distance
+from ..core.atom_selection import select_heavy_atoms
 from ..core.geometry import minimum_image_displacements
 
 def valid_box(u):
@@ -17,7 +18,7 @@ def valid_box(u):
     return box
 
 def heavy(group):
-    return group[~np.asarray([str(x).upper().startswith("H") for x in group.names])]
+    return select_heavy_atoms(group, policy="extended")
 
 def pairs(left, right, cutoff, box, exclude_self=False):
     """Sparse atom contacts without constructing a dense atom×atom matrix."""
