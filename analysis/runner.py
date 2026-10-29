@@ -335,7 +335,7 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
             run_id: fused_output(repout, "residue_membrane_distance", run_id=run_id)
             for run_id in distance_names
         }
-        missing = [name for name, path in expected.items() if not path.exists()]
+        missing = [name for name, entry in expected.items() if not entry.path.is_file()]
         if missing:
             t0 = perf_counter()
             run_fused_distances(rep, cfg, repout)
