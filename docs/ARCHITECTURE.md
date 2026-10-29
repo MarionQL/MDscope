@@ -5,7 +5,7 @@
 `mdscope.analysis.cli`: command-line user interface.
 `mdscope.analysis.runner`: replicate/project orchestration and output merging.
 `mdscope.analysis.streaming`: shared frame pass, checkpoint state and data capture.
-`mdscope.analysis.core`: trajectory provenance, reusable runtime infrastructure.
+`mdscope.analysis.core`: trajectory provenance, rigid-body alignment, reusable lipid/PBC geometry and runtime infrastructure. The canonical implementations are `core/alignment.py` and `core/lipid_geometry.py`; legacy flat imports remain compatibility re-exports.
 `mdscope.analysis.observables`: independently testable numerical observables.
 `mdscope.analysis.extended`: supporting extended observables.
 `mdscope.analysis.registry`: specialized analysis registration and output contracts.
