@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import numpy as np
 from MDAnalysis.lib.distances import minimize_vectors
 from MDAnalysis.lib.mdamath import triclinic_vectors
+from .geometry import minimum_image_displacements
 
 
 @dataclass
@@ -167,9 +168,8 @@ def centers(groups):
 
 
 def planar_offsets(points, reference, box, normal=2):
-    delta = minimize_vectors(
-        np.asarray(points, float) - np.asarray(reference, float),
-        np.asarray(box, float),
+    delta = minimum_image_displacements(
+        np.asarray(points, float) - np.asarray(reference, float), box,
     )
     return np.delete(delta, normal, axis=-1)
 
