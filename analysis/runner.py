@@ -90,8 +90,8 @@ def package_code_hash() -> str:
     """Hash package source so restart markers invalidate after code edits."""
     digest = hashlib.sha256()
     package_dir = Path(__file__).resolve().parent
-    for path in sorted(package_dir.glob("*.py")):
-        digest.update(path.name.encode("ascii"))
+    for path in sorted(package_dir.rglob("*.py")):
+        digest.update(path.relative_to(package_dir).as_posix().encode("utf-8"))
         digest.update(path.read_bytes())
     return digest.hexdigest()[:16]
 
@@ -135,13 +135,22 @@ def _merge_timeseries(tables: list[pd.DataFrame], group: bool = False) -> pd.Dat
     if not tables:
         return pd.DataFrame()
     keys = ["group", "time_ps"] if group else ["time_ps"]
-    out = tables[0].sort_values(keys).drop_duplicates(keys, keep="last")
+    for source_index, table in enumerate(tables):
+        if table.duplicated(keys).any():
+            raise ValueError(
+                f"Duplicate time-series keys in source {source_index}: {keys}"
+            )
+    out = tables[0].sort_values(keys)
     for table in tables[1:]:
-        table = table.sort_values(keys).drop_duplicates(keys, keep="last")
+        table = table.sort_values(keys)
         duplicate_metrics = [
             col for col in table.columns if col in out.columns and col not in keys
         ]
-        table = table.drop(columns=duplicate_metrics)
+        if duplicate_metrics:
+            raise ValueError(
+                "Conflicting observable columns across time-series sources: "
+                + ", ".join(sorted(duplicate_metrics))
+            )
         if len(table.columns) > len(keys):
             out = out.merge(table, on=keys, how="outer")
     return out.sort_values(keys).reset_index(drop=True)
@@ -155,13 +164,14 @@ def summarize_replicate(repout: Path, cfg: dict):
     raw, summary = repout / "raw", ensure_dir(repout / "summary")
     base = _load_parts(raw / "timeseries-part-*.parquet")
     if not base.empty:
-        base = base.sort_values("time_ps").drop_duplicates("time_ps", keep="last")
+        if base.duplicated("time_ps").any():
+            raise ValueError("Duplicate times in base replicate time series")
+        base = base.sort_values("time_ps")
     group_base = _load_parts(raw / "group_timeseries-part-*.parquet")
     if not group_base.empty:
-        group_base = group_base.sort_values(["group", "time_ps"]).drop_duplicates(
-            ["group", "time_ps"],
-            keep="last"
-        )
+        if group_base.duplicated(["group", "time_ps"]).any():
+            raise ValueError("Duplicate group/time keys in base replicate time series")
+        group_base = group_base.sort_values(["group", "time_ps"])
 
     profile_ts, profile_group_ts = postprocess_structure_profiles(repout, cfg)
     time_sources = [base] + profile_ts + membrane_order_timeseries(repout)
@@ -191,9 +201,6 @@ def summarize_replicate(repout: Path, cfg: dict):
         group=True
     )
     if not whole.empty:
-        for col in whole.columns:
-            if col != "time_ps" and (col.endswith("_count") or col.endswith("_residue_count")):
-                whole[col] = pd.to_numeric(whole[col], errors="coerce").fillna(0)
         atomic_parquet(summary / "timeseries.parquet", whole)
         if cfg.get("analyses",{}).get("membrane",{}).get("enabled",False) and cfg.get("analyses",{}).get("membrane",{}).get("msd",{}).get("enabled",False):
             summarize_diffusion(repout,cfg)
