@@ -11,7 +11,7 @@ def brute_force(xyz, normal=2):
     lateral = [k for k in range(3) if k != normal]
     return np.array([
         np.mean(np.sum(
-            (xyz[lag:, :, lateral] - xyz[:len(xyz)-lag, :, lateral]) ** 2,
+            (xyz[lag:][:, :, lateral] - xyz[:len(xyz)-lag][:, :, lateral]) ** 2,
             axis=-1,
         ))
         for lag in range(len(xyz))
