@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 import numpy as np
 from MDAnalysis.exceptions import NoDataError
+from .core.atom_selection import select_heavy_atoms
 from MDAnalysis.lib.distances import capped_distance, distance_array
 from .core.geometry import minimum_image_displacements
 
@@ -29,13 +30,7 @@ def selected(universe, selection, *, required=False):
 
 
 def heavy(atoms):
-    # Work with topologies that may not provide element attributes (e.g. TPR).
-    try:
-        elements = np.asarray(atoms.elements, str)
-        return atoms[np.char.upper(elements) != "H"]
-    except (AttributeError, ValueError, NotImplementedError, NoDataError):
-        return atoms[np.array([not re.match(r"^([0-9]+)?H", str(n), re.I)
-                               for n in atoms.names], dtype=bool)]
+    return select_heavy_atoms(atoms, policy="mechanistic")
 
 
 def nearest(a, b, box):
