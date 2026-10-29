@@ -5,13 +5,6 @@ helpers.
 
 from __future__ import annotations
 
-import hashlib
-import json
-import os
-import platform
-import subprocess
-import sys
-import tempfile
 import time
 from copy import deepcopy
 from dataclasses import dataclass
@@ -386,90 +379,9 @@ def profile_dir(repout: Path, analysis: str, run_id: str = DEFAULT_INSTANCE_ID) 
     return Path(repout) / "profiles" / analysis / run_id
 
 
-def ensure_dir(path: str | Path) -> Path:
-    path = Path(path)
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def atomic_json(path: str | Path, obj: Any) -> None:
-    # Write to a sibling temporary file first so an interrupted job
-    # never leaves a half-written state file.
-    path = Path(path)
-    ensure_dir(path.parent)
-    fd, tmp = tempfile.mkstemp(prefix=path.name, dir=path.parent)
-    try:
-        with os.fdopen(fd, "w") as handle:
-            json.dump(obj, handle, indent=2, default=str)
-        os.replace(tmp, path)
-    finally:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
-
-
-def atomic_text(path: str | Path, text: str) -> None:
-    # Atomic replacement matters because resolved configuration is also
-    # used to audit/restart long runs.
-    path = Path(path)
-    ensure_dir(path.parent)
-    fd, tmp = tempfile.mkstemp(prefix=path.name, dir=path.parent)
-    try:
-        with os.fdopen(fd, "w") as handle:
-            handle.write(text)
-        os.replace(tmp, path)
-    finally:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
-
-
-def atomic_parquet(path: str | Path, df: pd.DataFrame) -> None:
-    # Use a unique temporary file so concurrent/aborted writers cannot
-    # collide, then atomically replace the destination.
-    path = Path(path)
-    ensure_dir(path.parent)
-    fd, tmp_name = tempfile.mkstemp(
-        prefix=path.name + ".",
-        suffix=".tmp",
-        dir=path.parent,
-    )
-    os.close(fd)
-    tmp = Path(tmp_name)
-    try:
-        try:
-            df.to_parquet(tmp, index=False)
-        except ImportError as exc:
-            raise RuntimeError(
-                "Parquet output requires pyarrow (recommended) or "
-                "fastparquet."
-            ) from exc
-        os.replace(tmp, path)
-    finally:
-        if tmp.exists():
-            tmp.unlink()
-
-
-def config_hash(obj: Any) -> str:
-    return hashlib.sha256(json.dumps(obj, sort_keys=True, default=str).encode()).hexdigest()[:16]
-
-
-def environment_metadata() -> dict[str, Any]:
-    import MDAnalysis as mda
-    try:
-        commit = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"],
-            text=True,
-            stderr=subprocess.DEVNULL
-        ).strip()
-    except Exception:
-        commit = None
-    return {
-        "created_unix": time.time(),
-        "python": sys.version,
-        "platform": platform.platform(),
-        "hostname": platform.node(),
-        "mdanalysis": mda.__version__,
-        "git_commit": commit,
-    }
+# Preserve historical imports for existing extensions and HPC scripts.
+from .core.persistence import ensure_dir, atomic_json, atomic_text, atomic_parquet
+from .core.provenance import config_hash, environment_metadata
 
 
 def time_ps(ts, frame_index: int, cfg: dict) -> float:
