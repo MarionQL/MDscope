@@ -159,3 +159,25 @@ def summarize_project_diffusion(root:Path,system_repouts:dict,cfg):
         fig.tight_layout()
         fig.savefig(out/"diffusion_coefficients.png",dpi=int(cfg.get("plots",{}).get("dpi",250)))
         plt.close(fig)
+
+
+
+def summarize_project_multi_origin(root, system_repouts):
+    """Aggregate independent per-replicate multi-origin fits without frame pseudoreplication."""
+    tables = []
+    for reps in system_repouts.values():
+        for repout in reps:
+            path = Path(repout) / "summary" / "multi_origin_diffusion.parquet"
+            if path.exists():
+                tables.append(pd.read_parquet(path))
+    if not tables:
+        return
+    all_rows = pd.concat(tables, ignore_index=True)
+    target = Path(root) / "project_summary" / "diffusion"
+    target.mkdir(parents=True, exist_ok=True)
+    atomic_parquet(target / "multi_origin_replicates.parquet", all_rows)
+    grouped = (all_rows.groupby(["system", "metric"], sort=True)["diffusion_nm2_ns"]
+               .agg(n_replicates="count", mean="mean", sd="std", median="median")
+               .reset_index())
+    grouped["interpretation"] = "replicate_level_descriptive_no_significance"
+    atomic_parquet(target / "multi_origin_systems.parquet", grouped)
