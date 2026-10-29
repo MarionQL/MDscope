@@ -2,7 +2,9 @@ name: MDscope checks
 on:
   push:
     branches:
+      - main
       - feature/neuronal-membrane-mechanisms
+      - fix/scientific-data-integrity-20261028
   pull_request:
 
 jobs:

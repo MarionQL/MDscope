@@ -25,10 +25,21 @@ class AnchorTracker:
 
     def positions(self):
         xyz = self.atoms.positions.astype(float, copy=False)
-        # Select one atom per lipid when possible. For a multi-atom anchor,
-        # users must ensure the selected atoms do not straddle a PBC boundary.
+        # Reconstruct selected atoms relative to an anchor atom of each lipid.
+        # This avoids an incorrect Cartesian midpoint when a lipid crosses PBC.
+        first = np.full(len(self.counts), len(xyz), dtype=int)
+        np.minimum.at(first, self.owner, np.arange(len(xyz)))
+        if np.any(first == len(xyz)):
+            raise ValueError("Lipid anchor has no selected atoms")
+        reference = xyz[first]
+        box = self.atoms.universe.dimensions
+        if box is None or not np.all(np.asarray(box[:3]) > 0):
+            raise ValueError("Lipid anchors require valid periodic box dimensions")
+        unwrapped = reference[self.owner] + minimize_vectors(
+            xyz - reference[self.owner], box
+        )
         return np.column_stack([
-            np.bincount(self.owner, weights=xyz[:, axis], minlength=len(self.counts))
+            np.bincount(self.owner, weights=unwrapped[:, axis], minlength=len(self.counts))
             / self.counts for axis in range(3)
         ])
 
