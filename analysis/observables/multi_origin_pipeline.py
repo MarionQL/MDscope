@@ -15,7 +15,6 @@ from MDAnalysis.lib.distances import minimize_vectors
 from ..config import atomic_parquet, time_ps
 from ..membrane import initialize_membrane
 from .msd import _residue_centers
-from .multi_origin_msd import multi_origin_diffusion
 
 
 def run_multi_origin_diffusion(rep, cfg, repout):
@@ -60,8 +59,11 @@ def run_multi_origin_diffusion(rep, cfg, repout):
                 displacement += step
             track[i] = displacement
             last = current
+        if not np.all(np.isfinite(times)) or np.any(np.diff(times) <= 0) or not np.allclose(np.diff(times), np.diff(times)[0], rtol=1e-5, atol=1e-8):
+            raise ValueError("Multi-origin MSD requires regularly spaced finite time samples")
         track.flush()
         rows, curves = [], []
+        from .multi_origin_msd import multi_origin_msd, fit_multi_origin_curve
         for suffix, mask in (
             ("", np.ones(n_lipids, dtype=bool)),
             ("_upper", membrane.msd_upper_mask),
@@ -71,7 +73,6 @@ def run_multi_origin_diffusion(rep, cfg, repout):
                 continue
             # Boolean fancy indexing copies the full selection. Preserve
             # bounded RAM by processing contiguous tracks in small batches.
-            from .multi_origin_msd import multi_origin_msd
             selected = np.flatnonzero(mask)
             lag = None
             weighted = None
@@ -89,7 +90,6 @@ def run_multi_origin_diffusion(rep, cfg, repout):
             # Fit against the independent lag MSD using the shared estimator.
             curve = weighted / len(selected)
             lag_times = lag * (times[1] - times[0])
-            from .multi_origin_msd import fit_multi_origin_curve
             fit = fit_multi_origin_curve(
                 lag_times, curve,
                 fit_start_fraction=float(settings.get("slope_start_fraction", .2)),
