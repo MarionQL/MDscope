@@ -5,7 +5,7 @@ from mdscope.analysis import fused_all
 
 class _Frames:
     def __getitem__(self, selection):
-        return iter(range(7))
+        return range(7)
 
 
 class _Universe:
