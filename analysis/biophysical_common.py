@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import numpy as np
 from MDAnalysis.lib.distances import capped_distance, distance_array
+from .core.atom_selection import select_heavy_atoms
 
 AA = {"ALA":"A","ARG":"R","ASN":"N","ASP":"D","CYS":"C","GLU":"E",
 "GLN":"Q","GLY":"G","HIS":"H","ILE":"I","LEU":"L","LYS":"K","MET":"M",
@@ -13,7 +14,7 @@ def box_of(u):
     return b if b.shape==(6,) and np.all(b[:3]>0) else None
 
 def heavy(ag):
-    return ag[np.array([not (str(a.name).upper().startswith("H") or str(getattr(a,"element","")).upper()=="H") for a in ag],bool)]
+    return select_heavy_atoms(ag, policy="biophysical")
 
 def atom_contacts(a,b,cutoff,box=None):
     if len(a)==0 or len(b)==0: return np.empty((0,2),int)
