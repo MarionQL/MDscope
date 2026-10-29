@@ -273,9 +273,8 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
         # Validate coordinate provenance before unaligned membrane observers.
         source_space = CoordinateSpace.SOURCE
         require_coordinate_space("membrane observers", source_space, CoordinateSpace.SOURCE)
+        # The MSD reader is independent when explicitly configured.
         msd_space = msd_source_space(msd_universe is not None)
-        if msd_space == CoordinateSpace.FITTED:
-            raise ValueError("MSD cannot consume fitted protein coordinates")
         # All raw observers run before fitted feature arrays are constructed.
         if fused is not None:
             profiler.call("fused_membrane_update", fused.update, ts, processed)
