@@ -7,7 +7,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 import numpy as np
-from MDAnalysis.lib.distances import capped_distance, minimize_vectors
+from MDAnalysis.lib.distances import capped_distance
+from ..core.geometry import minimum_image_displacements
 
 def valid_box(u):
     box = np.asarray(u.dimensions, dtype=float)
@@ -46,7 +47,7 @@ def centers(atoms):
     return indices, out
 
 def minimum_image(delta, box):
-    return minimize_vectors(np.asarray(delta, dtype=np.float32), box)
+    return minimum_image_displacements(delta, box, dtype=np.float32)
 
 def lateral_distance(xyz, reference, box):
     delta = minimum_image(xyz - reference, box)

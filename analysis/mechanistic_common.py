@@ -8,7 +8,8 @@ from __future__ import annotations
 import re
 import numpy as np
 from MDAnalysis.exceptions import NoDataError
-from MDAnalysis.lib.distances import capped_distance, distance_array, minimize_vectors
+from MDAnalysis.lib.distances import capped_distance, distance_array
+from .core.geometry import minimum_image_displacements
 
 AA3 = dict(zip(
     "ALA ARG ASN ASP CYS GLN GLU GLY HIS ILE LEU LYS MET PHE PRO SER THR TRP TYR VAL".split(),
@@ -53,7 +54,7 @@ def contact_count(a, b, box, cutoff=5.0):
 
 
 def planar_distances(centers, anchor, box, normal=2):
-    offsets = minimize_vectors(np.asarray(centers) - np.asarray(anchor), box)
+    offsets = minimum_image_displacements(np.asarray(centers) - np.asarray(anchor), box)
     offsets[:, normal] = 0.0
     return np.linalg.norm(offsets, axis=1)
 
