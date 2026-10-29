@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mdscope"
+version = "0.12.0"
+description = "Reproducible molecular dynamics analysis workflows"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "pandas",
+    "pyarrow",
+    "PyYAML",
+    "matplotlib",
+    "MDAnalysis",
+]
+
+[project.optional-dependencies]
+report = ["reportlab", "pillow"]
+test = ["pytest", "reportlab", "pillow"]
+dev = ["pytest", "reportlab", "pillow", "build", "twine"]
+
+[project.scripts]
+mdscope = "mdscope.analysis.cli:main"
+
+[tool.setuptools]
+packages = [
+    "mdscope",
+    "mdscope.analysis",
+    "mdscope.analysis.core",
+    "mdscope.analysis.observables",
+    "mdscope.analysis.extended",
+    "mdscope.analysis.reporting",
+]
+
+[tool.setuptools.package-dir]
+mdscope = "."
+"mdscope.analysis" = "analysis"
+"mdscope.analysis.core" = "analysis/core"
+"mdscope.analysis.observables" = "analysis/observables"
+"mdscope.analysis.extended" = "analysis/extended"
+"mdscope.analysis.reporting" = "analysis/reporting"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
