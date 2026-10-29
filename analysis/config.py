@@ -61,7 +61,10 @@ DEFAULTS = {
                 "include_3d": False,
                 "remove_drift": False,
                 "slope_start_fraction": 0.2,
-                "slope_end_fraction": 0.8
+                "slope_end_fraction": 0.8,
+                "multi_origin": False,
+                "multi_origin_max_lag_frames": None,
+                "multi_origin_particle_batch": 64
             },
         },
         "membrane_order": {
@@ -656,6 +659,15 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
         end_frac = float((mem.get("msd", {}) or {}).get("slope_end_fraction", 0.8))
         if not 0 <= frac < end_frac <= 1:
             raise ValueError("membrane.msd slope fractions require 0 <= start < end <= 1")
+        multi = mem.get("msd", {}) or {}
+        if multi.get("multi_origin", False):
+            if not multi.get("enabled", False):
+                raise ValueError("membrane.msd.multi_origin requires msd.enabled")
+            lag = multi.get("multi_origin_max_lag_frames")
+            if lag is not None and int(lag) < 4:
+                raise ValueError("multi_origin_max_lag_frames must be at least 4")
+            if int(multi.get("multi_origin_particle_batch", 64)) < 1:
+                raise ValueError("multi_origin_particle_batch must be positive")
 
     order = cfg.get("analyses", {}).get("membrane_order", {})
     if order.get("enabled"):

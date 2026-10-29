@@ -47,7 +47,8 @@ from .shared_states import fit_shared_states
 from .sdc4_figures import plot_sdc4_mechanisms
 from .report import generate_report
 from .registry import specialized_tasks,additional_time_series
-from .msd import summarize_diffusion, summarize_project_diffusion
+from .msd import summarize_diffusion, summarize_project_diffusion, summarize_project_multi_origin
+from .observables.multi_origin_pipeline import run_multi_origin_diffusion
 from .coupling_screen import screen_couplings
 
 
@@ -426,6 +427,14 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
             result=task.run(rep,cfg,repout)
             state.mark(key,result if isinstance(result,dict) else {})
             stage_timings.append({"stage": task.key, "seconds": perf_counter() - t0})
+    msd_cfg = cfg.get("analyses", {}).get("membrane", {}).get("msd", {})
+    if msd_cfg.get("enabled") and msd_cfg.get("multi_origin", False):
+        target = repout / "summary" / "multi_origin_diffusion.parquet"
+        if not state.complete(prefix + "-multi-origin-msd") or not target.is_file():
+            t0 = perf_counter()
+            result = run_multi_origin_diffusion(rep, cfg, repout)
+            state.mark(prefix + "-multi-origin-msd", result)
+            stage_timings.append({"stage": "multi-origin-msd", "seconds": perf_counter() - t0})
     if not state.complete(prefix + "-summary"):
         t0 = perf_counter()
         summarize_replicate(repout, cfg)
@@ -476,6 +485,7 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None):
     fit_shared_states(cfg, root, system_repouts)
     plot_sdc4_mechanisms(cfg, root, system_repouts)
     summarize_project_diffusion(root,system_repouts,cfg)
+    summarize_project_multi_origin(root,system_repouts)
     if cfg.get('analyses',{}).get('coupling_screen',{}).get('enabled',False):
         screen_couplings(cfg,root,system_repouts)
     report_result = generate_report(cfg, root, system_repouts)
