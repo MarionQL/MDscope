@@ -50,7 +50,7 @@ def test_single_enabled_analysis_has_one_output(tmp_path, name):
     for settings in cfg["analyses"].values():
         if isinstance(settings, dict):
             settings["enabled"] = False
-    cfg["analyses"][name]["enabled"] = True
+    cfg["analyses"].setdefault(name, {})["enabled"] = True
     names = {x.name for x in fused_output_plan(cfg, tmp_path)}
     assert names == {name}
 
