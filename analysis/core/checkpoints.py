@@ -23,7 +23,11 @@ def validate_progress(processed: int, next_part: int, chunk: int, total: int) ->
 def prune_uncommitted_parts(folder: Path, next_part: int) -> list[Path]:
     """Delete only known numbered uncommitted part artifacts in *folder*."""
     removed = []
+    known_prefixes = ("timeseries-", "group_timeseries-", "salt_bridges-",
+                      "ligand_contacts-", "aligned-")
     for path in Path(folder).iterdir():
+        if not path.name.startswith(known_prefixes):
+            continue
         match = _PART.search(path.name)
         if match and int(match.group(1)) >= next_part and path.is_file():
             path.unlink()
