@@ -12,6 +12,7 @@ from .config import analysis_groups, analysis_runs, atomic_parquet,ensure_dir,ti
 from .progress import track
 from .profiling import PhaseProfiler
 from .core.trajectory_sources import open_msd_universe, paired_frames
+from .core.checkpoints import validate_progress, prune_uncommitted_parts
 from .core.coordinate_contracts import CoordinateSpace, require_coordinate_space, msd_source_space
 from .msd import initialize_msd
 from .fused_membrane import FusedMembrane, enabled_names as fused_enabled_names
@@ -209,6 +210,8 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
                 densities,
                 membrane
             )
+            total_frames = len(universe.trajectory[slice(start,stop,stride)])
+            validate_progress(processed, part, chunk, total_frames)
         except Exception:
             for path in raw.glob("*-part-*.parquet"):
                 path.unlink(missing_ok=True)
@@ -241,6 +244,11 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
                 msd_universe.trajectory[0 if start is None else int(start)]
                 initialize_msd(msd_universe, membrane, cfg["analyses"]["membrane"])
             processed = part = 0
+
+    # Parts created after the last durable checkpoint are uncommitted.
+    # Keep earlier parts intact so a resume never double-counts frames.
+    prune_uncommitted_parts(raw, part)
+    prune_uncommitted_parts(cache, part)
 
     if extensions is not None:
         extensions.prune_from(part)
