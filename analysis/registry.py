@@ -62,3 +62,57 @@ def additional_time_series(repout:Path,cfg):
         if path.exists():
             output.append(pd.read_parquet(path))
     return output
+
+
+# Canonical persisted outputs for fused observers. Keys deliberately retain the
+# existing analysis names; marker aliases preserve completed RunState histories.
+FUSED_OUTPUTS = {
+    "membrane_order": ("profiles/membrane_order/timeseries.parquet", "membrane-order", "membrane"),
+    "bilayer_normal": ("extensions/bilayer_normal/timeseries.parquet", "bilayer_normal", "membrane"),
+    "lipid_enrichment": ("extensions/lipid_enrichment/timeseries.parquet", "lipid_enrichment", "membrane"),
+    "hydrogen_bonds": ("interactions/hydrogen_bonds/events.parquet", "hydrogen-bonds", "extensions"),
+    "lipid_hydrogen_bonds": ("interactions/lipid_hydrogen_bonds/events.parquet", "lipid_hydrogen_bonds", "extensions"),
+    "dssp": ("profiles/dssp/assignments.parquet", "profiles", "extensions"),
+    "sasa": ("profiles/sasa/residue_sasa.parquet", "profiles", "extensions"),
+    "local_environment": ("extensions/local_environment/timeseries.parquet", "local_environment", "extensions"),
+    "sdc4_mechanisms": ("extensions/sdc4_mechanisms/timeseries.parquet", "sdc4-mechanisms", "sdc4"),
+}
+
+
+@dataclass(frozen=True)
+class FusedOutput:
+    name: str
+    path: Path
+    checkpoint_key: str
+    family: str
+
+
+def fused_output(repout: Path, name: str, *, run_id: str | None = None) -> FusedOutput:
+    """The persisted output and legacy completion marker of a fused analysis."""
+    if name == "residue_membrane_distance":
+        if run_id is None:
+            raise ValueError("residue_membrane_distance requires a run_id")
+        from .config import _validate_path_component
+        run_id = _validate_path_component(str(run_id), "distance run ID")
+        return FusedOutput(
+            name, Path(repout) / "profiles" / name / run_id / "distance_matrix_A.npy",
+            "residue-membrane-" + run_id, "distance",
+        )
+    rel, key, family = FUSED_OUTPUTS[name]
+    return FusedOutput(name, Path(repout) / rel, key, family)
+
+
+def fused_output_plan(cfg: dict, repout: Path) -> tuple[FusedOutput, ...]:
+    """Plan enabled fused outputs without creating readers or opening trajectories."""
+    # Imports stay local: registry is also used by postprocessing.
+    from .fused_membrane import enabled_names as membrane_enabled
+    from .fused_extensions import enabled_names as extensions_enabled
+    from .fused_distance import enabled_names as distance_enabled
+    from .sdc4_mechanisms import enabled as sdc4_enabled
+    entries = [fused_output(repout, name) for name in membrane_enabled(cfg)]
+    entries.extend(fused_output(repout, name) for name in extensions_enabled(cfg))
+    entries.extend(fused_output(repout, "residue_membrane_distance", run_id=run_id)
+                   for run_id in distance_enabled(cfg))
+    if sdc4_enabled(cfg):
+        entries.append(fused_output(repout, "sdc4_mechanisms"))
+    return tuple(entries)
