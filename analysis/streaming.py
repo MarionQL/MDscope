@@ -271,9 +271,11 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
             measured_before = sum(profiler.seconds.values())
         tps = time_ps(ts, processed, cfg)
         # Validate coordinate provenance before unaligned membrane observers.
-        require_coordinate_space("membrane observers", CoordinateSpace.SOURCE, CoordinateSpace.SOURCE)
-        require_coordinate_space("MSD", msd_source_space(msd_universe is not None),
-                                 msd_source_space(msd_universe is not None))
+        source_space = CoordinateSpace.SOURCE
+        require_coordinate_space("membrane observers", source_space, CoordinateSpace.SOURCE)
+        msd_space = msd_source_space(msd_universe is not None)
+        if msd_space == CoordinateSpace.FITTED:
+            raise ValueError("MSD cannot consume fitted protein coordinates")
         # All raw observers run before fitted feature arrays are constructed.
         if fused is not None:
             profiler.call("fused_membrane_update", fused.update, ts, processed)
@@ -304,6 +306,9 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
                 copy=True,
             )
 
+        feature_space = CoordinateSpace.FITTED if alignment_enabled else CoordinateSpace.SOURCE
+        if alignment_enabled:
+            require_coordinate_space("RMSD", feature_space, CoordinateSpace.FITTED)
         rmsd_value = (
             float(
                 compute_rmsd(
