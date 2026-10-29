@@ -12,6 +12,7 @@ from .config import analysis_groups, analysis_runs, atomic_parquet,ensure_dir,ti
 from .progress import track
 from .profiling import PhaseProfiler
 from .core.trajectory_sources import open_msd_universe, paired_frames
+from .core.coordinate_contracts import CoordinateSpace, require_coordinate_space, msd_source_space
 from .msd import initialize_msd
 from .fused_membrane import FusedMembrane, enabled_names as fused_enabled_names
 from .fused_extensions import FusedExtensions, enabled_names as extension_enabled_names
@@ -269,8 +270,11 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
             frame_started = perf_counter()
             measured_before = sum(profiler.seconds.values())
         tps = time_ps(ts, processed, cfg)
-        # Membrane observers must consume raw wrapped coordinates, not aligned
-        # protein coordinates. All three analyses share this exact frame.
+        # Validate coordinate provenance before unaligned membrane observers.
+        require_coordinate_space("membrane observers", CoordinateSpace.SOURCE, CoordinateSpace.SOURCE)
+        require_coordinate_space("MSD", msd_source_space(msd_universe is not None),
+                                 msd_source_space(msd_universe is not None))
+        # All raw observers run before fitted feature arrays are constructed.
         if fused is not None:
             profiler.call("fused_membrane_update", fused.update, ts, processed)
         if extensions is not None:
