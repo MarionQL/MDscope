@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import numpy as np
 from .msd import initialize_msd,msd_metrics
+from .core.leaflet_partition import median_leaflet_mask
 AXIS_INDEX = {'x':0,'y':1,'z':2}
 
 
@@ -71,9 +72,9 @@ def initialize_membrane(universe, cfg: dict) -> MembraneState:
         int(res.ix),
         float((state.headgroups & res.atoms).center_of_mass()[state.ai])
     ) for res in state.headgroups.residues]
-    midpoint = float(np.median([value for _, value in centers]))
-    state.upper_resix = np.asarray([ix for ix, value in centers if value >= midpoint], int)
-    state.lower_resix = np.asarray([ix for ix, value in centers if value < midpoint], int)
+    upper_mask = median_leaflet_mask([value for _, value in centers])
+    state.upper_resix = np.asarray([ix for (ix, _), upper in zip(centers, upper_mask) if upper], int)
+    state.lower_resix = np.asarray([ix for (ix, _), upper in zip(centers, upper_mask) if not upper], int)
     state.upper_atoms = state.headgroups[np.isin(state.headgroups.resindices, state.upper_resix)]
     state.lower_atoms = state.headgroups[np.isin(state.headgroups.resindices, state.lower_resix)]
     state.n_upper, state.n_lower = len(state.upper_resix), len(state.lower_resix)

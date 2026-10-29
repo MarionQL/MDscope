@@ -9,6 +9,7 @@ import re
 import numpy as np
 from MDAnalysis.lib.distances import capped_distance
 from ..core.atom_selection import select_heavy_atoms
+from ..core.leaflet_partition import median_leaflet_mask
 from ..core.geometry import minimum_image_displacements
 
 def valid_box(u):
@@ -122,8 +123,7 @@ def load_lipid_anchors(universe, lipid_specs):
     if len(set(indices)) != len(indices):
         raise ValueError("Lipid anchor selections overlap on a residue")
     xyz=np.asarray(coords,float)
-    middle=np.median(xyz[:,2])
-    upper=xyz[:,2] >= middle
+    upper=median_leaflet_mask(xyz[:,2])
     if not np.any(upper) or not np.any(~upper):
         raise ValueError("Could not assign both leaflets from lipid anchors")
     return LipidAnchors(np.asarray(names),np.asarray(indices),upper,xyz)
