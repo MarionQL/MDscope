@@ -212,38 +212,14 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
             )
             total_frames = len(universe.trajectory[slice(start,stop,stride)])
             validate_progress(processed, part, chunk, total_frames)
-        except Exception:
-            for path in raw.glob("*-part-*.parquet"):
-                path.unlink(missing_ok=True)
-            for path in cache.glob("aligned-part-*.npz"):
-                path.unlink(missing_ok=True)
-            checkpoint.unlink(missing_ok=True)
-            rmsf_acc = Welford((len(features), 3))
-            for group in groups.values():
-                group["rmsf"] = Welford((len(group["measure"]), 3))
-            densities = [DensityProfileAccumulator(
-                universe,
-                cfg,
-                run.spec,
-                run.run_id
-            ) for run in analysis_runs(cfg, "density_1d")]
-            for density in densities:
-                density.clear_frame_parts(repout)
-            if fused is not None:
-                fused.prune_from(0)
-            if extensions is not None:
-                extensions.prune_from(0)
-            if distances is not None:
-                distances.prune_from(0)
-            if sdc4 is not None:
-                sdc4.prune_from(0)
-            if start is not None:
-                universe.trajectory[int(start)]
-            membrane = initialize_membrane(universe, cfg)
-            if msd_universe is not None:
-                msd_universe.trajectory[0 if start is None else int(start)]
-                initialize_msd(msd_universe, membrane, cfg["analyses"]["membrane"])
-            processed = part = 0
+        except (OSError, ValueError, KeyError, EOFError, TypeError, IndexError) as exc:
+            # A corrupted checkpoint should not silently destroy committed data.
+            # Operators can archive/remove the replicate to start a clean run.
+            raise RuntimeError(
+                f"Invalid streaming checkpoint {checkpoint}: {exc}. "
+                "Existing output was preserved; move/archive the replicate "
+                "directory before restarting from frame zero."
+            ) from exc
 
     # Parts created after the last durable checkpoint are uncommitted.
     # Keep earlier parts intact so a resume never double-counts frames.
