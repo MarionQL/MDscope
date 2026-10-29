@@ -30,4 +30,4 @@ def test_lag_curve_and_batching_against_direct_oracle():
 
 def test_invalid_fit_window_fails():
     with pytest.raises(ValueError, match="at least four"):
-        fit_multi_origin_curve(np.arange(8.), np.arange(8.), fit_start_fraction=.9)
+        fit_multi_origin_curve(np.arange(8.), np.arange(8.), fit_start_fraction=.9, fit_end_fraction=1.0)
