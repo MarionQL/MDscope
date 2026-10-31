@@ -132,7 +132,7 @@ def _merge_timeseries(tables: list[pd.DataFrame], group: bool = False) -> pd.Dat
     # Merge once after each analysis has written its compact table; this
     # keeps analysis functions independent without reopening
     # trajectories.
-    tables = [table.copy() for table in tables if table is not None and not table.empty]
+    tables = [table for table in tables if table is not None and not table.empty]
     if not tables:
         return pd.DataFrame()
     keys = ["group", "time_ps"] if group else ["time_ps"]
