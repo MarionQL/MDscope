@@ -64,8 +64,22 @@ def sasa_instances(universe, cfg):
                                          for k, v in radii_spec.items()}}
         elements = getattr(occluders, "elements", None)
         if elements is None:
-            raise ValueError("Environment SASA requires topology atom elements")
-        symbols = [str(e).upper() for e in elements]
+            # GROMACS/PSF topologies frequently omit an element field. Infer
+            # only common biopolymer/lipid elements from CHARMM-style names;
+            # atypical names still require explicit elements in the topology.
+            def _symbol(name):
+                name = str(name).lstrip("0123456789").upper()
+                if name.startswith(("CL", "BR")):
+                    return name[:2]
+                if name and name[0] in "HCNOPSFI":
+                    return name[0]
+                raise ValueError(
+                    f"Cannot infer SASA element for atom name {name!r}; "
+                    "provide topology elements"
+                )
+            symbols = [_symbol(name) for name in occluders.names]
+        else:
+            symbols = [str(e).upper() for e in elements]
         missing = sorted(set(symbols) - radii_model.keys())
         if missing:
             raise ValueError(f"SASA run {run.run_id}: no radii for elements {missing}")
