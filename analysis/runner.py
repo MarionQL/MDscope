@@ -427,8 +427,7 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None):
     if project_summary.exists():
         archived=_archive_previous_output(project_summary,root/".archives"/"project_summary",state.config_hash)
         print(f"Archived previous project summary: {archived}")
-    system_repouts = {
-        system: [
+    # Even with statistics/plots disabled, a completed project needs a\n    # summary directory for optional report generation and downstream tools.\n    ensure_dir(project_summary)\n    system_repouts = {\n        system: [
             root / rep.system / rep.label
             for rep in replicates
             if rep.system == system
