@@ -15,8 +15,8 @@ def test_motif_matches_and_chain_boundaries():
     assert {m["chain"] for m in hits}=={"A","B"}
 
 def test_rmsd_separate_from_rmsf():
-    from mdscope.analysis.rmsd import compute_rmsd
-    from mdscope.analysis.rmsf import Welford
+    from mdscope.analysis.observables.rmsd import compute_rmsd
+    from mdscope.analysis.observables.rmsf import Welford
     x=np.array([[0.,0.,0.],[2.,0.,0.]])
     assert np.isclose(compute_rmsd(x,x),0)
     w=Welford(x.shape)
