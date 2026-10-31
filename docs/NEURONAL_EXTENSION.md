@@ -1,8 +1,8 @@
 # Neuronal interface analyses
 
 The canonical architecture and package locations are documented in
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The rules for restructuring
-are in [docs/REPOSITORY_RULES.md](docs/REPOSITORY_RULES.md).
+[docs/ARCHITECTURE.md](ARCHITECTURE.md). The rules for restructuring
+are in [docs/REPOSITORY_RULES.md](REPOSITORY_RULES.md).
 
 This document focuses on the neuronal-interface configuration and scientific
 interpretation of optional analyses, not an additional module map.
@@ -18,7 +18,7 @@ interpretation of optional analyses, not an additional module map.
 3. Register the module in `analysis/registry.py` within `specialized_tasks`. Persist scalar observables as `extensions/<analysis_name>/timeseries.parquet`, and register their file in `additional_time_series`.
 4. This output feeds the *existing* `summary/timeseries.parquet`, `analysis/statistics.py` and `analysis/plotting.py`. **Do not implement custom hypothesis testing or frame-pooled error bars** in individual modules.
 5. Profile analyses should expose arrays to `analysis/statistics.py:collect_temporal_profiles`; interaction events should use `analysis/interaction_tables.py`. Add a small dataset test and import test before production use.
-6. Expensive specialized analyses should operate as separate restartable passes. Cheap per-frame observables should share `streaming.py` so large XTC files are not opened once per scalar observable.
+6. Expensive specialized analyses should operate as separate restartable passes. Cheap per-frame observables should share `analysis/pipeline/streaming.py` so large XTC files are not opened once per scalar observable.
 
 ## Diffusion coefficients from existing MSD
 
