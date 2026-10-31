@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.coordinates.memory import MemoryReader
 
-from mdscope.analysis.fused_extensions import FusedExtensions
+from mdscope.analysis.pipeline.fused_extensions import FusedExtensions
 from mdscope.analysis.sasa import _run_sasa
 
 

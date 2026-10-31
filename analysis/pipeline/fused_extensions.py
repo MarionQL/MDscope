@@ -17,16 +17,16 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.analysis.hydrogenbonds.hbond_analysis import HydrogenBondAnalysis
 
-from .config import analysis_groups, atomic_parquet, ensure_dir, time_ps
-from .membrane_order import _atomic_npz
-from .progress import track
-from .interactions.hydrogen_bonds import write_hydrogen_bonds
-from .interactions.lipid_hydrogen_bonds import (
+from ..config import analysis_groups, atomic_parquet, ensure_dir, time_ps
+from ..membrane_order import _atomic_npz
+from ..progress import track
+from ..interactions.hydrogen_bonds import write_hydrogen_bonds
+from ..interactions.lipid_hydrogen_bonds import (
     GLYCOLIPID_CHAIN_IDS, lipid_molecule_map, write_lipid_hydrogen_bonds,
 )
-from .sasa import _freesasa_structure
-from .profile_common import _residue_label
-from .biophysical_common import heavy, box_of, residue_pairs, sequence_motifs
+from ..sasa import _freesasa_structure
+from ..profile_common import _residue_label
+from ..biophysical_common import heavy, box_of, residue_pairs, sequence_motifs
 from MDAnalysis.lib.distances import distance_array
 
 
@@ -390,7 +390,7 @@ class FusedExtensions:
                     pd.DataFrame(self.local["meta"])
                 )
         self.timings["finalize"] += time.perf_counter() - start
-        from .config import atomic_json
+        from ..config import atomic_json
         atomic_json(self.repout / "fused_extensions_timings.json", {
             "enabled": list(self.names), "frames_processed_this_invocation": self.frames,
             "compute_seconds_by_analysis": dict(self.timings),

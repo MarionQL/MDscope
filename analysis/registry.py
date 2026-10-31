@@ -105,9 +105,9 @@ def fused_output(repout: Path, name: str, *, run_id: str | None = None) -> Fused
 def fused_output_plan(cfg: dict, repout: Path) -> tuple[FusedOutput, ...]:
     """Plan enabled fused outputs without creating readers or opening trajectories."""
     # Imports stay local: registry is also used by postprocessing.
-    from .fused_membrane import enabled_names as membrane_enabled
-    from .fused_extensions import enabled_names as extensions_enabled
-    from .fused_distance import enabled_names as distance_enabled
+    from .pipeline.fused_membrane import enabled_names as membrane_enabled
+    from .pipeline.fused_extensions import enabled_names as extensions_enabled
+    from .pipeline.fused_distance import enabled_names as distance_enabled
     from .mechanisms.sdc4_mechanisms import enabled as sdc4_enabled
     entries = [fused_output(repout, name) for name in membrane_enabled(cfg)]
     entries.extend(fused_output(repout, name) for name in extensions_enabled(cfg))

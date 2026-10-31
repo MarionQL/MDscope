@@ -15,9 +15,9 @@ from .core.trajectory_sources import open_msd_universe, paired_frames
 from .core.checkpoints import (validate_progress, validate_committed_parts, prune_uncommitted_parts)
 from .core.coordinate_contracts import CoordinateSpace, require_coordinate_space, msd_source_space
 from .observables.msd import initialize_msd
-from .fused_membrane import FusedMembrane, enabled_names as fused_enabled_names
-from .fused_extensions import FusedExtensions, enabled_names as extension_enabled_names
-from .fused_distance import FusedDistances, enabled_names as distance_enabled_names
+from .pipeline.fused_membrane import FusedMembrane, enabled_names as fused_enabled_names
+from .pipeline.fused_extensions import FusedExtensions, enabled_names as extension_enabled_names
+from .pipeline.fused_distance import FusedDistances, enabled_names as distance_enabled_names
 from .mechanisms.sdc4_mechanisms import SDC4Mechanisms, enabled as sdc4_enabled
 from .core.alignment import _apply_transform,_fit_transform,_valid_box
 from .observables.rmsd import compute_rmsd

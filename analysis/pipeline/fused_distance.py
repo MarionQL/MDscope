@@ -12,10 +12,10 @@ import time
 import MDAnalysis as mda
 import numpy as np
 
-from .config import analysis_runs, time_ps
-from .membrane_order import _atomic_npz
-from .progress import track
-from .residue_membrane_distance import (
+from ..config import analysis_runs, time_ps
+from ..membrane_order import _atomic_npz
+from ..progress import track
+from ..residue_membrane_distance import (
     DEFAULT_LIPID_RESNAMES, _minimum_by_residue_hybrid,
     _valid_box, _without_hydrogens, run_residue_membrane_distance,
 )
@@ -110,7 +110,7 @@ class FusedDistances:
                 spec=entry["spec"], run_id=run_id,
                 precomputed_parts=self.cache / run_id,
             )
-        from .config import atomic_json
+        from ..config import atomic_json
         atomic_json(self.repout / "fused_distance_timings.json", {
             "enabled_instances": list(self.runs),
             "frames_processed_this_invocation": self.frames,

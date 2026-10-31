@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from mdscope.analysis.fused_membrane import _profile_batches
+from mdscope.analysis.pipeline.fused_membrane import _profile_batches
 
 
 def _profiles(*positions):
