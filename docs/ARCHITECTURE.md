@@ -9,7 +9,8 @@ boundaries; do not assume that every planned package already exists.
 - `analysis/core/`: alignment, trajectory and provenance helpers, periodic
   geometry, atom selection, checkpoints, persistence.
 - `analysis/observables/`: RMSD, RMSF, radius of gyration, MSD, bilayer
-  normal and lipid enrichment.
+  normal, lipid enrichment, membrane metrics/order, density, DSSP, SASA,
+  structural profiles and residue–membrane distance.
 - `analysis/mechanisms/`: SDC4 conformational mechanisms, HS topology,
   mechanistic geometry, local environment and shared conformational states.
 - `analysis/statistics/`: replicate-aware inference, resampling and summaries.
@@ -24,8 +25,6 @@ boundaries; do not assume that every planned package already exists.
   lipid hydrogen bonds and shared interaction tables (now grouped).
 - `analysis/pipeline/`: fused trajectory execution is grouped here; streaming,
   runner and finalization remain at top level pending a separate migration.
-- Other physical observables and plotting utilities still have flat modules;
-  move them by coherent family and remove the originals.
 
 The repository intentionally does **not** preserve legacy Python import
 aliases after a replacement is migrated. `mdscope` CLI commands and YAML

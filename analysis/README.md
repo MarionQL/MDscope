@@ -5,7 +5,8 @@ See [the current architecture](../docs/ARCHITECTURE.md) and
 
 Current canonical packages:
 - `core/`: geometry, alignment, atom selection, trajectory sources and checkpoints
-- `observables/`: RMSD, RMSF, MSD, radius of gyration, bilayer normals and lipid enrichment
+- `observables/`: RMSD, RMSF, MSD, radius of gyration, bilayer normals, lipid enrichment,
+  membrane order, density, DSSP, SASA, structural profiles and residue distances
 - `reporting/`: PDF/ZIP report, scientific figure rendering and coupling-screen reporting
 - `extended/`: numerical support for extended membrane observers
 
