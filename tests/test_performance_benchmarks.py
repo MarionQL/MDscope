@@ -4,8 +4,8 @@ from time import perf_counter
 import MDAnalysis as mda
 import numpy as np
 
-from mdscope.analysis.msd import _residue_centers
-from mdscope.analysis.bilayer_normal import fit_local_normals
+from mdscope.analysis.observables.msd import _residue_centers
+from mdscope.analysis.observables.bilayer_normal import fit_local_normals
 
 
 def _time(fn, repeat=4):

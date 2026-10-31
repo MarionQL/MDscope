@@ -7,7 +7,7 @@ import pytest
 import MDAnalysis as mda
 
 from mdscope.analysis import runner
-from mdscope.analysis.lipid_geometry import AnchorTracker
+from mdscope.analysis.core.lipid_geometry import AnchorTracker
 
 
 def test_code_hash_includes_nested_modules(monkeypatch, tmp_path):

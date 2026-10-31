@@ -2,11 +2,11 @@
 import numpy as np
 import MDAnalysis as mda
 
-from mdscope.analysis.lipid_geometry import (
+from mdscope.analysis.core.lipid_geometry import (
     anchor_groups, aligned_leaflets, classify_leaflets, periodic_center,
 )
-from mdscope.analysis.lipid_enrichment import enrichment_frame
-from mdscope.analysis.bilayer_normal import fit_local_normals
+from mdscope.analysis.observables.lipid_enrichment import enrichment_frame
+from mdscope.analysis.observables.bilayer_normal import fit_local_normals
 from mdscope.analysis.lipid_hydrogen_bonds import lipid_molecule_map, tabulate_events
 from mdscope.analysis.interaction_tables import INTERACTION_KEY_COLUMNS
 

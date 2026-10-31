@@ -1,70 +1,36 @@
-# Legacy module cleanup inventory
+# MDscope cleanup policy and completed migration
 
-The initial cleanup is intentionally conservative: thin re-export modules are
-public import paths and **cannot be proven unused merely because the canonical
-implementation moved**.
+MDscope permits breaking changes to historical Python import paths. Once a
+canonical implementation replaces a compatibility module, migrate all internal
+consumers and delete the old wrapper. No deprecation period is required.
 
-| Compatibility module | Canonical implementation | Current decision |
-| --- | --- | --- |
-| `analysis/alignment.py` | `analysis/core/alignment.py` | Retain until production/import consumers are migrated and external compatibility break is approved |
-| `analysis/lipid_geometry.py` | `analysis/core/lipid_geometry.py` | Retain pending import audit; removal changes historical public API |
-| `analysis/msd.py` | `analysis/observables/msd.py` | Retain pending callers audit |
-| `analysis/bilayer_normal.py` | `analysis/observables/bilayer_normal.py` | Retain pending callers audit |
-| `analysis/lipid_enrichment.py` | `analysis/observables/lipid_enrichment.py` | Retain pending callers audit |
-| `analysis/profiling.py` | `analysis/core/profiling.py` | Retain pending callers audit |
+## Completed in this PR
 
-## Cleanup completed
+Deleted the six superseded re-export modules:
+`analysis/alignment.py`, `analysis/lipid_geometry.py`,
+`analysis/msd.py`, `analysis/bilayer_normal.py`,
+`analysis/lipid_enrichment.py`, and `analysis/profiling.py`.
 
-Deleted `tests/test_core_contract.py` after moving its two substantive
-numerical regression tests into `tests/test_core_geometry_contracts.py`.
-The removed historical-import identity assertions tested only shim forwarding,
-not scientific behavior. Canonical core imports are now exercised directly.
+Production callers now import the respective canonical modules in
+`analysis/core/` or `analysis/observables/`. Synthetic and real-trajectory
+tests were migrated, and `tests/test_module_imports.py` checks the canonical
+API rather than deleted compatibility exports. Obsolete shim-identity tests
+were removed while substantive numerical tests were retained under core tests.
 
-## Follow-up criteria for production-file removal
+## Rules for future cleanup
 
-Scan imports in `analysis/`, all scripts, examples, tests and documented
-Python API usage; check dynamic/importlib imports and external HPC launchers.
-Delete only explicitly deprecated modules with zero repository consumers,
-document the import migration, and run both Python matrices and real-trajectory
-smoke checks. Keep compatibility adapters where external callers still rely on
-the old API. No production module has been removed in this first audit.
+1. One implementation per scientific operation; delete superseded wrappers.
+2. Organize code by responsibility, not by its creation date.
+3. Change imports, tests, launchers and packaging references together with moves.
+4. Remove obsolete documentation rather than retaining contradictory guides.
+5. Avoid speculative frameworks, extra indirection and parallel pipelines.
+6. Preserve scientific numerical definitions (PBC, COM/COG, units, selections).
+7. Prefer sparse/vectorized computation; preserve fused trajectory pass counts.
+8. Retain independent numerical and end-to-end tests, not tests of deleted APIs.
+9. Require Python 3.11/3.13 and relevant real GROMACS checks for structural PRs.
+10. Measure simplification by fewer concepts and less duplication, not just LOC.
+11. Keep generated caches and large trajectories out of committed source.
+12. Delete only after repository consumers are migrated in the same branch.
 
-
-## Internal consumer migration (31 October 2026)
-
-Moved imports in ten production files to canonical `core` and
-`observables` implementations:
-
-- Runner, streaming, membrane and trajectory-source MSD imports
-- Streaming/timeseries alignment and profiling imports
-- Fused membrane, registry and mechanistic lipid geometry/observables
-- Bilayer normal and lipid enrichment observables' geometry imports
-
-These are import-only changes. Legacy shim files are **intentionally retained**
-to preserve downstream user scripts, historical imports and external HPC
-workflows; zero in-repository imports is not proof of zero external consumers.
-
-The two rigid-alignment and periodic-center numerical tests were relocated
-before deleting the redundant historical import-identity test file.
-
-No maintained CLI, Slurm launcher or public module was moved or removed.
-A future breaking release can retire shims only after a deprecation period
-and documented import migration. Scientific results should remain unchanged.
-
-
-## Caller-audit follow-up
-
-Audited production imports in runner, streaming, membrane, fused passes,
-registry, membrane-order, core trajectory sources, topology, mechanism,
-analysis/observables and the remaining top-level analysis modules.
-Updated direct imports across 11 production modules to use canonical
-`core` / `observables` implementation paths.
-
-Updated eight test/real-test modules to use canonical imports rather than
-testing scientific functionality via compatibility wrappers. Retained the
-public `mdscope.analysis` compatibility shims because downstream notebook,
-HPC and third-party imports cannot be disproved by a repository-only audit.
-
-The legacy test-only module is the only deletion in this PR. No user launch
-script is obsolete based on this audit: both `run_mdscope.sh` and
-`finalize_mdscope.sh` remain supported entry points.
+The cleanup intentionally breaks historical Python module import paths.
+No numerical outputs, CLI commands, or YAML schema are intentionally changed.
