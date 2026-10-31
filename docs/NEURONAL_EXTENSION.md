@@ -1,8 +1,8 @@
 # Neuronal interface analyses
 
 The canonical architecture and package locations are documented in
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The rules for restructuring
-are in [docs/REPOSITORY_RULES.md](docs/REPOSITORY_RULES.md).
+[docs/ARCHITECTURE.md](ARCHITECTURE.md). The rules for restructuring
+are in [docs/REPOSITORY_RULES.md](REPOSITORY_RULES.md).
 
 This document focuses on the neuronal-interface configuration and scientific
 interpretation of optional analyses, not an additional module map.

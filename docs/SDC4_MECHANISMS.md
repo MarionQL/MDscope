@@ -1,21 +1,21 @@
 # SDC4 mechanism analyses: eight opt-in endpoints
 
-The \`analyses.sdc4_mechanisms\` observer uses the **existing single raw-frame
+The `analyses.sdc4_mechanisms` observer uses the **existing single raw-frame
 trajectory pass**. It never aligns or reopens the XTC. The
-\`analyses.shared_states\` project finalizer reads saved per-replicate tables
+`analyses.shared_states` project finalizer reads saved per-replicate tables
 and fits **one** state model across all conditions and replicates.
 
 **Do not enable these analyses before validating topology selections.**
-\`chainID\`, \`resid\`, glycolipid anchor names and HS attachment mappings are
+`chainID`, `resid`, glycolipid anchor names and HS attachment mappings are
 specific to the actual TPR and simulation build. The example below uses
 the older SDC4 PROA/PROB numbering as an *illustration*, not a guarantee for
 rebuilt mature-protein systems.
 
 ## Config example
 
-Add this under \`analyses:\` in \`synd4_baseline.yaml\`, adjusting all selectors:
+Add this under `analyses:` in `synd4_baseline.yaml`, adjusting all selectors:
 
-\`\`\`yaml
+```yaml
   sdc4_mechanisms:
     enabled: true
     axis: z
@@ -107,9 +107,9 @@ Add this under \`analyses:\` in \`synd4_baseline.yaml\`, adjusting all selectors
       - sdc4_ectodomain_B_tilt_deg
       - sdc4_tm_crossing_angle_deg
       - sdc4_local_thickness_A
-\`\`\`
+```
 
-**Important:** \`allow_absent_species\` skips missing lipid species (e.g. GM1a
+**Important:** `allow_absent_species` skips missing lipid species (e.g. GM1a
 in a no-headgroup condition). To compare density maps across conditions,
 use the same species list and report absent species as biologically absent,
 not as zero-density enrichment. Density map coordinates are rotated so the
@@ -121,11 +121,11 @@ Maps are **not** corrected for the protein-excluded accessible area.
 
 | Endpoint | Output/interpretation |
 |---|---|
-| Lipid enrichment and density maps | Per-leaflet GM1a/BGAL/cholesterol/phospholipid maps centered on TM midpoint, plus the existing annular \`lipid_enrichment\` fold values when enabled |
+| Lipid enrichment and density maps | Per-leaflet GM1a/BGAL/cholesterol/phospholipid maps centered on TM midpoint, plus the existing annular `lipid_enrichment` fold values when enabled |
 | Ectodomain height/tilt/contact | CA-center height relative to extracellular leaflet, terminal-to-terminal tilt to the outward membrane normal, binary membrane-contact state and fraction of ectodomain atoms contacting selected lipid atoms |
 | NxIP accessibility | Regex matches actual CA-derived topology sequence by chain; reports fraction of motif heavy atoms with protein/HS/lipid steric neighbors within cutoff. This is an **occlusion proxy**, not a ligand-binding free energy. When `sasa.enabled`, the observer also joins the existing FreeSASA motif residue SASA, calculated with that analysis's atom selection |
 | Individual HS orientation/contacts | Attachment-to-distal-terminus orientation cosine, extension, direct HS–lipid contacts and separate attachment-site contacts; distal end chosen by attachment proximity on the first analyzed frame |
-| TM crossing and GXXXG | PCA helix-axis crossing angle, handedness and cross-chain GXXXG heavy-atom/residue contacts; no GXXXG motif produces zero contacts unless \`require_gxxxg\` is true |
+| TM crossing and GXXXG | PCA helix-axis crossing angle, handedness and cross-chain GXXXG heavy-atom/residue contacts; no GXXXG motif produces zero contacts unless `require_gxxxg` is true |
 | HS hydration/ions | Unique water oxygens within hydration cutoff per HS heavy atom and unique ions within coordination cutoff; contact-conditioned within-replicate means. These are coordination proxies, **not** electrostatic free energies |
 | Local membrane structure | Local leaflet separation, per-leaflet quadratic height-field curvature approximation, and optional local minus-S_CH averaged equally per lipid |
 | Shared conformational states | Replicate-balanced standardized k-means across all conditions, per-replicate state populations, replicate-bootstrap system means, within-replicate moving-block intervals, transitions, and first/second-half JS divergence |
@@ -138,7 +138,7 @@ protein occlusion to avoid trivial backbone contacts.
 The ectodomain terminal direction assumes the supplied CA selection is in
 **N-to-C order**, with the N terminus distal to the membrane. For branched
 HS chains, the first/last-residue terminal approximation may be unsuitable:
-inspect the \`selection_audit.json\` and supply a more appropriate selection
+inspect the `selection_audit.json` and supply a more appropriate selection
 or a dedicated branched-glycan end-to-end definition before interpreting
 orientation.
 
@@ -162,27 +162,27 @@ diagnostic, not proof of convergence.
 
 Per replicate:
 
-- \`extensions/sdc4_mechanisms/timeseries.parquet\`: all frame-level scalar
+- `extensions/sdc4_mechanisms/timeseries.parquet`: all frame-level scalar
   geometry, contact, hydration and membrane endpoints
-- \`extensions/sdc4_mechanisms/lipid_density_maps.npz\`: per-leaflet 2D
+- `extensions/sdc4_mechanisms/lipid_density_maps.npz`: per-leaflet 2D
   counts, density and fold maps, grid edges and frame count
-- \`extensions/sdc4_mechanisms/selection_audit.json\`: exact matched
+- `extensions/sdc4_mechanisms/selection_audit.json`: exact matched
   motifs, GXXXG residue indices, HS termini and lipid counts
-- \`extensions/sdc4_mechanisms/hs_conditioned_solvation.parquet\`:
+- `extensions/sdc4_mechanisms/hs_conditioned_solvation.parquet`:
   HS hydration and ion coordination conditioned on direct lipid contact
-- \`extensions/sdc4_mechanisms/lipid_{density,enrichment}_maps.png\`
-- \`extensions/sdc4_mechanisms/timings.json\`
+- `extensions/sdc4_mechanisms/lipid_{density,enrichment}_maps.png`
+- `extensions/sdc4_mechanisms/timings.json`
 
-Project-level (when \`shared_states.enabled\`):
+Project-level (when `shared_states.enabled`):
 
-- \`project_summary/shared_states/model.json\`
-- \`state_centroids.parquet\`, \`frame_assignments.parquet\`
-- \`replicate_populations.parquet\`, \`system_populations.parquet\`
-- \`sampling_diagnostics.parquet\`, \`state_conditioned_hs_solvation.parquet\`
-- \`state_populations.png\`, \`state_sampling_diagnostics.png\`
+- `project_summary/shared_states/model.json`
+- `state_centroids.parquet`, `frame_assignments.parquet`
+- `replicate_populations.parquet`, `system_populations.parquet`
+- `sampling_diagnostics.parquet`, `state_conditioned_hs_solvation.parquet`
+- `state_populations.png`, `state_sampling_diagnostics.png`
 
-The scalar \`timeseries.parquet\` columns are also merged into MDscope's
-existing \`summary/timeseries.parquet\` and analyzed by the existing
+The scalar `timeseries.parquet` columns are also merged into MDscope's
+existing `summary/timeseries.parquet` and analyzed by the existing
 replicate-aware statistics framework. No new trajectory pass is added.
 
 
