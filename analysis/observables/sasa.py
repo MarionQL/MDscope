@@ -89,7 +89,7 @@ def sasa_instances(universe, cfg):
         instances[run.run_id] = {
             "occluders": occluders, "radii": radii, "target_idx": target_idx,
             "residues": residues, "mapping": mapping, "params": params,
-            "library": freesasa,
+            "library": freesasa, "periodic": bool(spec.get("periodic", False)),
         }
     return instances
 
@@ -97,8 +97,24 @@ def sasa_instances(universe, cfg):
 def sasa_residue_rows(state, time):
     """Return per-residue protein SASA in nm², including occlusion by other atoms."""
     atoms = state["occluders"]
+    coords = atoms.positions.astype(np.float64, copy=False)
+    if state["periodic"]:
+        from MDAnalysis.lib.distances import minimize_vectors
+        box = np.asarray(atoms.universe.dimensions, dtype=float)
+        if box.shape != (6,) or np.any(~np.isfinite(box)) or np.any(box[:3] <= 0):
+            raise ValueError("Periodic SASA requires valid box dimensions")
+        target_coords = coords[state["target_idx"]]
+        if np.any(np.ptp(target_coords, axis=0) >= box[:3] / 2):
+            raise ValueError(
+                "Periodic SASA requires a whole compact protein; unwrap the "
+                "protein before SASA if it crosses the periodic boundary"
+            )
+        anchor = target_coords.mean(axis=0)
+        coords = anchor + minimize_vectors(
+            np.asarray(coords - anchor, dtype=np.float64), box
+        )
     result = state["library"].calcCoord(
-        atoms.positions.astype(np.float64, copy=False).ravel().tolist(),
+        coords.ravel().tolist(),
         state["radii"], state["params"],
     )
     areas = np.fromiter(
