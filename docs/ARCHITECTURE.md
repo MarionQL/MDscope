@@ -10,6 +10,8 @@ boundaries; do not assume that every planned package already exists.
   geometry, atom selection, checkpoints, persistence.
 - `analysis/observables/`: RMSD, RMSF, radius of gyration, MSD, bilayer
   normal and lipid enrichment.
+- `analysis/mechanisms/`: SDC4 conformational mechanisms, HS topology,
+  mechanistic geometry, local environment and shared conformational states.
 - `analysis/reporting/`: report PDF/ZIP generation, membrane and SDC4 figures,
   and coupling-screen reporting.
 - `analysis/cli.py`, `analysis/config.py`, `analysis/registry.py`: current
@@ -19,8 +21,6 @@ boundaries; do not assume that every planned package already exists.
 
 - `analysis/interactions/`: hydrogen bonds, salt bridges, ligand contacts,
   lipid hydrogen bonds and shared interaction tables (now grouped).
-- `analysis/mechanisms/`: organize SDC4 mechanisms and system-specific
-  topology/mechanistic calculations.
 - `analysis/statistics/`: move statistical postprocessing without changing
   estimators or aggregation.
 - `analysis/pipeline/`: move streaming, fused passes, runner and finalization
