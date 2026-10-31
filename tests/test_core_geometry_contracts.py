@@ -4,7 +4,6 @@ import pytest
 from MDAnalysis.lib.distances import minimize_vectors
 
 from mdscope.analysis.core.geometry import minimum_image_displacements
-from mdscope.analysis.extended.common import minimum_image, lateral_distance as extended_lateral
 from mdscope.analysis.mechanisms.mechanistic_common import planar_distances
 from mdscope.analysis.biophysical_common import lateral_distance as pairwise_lateral
 
@@ -19,13 +18,14 @@ def test_minimum_image_matches_independent_mdanalysis_reference():
     )
 
 
-def test_extended_lateral_uses_fixed_xy_and_float32():
+def test_minimum_image_preserves_explicit_float32_precision():
     xyz = np.array([[39., 3., 9.], [2., 48., 20.]])
     anchor = np.array([1., 1., 5.])
     expected = minimize_vectors((xyz-anchor).astype(np.float32), BOX)
-    np.testing.assert_allclose(extended_lateral(xyz, anchor, BOX),
+    actual = minimum_image_displacements(xyz-anchor, BOX, dtype=np.float32)
+    np.testing.assert_allclose(np.linalg.norm(actual[:, :2], axis=1),
                                np.linalg.norm(expected[:, :2], axis=1))
-    assert minimum_image(xyz-anchor, BOX).dtype == np.float32
+    assert actual.dtype == np.float32
 
 
 def test_mechanistic_lateral_normal_is_configurable():
@@ -41,7 +41,7 @@ def test_pairwise_lateral_is_not_equivalent_to_pointwise_lateral():
     a = np.array([[1., 2., 3.], [5., 7., 11.]])
     b = np.array([[4., 5., 6.], [8., 9., 10.], [2., 3., 4.]])
     assert pairwise_lateral(a, b, BOX).shape == (2, 3)
-    assert extended_lateral(a, b[0], BOX).shape == (2,)
+    assert minimum_image_displacements(a - b[0], BOX).shape == (2, 3)
 
 
 def test_invalid_geometry_fails_explicitly():
