@@ -1,7 +1,7 @@
 """Batch progress should report completed work, ETA, and bounded cadence."""
 import io
 
-from mdscope.analysis import progress as mod
+from mdscope.analysis.pipeline import progress as mod
 
 
 class _Stderr(io.StringIO):
