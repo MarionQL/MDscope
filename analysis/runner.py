@@ -33,7 +33,7 @@ from .interactions import run_hydrogen_bonds
 from .interactions import postprocess_interactions
 from .membrane_order import membrane_order_timeseries, run_membrane_order
 from .plotting import plot_all
-from .membrane_figures import plot_lipid_enrichment_matrix
+from .reporting.membrane_figures import plot_lipid_enrichment_matrix
 from .profiles import run_residue_membrane_distance
 from .profiles import postprocess_structure_profiles, run_structure_profiles
 from .statistics import analyze_project
@@ -44,8 +44,8 @@ from .fused_distance import enabled_names as distance_enabled_names, run_fused_d
 from .fused_all import run_fused_only
 from .sdc4_mechanisms import enabled as sdc4_enabled, run_sdc4_mechanisms
 from .shared_states import fit_shared_states
-from .sdc4_figures import plot_sdc4_mechanisms
-from .report import generate_report
+from .reporting.sdc4_figures import plot_sdc4_mechanisms
+from .reporting.report import generate_report
 from .registry import specialized_tasks,additional_time_series,fused_output,fused_output_plan
 from .observables.msd import summarize_diffusion, summarize_project_diffusion, summarize_project_multi_origin
 from .observables.multi_origin_pipeline import run_multi_origin_diffusion
