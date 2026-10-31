@@ -12,10 +12,10 @@ SLURM scripts after installing.
 
 Build with `python -m build` and validate using `python -m twine check dist/*`.
 Check both wheel and source distributions in clean virtual environments from
-outside the repository. All seven analysis subpackages are included through
+outside the repository. All seven functional subpackages are included through
 setuptools package discovery, not a manually curated list.
 
-This PR makes no changes to the scientific kernels, YAML schema, output paths,
-units, or analysis passes. The old capitalized `mdscope.*` invocation
-was a checkout-path accident, not a packaged API. The HPC scripts now use the
-installed lowercase package consistently.
+The package relocation did not change scientific kernels, YAML schemas, output
+paths, units, or trajectory passes. The supported imports are `mdscope.*`;
+`mdscope.analysis.*` is not an alias. HPC scripts use the installed lowercase
+package consistently.
