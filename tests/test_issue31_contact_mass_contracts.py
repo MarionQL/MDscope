@@ -4,7 +4,6 @@ import numpy as np
 from MDAnalysis.lib.distances import capped_distance
 
 from mdscope.analysis.biophysical_common import atom_contacts, residue_pairs
-from mdscope.analysis.extended.common import pairs
 from mdscope.analysis.mechanisms.mechanistic_common import contact_count
 from mdscope.analysis.observables.msd import _residue_centers
 
@@ -31,18 +30,13 @@ def test_sparse_contacts_and_residue_pairs_against_independent_reference():
         np.unique(np.stack([left.resindices[expected[:, 0]],
                             right.resindices[expected[:, 1]]], axis=1), axis=0),
     )
-    extended_expected = capped_distance(left.positions.astype(np.float32),
-                                        right.positions.astype(np.float32),
-                                        max_cutoff=2.1, box=u.dimensions,
-                                        return_distances=False)
-    np.testing.assert_array_equal(pairs(left, right, 2.1, u.dimensions), extended_expected)
 
 
-def test_sparse_contacts_empty_input_and_self_exclusion():
+def test_sparse_contacts_empty_input_and_self_pairs():
     u = _universe()
-    assert pairs(u.atoms[[]], u.atoms, 2.0, u.dimensions).shape == (0, 2)
-    results = pairs(u.atoms[:2], u.atoms[:2], 2.0, u.dimensions, exclude_self=True)
-    assert all(i != j for i, j in results)
+    assert atom_contacts(u.atoms[[]], u.atoms, 2.0, u.dimensions).shape == (0, 2)
+    contacts = atom_contacts(u.atoms[:2], u.atoms[:2], 2.0, u.dimensions)
+    assert contacts.shape[1] == 2
 
 
 def test_msd_residue_center_mass_weighting_and_fallback():

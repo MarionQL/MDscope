@@ -31,7 +31,6 @@ packages = [
     "mdscope.analysis",
     "mdscope.analysis.core",
     "mdscope.analysis.observables",
-    "mdscope.analysis.extended",
     "mdscope.analysis.reporting",
 ]
 
@@ -40,7 +39,6 @@ mdscope = "."
 "mdscope.analysis" = "analysis"
 "mdscope.analysis.core" = "analysis/core"
 "mdscope.analysis.observables" = "analysis/observables"
-"mdscope.analysis.extended" = "analysis/extended"
 "mdscope.analysis.reporting" = "analysis/reporting"
 
 [tool.pytest.ini_options]
