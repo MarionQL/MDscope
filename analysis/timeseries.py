@@ -7,4 +7,4 @@ from .observables.rmsd import compute_rmsd
 from .observables.rmsf import Welford, temporal_rmsf_profiles
 from .observables.membrane import MembraneState,initialize_membrane,membrane_metrics
 from .observables.density_1d import DensityTarget,DensityProfileAccumulator,temporal_density_profiles
-from .streaming import run_streaming_pass
+from .pipeline.streaming import run_streaming_pass
