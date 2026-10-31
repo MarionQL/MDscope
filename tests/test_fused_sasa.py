@@ -45,6 +45,9 @@ def test_sasa_fused_vs_independent(monkeypatch, tmp_path):
         Structure=FakeStructure, Parameters=FakeParameters,
         ShrakeRupley=1, LeeRichards=2,
         calc=lambda structure, params: FakeResult(structure),
+        calcCoord=lambda coordinates, radii, params: FakeResult(
+            types.SimpleNamespace(coordinates=np.asarray(coordinates).reshape(-1, 3))
+        ),
     )
     monkeypatch.setitem(sys.modules, "freesasa", fake)
     u = mda.Universe.empty(
