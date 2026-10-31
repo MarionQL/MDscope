@@ -7,7 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from MDAnalysis.lib.distances import minimize_vectors
+from ..core.geometry import minimum_image_displacements
 from MDAnalysis.exceptions import NoDataError
 from ..config import atomic_parquet
 
@@ -59,7 +59,7 @@ def msd_metrics(universe,state):
         current = _residue_centers(state.msd_atoms)
         # Accumulate minimum-image step vectors so lipids crossing
         # periodic boundaries do not create artificial MSD jumps.
-        step = np.asarray(minimize_vectors(
+        step = np.asarray(minimum_image_displacements(
             current - state.msd_last_positions,
             universe.dimensions
         ), dtype=float)
