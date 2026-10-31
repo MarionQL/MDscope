@@ -1,53 +1,47 @@
-# MDscope architecture and compatibility policy
+# MDscope architecture
 
-## Current package boundaries
+See [REPOSITORY_RULES.md](REPOSITORY_RULES.md) for cleanup and refactoring
+policy. This document records the **current** layout and the planned package
+boundaries; do not assume that every planned package already exists.
 
-`mdscope.analysis.cli`: command-line user interface.
-`mdscope.analysis.runner`: replicate/project orchestration and output merging.
-`mdscope.analysis.streaming`: shared frame pass, checkpoint state and data capture.
-`mdscope.analysis.core`: trajectory provenance, rigid-body alignment, reusable lipid/PBC geometry and runtime infrastructure. The canonical implementations are `core/alignment.py` and `core/lipid_geometry.py`; legacy flat imports remain compatibility re-exports.
-`mdscope.analysis.observables`: independently testable numerical observables.
-`mdscope.analysis.extended`: supporting extended observables.
-`mdscope.analysis.registry`: specialized analysis registration and output contracts.
-`mdscope.analysis.statistics`: statistical postprocessing.
-`mdscope.analysis.reporting` and `report`/`plotting`: presentation output.
+## Current canonical locations
 
-Not all legacy implementations have been moved into those boundaries yet. Flat
-`mdscope.analysis.*` imports intentionally remain supported. Avoid moving
-modules merely for symmetry; use small moves with regression coverage.
+- `analysis/core/`: alignment, trajectory and provenance helpers, periodic
+  geometry, atom selection, checkpoints, persistence.
+- `analysis/observables/`: RMSD, RMSF, radius of gyration, MSD, bilayer
+  normal and lipid enrichment.
+- `analysis/reporting/`: report PDF/ZIP generation, membrane and SDC4 figures,
+  and coupling-screen reporting.
+- `analysis/cli.py`, `analysis/config.py`, `analysis/registry.py`: current
+  CLI, configuration and registry entry points.
+
+## Remaining migration
+
+- `analysis/interactions/`: hydrogen bonds, salt bridges, ligand contacts,
+  lipid hydrogen bonds and shared interaction tables (now grouped).
+- `analysis/mechanisms/`: organize SDC4 mechanisms and system-specific
+  topology/mechanistic calculations.
+- `analysis/statistics/`: move statistical postprocessing without changing
+  estimators or aggregation.
+- `analysis/pipeline/`: move streaming, fused passes, runner and finalization
+  after updating all dependent imports and HPC entry points.
+- Other physical observables and plotting utilities still have flat modules;
+  move them by coherent family and remove the originals.
+
+The repository intentionally does **not** preserve legacy Python import
+aliases after a replacement is migrated. `mdscope` CLI commands and YAML
+configuration stay unchanged unless a separate change is approved.
 
 ## Dependency direction
 
-- Core numerical kernels should depend on NumPy and their explicit inputs,
-  not CLI configuration, run directories, or report generation.
-- Trajectory adapters translate MDAnalysis AtomGroups/frames into the numeric
-  inputs and preserve units, atom identity, timestamps and periodic coordinates.
-- Pipeline orchestration calls adapters and kernels; it owns checkpointing and
-  output paths rather than individual scientific algorithms.
-- Statistics operates on validated outputs, preserving frame/replicate identity.
-- Reporting never changes numerical measurements.
+Core numerical kernels and observables must not import reporting. Pipeline
+coordinates readers and observers; statistics operates on persisted numerical
+results; reporting consumes finalized tables and images without rerunning
+trajectories. Keep framewise computations fused and sparse where applicable.
 
-## Publication-oriented quality gates
+## Quality gates
 
-1. Independently test each important numerical kernel on analytic and
-   reference-implementation cases, including PBC and edge cases.
-2. Test imports, CLI entry points and wheel installation in a clean environment.
-3. Run representative real-trajectory workflows and verify output schemas.
-4. Check checkpoint restart behavior and source/config provenance.
-5. Explicitly document units, selection policies, time origins, estimators,
-   statistical uncertainty and known limitations.
-
-## Packaging
-
-A distribution called `mdscope` installs the import namespace
-`mdscope.analysis` and console command `mdscope`. The physical repository
-directory is still named `MDscope`; existing HPC commands such as
-`python -m MDscope.analysis.cli` continue to work when the repository's
-parent directory is on `PYTHONPATH`. Prefer the installed lower-case command
-for new deployments, and retain older submission scripts until their
-environments have been tested.
-
-Only the standard runtime dependencies are mandatory. Report generation and
-some specialized scientific analyses may require optional dependencies.
-Do not change user-facing YAML keys, public imports or output schemas as part
-of purely structural refactors.
+Use the existing Python 3.11/3.13 tests, wheel and CLI checks, and real
+GROMACS smoke workflow. Structural refactors must preserve units, PBC
+handling, atom and residue identity, output schemas and replicate indexing.
+No new regression tests are required merely for relocating modules.

@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from .config import ensure_dir
+from ..config import ensure_dir
 
 def plot_lipid_enrichment_matrix(cfg,root):
     source=Path(root)/"project_summary"/"statistics"/"time_series"/"replicate_statistics.parquet"

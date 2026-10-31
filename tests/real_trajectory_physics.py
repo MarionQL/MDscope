@@ -26,7 +26,7 @@ from mdscope.analysis.observables.lipid_enrichment import enrichment_frame
 from mdscope.analysis.core.lipid_geometry import (
     aligned_leaflets, anchor_groups, centers, periodic_center,
 )
-from mdscope.analysis.lipid_hydrogen_bonds import (
+from mdscope.analysis.interactions.lipid_hydrogen_bonds import (
     lipid_molecule_map, run_lipid_hydrogen_bonds,
 )
 

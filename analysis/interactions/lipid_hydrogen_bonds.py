@@ -16,7 +16,7 @@ from MDAnalysis.analysis.hydrogenbonds.hbond_analysis import HydrogenBondAnalysi
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
-from .config import ensure_dir, atomic_parquet
+from ..config import ensure_dir, atomic_parquet
 from .interaction_tables import atom_label, count_timeseries
 
 

@@ -20,7 +20,7 @@ import zipfile
 import numpy as np
 import pandas as pd
 
-from .config import ensure_dir
+from ..config import ensure_dir
 
 
 CATEGORIES = (

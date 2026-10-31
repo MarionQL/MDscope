@@ -7,7 +7,7 @@ import zipfile
 import numpy as np
 import pandas as pd
 
-from mdscope.analysis.report import generate_report, _sample_frame_table
+from mdscope.analysis.reporting.report import generate_report, _sample_frame_table
 
 
 def test_report_pdf_and_review_bundle(tmp_path):

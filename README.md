@@ -710,7 +710,7 @@ For production MD comparisons:
 
 ## Modular architecture and diffusion fits (experimental branch)
 
-RMSD and RMSF now live in separate modules (`analysis/rmsd.py` and `analysis/rmsf.py`). Other structural and interaction analyses are similarly split into single-purpose modules while `analysis/streaming.py` reads the XTC once for inexpensive framewise measurements. `analysis/registry.py` is the extension point for restartable specialized analyses. The existing statistics and plotting backends are **shared by output data structure**, not duplicated in individual analysis scripts. See [NEURONAL_EXTENSION.md](NEURONAL_EXTENSION.md) for a module map and contribution contract.
+RMSD and RMSF live in `analysis/observables/rmsd.py` and `analysis/observables/rmsf.py`. Other structural and interaction analyses are similarly split into single-purpose modules while `analysis/streaming.py` reads the XTC once for inexpensive framewise measurements. `analysis/registry.py` is the extension point for restartable specialized analyses. The existing statistics and plotting backends are **shared by output data structure**, not duplicated in individual analysis scripts. See [NEURONAL_EXTENSION.md](NEURONAL_EXTENSION.md) for a module map and contribution contract.
 
 The existing `membrane.msd` code is retained in `analysis/msd.py` and now optionally produces **replicate-level diffusion coefficients** as well. Configure `analyses.membrane.msd.slope_start_fraction` (default `0.2`) and `slope_end_fraction` (default `0.8`). This is a descriptive **single-origin MSD** slope fit; it does not claim species-resolved or multi-origin diffusion, and it does not treat time-correlated frames as independent replicates.
 
