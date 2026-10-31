@@ -10,7 +10,7 @@ import pandas as pd
 import MDAnalysis as mda
 from ..config import atomic_parquet,ensure_dir,time_ps
 from ..core.lipid_geometry import anchor_groups,centers,lateral_distances,periodic_center,aligned_leaflets
-from ..progress import progress
+from ..pipeline.progress import progress
 
 def shell_fold(observed,local_total,bulk_count,bulk_total):
     """Local mole fraction divided by bulk mole fraction in SAME leaflet."""
