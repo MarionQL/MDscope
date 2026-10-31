@@ -81,3 +81,8 @@ class PhaseProfiler:
                 f"{row['calls']} calls)",
                 flush=True,
             )
+
+
+def _residue_label(res) -> str:
+    chain = getattr(res, "chainID", "") or getattr(res, "segid", "") or "?"
+    return f"{chain}:{res.resname}{res.resid}"
