@@ -32,7 +32,7 @@ def test_sparse_contacts_and_residue_pairs_against_independent_reference():
     )
 
 
-def test_sparse_contacts_empty_input_and_self_exclusion():
+def test_sparse_contacts_empty_input_and_self_pairs():
     u = _universe()
     assert atom_contacts(u.atoms[[]], u.atoms, 2.0, u.dimensions).shape == (0, 2)
     contacts = atom_contacts(u.atoms[:2], u.atoms[:2], 2.0, u.dimensions)
