@@ -32,3 +32,17 @@ def test_triclinic_planar_methods_preserve_distinct_policies():
         planar_distances(points, anchor, box),
         lateral_distances(points, anchor, box),
     )
+
+
+def test_shared_minimum_image_matches_independent_mdanalysis_steps():
+    from MDAnalysis.lib.distances import minimize_vectors
+    from mdscope.analysis.core.geometry import minimum_image_displacements
+
+    displacement = np.array([[14.0, -19.0, 3.0], [-16.0, 7.0, 22.0]])
+    for box in ([30., 35., 40., 90., 90., 90.],
+                [30., 35., 40., 75., 85., 105.]):
+        np.testing.assert_allclose(
+            minimum_image_displacements(displacement, box),
+            minimize_vectors(displacement, np.asarray(box)),
+            rtol=0, atol=1e-6,
+        )
