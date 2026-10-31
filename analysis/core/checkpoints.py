@@ -33,3 +33,29 @@ def prune_uncommitted_parts(folder: Path, next_part: int) -> list[Path]:
             path.unlink()
             removed.append(path)
     return removed
+
+
+
+def validate_committed_parts(folder: Path, next_part: int) -> None:
+    """Require every committed base timeseries chunk before resuming.
+
+    A missing checkpoint with existing chunks is also unsafe: the caller must
+    not interpret persisted user output as disposable uncommitted data.
+    """
+    folder = Path(folder)
+    existing = {
+        int(match.group(1))
+        for path in folder.glob("timeseries-part-*.parquet")
+        if (match := _PART.search(path.name)) is not None
+    }
+    if next_part == 0 and existing:
+        raise ValueError(
+            "Checkpoint is absent or records zero parts but persisted "
+            "timeseries chunks exist; existing output must be reviewed"
+        )
+    missing = set(range(next_part)) - existing
+    if missing:
+        raise ValueError(
+            "Checkpoint references missing committed timeseries parts: "
+            + ", ".join(f"{index:06d}" for index in sorted(missing))
+        )
