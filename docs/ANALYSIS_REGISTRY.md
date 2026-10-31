@@ -79,8 +79,10 @@ FreeSASA parameters and probe radius may be configured on each run.
 element-wise geometric van der Waals radius map (Angstroms): H 1.20,
 C 1.70, N 1.55, O 1.52, P/S 1.80, F 1.47, Cl 1.75, Br 1.85, I 1.98.
 Override with `element_radii_A` for your force-field/radius conventions.
-Topology elements must be available; unknown elements raise an error instead
-of silently assigning a guessed radius. These are geometric SASA radii,
+When topology elements are absent (common in PSF/GROMACS files), basic
+H/C/N/O/P/S/F/I and Cl/Br identities are inferred from atom names. Ambiguous
+names and unrecognized elements must be resolved explicitly in the topology;
+check atom typing before trusting heterogeneous-membrane SASA. These are geometric SASA radii,
 not CHARMM force-field Lennard-Jones radii.
 
 For `periodic: true`, occluder coordinates are minimum-imaged around the
