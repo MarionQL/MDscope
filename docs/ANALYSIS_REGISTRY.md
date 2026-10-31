@@ -26,3 +26,30 @@ The catalog currently represents *fused persisted outputs*. Specialized tasks
 continue using `AnalysisTask` and their own numerical outputs. Replacing
 independent analysis algorithms with a generic plugin framework is explicitly
 out of scope.
+
+## Named framewise RMSD and radius of gyration
+
+`rmsd` and `radius_of_gyration` now accept the same named `runs` mapping
+as density and residue-membrane distance. Each named run resolves its selection
+once and computes independently in the existing streaming trajectory loop.
+
+```yaml
+analyses:
+  rmsd:
+    runs:
+      protein: {selection: "protein and name CA"}
+      chain_a: {selection: "segid PROA and name CA"}
+  radius_of_gyration:
+    runs:
+      protein: {selection: "protein"}
+      chain_a: {selection: "segid PROA"}
+```
+
+Each named scalar becomes its own column in the usual per-frame time-series
+output: `rmsd__protein_A`, `rmsd__chain_a_A`,
+`radius_of_gyration__protein_A` and `radius_of_gyration__chain_a_A`.
+RMSD positions use the existing global protein alignment, not a separate fit
+for every selection. The unqualified default columns remain reserved for
+single-instance configurations; analyses not enabled have missing values.
+Other observers, including independent RMSF accumulators, still require an
+explicit implementation before accepting multiple named runs.
