@@ -5,7 +5,7 @@ import pandas as pd
 from MDAnalysis.coordinates.memory import MemoryReader
 
 from mdscope.analysis.dssp import _run_dssp
-from mdscope.analysis.fused_extensions import FusedExtensions
+from mdscope.analysis.pipeline.fused_extensions import FusedExtensions
 
 
 def test_dssp_fused_vs_independent(tmp_path):
