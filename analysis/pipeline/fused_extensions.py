@@ -17,14 +17,14 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.analysis.hydrogenbonds.hbond_analysis import HydrogenBondAnalysis
 
-from ..config import analysis_groups, atomic_parquet, ensure_dir, time_ps
+from ..config import analysis_groups, analysis_runs, atomic_parquet, ensure_dir, time_ps
 from ..observables.membrane_order import _atomic_npz
 from .progress import track
 from ..interactions.hydrogen_bonds import write_hydrogen_bonds
 from ..interactions.lipid_hydrogen_bonds import (
     GLYCOLIPID_CHAIN_IDS, lipid_molecule_map, write_lipid_hydrogen_bonds,
 )
-from ..observables.sasa import _freesasa_structure
+from ..observables.sasa import sasa_instances, sasa_residue_rows
 from ..core.profiling import _residue_label
 from ..biophysical_common import heavy, box_of, residue_pairs, sequence_motifs
 from MDAnalysis.lib.distances import distance_array
@@ -167,35 +167,7 @@ class FusedExtensions:
         self.dssp = {"analysis": dssp, "residues": residues, "times": []}
 
     def _setup_sasa(self):
-        spec = self.cfg["analyses"]["sasa"]
-        selection = str(spec.get("selection") or self.cfg["selections"]["protein"])
-        atoms = self.u.select_atoms(selection)
-        if not len(atoms):
-            raise ValueError(f"sasa.selection matched zero atoms: {selection}")
-        residues = list(atoms.residues)
-        lookup = {int(res.ix): i for i, res in enumerate(residues)}
-        mapping = np.fromiter(
-            (lookup[int(ix)] for ix in atoms.resindices), dtype=int, count=len(atoms)
-        )
-        import freesasa
-        params = freesasa.Parameters()
-        algorithm = str(spec.get("algorithm", "shrake_rupley")).lower()
-        if algorithm in {"shrake_rupley", "shrake-rupley", "sr"}:
-            params.setAlgorithm(freesasa.ShrakeRupley)
-            if spec.get("n_points") is not None:
-                params.setNPoints(int(spec["n_points"]))
-        elif algorithm in {"lee_richards", "lee-richards", "lr"}:
-            params.setAlgorithm(freesasa.LeeRichards)
-            if spec.get("n_slices") is not None:
-                params.setNSlices(int(spec["n_slices"]))
-        else:
-            raise ValueError("sasa.algorithm must be shrake_rupley or lee_richards")
-        if spec.get("probe_radius_A") is not None:
-            params.setProbeRadius(float(spec["probe_radius_A"]))
-        if spec.get("n_threads") is not None:
-            params.setNThreads(int(spec["n_threads"]))
-        self.sasa = {"atoms": atoms, "residues": residues,
-                     "mapping": mapping, "params": params}
+        self.sasa = sasa_instances(self.u, self.cfg)
 
     def _setup_local(self):
         s = self.cfg["analyses"]["local_environment"]
@@ -237,22 +209,9 @@ class FusedExtensions:
             self.timings["dssp"] += time.perf_counter() - start
         if self.sasa is not None:
             start = time.perf_counter()
-            import freesasa
-            state = self.sasa
-            _, structure = _freesasa_structure(state["atoms"])
-            result = freesasa.calc(structure, state["params"])
-            areas = np.fromiter(
-                (result.atomArea(i) for i in range(len(state["atoms"]))),
-                dtype=float, count=len(state["atoms"])
-            )
-            residue_areas = np.bincount(
-                state["mapping"], weights=areas,
-                minlength=len(state["residues"])
-            ) / 100.
-            self.rows["sasa"].extend(
-                (t, int(res.ix), _residue_label(res), float(area))
-                for res, area in zip(state["residues"], residue_areas)
-            )
+            for run_id, state in self.sasa.items():
+                name = "sasa" if run_id == "default" else f"sasa__{run_id}"
+                self.rows[name].extend(sasa_residue_rows(state, t))
             self.timings["sasa"] += time.perf_counter() - start
         if self.local is not None:
             start = time.perf_counter()
@@ -325,7 +284,7 @@ class FusedExtensions:
             entry["times"].clear()
         for name, rows in self.rows.items():
             if rows:
-                if name == "sasa":
+                if name == "sasa" or name.startswith("sasa__"):
                     df = pd.DataFrame(rows, columns=[
                         "time_ps", "topology_residue_index", "residue", "sasa_nm2"
                     ])
@@ -376,6 +335,14 @@ class FusedExtensions:
             ("local_environment", self.repout / "extensions" / "local_environment" / "timeseries.parquet"),
         ):
             if name in self.names:
+                atomic_parquet(output, _concat(self.cache / name))
+                results[name] = {"frames": self.frames, "fused": True}
+        if self.sasa is not None:
+            for run_id in self.sasa:
+                if run_id == "default":
+                    continue
+                name = f"sasa__{run_id}"
+                output = self.repout / "profiles" / "sasa" / run_id / "residue_sasa.parquet"
                 atomic_parquet(output, _concat(self.cache / name))
                 results[name] = {"frames": self.frames, "fused": True}
         if self.local is not None:

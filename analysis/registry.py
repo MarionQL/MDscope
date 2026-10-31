@@ -92,6 +92,11 @@ class FusedOutput:
 
 def fused_output(repout: Path, name: str, *, run_id: str | None = None) -> FusedOutput:
     """Return the expected artifact for a named analysis instance."""
+    if name == "sasa" and run_id is not None:
+        from .config import _validate_path_component
+        run_id = _validate_path_component(str(run_id), "sasa run ID")
+        return FusedOutput(name, Path(repout) / "profiles" / "sasa" /
+                           run_id / "residue_sasa.parquet", run_id)
     if name == "residue_membrane_distance":
         if run_id is None:
             raise ValueError("residue_membrane_distance requires a run_id")
@@ -111,10 +116,16 @@ def fused_output_plan(cfg: dict, repout: Path) -> tuple[FusedOutput, ...]:
     # Imports stay local: registry is also used by postprocessing.
     from .pipeline.fused_membrane import enabled_names as membrane_enabled
     from .pipeline.fused_extensions import enabled_names as extensions_enabled
+    from .config import analysis_runs
     from .pipeline.fused_distance import enabled_names as distance_enabled
     from .mechanisms.sdc4_mechanisms import enabled as sdc4_enabled
     entries = [fused_output(repout, name) for name in membrane_enabled(cfg)]
-    entries.extend(fused_output(repout, name) for name in extensions_enabled(cfg))
+    entries.extend(fused_output(repout, name) for name in extensions_enabled(cfg)
+                   if name != "sasa")
+    if "sasa" in extensions_enabled(cfg):
+        entries.extend(fused_output(repout, "sasa", run_id=run.run_id)
+                       if run.run_id != "default" else fused_output(repout, "sasa")
+                       for run in analysis_runs(cfg, "sasa"))
     entries.extend(fused_output(repout, "residue_membrane_distance", run_id=run_id)
                    for run_id in distance_enabled(cfg))
     if sdc4_enabled(cfg):
