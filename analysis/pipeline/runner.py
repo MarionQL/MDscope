@@ -34,8 +34,8 @@ from ..interactions import postprocess_interactions
 from ..observables.membrane_order import membrane_order_timeseries, run_membrane_order
 from ..reporting.plotting import plot_all
 from ..reporting.membrane_figures import plot_lipid_enrichment_matrix
-from ..profiles import run_residue_membrane_distance
-from ..profiles import postprocess_structure_profiles, run_structure_profiles
+from ..observables.residue_membrane_distance import run_residue_membrane_distance
+from ..observables.structure_profiles import postprocess_structure_profiles, run_structure_profiles
 from ..statistics import analyze_project
 from .streaming import run_streaming_pass
 from .fused_membrane import enabled_names as fused_enabled_names, run_fused_membrane
