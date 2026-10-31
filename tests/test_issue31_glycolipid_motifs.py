@@ -6,7 +6,6 @@ import numpy as np
 import pytest
 
 from mdscope.analysis.core.lipid_geometry import anchor_groups
-from mdscope.analysis.extended.common import centers, load_lipid_anchors
 from mdscope.analysis.biophysical_common import sequence_motifs
 from mdscope.analysis.mechanisms.mechanistic_common import sequence_matches
 
@@ -47,9 +46,10 @@ def test_multiresidue_glycolipids_count_once_and_cross_pbc():
     # First ceramide C1/C2 straddles x=0. Its center should be at
     # the periodic boundary, not the misleading wrapped midpoint x=15.
     assert np.isclose(positions[0, 0] % 30, 0, atol=1e-5)
-    wrapped_ids, wrapped_centers = centers(u.select_atoms("resname CER"))
-    np.testing.assert_array_equal(wrapped_ids, [0, 2, 4, 6])
-    assert np.isclose(wrapped_centers[0, 0], 15)
+    wrapped_anchors = u.select_atoms("resname CER")
+    np.testing.assert_array_equal(np.unique(wrapped_anchors.resindices), [0, 2, 4, 6])
+    # A naive, nonperiodic mean of the first two anchor atoms is x=15.
+    assert np.isclose(wrapped_anchors.positions[:2].mean(axis=0)[0], 15)
     # The different values are intentional: extended centers use wrapped COG.
 
 
