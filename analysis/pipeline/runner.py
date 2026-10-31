@@ -90,7 +90,7 @@ def project_root(cfg: dict, config_path: str | Path) -> Path:
 def package_code_hash() -> str:
     """Hash package source so restart markers invalidate after code edits."""
     digest = hashlib.sha256()
-    package_dir = Path(__file__).resolve().parent
+    package_dir = Path(__file__).resolve().parent.parent
     for path in sorted(package_dir.rglob("*.py")):
         digest.update(path.relative_to(package_dir).as_posix().encode("utf-8"))
         digest.update(path.read_bytes())
