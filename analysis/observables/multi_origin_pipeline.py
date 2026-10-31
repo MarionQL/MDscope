@@ -13,7 +13,7 @@ import MDAnalysis as mda
 from MDAnalysis.lib.distances import minimize_vectors
 
 from ..config import atomic_parquet, time_ps
-from ..membrane import initialize_membrane
+from .membrane import initialize_membrane
 from .msd import _residue_centers
 
 

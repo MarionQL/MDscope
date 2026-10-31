@@ -13,9 +13,9 @@ import MDAnalysis as mda
 import numpy as np
 
 from ..config import analysis_runs, time_ps
-from ..membrane_order import _atomic_npz
+from ..observables.membrane_order import _atomic_npz
 from ..progress import track
-from ..residue_membrane_distance import (
+from ..observables.residue_membrane_distance import (
     DEFAULT_LIPID_RESNAMES, _minimum_by_residue_hybrid,
     _valid_box, _without_hydrogens, run_residue_membrane_distance,
 )

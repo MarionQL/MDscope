@@ -9,7 +9,7 @@ from MDAnalysis.coordinates.memory import MemoryReader
 
 from mdscope.analysis.config import iter_replicates
 from mdscope.analysis.core import trajectory_sources
-from mdscope.analysis.membrane import membrane_metrics
+from mdscope.analysis.observables.membrane import membrane_metrics
 from mdscope.analysis.observables.msd import initialize_msd
 
 

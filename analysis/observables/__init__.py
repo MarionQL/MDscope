@@ -1,1 +1,1 @@
-"""Physical MD observables, keeping stable analysis.* compatibility imports."""
+"""Canonical molecular dynamics observables and numerical measurements."""

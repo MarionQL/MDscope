@@ -11,9 +11,9 @@ from pathlib import Path
 from typing import Callable
 import pandas as pd
 from .config import analysis_runs
-from .residue_membrane_distance import run_residue_membrane_distance
-from .membrane_order import run_membrane_order
-from .structure_profiles import run_structure_profiles
+from .observables.residue_membrane_distance import run_residue_membrane_distance
+from .observables.membrane_order import run_membrane_order
+from .observables.structure_profiles import run_structure_profiles
 from .interactions.hydrogen_bonds import run_hydrogen_bonds
 from .mechanisms.local_environment import run_local_environment
 from .observables.lipid_enrichment import run_lipid_enrichment
