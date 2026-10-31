@@ -5,7 +5,7 @@ import MDAnalysis as mda
 import numpy as np
 from MDAnalysis.coordinates.memory import MemoryReader
 
-from mdscope.analysis.msd import _residue_centers, initialize_msd, msd_metrics
+from mdscope.analysis.observables.msd import _residue_centers, initialize_msd, msd_metrics
 
 
 def _toy_universe():
