@@ -15,7 +15,7 @@ from .residue_membrane_distance import run_residue_membrane_distance
 from .membrane_order import run_membrane_order
 from .structure_profiles import run_structure_profiles
 from .interactions.hydrogen_bonds import run_hydrogen_bonds
-from .local_environment import run_local_environment
+from .mechanisms.local_environment import run_local_environment
 from .observables.lipid_enrichment import run_lipid_enrichment
 from .observables.bilayer_normal import run_bilayer_normal
 from .interactions.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
@@ -108,7 +108,7 @@ def fused_output_plan(cfg: dict, repout: Path) -> tuple[FusedOutput, ...]:
     from .fused_membrane import enabled_names as membrane_enabled
     from .fused_extensions import enabled_names as extensions_enabled
     from .fused_distance import enabled_names as distance_enabled
-    from .sdc4_mechanisms import enabled as sdc4_enabled
+    from .mechanisms.sdc4_mechanisms import enabled as sdc4_enabled
     entries = [fused_output(repout, name) for name in membrane_enabled(cfg)]
     entries.extend(fused_output(repout, name) for name in extensions_enabled(cfg))
     entries.extend(fused_output(repout, "residue_membrane_distance", run_id=run_id)
