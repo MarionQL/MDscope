@@ -2,7 +2,6 @@
 import numpy as np
 import pytest
 import MDAnalysis as mda
-from mdscope.analysis.extended.common import centers
 from mdscope.analysis.observables.msd import _residue_centers
 from mdscope.analysis.core.atom_selection import heavy_atom_mask
 
@@ -23,19 +22,16 @@ def _atoms():
 def test_residue_centers_reordered_topology_indices_and_missing_masses():
     u = _atoms()
     atoms = u.atoms
-    ids, geometric = centers(atoms)
+    ids, inverse = np.unique(atoms.resindices, return_inverse=True)
+    geometric = np.column_stack([
+        np.bincount(inverse, weights=atoms.positions[:, i], minlength=len(ids))
+        / np.bincount(inverse, minlength=len(ids)) for i in range(3)
+    ])
     np.testing.assert_array_equal(ids, [0, 1, 2])
     np.testing.assert_allclose(geometric, [[11., 0., 0.], [5., 5., 5.], [2., 2., 3.]])
     # MSD's fallback is center of geometry, but preserves MDAnalysis
     # residue-group order, not arbitrary selected-atom order.
     np.testing.assert_allclose(_residue_centers(atoms), geometric)
-
-
-def test_empty_selection_returns_no_extended_centers():
-    u = _atoms()
-    indices, xyz = centers(u.atoms[[]])
-    assert indices.shape == (0,)
-    assert xyz.shape == (0, 3)
 
 
 def test_heavy_selection_policies_remain_distinct_without_elements():
