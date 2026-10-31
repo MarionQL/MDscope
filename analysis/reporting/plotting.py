@@ -14,9 +14,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from .config import ensure_dir, replicate_label, replicate_specs, system_label
-from .interactions import interaction_tables
-from .statistics import collect_time_series, finite
+from ..config import ensure_dir, replicate_label, replicate_specs, system_label
+from ..interactions import interaction_tables
+from ..statistics import collect_time_series, finite
 
 
 METRIC_LABELS = {
@@ -542,7 +542,7 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
 
 
 def _plot_residue_distance_heatmaps(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
-    from .config import analysis_runs, profile_dir
+    from ..config import analysis_runs, profile_dir
     for run in analysis_runs(cfg, "residue_membrane_distance"):
         run_out = (
             ensure_dir(

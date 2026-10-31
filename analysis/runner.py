@@ -32,7 +32,7 @@ from .config import (
 from .interactions import run_hydrogen_bonds
 from .interactions import postprocess_interactions
 from .membrane_order import membrane_order_timeseries, run_membrane_order
-from .plotting import plot_all
+from .reporting.plotting import plot_all
 from .reporting.membrane_figures import plot_lipid_enrichment_matrix
 from .profiles import run_residue_membrane_distance
 from .profiles import postprocess_structure_profiles, run_structure_profiles
@@ -49,7 +49,7 @@ from .reporting.report import generate_report
 from .registry import specialized_tasks,additional_time_series,fused_output,fused_output_plan
 from .observables.msd import summarize_diffusion, summarize_project_diffusion, summarize_project_multi_origin
 from .observables.multi_origin_pipeline import run_multi_origin_diffusion
-from .coupling_screen import screen_couplings
+from .reporting.coupling_screen import screen_couplings
 
 
 class RunState:
