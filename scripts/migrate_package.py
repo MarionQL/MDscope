@@ -44,7 +44,7 @@ def migrate() -> None:
 
     changes = []
     for path in ROOT.rglob("*"):
-        if not path.is_file() or path.suffix not in ALLOWED or any(x in SKIP for x in path.relative_to(ROOT).parts):
+        if not path.is_file() or path == Path(__file__).resolve() or path.suffix not in ALLOWED or any(x in SKIP for x in path.relative_to(ROOT).parts):
             continue
         original = path.read_text(encoding="utf-8")
         updated = original.replace("MDscope.analysis", "mdscope").replace(OLD, "mdscope")
@@ -59,7 +59,7 @@ def migrate() -> None:
         raise RuntimeError("CLI entry point was not migrated")
     leftovers = []
     for path in ROOT.rglob("*"):
-        if not path.is_file() or path.suffix not in ALLOWED or any(x in SKIP for x in path.relative_to(ROOT).parts):
+        if not path.is_file() or path == Path(__file__).resolve() or path.suffix not in ALLOWED or any(x in SKIP for x in path.relative_to(ROOT).parts):
             continue
         if OLD in path.read_text(encoding="utf-8"):
             leftovers.append(str(path.relative_to(ROOT)))
