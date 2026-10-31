@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 import MDAnalysis as mda
 from mdscope.analysis.config import Replicate
-from mdscope.analysis.lipid_enrichment import run_lipid_enrichment
-from mdscope.analysis.bilayer_normal import run_bilayer_normal
+from mdscope.analysis.observables.lipid_enrichment import run_lipid_enrichment
+from mdscope.analysis.observables.bilayer_normal import run_bilayer_normal
 from mdscope.analysis.lipid_hydrogen_bonds import tabulate_events
 
 def _tiny_lipid_universe(tmp_path):
