@@ -17,8 +17,8 @@ boundaries; do not assume that every planned package already exists.
 
 ## Remaining migration
 
-- `analysis/interactions/`: consolidate hydrogen bonds, salt bridges,
-  ligand contacts and interaction tables from their current flat locations.
+- `analysis/interactions/`: hydrogen bonds, salt bridges, ligand contacts,
+  lipid hydrogen bonds and shared interaction tables (now grouped).
 - `analysis/mechanisms/`: organize SDC4 mechanisms and system-specific
   topology/mechanistic calculations.
 - `analysis/statistics/`: move statistical postprocessing without changing
