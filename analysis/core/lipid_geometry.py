@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from MDAnalysis.lib.distances import minimize_vectors
 from MDAnalysis.lib.mdamath import triclinic_vectors
 from .geometry import minimum_image_displacements
 
@@ -36,7 +35,7 @@ class AnchorTracker:
         box = self.atoms.universe.dimensions
         if box is None or not np.all(np.asarray(box[:3]) > 0):
             raise ValueError("Lipid anchors require valid periodic box dimensions")
-        unwrapped = reference[self.owner] + minimize_vectors(
+        unwrapped = reference[self.owner] + minimum_image_displacements(
             xyz - reference[self.owner], box
         )
         return np.column_stack([
