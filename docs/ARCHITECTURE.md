@@ -23,8 +23,8 @@ boundaries; do not assume that every planned package already exists.
 
 - `analysis/interactions/`: hydrogen bonds, salt bridges, ligand contacts,
   lipid hydrogen bonds and shared interaction tables (now grouped).
-- `analysis/pipeline/`: fused trajectory execution is grouped here; streaming,
-  runner and finalization remain at top level pending a separate migration.
+- `analysis/pipeline/`: streaming, fused trajectory processing, orchestration,
+  finalization and execution progress now share one package.
 
 The repository intentionally does **not** preserve legacy Python import
 aliases after a replacement is migrated. `mdscope` CLI commands and YAML
