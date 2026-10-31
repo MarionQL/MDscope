@@ -20,8 +20,8 @@ from MDAnalysis.analysis.hydrogenbonds.hbond_analysis import HydrogenBondAnalysi
 from .config import analysis_groups, atomic_parquet, ensure_dir, time_ps
 from .membrane_order import _atomic_npz
 from .progress import track
-from .hydrogen_bonds import write_hydrogen_bonds
-from .lipid_hydrogen_bonds import (
+from .interactions.hydrogen_bonds import write_hydrogen_bonds
+from .interactions.lipid_hydrogen_bonds import (
     GLYCOLIPID_CHAIN_IDS, lipid_molecule_map, write_lipid_hydrogen_bonds,
 )
 from .sasa import _freesasa_structure
