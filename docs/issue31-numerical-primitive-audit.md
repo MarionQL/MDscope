@@ -5,7 +5,7 @@ goal is to remove unnecessary duplication without changing physical observables.
 
 | Overlap | Decision | Rationale |
 | --- | --- | --- |
-| Minimum-image displacement in `core.geometry`, `core.lipid_geometry`, `mechanistic_common`, and `extended.common` | Already centralized in `minimum_image_displacements`; retain narrow wrappers | Triclinic-aware MDAnalysis vectors; caller-specific dtype and output shape matter |
+| Minimum-image displacement in `core.geometry`, `core.lipid_geometry`, `mechanistic_common`, and `extended.common` | Consolidated `AnchorTracker.positions` and single-origin MSD steps onto `minimum_image_displacements`; retain narrow wrappers | Triclinic-aware MDAnalysis vectors; caller-specific dtype and output shape matter |
 | `biophysical_common.lateral_distance` versus `core.lipid_geometry.planar_offsets` / `mechanistic_common.planar_distances` | **Retain separately** | The former rejects triclinic cells and computes an all-pairs matrix; latter methods compute one-to-one projected vectors after minimum imaging |
 | `extended.common.centers`, `core.lipid_geometry.AnchorTracker` and `observables.msd._residue_centers` | **Retain separately** | Wrapped arithmetic COG for anchor selections, periodic unwrapped lipid anchor centers, and mass-weighted MSD COM with missing-mass fallback are intentionally different |
 | `biophysical_common.leaflet_groups`, `core.lipid_geometry.classify_leaflets`, `extended.common.load_lipid_anchors` | **Retain separately** | Circular gap, periodic leaflet assignment and median split are not interchangeable |
@@ -29,3 +29,13 @@ units, periodic-box convention, dtypes and selection semantics. Compare
 numerical outputs on both synthetic fixtures and opt-in real GROMACS systems.
 Do not rewrite all-pairs calculations as pointwise projections (or vice versa),
 or replace sparse search with dense matrices. Preserve CLI/YAML/API contracts.
+
+## Completed code consolidation
+
+`AnchorTracker.positions` and `observables.msd.msd_metrics` now use the
+existing `core.geometry.minimum_image_displacements` adapter rather than
+importing `MDAnalysis.lib.distances.minimize_vectors` separately. Both preserve
+input displacement vectors, box dimensions, precision and result shapes;
+the shared adapter adds explicit periodic box validation. Numerical regression
+coverage is provided by existing issue-31 PBC and MSD tests. No user-facing
+migration is intended.
