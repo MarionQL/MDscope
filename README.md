@@ -29,27 +29,27 @@ pip install reportlab pillow
 From the directory containing the `mdscope` package:
 
 ```bash
-python -m mdscope.analysis.cli validate example_config.yaml
-python -m mdscope.analysis.cli run example_config.yaml
+python -m mdscope.cli validate example_config.yaml
+python -m mdscope.cli run example_config.yaml
 ```
 
 Useful commands:
 
 ```bash
 # Interactively create a minimal starter YAML.
-python -m mdscope.analysis.cli init --output analysis.yaml
+python -m mdscope.cli init --output analysis.yaml
 
 # Check files/selections and catch obvious configuration problems.
-python -m mdscope.analysis.cli validate analysis.yaml
+python -m mdscope.cli validate analysis.yaml
 
 # Run every configured replicate, consolidate results, calculate statistics, and plot.
-python -m mdscope.analysis.cli run analysis.yaml
+python -m mdscope.cli run analysis.yaml
 
 # Run one zero-based systemxreplicate entry (for example from a job array).
-python -m mdscope.analysis.cli replicate analysis.yaml --index 0
+python -m mdscope.cli replicate analysis.yaml --index 0
 
 # Re-run only project-level statistics/plots from already persisted replicate outputs.
-python -m mdscope.analysis.cli finalize analysis.yaml
+python -m mdscope.cli finalize analysis.yaml
 ```
 
 The project output directory contains the resolved configuration and environment metadata so a completed analysis can be audited later.
@@ -70,7 +70,7 @@ To regenerate just these files from existing finalized outputs (no XTC
 re-read, no project summary archiving):
 
 ```bash
-python -m mdscope.analysis.cli report synd4_full_mechanisms.yaml
+python -m mdscope.cli report synd4_full_mechanisms.yaml
 ```
 
 
@@ -749,7 +749,7 @@ code loaded at job startup; submit a new job to use an updated checkout.
 
 ### SLURM progress and source checkout
 
-`run_mdscope.sh` runs the checked-out `MDscope.analysis.cli`, not the separately
+`run_mdscope.sh` runs the checked-out `mdscope.cli`, not the separately
 installed lowercase `mdscope` package. Submit from this repository after
 `git pull --ff-only origin main`. The default configuration is
 `synd4_full_mechanisms.yaml`; provide a YAML path as the first `sbatch`

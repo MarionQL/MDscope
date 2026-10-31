@@ -1,0 +1,62 @@
+name: Migrate MDscope package (PR 65)
+on:
+  push:
+    branches:
+      - issue35/src-layout-packaging
+    paths:
+      - scripts/migrate_package.py
+      - .github/workflows/migrate-package.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mdscope-package-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    if: github.ref == 'refs/heads/issue35/src-layout-packaging'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          ref: issue35/src-layout-packaging
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Migrate source layout and imports
+        run: python scripts/migrate_package.py
+      - name: Verify obsolete namespace is absent
+        run: |
+          test ! -d src/mdscope/analysis
+          if git grep -n -E 'mdscope[.]analysis|MDscope[.]analysis' -- ':!scripts/migrate_package.py'; then
+            echo 'Old namespace remains' >&2
+            exit 1
+          fi
+          python -m compileall -q src tests
+          bash -n run_mdscope.sh finalize_mdscope.sh
+      - name: Install and test package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[test]' build twine
+          python -m build
+          python -m twine check dist/*
+          (cd /tmp && python -c 'import mdscope, mdscope.cli, mdscope.observables.sasa; print(mdscope.__version__)')
+          (cd /tmp && mdscope --help)
+          pytest -q tests
+      - name: Commit migration to PR branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # Stage tracked edits/deletions plus new relocated source only; exclude build artifacts.
+          git add -u
+          git add src/mdscope
+          if git diff --cached --quiet; then
+            echo 'Nothing to commit'
+          else
+            git commit -m 'Complete src/mdscope namespace migration for issue 35'
+            git push origin HEAD:issue35/src-layout-packaging
+          fi

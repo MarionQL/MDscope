@@ -5,8 +5,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import MDAnalysis as mda
-from mdscope.analysis.config import DEFAULTS,Replicate
-from mdscope.analysis.pipeline.streaming import run_streaming_pass
+from mdscope.config import DEFAULTS,Replicate
+from mdscope.pipeline.streaming import run_streaming_pass
 
 def test_streaming_rmsd_rmsf_after_module_split(tmp_path, monkeypatch):
     monkeypatch.setenv("MDSCOPE_PROFILE", "1")

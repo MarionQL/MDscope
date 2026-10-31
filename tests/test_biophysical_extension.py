@@ -1,8 +1,8 @@
 """Synthetic regression checks for geometry and diffusion without trajectory files."""
 import numpy as np
-from mdscope.analysis.biophysical_common import sequence_motifs
-from mdscope.analysis.observables.msd import fit_lateral_diffusion
-from mdscope.analysis.reporting.coupling_screen import correlation,block_means
+from mdscope.biophysical_common import sequence_motifs
+from mdscope.observables.msd import fit_lateral_diffusion
+from mdscope.reporting.coupling_screen import correlation,block_means
 
 class Residue:
     def __init__(self,name,resid,ix,chain):
@@ -15,8 +15,8 @@ def test_motif_matches_and_chain_boundaries():
     assert {m["chain"] for m in hits}=={"A","B"}
 
 def test_rmsd_separate_from_rmsf():
-    from mdscope.analysis.observables.rmsd import compute_rmsd
-    from mdscope.analysis.observables.rmsf import Welford
+    from mdscope.observables.rmsd import compute_rmsd
+    from mdscope.observables.rmsf import Welford
     x=np.array([[0.,0.,0.],[2.,0.,0.]])
     assert np.isclose(compute_rmsd(x,x),0)
     w=Welford(x.shape)

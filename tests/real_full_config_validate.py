@@ -6,7 +6,7 @@ import tempfile
 
 import yaml
 
-from mdscope.analysis.cli import cmd_validate
+from mdscope.cli import cmd_validate
 
 root = Path(os.environ.get("MDSCOPE_REAL_DATA", "real_test_data")).resolve()
 original = yaml.safe_load(Path("synd4_full_mechanisms.yaml").read_text())

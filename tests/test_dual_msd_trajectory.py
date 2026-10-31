@@ -7,10 +7,10 @@ import numpy as np
 import pytest
 from MDAnalysis.coordinates.memory import MemoryReader
 
-from mdscope.analysis.config import iter_replicates
-from mdscope.analysis.core import trajectory_sources
-from mdscope.analysis.observables.membrane import membrane_metrics
-from mdscope.analysis.observables.msd import initialize_msd
+from mdscope.config import iter_replicates
+from mdscope.core import trajectory_sources
+from mdscope.observables.membrane import membrane_metrics
+from mdscope.observables.msd import initialize_msd
 
 
 def _universe(translation):

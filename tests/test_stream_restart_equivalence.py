@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 import MDAnalysis as mda
-from mdscope.analysis.config import DEFAULTS, Replicate
-from mdscope.analysis.pipeline import streaming
+from mdscope.config import DEFAULTS, Replicate
+from mdscope.pipeline import streaming
 
 
 def _system(tmp_path):

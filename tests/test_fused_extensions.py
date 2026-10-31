@@ -7,8 +7,8 @@ import pandas as pd
 from MDAnalysis.coordinates.memory import MemoryReader
 from MDAnalysis.analysis.hydrogenbonds.hbond_analysis import HydrogenBondAnalysis
 
-from mdscope.analysis.pipeline.fused_extensions import FusedExtensions
-from mdscope.analysis.interactions.hydrogen_bonds import write_hydrogen_bonds
+from mdscope.pipeline.fused_extensions import FusedExtensions
+from mdscope.interactions.hydrogen_bonds import write_hydrogen_bonds
 
 
 def _universe():
