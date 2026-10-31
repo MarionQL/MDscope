@@ -7,7 +7,7 @@ import pandas as pd
 from MDAnalysis.coordinates.memory import MemoryReader
 
 from mdscope.analysis.fused_membrane import FusedMembrane, enabled_names
-from mdscope.analysis.lipid_geometry import anchor_groups
+from mdscope.analysis.core.lipid_geometry import anchor_groups
 
 
 def _universe():
