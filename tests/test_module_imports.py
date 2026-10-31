@@ -1,7 +1,9 @@
 """Import smoke checks for the canonical MDscope modules."""
 def test_canonical_modules_import():
-    from mdscope.analysis import streaming, rmsd, rmsf, membrane, density_1d
-    from mdscope.analysis import radius_of_gyration, dssp, sasa, membrane_order
+    from mdscope.analysis import streaming, membrane, density_1d
+    from mdscope.analysis.observables import rmsd, rmsf
+    from mdscope.analysis import dssp, sasa, membrane_order
+    from mdscope.analysis.observables import radius_of_gyration
     from mdscope.analysis import residue_membrane_distance, registry
     from mdscope.analysis.core import alignment, lipid_geometry, profiling
     from mdscope.analysis.observables import msd, bilayer_normal, lipid_enrichment
