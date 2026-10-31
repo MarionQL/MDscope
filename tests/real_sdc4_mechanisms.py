@@ -14,7 +14,7 @@ import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 
-from mdscope.analysis.sdc4_mechanisms import SDC4Mechanisms
+from mdscope.analysis.mechanisms.sdc4_mechanisms import SDC4Mechanisms
 
 DATA = Path(os.environ.get("MDSCOPE_REAL_DATA", "real_test_data")).resolve()
 ROOT = Path(os.environ.get("MDSCOPE_REAL_OUTPUT", "real_test_results")).resolve()
