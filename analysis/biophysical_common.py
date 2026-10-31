@@ -2,7 +2,7 @@
 from __future__ import annotations
 import re
 import numpy as np
-from MDAnalysis.lib.distances import capped_distance, distance_array
+from MDAnalysis.lib.distances import capped_distance
 from .core.atom_selection import select_heavy_atoms
 
 AA = {"ALA":"A","ARG":"R","ASN":"N","ASP":"D","CYS":"C","GLU":"E",

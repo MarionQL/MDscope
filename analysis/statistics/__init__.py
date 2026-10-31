@@ -117,7 +117,10 @@ def _block_weights(n: int, block: int, draws: int, rng: np.random.Generator) -> 
     # binary trajectories.
     idx = _block_indices(n, block, draws, rng)
     dtype = np.uint16 if int(np.ceil(n / max(1, block))) < 65535 else np.uint32
-    return np.stack([np.bincount(row, minlength=n) for row in idx]).astype(dtype, copy=False)
+    weights = np.empty((draws, n), dtype=dtype)
+    for i, row in enumerate(idx):
+        weights[i] = np.bincount(row, minlength=n)
+    return weights
 
 
 def _hierarchical(
