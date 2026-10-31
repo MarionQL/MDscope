@@ -23,7 +23,7 @@ jobs:
       - name: Check shell syntax and compile analysis modules
         run: |
           bash -n run_mdscope.sh finalize_mdscope.sh
-          python -m compileall -q analysis tests
+          python -m compileall -q src tests
       - name: Install dependencies for synthetic tests
         run: |
           python -m pip install --upgrade pip
@@ -37,11 +37,18 @@ jobs:
           cd /tmp
           python -c "import mdscope; import mdscope.analysis.cli; print(mdscope.__version__)"
           mdscope --help
+      - name: Verify wheel and sdist in isolated installations
+        run: |
+          python -m venv /tmp/mdscope-wheel
+          /tmp/mdscope-wheel/bin/pip install dist/*.whl
+          (cd /tmp && /tmp/mdscope-wheel/bin/python -c "import mdscope, mdscope.analysis.statistics, mdscope.analysis.interactions, mdscope.analysis.mechanisms, mdscope.analysis.pipeline; print(mdscope.__version__)")
+          (cd /tmp && /tmp/mdscope-wheel/bin/mdscope --help)
+          python -m venv /tmp/mdscope-sdist
+          /tmp/mdscope-sdist/bin/pip install dist/*.tar.gz
+          (cd /tmp && /tmp/mdscope-sdist/bin/python -c "import mdscope.analysis.cli, mdscope.analysis.pipeline.runner")
       - name: Run synthetic regression tests
         run: |
-          mkdir -p _ci_alias
-          ln -s "$PWD" _ci_alias/mdscope
-          PYTHONPATH="$PWD/_ci_alias" pytest -q tests
+          pytest -q tests
       - name: Profile representative numerical kernels
         run: |
-          PYTHONPATH="$PWD/_ci_alias" pytest -q -s tests/test_performance_benchmarks.py
+          pytest -q -s tests/test_performance_benchmarks.py

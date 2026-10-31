@@ -32,5 +32,5 @@ def test_slurm_launcher_routes_progress_to_stdout_and_loads_checkout():
     assert 'MDSCOPE_PROGRESS_EVERY_PERCENT' in script
     assert 'MDSCOPE_PROFILE' in script
     assert "synd4_full_mechanisms.yaml" in script
-    assert "python -u -m MDscope.analysis.cli replicate" in script
+    assert "python -u -m mdscope.analysis.cli replicate" in script
     assert "MDscope commit:" in script

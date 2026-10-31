@@ -19,6 +19,7 @@ dependencies = [
 
 [project.optional-dependencies]
 report = ["reportlab", "pillow"]
+sasa = ["freesasa"]
 test = ["pytest", "reportlab", "pillow"]
 dev = ["pytest", "reportlab", "pillow", "build", "twine"]
 
@@ -26,20 +27,13 @@ dev = ["pytest", "reportlab", "pillow", "build", "twine"]
 mdscope = "mdscope.analysis.cli:main"
 
 [tool.setuptools]
-packages = [
-    "mdscope",
-    "mdscope.analysis",
-    "mdscope.analysis.core",
-    "mdscope.analysis.observables",
-    "mdscope.analysis.reporting",
-]
+package-dir = {"" = "src"}
+include-package-data = false
 
-[tool.setuptools.package-dir]
-mdscope = "."
-"mdscope.analysis" = "analysis"
-"mdscope.analysis.core" = "analysis/core"
-"mdscope.analysis.observables" = "analysis/observables"
-"mdscope.analysis.reporting" = "analysis/reporting"
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["mdscope*"]
+namespaces = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
