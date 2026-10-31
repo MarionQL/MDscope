@@ -21,14 +21,14 @@ import pandas as pd
 from MDAnalysis.lib.distances import minimize_vectors
 
 from .config import atomic_parquet, ensure_dir, time_ps
-from .lipid_geometry import anchor_groups, aligned_leaflets, centers, periodic_center
-from .lipid_enrichment import enrichment_frame
-from .bilayer_normal import fit_local_normals
+from .core.lipid_geometry import anchor_groups, aligned_leaflets, centers, periodic_center
+from .observables.lipid_enrichment import enrichment_frame
+from .observables.bilayer_normal import fit_local_normals
 from .membrane_order import (
     AXIS_INDEX, _atomic_npz, _candidate_sites, _fixed_ch_pairs,
     _metric_name, _profile_values, _profiles, _valid_box,
 )
-from .lipid_geometry import classify_leaflets
+from .core.lipid_geometry import classify_leaflets
 from .progress import track
 
 
