@@ -24,7 +24,7 @@ from ..interactions.hydrogen_bonds import write_hydrogen_bonds
 from ..interactions.lipid_hydrogen_bonds import (
     GLYCOLIPID_CHAIN_IDS, lipid_molecule_map, write_lipid_hydrogen_bonds,
 )
-from ..observables.sasa import sasa_instances, sasa_residue_rows
+from ..observables.sasa import sasa_instances, sasa_residue_rows, write_sasa_burial
 from ..core.profiling import _residue_label
 from ..biophysical_common import heavy, box_of, residue_pairs, sequence_motifs
 from MDAnalysis.lib.distances import distance_array
@@ -345,6 +345,9 @@ class FusedExtensions:
                 output = self.repout / "profiles" / "sasa" / run_id / "residue_sasa.parquet"
                 atomic_parquet(output, _concat(self.cache / name))
                 results[name] = {"frames": self.frames, "fused": True}
+            for run_id, state in self.sasa.items():
+                if state["reference_run"] is not None:
+                    write_sasa_burial(self.repout, run_id, state["reference_run"])
         if self.local is not None:
             if _part_paths(self.cache / "local_residue", ".parquet"):
                 atomic_parquet(
