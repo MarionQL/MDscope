@@ -53,6 +53,15 @@ def migrate() -> None:
         if updated != original:
             path.write_text(updated, encoding="utf-8")
             changes.append(str(path.relative_to(ROOT)))
+    # Update the packaging assertion introduced by the initial src-layout PR.
+    layout_test = ROOT / "tests/test_source_layout.py"
+    if layout_test.exists():
+        old_assertion = 'files("mdscope") / "analysis" / "cli.py"'
+        new_assertion = 'files("mdscope") / "cli.py"'
+        content = layout_test.read_text(encoding="utf-8")
+        if old_assertion in content:
+            layout_test.write_text(content.replace(old_assertion, new_assertion), encoding="utf-8")
+            changes.append(str(layout_test.relative_to(ROOT)))
     # Ensure metadata is not accidentally left pointing at the old entry point.
     metadata = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     if 'mdscope = "mdscope.cli:main"' not in metadata:
