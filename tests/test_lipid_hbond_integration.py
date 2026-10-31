@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import MDAnalysis as mda
 from mdscope.analysis.config import Replicate
-from mdscope.analysis.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
+from mdscope.analysis.interactions.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
 
 def test_run_lipid_hb_on_bonded_pair(tmp_path):
     u=mda.Universe.empty(4,n_residues=2,atom_resindex=[0,0,1,1],trajectory=True)
