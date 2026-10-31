@@ -12,8 +12,9 @@ boundaries; do not assume that every planned package already exists.
   normal and lipid enrichment.
 - `analysis/mechanisms/`: SDC4 conformational mechanisms, HS topology,
   mechanistic geometry, local environment and shared conformational states.
+- `analysis/statistics/`: replicate-aware inference, resampling and summaries.
 - `analysis/reporting/`: report PDF/ZIP generation, membrane and SDC4 figures,
-  and coupling-screen reporting.
+  coupling-screen reporting and plots.
 - `analysis/cli.py`, `analysis/config.py`, `analysis/registry.py`: current
   CLI, configuration and registry entry points.
 
@@ -21,8 +22,6 @@ boundaries; do not assume that every planned package already exists.
 
 - `analysis/interactions/`: hydrogen bonds, salt bridges, ligand contacts,
   lipid hydrogen bonds and shared interaction tables (now grouped).
-- `analysis/statistics/`: move statistical postprocessing without changing
-  estimators or aggregation.
 - `analysis/pipeline/`: move streaming, fused passes, runner and finalization
   after updating all dependent imports and HPC entry points.
 - Other physical observables and plotting utilities still have flat modules;
