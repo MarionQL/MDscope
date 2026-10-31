@@ -31,7 +31,7 @@ from .config import (
 )
 from .interactions import run_hydrogen_bonds
 from .interactions import postprocess_interactions
-from .membrane_order import membrane_order_timeseries, run_membrane_order
+from .observables.membrane_order import membrane_order_timeseries, run_membrane_order
 from .reporting.plotting import plot_all
 from .reporting.membrane_figures import plot_lipid_enrichment_matrix
 from .profiles import run_residue_membrane_distance

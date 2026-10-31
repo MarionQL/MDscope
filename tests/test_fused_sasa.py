@@ -13,7 +13,7 @@ import pandas as pd
 from MDAnalysis.coordinates.memory import MemoryReader
 
 from mdscope.analysis.pipeline.fused_extensions import FusedExtensions
-from mdscope.analysis.sasa import _run_sasa
+from mdscope.analysis.observables.sasa import _run_sasa
 
 
 class FakeStructure:

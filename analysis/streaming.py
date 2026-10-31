@@ -23,8 +23,8 @@ from .core.alignment import _apply_transform,_fit_transform,_valid_box
 from .observables.rmsd import compute_rmsd
 from .observables.rmsf import Welford
 from .observables.radius_of_gyration import compute_rg
-from .density_1d import DensityProfileAccumulator
-from .membrane import initialize_membrane,membrane_metrics
+from .observables.density_1d import DensityProfileAccumulator
+from .observables.membrane import initialize_membrane,membrane_metrics
 from .interactions import chain_label,initialize_ligand_contacts,initialize_salt_bridges,ligand_contact_events,residue_label,salt_bridge_events
 def _checkpoint_payload(path, cfg_hash, processed, next_part, rmsf, groups, densities, membrane):
     payload = {

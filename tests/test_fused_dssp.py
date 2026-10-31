@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.coordinates.memory import MemoryReader
 
-from mdscope.analysis.dssp import _run_dssp
+from mdscope.analysis.observables.dssp import _run_dssp
 from mdscope.analysis.pipeline.fused_extensions import FusedExtensions
 
 
