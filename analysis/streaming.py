@@ -12,7 +12,7 @@ from .config import analysis_groups, analysis_runs, atomic_parquet,ensure_dir,ti
 from .progress import track
 from .profiling import PhaseProfiler
 from .core.trajectory_sources import open_msd_universe, paired_frames
-from .core.checkpoints import validate_progress, prune_uncommitted_parts
+from .core.checkpoints import (validate_progress, validate_committed_parts, prune_uncommitted_parts)
 from .core.coordinate_contracts import CoordinateSpace, require_coordinate_space, msd_source_space
 from .msd import initialize_msd
 from .fused_membrane import FusedMembrane, enabled_names as fused_enabled_names
@@ -220,6 +220,16 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
                 "Existing output was preserved; move/archive the replicate "
                 "directory before restarting from frame zero."
             ) from exc
+
+    # Never prune existing chunks when the checkpoint is absent or references
+    # missing committed parts. Both cases require operator recovery.
+    try:
+        validate_committed_parts(raw, part)
+    except ValueError as exc:
+        raise RuntimeError(
+            f"Unsafe streaming restart in {raw}: {exc}. "
+            "Existing output was preserved."
+        ) from exc
 
     # Parts created after the last durable checkpoint are uncommitted.
     # Keep earlier parts intact so a resume never double-counts frames.

@@ -105,3 +105,29 @@ def test_unusable_checkpoint_preserves_existing_output(tmp_path):
     with pytest.raises(RuntimeError, match="Invalid streaming checkpoint"):
         streaming.run_streaming_pass(rep, cfg, output, "restart-fixture")
     assert persisted.read_bytes() == b"committed bytes"
+
+
+def test_missing_checkpoint_never_deletes_existing_parts(tmp_path):
+    rep, cfg = _system(tmp_path)
+    root = tmp_path / "recover"
+    raw = root / "test" / "rep1" / "raw"
+    raw.mkdir(parents=True)
+    part = raw / "timeseries-part-000000.parquet"
+    part.write_bytes(b"user output; do not delete")
+    with pytest.raises(RuntimeError, match="Unsafe streaming restart"):
+        streaming.run_streaming_pass(rep, cfg, root, "restart-fixture")
+    assert part.read_bytes() == b"user output; do not delete"
+
+
+def test_checkpoint_missing_committed_part_preserves_remaining(tmp_path):
+    rep, cfg = _system(tmp_path)
+    root = tmp_path / "recover"
+    streaming.run_streaming_pass(rep, cfg, root, "restart-fixture")
+    raw = root / "test" / "rep1" / "raw"
+    missing = raw / "timeseries-part-000001.parquet"
+    missing.unlink()
+    survivor = raw / "timeseries-part-000002.parquet"
+    before = survivor.read_bytes()
+    with pytest.raises(RuntimeError, match="missing committed timeseries parts"):
+        streaming.run_streaming_pass(rep, cfg, root, "restart-fixture")
+    assert survivor.read_bytes() == before

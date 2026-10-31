@@ -1,7 +1,7 @@
 """Resume safety: committed counters and orphan chunk pruning."""
 from pathlib import Path
 import pytest
-from mdscope.analysis.core.checkpoints import validate_progress, prune_uncommitted_parts
+from mdscope.analysis.core.checkpoints import validate_progress, validate_committed_parts, prune_uncommitted_parts
 
 
 @pytest.mark.parametrize("frames,parts,chunk,total", [
@@ -42,3 +42,25 @@ def test_prune_only_orphan_numbered_parts(tmp_path):
     assert (tmp_path / "aligned-part-000001.npz").exists()
     assert (tmp_path / "unrelated-part-foo.parquet").exists()
     assert (tmp_path / "notes.txt").exists()
+
+
+def test_reject_orphan_chunks_without_checkpoint(tmp_path):
+    orphan = tmp_path / "timeseries-part-000000.parquet"
+    orphan.write_bytes(b"preserved")
+    with pytest.raises(ValueError, match="Checkpoint is absent"):
+        validate_committed_parts(tmp_path, 0)
+    assert orphan.read_bytes() == b"preserved"
+
+
+def test_reject_missing_committed_chunk(tmp_path):
+    (tmp_path / "timeseries-part-000000.parquet").write_bytes(b"first")
+    (tmp_path / "timeseries-part-000002.parquet").write_bytes(b"orphan")
+    with pytest.raises(ValueError, match="missing committed.*000001"):
+        validate_committed_parts(tmp_path, 2)
+    assert (tmp_path / "timeseries-part-000002.parquet").exists()
+
+
+def test_allow_uncommitted_chunk_after_complete_checkpoint(tmp_path):
+    for i in (0, 1, 2):
+        (tmp_path / f"timeseries-part-{i:06d}.parquet").write_bytes(b"chunk")
+    validate_committed_parts(tmp_path, 2)
