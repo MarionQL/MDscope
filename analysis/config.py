@@ -436,7 +436,6 @@ def load_config(path: str | Path) -> dict[str, Any]:
             ).setdefault("block", {})["max_acf_lag"] = old_acf["max_lag"]
         if old_acf.get("enabled") is False:
             cfg.setdefault("plots", {})["autocorrelation"] = False
-    cfg.pop("report", None)
     cfg.get("analyses", {}).pop("distribution_statistics", None)
     validate_config(cfg, Path(path).resolve().parent)
     return cfg
