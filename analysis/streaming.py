@@ -10,16 +10,16 @@ import numpy as np
 import pandas as pd
 from .config import analysis_groups, analysis_runs, atomic_parquet,ensure_dir,time_ps
 from .progress import track
-from .profiling import PhaseProfiler
+from .core.profiling import PhaseProfiler
 from .core.trajectory_sources import open_msd_universe, paired_frames
 from .core.checkpoints import (validate_progress, validate_committed_parts, prune_uncommitted_parts)
 from .core.coordinate_contracts import CoordinateSpace, require_coordinate_space, msd_source_space
-from .msd import initialize_msd
+from .observables.msd import initialize_msd
 from .fused_membrane import FusedMembrane, enabled_names as fused_enabled_names
 from .fused_extensions import FusedExtensions, enabled_names as extension_enabled_names
 from .fused_distance import FusedDistances, enabled_names as distance_enabled_names
 from .sdc4_mechanisms import SDC4Mechanisms, enabled as sdc4_enabled
-from .alignment import _apply_transform,_fit_transform,_valid_box
+from .core.alignment import _apply_transform,_fit_transform,_valid_box
 from .rmsd import compute_rmsd
 from .rmsf import Welford
 from .radius_of_gyration import compute_rg
