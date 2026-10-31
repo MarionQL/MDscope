@@ -3,9 +3,9 @@ import numpy as np
 import pytest
 from MDAnalysis.lib.distances import minimize_vectors
 
-from mdscope.analysis.core.geometry import minimum_image_displacements
-from mdscope.analysis.mechanisms.mechanistic_common import planar_distances
-from mdscope.analysis.biophysical_common import lateral_distance as pairwise_lateral
+from mdscope.core.geometry import minimum_image_displacements
+from mdscope.mechanisms.mechanistic_common import planar_distances
+from mdscope.biophysical_common import lateral_distance as pairwise_lateral
 
 BOX = np.array([40., 50., 60., 90., 90., 90.])
 
@@ -52,8 +52,8 @@ def test_invalid_geometry_fails_explicitly():
 
 
 import numpy as np
-from mdscope.analysis.core import alignment as core_alignment
-from mdscope.analysis.core import lipid_geometry as core_lipid
+from mdscope.core import alignment as core_alignment
+from mdscope.core import lipid_geometry as core_lipid
 
 def test_alignment_rigid_rotation_and_translation():
     rng = np.random.default_rng(123)

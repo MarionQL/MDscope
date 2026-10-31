@@ -2,10 +2,10 @@
 import json
 import numpy as np
 import pandas as pd
-from mdscope.analysis.reporting.report_inventory import (
+from mdscope.reporting.report_inventory import (
     _read, _sample_frame_table, _summary_inventory, _metric_groups,
 )
-from mdscope.analysis.reporting.report import _metric_groups as report_metric_groups
+from mdscope.reporting.report import _metric_groups as report_metric_groups
 
 def test_inventory_prefers_finalized_summary_without_reading_trajectories(tmp_path):
     rep = tmp_path / "condition" / "rep1"

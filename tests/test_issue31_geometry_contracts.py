@@ -4,8 +4,8 @@ import pytest
 from MDAnalysis.lib.distances import minimize_vectors
 from MDAnalysis.lib.mdamath import triclinic_vectors
 
-from mdscope.analysis.core.geometry import minimum_image_displacements
-from mdscope.analysis.core.lipid_geometry import planar_offsets, lateral_distances, periodic_center
+from mdscope.core.geometry import minimum_image_displacements
+from mdscope.core.lipid_geometry import planar_offsets, lateral_distances, periodic_center
 
 
 @pytest.mark.parametrize("box", [

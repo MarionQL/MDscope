@@ -5,9 +5,9 @@ import MDAnalysis as mda
 import numpy as np
 import pytest
 
-from mdscope.analysis.core.lipid_geometry import anchor_groups
-from mdscope.analysis.biophysical_common import sequence_motifs
-from mdscope.analysis.mechanisms.mechanistic_common import sequence_matches
+from mdscope.core.lipid_geometry import anchor_groups
+from mdscope.biophysical_common import sequence_motifs
+from mdscope.mechanisms.mechanistic_common import sequence_matches
 
 
 def _glycolipid_universe():

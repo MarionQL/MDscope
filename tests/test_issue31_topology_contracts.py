@@ -2,8 +2,8 @@
 import numpy as np
 import pytest
 import MDAnalysis as mda
-from mdscope.analysis.observables.msd import _residue_centers
-from mdscope.analysis.core.atom_selection import heavy_atom_mask
+from mdscope.observables.msd import _residue_centers
+from mdscope.core.atom_selection import heavy_atom_mask
 
 
 def _atoms():

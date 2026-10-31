@@ -10,33 +10,9 @@ on:
       - "tests/real_sdc4_mechanisms.py"
       - "tests/real_hs_topology_audit.py"
       - "tests/real_full_config_validate.py"
-      - "analysis/hs_topology.py"
+      - "src/mdscope/**"
       - "synd4_full_mechanisms.yaml"
-      - "analysis/sdc4_mechanisms.py"
-      - "analysis/shared_states.py"
-      - "analysis/mechanistic_common.py"
       - "tests/real_trajectory_physics.py"
-      - "analysis/lipid_geometry.py"
-      - "analysis/lipid_enrichment.py"
-      - "analysis/bilayer_normal.py"
-      - "analysis/lipid_hydrogen_bonds.py"
-      - "analysis/msd.py"
-      - "analysis/membrane.py"
-      - "analysis/observables/**"
-      - "analysis/core/**"
-      - "analysis/profiling.py"
-      - "analysis/runner.py"
-      - "analysis/streaming.py"
-      - "analysis/fused_membrane.py"
-      - "analysis/fused_extensions.py"
-      - "analysis/fused_distance.py"
-      - "analysis/fused_all.py"
-      - "analysis/residue_membrane_distance.py"
-      - "analysis/hydrogen_bonds.py"
-      - "analysis/local_environment.py"
-      - "analysis/dssp.py"
-      - "analysis/sasa.py"
-      - "analysis/membrane_order.py"
       - ".github/workflows/real-trajectory-smoke.yml"
 
 concurrency:
@@ -63,7 +39,7 @@ jobs:
       - name: Install MDscope analysis dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install numpy pandas pyarrow pyyaml matplotlib 'MDAnalysis==2.9.0'
+          python -m pip install -e .
       - name: Download paired real trajectories and TPR files
         env:
           GH_TOKEN: ${{ github.token }}
@@ -74,23 +50,19 @@ jobs:
           df -h .
       - name: Audit HS topology chain IDs and covalent attachment sites
         run: |
-          PYTHONPATH="$PWD/_ci_alias" python tests/real_hs_topology_audit.py
-      - name: Prepare MDscope package import alias
-        run: |
-          mkdir -p _ci_alias
-          ln -s "$PWD" _ci_alias/mdscope
+          python tests/real_hs_topology_audit.py
       - name: Validate full production YAML selections on both real topologies
         run: |
-          PYTHONPATH="$PWD/_ci_alias" python tests/real_full_config_validate.py
+          python tests/real_full_config_validate.py
       - name: Run real-trajectory analysis on both systems
         run: |
-          PYTHONPATH="$PWD/_ci_alias" python tests/real_trajectory_smoke.py
+          python tests/real_trajectory_smoke.py
       - name: Validate SDC4 geometry and lipid maps on real TPR/XTC inputs
         run: |
-          PYTHONPATH="$PWD/_ci_alias" python tests/real_sdc4_mechanisms.py
+          python tests/real_sdc4_mechanisms.py
       - name: Full-length physical audit and stage benchmarks
         run: |
-          PYTHONPATH="$PWD/_ci_alias" python tests/real_trajectory_physics.py
+          python tests/real_trajectory_physics.py
       - name: Upload diagnostic reports and sample output
         if: always()
         uses: actions/upload-artifact@v4

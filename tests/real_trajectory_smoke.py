@@ -16,13 +16,13 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from mdscope.analysis.pipeline.runner import run_one
-from mdscope.analysis.config import Replicate, load_config
-from mdscope.analysis.observables.membrane_order import run_membrane_order
-from mdscope.analysis.observables.bilayer_normal import run_bilayer_normal
-from mdscope.analysis.observables.lipid_enrichment import run_lipid_enrichment
-from mdscope.analysis.interactions.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
-from mdscope.analysis.observables.residue_membrane_distance import run_residue_membrane_distance
+from mdscope.pipeline.runner import run_one
+from mdscope.config import Replicate, load_config
+from mdscope.observables.membrane_order import run_membrane_order
+from mdscope.observables.bilayer_normal import run_bilayer_normal
+from mdscope.observables.lipid_enrichment import run_lipid_enrichment
+from mdscope.interactions.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
+from mdscope.observables.residue_membrane_distance import run_residue_membrane_distance
 
 DATA = Path(os.environ.get("MDSCOPE_REAL_DATA", "real_test_data")).resolve()
 ROOT = Path(os.environ.get("MDSCOPE_REAL_OUTPUT", "real_test_results")).resolve()
