@@ -5,22 +5,22 @@ policy. This document records the current canonical module layout and dependency
 
 ## Current canonical locations
 
-- `analysis/core/`: alignment, trajectory and provenance helpers, periodic
+- `src/mdscope/core/`: alignment, trajectory and provenance helpers, periodic
   geometry, atom selection, checkpoints, persistence.
-- `analysis/observables/`: RMSD, RMSF, radius of gyration, MSD, bilayer
+- `src/mdscope/observables/`: RMSD, RMSF, radius of gyration, MSD, bilayer
   normal, lipid enrichment, membrane metrics/order, density, DSSP, SASA,
   structural profiles and residue–membrane distance.
-- `analysis/mechanisms/`: SDC4 conformational mechanisms, HS topology,
+- `src/mdscope/mechanisms/`: SDC4 conformational mechanisms, HS topology,
   mechanistic geometry, local environment and shared conformational states.
-- `analysis/statistics/`: replicate-aware inference, resampling, time-series, profile and interaction summaries.
-- `analysis/reporting/`: report PDF/ZIP generation, membrane and SDC4 figures,
+- `src/mdscope/statistics/`: replicate-aware inference, resampling, time-series, profile and interaction summaries.
+- `src/mdscope/reporting/`: report PDF/ZIP generation, membrane and SDC4 figures,
   coupling-screen reporting and plots.
-- `analysis/cli.py`, `analysis/config.py`, `analysis/registry.py`: current
+- `src/mdscope/cli.py`, `src/mdscope/config.py`, `src/mdscope/registry.py`: current
   CLI, configuration and registry entry points.
 
-- `analysis/interactions/`: hydrogen bonds, salt bridges, ligand contacts,
+- `src/mdscope/interactions/`: hydrogen bonds, salt bridges, ligand contacts,
   lipid hydrogen bonds and shared interaction tables.
-- `analysis/pipeline/`: streaming, fused trajectory processing, orchestration,
+- `src/mdscope/pipeline/`: streaming, fused trajectory processing, orchestration,
   finalization and execution progress.
 
 The former flat runner, streaming, progress, profiles and timeseries modules
@@ -53,8 +53,8 @@ not numerical equivalence for every supported topology or analysis option.
 
 ## Issue #33 — observable and interaction ownership audit (2026-10-31)
 
-The former `analysis/timeseries.py`, `analysis/profiles.py` and
-`analysis/interactions.py` facades were intentionally removed by earlier
+The former `src/mdscope/timeseries.py`, `src/mdscope/profiles.py` and
+`src/mdscope/interactions.py` facades were intentionally removed by earlier
 architecture PRs; do not recreate compatibility wrappers for unsupported
 imports. Numerical observables live under `observables/`, interaction
 serializers and identity tables under `interactions/`, source/frame handling

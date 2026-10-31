@@ -17,13 +17,13 @@ This document is the single source of truth for structural refactoring.
 
 ## Target layout
 
-- `analysis/core/`: geometry, coordinate and topology contracts, selections, trajectory inputs, persistence and checkpoints
-- `analysis/observables/`: RMSD, RMSF, MSD, radius of gyration, membrane and protein observables
-- `analysis/interactions/`: hydrogen bonds, salt bridges and molecular contacts
-- `analysis/mechanisms/`: SDC4, glycan/lipid mechanisms and topology-specific analyses
-- `analysis/statistics/`: resampling, statistical summaries and system comparisons
-- `analysis/reporting/`: plots, tables and PDF/report exports
-- `analysis/pipeline/`: trajectory streaming, fused observers and run/finalize orchestration
-- `analysis/cli.py`, `analysis/config.py`, `analysis/registry.py`: minimal top-level entry points
+- `src/mdscope/core/`: geometry, coordinate and topology contracts, selections, trajectory inputs, persistence and checkpoints
+- `src/mdscope/observables/`: RMSD, RMSF, MSD, radius of gyration, membrane and protein observables
+- `src/mdscope/interactions/`: hydrogen bonds, salt bridges and molecular contacts
+- `src/mdscope/mechanisms/`: SDC4, glycan/lipid mechanisms and topology-specific analyses
+- `src/mdscope/statistics/`: resampling, statistical summaries and system comparisons
+- `src/mdscope/reporting/`: plots, tables and PDF/report exports
+- `src/mdscope/pipeline/`: trajectory streaming, fused observers and run/finalize orchestration
+- `src/mdscope/cli.py`, `src/mdscope/config.py`, `src/mdscope/registry.py`: minimal top-level entry points
 
 Move one coherent group at a time, migrate all imports, and confirm CI before proceeding. These are ownership boundaries, not a requirement to invent additional wrappers.

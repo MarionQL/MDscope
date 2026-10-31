@@ -1,17 +1,16 @@
 # MDscope analysis package
 
-See [the current architecture](../docs/ARCHITECTURE.md) and
-[repository rules](../docs/REPOSITORY_RULES.md).
+See [the current architecture](../../docs/ARCHITECTURE.md) and
+[repository rules](../../docs/REPOSITORY_RULES.md).
 
 Current canonical packages:
 - `core/`: geometry, alignment, atom selection, trajectory sources and checkpoints
 - `observables/`: RMSD, RMSF, MSD, radius of gyration, bilayer normals, lipid enrichment,
   membrane order, density, DSSP, SASA, structural profiles and residue distances
 - `reporting/`: PDF/ZIP report, scientific figure rendering and coupling-screen reporting
-- `extended/`: numerical support for extended membrane observers
-
 - `interactions/`: hydrogen bonds, salt bridges, ligand contacts and interaction tables
 - `mechanisms/`: SDC4, HS topology, local environment and shared states
+- `statistics/`: replicate-aware inference and statistical summaries
 
 The `pipeline/` package owns streaming, fused processing, orchestration,
 finalization and progress handling.
