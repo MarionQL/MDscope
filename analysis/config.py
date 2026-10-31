@@ -16,7 +16,7 @@ import pandas as pd
 import yaml
 
 DEFAULT_INSTANCE_ID = "default"
-MULTI_RUN_ANALYSES = {"density_1d", "residue_membrane_distance", "rmsd", "radius_of_gyration"}
+MULTI_RUN_ANALYSES = {"density_1d", "residue_membrane_distance"}
 
 DEFAULTS = {
     "project": {"name": "mdscope_project", "output": "mdscope_results"},
