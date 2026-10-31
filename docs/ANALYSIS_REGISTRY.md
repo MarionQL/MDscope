@@ -1,28 +1,30 @@
-# Analysis registration and persisted output contracts
+# Analysis instances and persisted results
 
-MDscope deliberately has different execution families: the fast streaming
-reader, fused observers, specialized analyses, and postprocessing. The shared
-catalog in `analysis/registry.py` describes persisted fused outputs and legacy
-checkpoint marker names; it **does not** replace optimized fused execution.
+MDscope separates **analysis algorithms**, **named instances**, and the **trajectory pass**.
+Multiple named instances of an enabled analysis must share the same trajectory traversal,
+but retain independent selections, accumulators, output paths, and completion records.
 
-To add a fused observable:
+## Current support
 
-1. Implement the observer in the appropriate fused module and add its enable
-   predicate to that module's `enabled_names` / `enabled` function.
-2. Register its exact final output relative path, legacy checkpoint name and
-   execution family in `FUSED_OUTPUTS`. For an analysis supporting multiple
-   independently named runs, extend `fused_output` with explicit run IDs.
-3. Ensure the observer finalizes that output and the runner checks its
-   existence through `fused_output_plan`. A missing final output must not
-   count as a successful completed analysis.
-4. Add a row to `tests/test_fused_output_catalog.py` and an end-to-end
-   test for both streaming and fused-only execution if applicable.
+- `density_1d` and `residue_membrane_distance` support named `runs` in YAML.
+- Other observables currently have a single configuration. Do not assume adding
+  `runs` to YAML enables multi-instance execution until that observer supports it.
+- Fused observers share a trajectory reader; specialized analyses execute independently
+  when their backend or coordinate requirements demand it.
 
-Existing exceptions are intentional: serial DSSP/SASA may be fused; alternate
-DSSP backends remain specialized. The `profiles` completion marker is shared
-for historical compatibility. Residue-distance run IDs remain distinct.
+## Adding or extending an analysis
 
-The catalog currently represents *fused persisted outputs*. Specialized tasks
-continue using `AnalysisTask` and their own numerical outputs. Replacing
-independent analysis algorithms with a generic plugin framework is explicitly
-out of scope.
+1. Implement the numerical observer in its owning module and its enable logic.
+2. If supporting named instances, use `analysis_runs(cfg, name)`, initialize each
+   instance once, and update each instance within the **same frame loop**.
+3. Give every instance a unique run ID and output directory. Register the expected
+   finalized artifact in `FUSED_OUTPUTS`/`fused_output`; do not invent legacy aliases.
+4. Validate finalized artifacts before recording completion. Resume/checkpoint keys
+   must distinguish instances; a missing output is incomplete even if a marker exists.
+5. Update existing contract and streaming/fused-only integration tests where applicable.
+
+`FUSED_OUTPUTS` is a path catalog, **not** a numerical plugin engine or pass scheduler.
+There is no requirement to preserve historical internal checkpoint keys. A changed key
+can cause work to be repeated; never silently reuse old incomplete results.
+
+Do not create a generic plugin framework merely to register analysis instances.

@@ -320,12 +320,7 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
             if not extension_outputs[name].path.is_file():
                 raise RuntimeError(f"Missing fused output: {extension_outputs[name].path}")
             key = prefix + "-" + extension_outputs[name].checkpoint_key
-            if key.endswith("-profiles") and not all(
-                item in extension_names for item in ("dssp", "sasa")
-                if cfg["analyses"][item].get("enabled", False)
-            ):
-                continue
-            if not state.complete(key):
+                        if not state.complete(key):
                 state.mark(key, {"fused_into": "streaming" if streaming_required and not missing
                                  else "fused-extensions-fallback"})
 
@@ -357,7 +352,7 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
                                   "seconds": perf_counter() - t0})
         if not output.is_file():
             raise RuntimeError(f"Missing SDC4 mechanism output: {output}")
-        key = prefix + "-sdc4-mechanisms"
+        key = prefix + "-" + fused_output(repout, "sdc4_mechanisms").checkpoint_key
         if not state.complete(key):
             state.mark(key, {"fused_into": "streaming" if streaming_required
                              else "fused-only"})
