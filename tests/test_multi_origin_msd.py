@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from mdscope.analysis.observables.multi_origin_msd import (
+from mdscope.observables.multi_origin_msd import (
     multi_origin_msd, multi_origin_diffusion,
 )
 

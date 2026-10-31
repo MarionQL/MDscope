@@ -3,9 +3,9 @@ import MDAnalysis as mda
 import numpy as np
 from MDAnalysis.lib.distances import capped_distance
 
-from mdscope.analysis.biophysical_common import atom_contacts, residue_pairs, collapse_atom_pairs_to_residues
-from mdscope.analysis.mechanisms.mechanistic_common import contact_count
-from mdscope.analysis.observables.msd import _residue_centers
+from mdscope.biophysical_common import atom_contacts, residue_pairs, collapse_atom_pairs_to_residues
+from mdscope.mechanisms.mechanistic_common import contact_count
+from mdscope.observables.msd import _residue_centers
 
 
 def _universe():

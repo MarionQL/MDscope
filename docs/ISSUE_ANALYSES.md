@@ -1,6 +1,6 @@
 # Open-issue analyses (#1–#5)
 
-All additions are opt-in and share MDscope's existing replicate-aware statistics, profile bootstrap and visualization. You can run all selected passes with `python -m mdscope.analysis.cli run config.yaml`.
+All additions are opt-in and share MDscope's existing replicate-aware statistics, profile bootstrap and visualization. You can run all selected passes with `python -m mdscope.cli run config.yaml`.
 
 ## Issue #1: all-atom C–H order
 

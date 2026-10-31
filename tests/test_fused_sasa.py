@@ -12,8 +12,8 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.coordinates.memory import MemoryReader
 
-from mdscope.analysis.pipeline.fused_extensions import FusedExtensions
-from mdscope.analysis.observables.sasa import _run_sasa
+from mdscope.pipeline.fused_extensions import FusedExtensions
+from mdscope.observables.sasa import _run_sasa
 
 
 class FakeStructure:

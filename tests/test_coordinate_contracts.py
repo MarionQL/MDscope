@@ -1,7 +1,7 @@
 """Coordinate-space contract tests; no changes to numerical estimators."""
 import pytest
 
-from mdscope.analysis.core.coordinate_contracts import (
+from mdscope.core.coordinate_contracts import (
     CoordinateSpace, require_coordinate_space, msd_source_space,
 )
 

@@ -1,7 +1,7 @@
 """Resume safety: committed counters and orphan chunk pruning."""
 from pathlib import Path
 import pytest
-from mdscope.analysis.core.checkpoints import validate_progress, validate_committed_parts, prune_uncommitted_parts
+from mdscope.core.checkpoints import validate_progress, validate_committed_parts, prune_uncommitted_parts
 
 
 @pytest.mark.parametrize("frames,parts,chunk,total", [

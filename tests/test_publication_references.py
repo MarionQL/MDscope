@@ -6,11 +6,11 @@ they do not call the corresponding production estimator to establish truth.
 from itertools import combinations, product
 import numpy as np
 import pandas as pd
-from mdscope.analysis.statistics.common import (
+from mdscope.statistics.common import (
     autocorrelation, _temporal, _permutation, _fdr,
     _block_bootstrap, _hierarchical_difference,
 )
-from mdscope.analysis.observables.multi_origin_msd import multi_origin_msd
+from mdscope.observables.multi_origin_msd import multi_origin_msd
 
 def test_autocorrelation_direct_biased_oracle():
     x = np.array([1., 2., 4., -1., 3., 8., 0.])

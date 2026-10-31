@@ -2,9 +2,9 @@
 import numpy as np
 import pytest
 
-from mdscope.analysis.biophysical_common import lateral_distance
-from mdscope.analysis.mechanisms.mechanistic_common import planar_distances
-from mdscope.analysis.core.lipid_geometry import lateral_distances
+from mdscope.biophysical_common import lateral_distance
+from mdscope.mechanisms.mechanistic_common import planar_distances
+from mdscope.core.lipid_geometry import lateral_distances
 
 
 def test_pairwise_and_pointwise_planar_distances_are_distinct_contracts():
@@ -36,7 +36,7 @@ def test_triclinic_planar_methods_preserve_distinct_policies():
 
 def test_shared_minimum_image_matches_independent_mdanalysis_steps():
     from MDAnalysis.lib.distances import minimize_vectors
-    from mdscope.analysis.core.geometry import minimum_image_displacements
+    from mdscope.core.geometry import minimum_image_displacements
 
     displacement = np.array([[14.0, -19.0, 3.0], [-16.0, 7.0, 22.0]])
     for box in ([30., 35., 40., 90., 90., 90.],

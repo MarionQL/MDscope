@@ -9,8 +9,8 @@ import pandas as pd
 import pytest
 from MDAnalysis.coordinates.memory import MemoryReader
 
-from mdscope.analysis.mechanisms.sdc4_mechanisms import SDC4Mechanisms, _local_surface, _normal_order_setup, _order_by_residue
-from mdscope.analysis.mechanisms.shared_states import fit_shared_states
+from mdscope.mechanisms.sdc4_mechanisms import SDC4Mechanisms, _local_surface, _normal_order_setup, _order_by_residue
+from mdscope.mechanisms.shared_states import fit_shared_states
 
 
 def _synthetic():

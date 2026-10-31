@@ -30,12 +30,11 @@ export PYTHONUNBUFFERED=1
 export MDSCOPE_PROGRESS_EVERY_PERCENT="${MDSCOPE_PROGRESS_EVERY_PERCENT:-1}"
 # Enable lightweight trajectory/analysis timing during SLURM runs by default.
 export MDSCOPE_PROFILE="${MDSCOPE_PROFILE:-1}"
-MDSCOPE_ROOT="/projects/bevanlab/students/marionlopresti/hepsulf_MD"
-export PYTHONPATH="${MDSCOPE_ROOT}:${PYTHONPATH:-}"
+python -m pip install --no-deps -e "${ROOT}"
 
 python - <<'PY'
-import MDscope.analysis.cli as cli
-import MDscope.analysis.progress as progress
+import mdscope.cli as cli
+import mdscope.pipeline.progress as progress
 print(f"MDscope CLI source: {cli.__file__}", flush=True)
 print(f"Progress reporter source: {progress.__file__}", flush=True)
 PY
@@ -52,7 +51,7 @@ echo "Host:         $(hostname)"
 echo "Started:      $(date)"
 echo "============================================================"
 
-python -u -m MDscope.analysis.cli replicate \
+python -u -m mdscope.cli replicate \
     "${YAML}" \
     --index "${SLURM_ARRAY_TASK_ID}"
 

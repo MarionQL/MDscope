@@ -21,8 +21,7 @@ cd "${ROOT}"
 # cross-replicate statistics and figures; it does not rerun trajectories.
 source /apps/common/software/Miniconda3/24.7.1-0/etc/profile.d/conda.sh
 conda activate mdanalysis
-MDSCOPE_ROOT="/projects/bevanlab/students/marionlopresti/hepsulf_MD"
-export PYTHONPATH="${MDSCOPE_ROOT}:${PYTHONPATH:-}"
+python -m pip install --no-deps -e "${ROOT}"
 
 echo "============================================================"
 echo "MDscope finalize"
@@ -32,7 +31,7 @@ echo "Host:         $(hostname)"
 echo "Started:      $(date)"
 echo "============================================================"
 
-python -m MDscope.analysis.cli finalize "${YAML}"
+python -m mdscope.cli finalize "${YAML}"
 
 echo "============================================================"
 echo "Finished: $(date)"

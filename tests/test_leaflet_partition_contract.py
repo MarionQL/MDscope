@@ -2,8 +2,8 @@
 import numpy as np
 import pytest
 
-from mdscope.analysis.core.leaflet_partition import median_leaflet_mask
-from mdscope.analysis.core.lipid_geometry import classify_leaflets
+from mdscope.core.leaflet_partition import median_leaflet_mask
+from mdscope.core.lipid_geometry import classify_leaflets
 
 
 @pytest.mark.parametrize("values", [
