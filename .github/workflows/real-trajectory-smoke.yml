@@ -10,11 +10,9 @@ on:
       - "tests/real_sdc4_mechanisms.py"
       - "tests/real_hs_topology_audit.py"
       - "tests/real_full_config_validate.py"
-      - "src/mdscope/analysis/**"
+      - "src/mdscope/**"
       - "synd4_full_mechanisms.yaml"
-      - "src/mdscope/analysis/**"
       - "tests/real_trajectory_physics.py"
-      - "src/mdscope/analysis/**"
       - ".github/workflows/real-trajectory-smoke.yml"
 
 concurrency:
