@@ -93,6 +93,7 @@ def sasa_instances(universe, cfg):
             "reference_run": spec.get("reference_run"),
             "target_atoms": np.asarray(target.indices, dtype=int),
             "target_radii": np.asarray(radii, dtype=float)[target_idx],
+            "probe_radius": float(spec.get("probe_radius_A", 1.4)),
             "settings": (algorithm, spec.get("n_points"), spec.get("n_slices"),
                          spec.get("probe_radius_A", 1.4)),
         }
@@ -171,13 +172,30 @@ def sasa_residue_rows(state, time):
         coords = anchor + minimize_vectors(
             np.asarray(coords - anchor, dtype=np.float64), box
         )
+    target_idx = state["target_idx"]
+    # A distant atom cannot occlude a target SASA sphere. Restrict large
+    # environments using a conservative bound on both van der Waals radii
+    # plus the solvent probe; this preserves target areas exactly.
+    if len(coords) > len(target_idx):
+        from MDAnalysis.lib.distances import capped_distance
+        max_cutoff = (
+            float(np.max(state["target_radii"])) +
+            float(np.max(state["radii"])) +
+            2.0 * state["probe_radius"] + 1e-5
+        )
+        pairs = capped_distance(coords[target_idx], coords, max_cutoff,
+                                method="nsgrid", return_distances=False)
+        candidate_idx = np.union1d(target_idx, pairs[:, 1])
+    else:
+        candidate_idx = np.arange(len(coords))
     result = state["library"].calcCoord(
-        coords.ravel().tolist(),
-        state["radii"], state["params"],
+        coords[candidate_idx].ravel().tolist(),
+        np.asarray(state["radii"])[candidate_idx].tolist(), state["params"],
     )
+    candidate_target_idx = np.searchsorted(candidate_idx, target_idx)
     areas = np.fromiter(
-        (result.atomArea(int(i)) for i in state["target_idx"]),
-        dtype=float, count=len(state["target_idx"]),
+        (result.atomArea(int(i)) for i in candidate_target_idx),
+        dtype=float, count=len(target_idx),
     )
     values = np.bincount(
         state["mapping"], weights=areas, minlength=len(state["residues"])
