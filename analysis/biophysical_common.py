@@ -20,10 +20,28 @@ def atom_contacts(a,b,cutoff,box=None):
     if len(a)==0 or len(b)==0: return np.empty((0,2),int)
     return capped_distance(a.positions,b.positions,max_cutoff=float(cutoff),box=box,return_distances=False)
 
+def collapse_atom_pairs_to_residues(atom_pairs, left_resindices, right_resindices):
+    """Unique topology-residue pairs from local atom-pair indices.
+
+    Inputs are array indices into the *selected* left and right atom groups;
+    residue IDs are topology indices, never potentially repeated resid labels.
+    Returns a stable lexicographically sorted (n_pairs, 2) integer array.
+    """
+    pairs = np.asarray(atom_pairs, dtype=np.intp).reshape(-1, 2)
+    if not len(pairs):
+        return np.empty((0, 2), dtype=np.intp)
+    left = np.asarray(left_resindices, dtype=np.intp)
+    right = np.asarray(right_resindices, dtype=np.intp)
+    return np.unique(
+        np.column_stack((left[pairs[:, 0]], right[pairs[:, 1]])), axis=0
+    )
+
+
 def residue_pairs(a,b,cutoff,box=None):
-    pairs=atom_contacts(a,b,cutoff,box)
-    if not len(pairs):return np.empty((0,2),int)
-    return np.unique(np.stack((a.resindices[pairs[:,0]],b.resindices[pairs[:,1]]),axis=1),axis=0)
+    """Unique topology-residue contacts within cutoff (Å), with optional PBC."""
+    return collapse_atom_pairs_to_residues(
+        atom_contacts(a,b,cutoff,box), a.resindices, b.resindices
+    )
 
 def lateral_distance(a,b,box,axis=2):
     """Planar distances for orthorhombic boxes; fails explicitly for triclinic."""
