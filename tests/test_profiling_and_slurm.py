@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from mdscope.analysis.profiling import PhaseProfiler
+from mdscope.analysis.core.profiling import PhaseProfiler
 
 
 def test_profiler_is_opt_in_and_produces_correct_stream(tmp_path, monkeypatch):
