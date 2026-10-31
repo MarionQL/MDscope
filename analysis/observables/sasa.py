@@ -90,8 +90,66 @@ def sasa_instances(universe, cfg):
             "occluders": occluders, "radii": radii, "target_idx": target_idx,
             "residues": residues, "mapping": mapping, "params": params,
             "library": freesasa, "periodic": bool(spec.get("periodic", False)),
+            "reference_run": spec.get("reference_run"),
+            "target_atoms": np.asarray(target.indices, dtype=int),
+            "target_radii": np.asarray(radii, dtype=float)[target_idx],
+            "settings": (algorithm, spec.get("n_points"), spec.get("n_slices"),
+                         spec.get("probe_radius_A", 1.4)),
         }
+    for run_id, state in instances.items():
+        reference = state["reference_run"]
+        if reference is None:
+            continue
+        if reference == run_id or reference not in instances:
+            raise ValueError(f"SASA run {run_id}: unknown/self reference_run {reference!r}")
+        baseline = instances[reference]
+        if (not np.array_equal(state["target_atoms"], baseline["target_atoms"])
+                or not np.array_equal(state["target_radii"], baseline["target_radii"])
+                or state["settings"] != baseline["settings"]):
+            raise ValueError(
+                f"SASA run {run_id}: reference_run must have identical target atoms, "
+                "target radii, sampling algorithm, and probe radius"
+            )
     return instances
+
+
+def write_sasa_burial(repout, run_id, reference_run):
+    """Join identical residue/time records to quantify environmental occlusion."""
+    root = Path(repout) / "profiles" / "sasa"
+    environment = pd.read_parquet(root / run_id / "residue_sasa.parquet")
+    ref_dir = root if reference_run == "default" else root / reference_run
+    baseline = pd.read_parquet(ref_dir / "residue_sasa.parquet")
+    keys = ["time_ps", "topology_residue_index"]
+    paired = baseline.merge(environment, on=keys, how="inner",
+                            suffixes=("_isolated", "_environment"),
+                            validate="one_to_one")
+    if len(paired) != len(baseline) or len(paired) != len(environment):
+        raise ValueError(f"SASA run {run_id}: reference and environment frames/residues differ")
+    if not (paired["residue_isolated"] == paired["residue_environment"]).all():
+        raise ValueError(f"SASA run {run_id}: residue identity mismatch")
+    paired = paired.rename(columns={
+        "residue_isolated": "residue",
+        "sasa_nm2_isolated": "isolated_sasa_nm2",
+        "sasa_nm2_environment": "environment_sasa_nm2",
+    }).drop(columns=["residue_environment"])
+    paired["buried_sasa_nm2"] = (
+        paired["isolated_sasa_nm2"] - paired["environment_sasa_nm2"]
+    )
+    isolated = paired["isolated_sasa_nm2"].to_numpy(float)
+    paired["buried_fraction"] = np.divide(
+        paired["buried_sasa_nm2"].to_numpy(float),
+        isolated, out=np.full(len(isolated), np.nan), where=isolated > 0,
+    )
+    target = root / run_id
+    atomic_parquet(target / "residue_burial.parquet", paired)
+    summary = paired.groupby(["topology_residue_index", "residue"], as_index=False).agg(
+        mean_buried_sasa_nm2=("buried_sasa_nm2", "mean"),
+        std_buried_sasa_nm2=("buried_sasa_nm2", "std"),
+        mean_buried_fraction=("buried_fraction", "mean"),
+        mean_environment_sasa_nm2=("environment_sasa_nm2", "mean"),
+        mean_isolated_sasa_nm2=("isolated_sasa_nm2", "mean"),
+    )
+    atomic_parquet(target / "residue_burial_summary.parquet", summary)
 
 
 def sasa_residue_rows(state, time):
@@ -147,3 +205,6 @@ def _run_sasa(universe, cfg: dict, repout: Path):
                        pd.DataFrame(values, columns=[
                            "time_ps", "topology_residue_index", "residue", "sasa_nm2"
                        ]))
+    for key, state in states.items():
+        if state["reference_run"] is not None:
+            write_sasa_burial(repout, key, state["reference_run"])
