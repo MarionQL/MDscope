@@ -20,9 +20,9 @@ from .fused_extensions import FusedExtensions, enabled_names as extension_enable
 from .fused_distance import FusedDistances, enabled_names as distance_enabled_names
 from .sdc4_mechanisms import SDC4Mechanisms, enabled as sdc4_enabled
 from .core.alignment import _apply_transform,_fit_transform,_valid_box
-from .rmsd import compute_rmsd
-from .rmsf import Welford
-from .radius_of_gyration import compute_rg
+from .observables.rmsd import compute_rmsd
+from .observables.rmsf import Welford
+from .observables.radius_of_gyration import compute_rg
 from .density_1d import DensityProfileAccumulator
 from .membrane import initialize_membrane,membrane_metrics
 from .interactions import chain_label,initialize_ligand_contacts,initialize_salt_bridges,ligand_contact_events,residue_label,salt_bridge_events
