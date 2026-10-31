@@ -8,7 +8,7 @@ from .fused_membrane import FusedMembrane, enabled_names as membrane_enabled
 from .fused_extensions import FusedExtensions, enabled_names as extension_enabled
 from .fused_distance import FusedDistances, enabled_names as distance_enabled
 from ..mechanisms.sdc4_mechanisms import SDC4Mechanisms, enabled as sdc4_enabled
-from ..progress import track
+from .progress import track
 
 
 def run_fused_only(rep, cfg, repout):

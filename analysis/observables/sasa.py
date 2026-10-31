@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from ..profile_common import _residue_label
-from ..progress import track
+from ..pipeline.progress import track
 from ..config import ensure_dir,atomic_parquet,time_ps
 def _freesasa_structure(atoms):
     try:
