@@ -49,3 +49,35 @@ def test_invalid_geometry_fails_explicitly():
         minimum_image_displacements(np.ones((4, 2)), BOX)
     with pytest.raises(ValueError, match="periodic box"):
         minimum_image_displacements(np.ones((4, 3)), [0, 50, 60, 90, 90, 90])
+
+
+import numpy as np
+from mdscope.analysis.core import alignment as core_alignment
+from mdscope.analysis.core import lipid_geometry as core_lipid
+
+def test_alignment_rigid_rotation_and_translation():
+    rng = np.random.default_rng(123)
+    reference = rng.normal(size=(20, 3))
+    angle = 0.7
+    rotation = np.array([[np.cos(angle), -np.sin(angle), 0.],
+                         [np.sin(angle), np.cos(angle), 0.],
+                         [0., 0., 1.]])
+    mobile = reference @ rotation + np.array([15., -3., 4.])
+    transform = core_alignment._fit_transform(mobile, reference)
+    np.testing.assert_allclose(
+        core_alignment._apply_transform(mobile, transform), reference,
+        atol=1e-12,
+    )
+
+
+def test_periodic_center_stable_under_independent_wrapping():
+    box = np.array([100., 100., 100., 90., 90., 90.])
+    xyz = np.array([[99., 20., 30.], [1., 21., 30.], [98., 19., 31.]])
+    shifted = xyz.copy()
+    shifted[0, 0] -= 100.
+    shifted[1, 0] += 100.
+    np.testing.assert_allclose(
+        core_lipid.periodic_center(xyz, box),
+        core_lipid.periodic_center(shifted, box),
+        atol=1e-10,
+    )

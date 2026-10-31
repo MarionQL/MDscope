@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 import MDAnalysis as mda
 
-from ..msd import initialize_msd
+from ..observables.msd import initialize_msd
 
 
 def open_msd_universe(rep, cfg, membrane, main_universe, first_frame):

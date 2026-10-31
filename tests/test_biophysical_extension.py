@@ -1,7 +1,7 @@
 """Synthetic regression checks for geometry and diffusion without trajectory files."""
 import numpy as np
 from mdscope.analysis.biophysical_common import sequence_motifs
-from mdscope.analysis.msd import fit_lateral_diffusion
+from mdscope.analysis.observables.msd import fit_lateral_diffusion
 from mdscope.analysis.coupling_screen import correlation,block_means
 
 class Residue:

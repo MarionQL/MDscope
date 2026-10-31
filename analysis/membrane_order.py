@@ -13,7 +13,7 @@ from MDAnalysis.exceptions import NoDataError
 from MDAnalysis.lib.distances import capped_distance, minimize_vectors
 
 from .config import atomic_parquet, ensure_dir, time_ps
-from .lipid_geometry import classify_leaflets
+from .core.lipid_geometry import classify_leaflets
 from .progress import progress
 
 

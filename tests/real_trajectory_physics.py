@@ -20,10 +20,10 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import minimize_vectors
 
-from mdscope.analysis.bilayer_normal import fit_local_normals
+from mdscope.analysis.observables.bilayer_normal import fit_local_normals
 from mdscope.analysis.config import Replicate
-from mdscope.analysis.lipid_enrichment import enrichment_frame
-from mdscope.analysis.lipid_geometry import (
+from mdscope.analysis.observables.lipid_enrichment import enrichment_frame
+from mdscope.analysis.core.lipid_geometry import (
     aligned_leaflets, anchor_groups, centers, periodic_center,
 )
 from mdscope.analysis.lipid_hydrogen_bonds import (

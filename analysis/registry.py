@@ -16,8 +16,8 @@ from .membrane_order import run_membrane_order
 from .structure_profiles import run_structure_profiles
 from .hydrogen_bonds import run_hydrogen_bonds
 from .local_environment import run_local_environment
-from .lipid_enrichment import run_lipid_enrichment
-from .bilayer_normal import run_bilayer_normal
+from .observables.lipid_enrichment import run_lipid_enrichment
+from .observables.bilayer_normal import run_bilayer_normal
 from .lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
 
 @dataclass(frozen=True)

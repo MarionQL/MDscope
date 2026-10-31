@@ -22,7 +22,7 @@ import pandas as pd
 from MDAnalysis.lib.distances import capped_distance, minimize_vectors
 
 from .config import DEFAULTS, atomic_json, atomic_parquet, ensure_dir, time_ps
-from .lipid_geometry import anchor_groups, aligned_leaflets, periodic_center
+from .core.lipid_geometry import anchor_groups, aligned_leaflets, periodic_center
 from .mechanistic_common import heavy, nearest, selected, sequence_matches, unit
 from .membrane_order import _candidate_sites, _fixed_ch_pairs, _atomic_npz
 from .progress import track
