@@ -7,8 +7,8 @@ from mdscope.analysis.core.lipid_geometry import (
 )
 from mdscope.analysis.observables.lipid_enrichment import enrichment_frame
 from mdscope.analysis.observables.bilayer_normal import fit_local_normals
-from mdscope.analysis.lipid_hydrogen_bonds import lipid_molecule_map, tabulate_events
-from mdscope.analysis.interaction_tables import INTERACTION_KEY_COLUMNS
+from mdscope.analysis.interactions.lipid_hydrogen_bonds import lipid_molecule_map, tabulate_events
+from mdscope.analysis.interactions.interaction_tables import INTERACTION_KEY_COLUMNS
 
 
 BOX = np.array([100., 100., 100., 90., 90., 90.])
