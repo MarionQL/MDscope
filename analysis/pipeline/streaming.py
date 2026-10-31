@@ -402,7 +402,9 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
             _valid_box(universe),
         )
         ligand_rows.extend(new_contacts)
-        row = {"time_ps": tps, **scalar_values}
+        row = {"time_ps": tps, "rmsd_A": scalar_values.get("rmsd_A", np.nan),
+               "radius_of_gyration_A": scalar_values.get("radius_of_gyration_A", np.nan)}
+        row.update(scalar_values)
         if reference_ligand is not None:
             row["ligand_rmsd_A"] = ligand_rmsd
         if cfg["analyses"]["ligand_contacts"].get("enabled", False):
