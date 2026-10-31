@@ -2,8 +2,8 @@
 from copy import deepcopy
 from pathlib import Path
 import pytest
-from mdscope.analysis.config import DEFAULTS
-from mdscope.analysis.registry import FUSED_OUTPUTS, fused_output, fused_output_plan
+from mdscope.config import DEFAULTS
+from mdscope.registry import FUSED_OUTPUTS, fused_output, fused_output_plan
 
 
 @pytest.mark.parametrize("name,relative,marker", [

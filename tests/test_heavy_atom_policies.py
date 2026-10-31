@@ -3,9 +3,9 @@ import numpy as np
 import pytest
 import MDAnalysis as mda
 
-from mdscope.analysis.core.atom_selection import heavy_atom_mask, select_heavy_atoms
-from mdscope.analysis.biophysical_common import heavy as biophysical_heavy
-from mdscope.analysis.mechanisms.mechanistic_common import heavy as mechanistic_heavy
+from mdscope.core.atom_selection import heavy_atom_mask, select_heavy_atoms
+from mdscope.biophysical_common import heavy as biophysical_heavy
+from mdscope.mechanisms.mechanistic_common import heavy as mechanistic_heavy
 
 
 def atoms(with_elements):

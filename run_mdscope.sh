@@ -33,8 +33,8 @@ export MDSCOPE_PROFILE="${MDSCOPE_PROFILE:-1}"
 python -m pip install --no-deps -e "${ROOT}"
 
 python - <<'PY'
-import mdscope.analysis.cli as cli
-import mdscope.analysis.pipeline.progress as progress
+import mdscope.cli as cli
+import mdscope.pipeline.progress as progress
 print(f"MDscope CLI source: {cli.__file__}", flush=True)
 print(f"Progress reporter source: {progress.__file__}", flush=True)
 PY
@@ -51,7 +51,7 @@ echo "Host:         $(hostname)"
 echo "Started:      $(date)"
 echo "============================================================"
 
-python -u -m mdscope.analysis.cli replicate \
+python -u -m mdscope.cli replicate \
     "${YAML}" \
     --index "${SLURM_ARRAY_TASK_ID}"
 

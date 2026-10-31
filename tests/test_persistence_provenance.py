@@ -6,8 +6,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from mdscope.analysis import config
-from mdscope.analysis.core import persistence, provenance
+from mdscope import config
+from mdscope.core import persistence, provenance
 
 
 @pytest.mark.parametrize("name", [

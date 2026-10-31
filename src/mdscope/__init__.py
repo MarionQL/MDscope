@@ -1,5 +1,5 @@
 """MDscope: reproducible molecular-dynamics analysis workflows."""
 
-from .analysis import __version__
+__version__ = "0.12.0"
 
 __all__ = ["__version__"]

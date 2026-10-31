@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.coordinates.memory import MemoryReader
 
-from mdscope.analysis.observables.dssp import _run_dssp
-from mdscope.analysis.pipeline.fused_extensions import FusedExtensions
+from mdscope.observables.dssp import _run_dssp
+from mdscope.pipeline.fused_extensions import FusedExtensions
 
 
 def test_dssp_fused_vs_independent(tmp_path):

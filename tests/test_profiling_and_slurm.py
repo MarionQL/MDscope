@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from mdscope.analysis.core.profiling import PhaseProfiler
+from mdscope.core.profiling import PhaseProfiler
 
 
 def test_profiler_is_opt_in_and_produces_correct_stream(tmp_path, monkeypatch):
@@ -32,5 +32,5 @@ def test_slurm_launcher_routes_progress_to_stdout_and_loads_checkout():
     assert 'MDSCOPE_PROGRESS_EVERY_PERCENT' in script
     assert 'MDSCOPE_PROFILE' in script
     assert "synd4_full_mechanisms.yaml" in script
-    assert "python -u -m mdscope.analysis.cli replicate" in script
+    assert "python -u -m mdscope.cli replicate" in script
     assert "MDscope commit:" in script

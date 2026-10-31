@@ -3,7 +3,7 @@ import MDAnalysis as mda
 import numpy as np
 import pytest
 
-from mdscope.analysis.mechanisms.hs_topology import discover_covalent_hs
+from mdscope.mechanisms.hs_topology import discover_covalent_hs
 
 
 def _universe():

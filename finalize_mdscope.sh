@@ -31,7 +31,7 @@ echo "Host:         $(hostname)"
 echo "Started:      $(date)"
 echo "============================================================"
 
-python -m mdscope.analysis.cli finalize "${YAML}"
+python -m mdscope.cli finalize "${YAML}"
 
 echo "============================================================"
 echo "Finished: $(date)"

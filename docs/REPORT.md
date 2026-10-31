@@ -53,15 +53,15 @@ On Tinkercliffs or another host with the original topology/trajectory paths:
 
 ```bash
 python -m pip install reportlab pillow freesasa
-python -m mdscope.analysis.cli validate synd4_full_mechanisms.yaml
-python -m mdscope.analysis.cli run synd4_full_mechanisms.yaml
+python -m mdscope.cli validate synd4_full_mechanisms.yaml
+python -m mdscope.cli run synd4_full_mechanisms.yaml
 ```
 
 Use the existing Slurm/array runner for individual replicates if preferred.
 After all six replicates have completed, run:
 
 ```bash
-python -m mdscope.analysis.cli finalize synd4_full_mechanisms.yaml
+python -m mdscope.cli finalize synd4_full_mechanisms.yaml
 ```
 
 **Note:** `finalize` recomputes and archives the previous project-level
@@ -104,7 +104,7 @@ To regenerate **only** the report after finalization, without opening
 trajectories or archiving the project summary:
 
 ```bash
-python -m mdscope.analysis.cli report synd4_full_mechanisms.yaml
+python -m mdscope.cli report synd4_full_mechanisms.yaml
 ```
 
 ## Scientific and statistical limitations
