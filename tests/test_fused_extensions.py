@@ -8,7 +8,7 @@ from MDAnalysis.coordinates.memory import MemoryReader
 from MDAnalysis.analysis.hydrogenbonds.hbond_analysis import HydrogenBondAnalysis
 
 from mdscope.analysis.fused_extensions import FusedExtensions
-from mdscope.analysis.hydrogen_bonds import write_hydrogen_bonds
+from mdscope.analysis.interactions.hydrogen_bonds import write_hydrogen_bonds
 
 
 def _universe():
