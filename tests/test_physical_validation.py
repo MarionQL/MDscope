@@ -2,7 +2,7 @@
 import numpy as np
 import MDAnalysis as mda
 
-from mdscope.analysis.lipid_geometry import (
+from mdscope.analysis.core.lipid_geometry import (
     anchor_groups, aligned_leaflets, classify_leaflets, periodic_center,
 )
 from mdscope.analysis.lipid_enrichment import enrichment_frame
