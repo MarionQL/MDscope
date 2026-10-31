@@ -334,7 +334,7 @@ class FusedExtensions:
             ("sasa", self.repout / "profiles" / "sasa" / "residue_sasa.parquet"),
             ("local_environment", self.repout / "extensions" / "local_environment" / "timeseries.parquet"),
         ):
-            if name in self.names:
+            if name in self.names and (name != "sasa" or "default" in self.sasa):
                 atomic_parquet(output, _concat(self.cache / name))
                 results[name] = {"frames": self.frames, "fused": True}
         if self.sasa is not None:
