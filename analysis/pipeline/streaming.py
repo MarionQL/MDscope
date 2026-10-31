@@ -136,10 +136,26 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
         pd.DataFrame({"chain": sorted({chain_label(atom) for atom in protein})})
     )
 
-    rg_spec = cfg["analyses"].get("radius_of_gyration", {})
-    rg_atoms = universe.select_atoms(str(rg_spec.get("selection") or selections["protein"]))
-    if rg_spec.get("enabled", True) and not len(rg_atoms):
-        raise ValueError("radius_of_gyration.selection matched zero atoms")
+    # Resolve each named run once. They all share the same trajectory pass.
+    rmsd_runs = {}
+    for run in analysis_runs(cfg, "rmsd"):
+        selection = str(run.spec.get("selection") or selections.get("features") or alignment_selection)
+        atoms = universe.select_atoms(selection)
+        if not len(atoms):
+            raise ValueError(f"rmsd run {run.run_id!r} selection matched zero atoms: {selection}")
+        rmsd_runs[run.run_id] = (
+            atoms, atoms.positions.astype(np.float64, copy=True)
+        )
+
+    rg_runs = {}
+    for run in analysis_runs(cfg, "radius_of_gyration"):
+        selection = str(run.spec.get("selection") or selections["protein"])
+        atoms = universe.select_atoms(selection)
+        if not len(atoms):
+            raise ValueError(
+                f"radius_of_gyration run {run.run_id!r} selection matched zero atoms: {selection}"
+            )
+        rg_runs[run.run_id] = atoms
 
     densities = [DensityProfileAccumulator(
         universe,
@@ -302,15 +318,22 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
         feature_space = CoordinateSpace.FITTED if alignment_enabled else CoordinateSpace.SOURCE
         if alignment_enabled:
             require_coordinate_space("RMSD", feature_space, CoordinateSpace.FITTED)
-        rmsd_value = (
-            float(
-                compute_rmsd(
-                    aligned_features,
-                    reference_features
-                )
-            ) if cfg["analyses"]["rmsd"].get("enabled", True) else np.nan
-        )
-        rg_value = compute_rg(rg_atoms) if rg_spec.get("enabled", True) else np.nan
+        scalar_values = {}
+        for run_id, (atoms, reference) in rmsd_runs.items():
+            if atoms is features:
+                positions = aligned_features
+            elif alignment_enabled:
+                positions = _apply_transform(atoms.positions, global_transform)
+            else:
+                positions = atoms.positions.astype(np.float64, copy=True)
+            column = "rmsd_A" if run_id == "default" else f"rmsd__{run_id}_A"
+            scalar_values[column] = float(compute_rmsd(positions, reference))
+        for run_id, atoms in rg_runs.items():
+            column = (
+                "radius_of_gyration_A" if run_id == "default"
+                else f"radius_of_gyration__{run_id}_A"
+            )
+            scalar_values[column] = compute_rg(atoms)
         if reference_ligand is not None:
             if alignment_enabled:
                 aligned_ligand = _apply_transform(
@@ -361,12 +384,12 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
                             group["reference"]
                         )
                     )
-                    if cfg["analyses"]["rmsd"].get("enabled", True)
+                    if bool(rmsd_runs)
                     else np.nan
                 ),
                 "radius_of_gyration_A": (
                     compute_rg(group["rg"])
-                    if rg_spec.get("enabled", True) and len(group["rg"])
+                    if bool(rg_runs) and len(group["rg"])
                     else np.nan
                 ),
             })
@@ -379,7 +402,7 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
             _valid_box(universe),
         )
         ligand_rows.extend(new_contacts)
-        row = {"time_ps": tps, "rmsd_A": rmsd_value, "radius_of_gyration_A": rg_value}
+        row = {"time_ps": tps, **scalar_values}
         if reference_ligand is not None:
             row["ligand_rmsd_A"] = ligand_rmsd
         if cfg["analyses"]["ligand_contacts"].get("enabled", False):
