@@ -8,7 +8,7 @@ import pytest
 from mdscope.analysis.core.lipid_geometry import anchor_groups
 from mdscope.analysis.extended.common import centers, load_lipid_anchors
 from mdscope.analysis.biophysical_common import sequence_motifs
-from mdscope.analysis.mechanistic_common import sequence_matches
+from mdscope.analysis.mechanisms.mechanistic_common import sequence_matches
 
 
 def _glycolipid_universe():
