@@ -47,7 +47,7 @@ from .shared_states import fit_shared_states
 from .sdc4_figures import plot_sdc4_mechanisms
 from .report import generate_report
 from .registry import specialized_tasks,additional_time_series,fused_output,fused_output_plan
-from .msd import summarize_diffusion, summarize_project_diffusion, summarize_project_multi_origin
+from .observables.msd import summarize_diffusion, summarize_project_diffusion, summarize_project_multi_origin
 from .observables.multi_origin_pipeline import run_multi_origin_diffusion
 from .coupling_screen import screen_couplings
 
