@@ -12,12 +12,12 @@ import MDAnalysis as mda
 import yaml
 
 from .config import analysis_runs, iter_replicates, load_config
-from .profiles import _without_hydrogens
-from .runner import finalize_project, run_all, run_one, project_root
+from .observables.residue_membrane_distance import _without_hydrogens
+from .pipeline.runner import finalize_project, run_all, run_one, project_root
 from .reporting.report import generate_report
 from .mechanisms.hs_topology import discover_covalent_hs
 from .mechanisms.mechanistic_common import sequence_matches
-from .timeseries import resolved_selection_counts
+from .core.alignment import resolved_selection_counts
 
 
 def interactive_init(output="analysis.yaml"):

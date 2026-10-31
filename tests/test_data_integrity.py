@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 import MDAnalysis as mda
 
-from mdscope.analysis import runner
+from mdscope.analysis.pipeline import runner
 from mdscope.analysis.core.lipid_geometry import AnchorTracker
 
 

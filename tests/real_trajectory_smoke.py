@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from mdscope.analysis.runner import run_one
+from mdscope.analysis.pipeline.runner import run_one
 from mdscope.analysis.config import Replicate, load_config
 from mdscope.analysis.observables.membrane_order import run_membrane_order
 from mdscope.analysis.observables.bilayer_normal import run_bilayer_normal

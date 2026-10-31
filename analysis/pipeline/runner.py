@@ -16,8 +16,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from . import __version__
-from .config import (
+from .. import __version__
+from ..config import (
     analysis_enabled,
     analysis_runs,
     atomic_json,
@@ -29,27 +29,27 @@ from .config import (
     iter_replicates,
     load_config,
 )
-from .interactions import run_hydrogen_bonds
-from .interactions import postprocess_interactions
-from .observables.membrane_order import membrane_order_timeseries, run_membrane_order
-from .reporting.plotting import plot_all
-from .reporting.membrane_figures import plot_lipid_enrichment_matrix
-from .profiles import run_residue_membrane_distance
-from .profiles import postprocess_structure_profiles, run_structure_profiles
-from .statistics import analyze_project
+from ..interactions import run_hydrogen_bonds
+from ..interactions import postprocess_interactions
+from ..observables.membrane_order import membrane_order_timeseries, run_membrane_order
+from ..reporting.plotting import plot_all
+from ..reporting.membrane_figures import plot_lipid_enrichment_matrix
+from ..observables.residue_membrane_distance import run_residue_membrane_distance
+from ..observables.structure_profiles import postprocess_structure_profiles, run_structure_profiles
+from ..statistics import analyze_project
 from .streaming import run_streaming_pass
-from .pipeline.fused_membrane import enabled_names as fused_enabled_names, run_fused_membrane
-from .pipeline.fused_extensions import enabled_names as extension_enabled_names, run_fused_extensions
-from .pipeline.fused_distance import enabled_names as distance_enabled_names, run_fused_distances
-from .pipeline.fused_all import run_fused_only
-from .mechanisms.sdc4_mechanisms import enabled as sdc4_enabled, run_sdc4_mechanisms
-from .mechanisms.shared_states import fit_shared_states
-from .reporting.sdc4_figures import plot_sdc4_mechanisms
-from .reporting.report import generate_report
-from .registry import specialized_tasks,additional_time_series,fused_output,fused_output_plan
-from .observables.msd import summarize_diffusion, summarize_project_diffusion, summarize_project_multi_origin
-from .observables.multi_origin_pipeline import run_multi_origin_diffusion
-from .reporting.coupling_screen import screen_couplings
+from .fused_membrane import enabled_names as fused_enabled_names, run_fused_membrane
+from .fused_extensions import enabled_names as extension_enabled_names, run_fused_extensions
+from .fused_distance import enabled_names as distance_enabled_names, run_fused_distances
+from .fused_all import run_fused_only
+from ..mechanisms.sdc4_mechanisms import enabled as sdc4_enabled, run_sdc4_mechanisms
+from ..mechanisms.shared_states import fit_shared_states
+from ..reporting.sdc4_figures import plot_sdc4_mechanisms
+from ..reporting.report import generate_report
+from ..registry import specialized_tasks,additional_time_series,fused_output,fused_output_plan
+from ..observables.msd import summarize_diffusion, summarize_project_diffusion, summarize_project_multi_origin
+from ..observables.multi_origin_pipeline import run_multi_origin_diffusion
+from ..reporting.coupling_screen import screen_couplings
 
 
 class RunState:

@@ -29,7 +29,7 @@ from ..observables.membrane_order import (
     _metric_name, _profile_values, _profiles, _valid_box,
 )
 from ..core.lipid_geometry import classify_leaflets
-from ..progress import track
+from .progress import track
 
 
 FUSED_ANALYSES = ("membrane_order", "bilayer_normal", "lipid_enrichment")

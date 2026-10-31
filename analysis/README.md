@@ -13,8 +13,8 @@ Current canonical packages:
 - `interactions/`: hydrogen bonds, salt bridges, ligand contacts and interaction tables
 - `mechanisms/`: SDC4, HS topology, local environment and shared states
 
-Fused processing now lives in `pipeline/`. Streaming and runner remain
-flat until their consumers and CLI entry points can be migrated together.
+The `pipeline/` package owns streaming, fused processing, orchestration,
+finalization and progress handling.
 `cli.py`, `config.py` and `registry.py` remain top-level entry points.
 
 Membrane observers consume physical coordinates before protein-only fitting.

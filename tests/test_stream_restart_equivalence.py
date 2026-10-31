@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 import MDAnalysis as mda
 from mdscope.analysis.config import DEFAULTS, Replicate
-from mdscope.analysis import streaming
+from mdscope.analysis.pipeline import streaming
 
 
 def _system(tmp_path):

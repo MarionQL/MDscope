@@ -25,7 +25,7 @@ from ..config import DEFAULTS, atomic_json, atomic_parquet, ensure_dir, time_ps
 from ..core.lipid_geometry import anchor_groups, aligned_leaflets, periodic_center
 from .mechanistic_common import heavy, nearest, selected, sequence_matches, unit
 from ..observables.membrane_order import _candidate_sites, _fixed_ch_pairs, _atomic_npz
-from ..progress import track
+from ..pipeline.progress import track
 from .hs_topology import discover_covalent_hs
 
 

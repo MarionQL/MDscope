@@ -1,8 +1,7 @@
 # MDscope architecture
 
 See [REPOSITORY_RULES.md](REPOSITORY_RULES.md) for cleanup and refactoring
-policy. This document records the **current** layout and the planned package
-boundaries; do not assume that every planned package already exists.
+policy. This document records the current canonical module layout and dependency boundaries.
 
 ## Current canonical locations
 
@@ -19,12 +18,13 @@ boundaries; do not assume that every planned package already exists.
 - `analysis/cli.py`, `analysis/config.py`, `analysis/registry.py`: current
   CLI, configuration and registry entry points.
 
-## Remaining migration
-
 - `analysis/interactions/`: hydrogen bonds, salt bridges, ligand contacts,
-  lipid hydrogen bonds and shared interaction tables (now grouped).
-- `analysis/pipeline/`: fused trajectory execution is grouped here; streaming,
-  runner and finalization remain at top level pending a separate migration.
+  lipid hydrogen bonds and shared interaction tables.
+- `analysis/pipeline/`: streaming, fused trajectory processing, orchestration,
+  finalization and execution progress.
+
+The former flat runner, streaming, progress, profiles and timeseries modules
+have been removed; import implementations directly from their owning packages.
 
 The repository intentionally does **not** preserve legacy Python import
 aliases after a replacement is migrated. `mdscope` CLI commands and YAML
