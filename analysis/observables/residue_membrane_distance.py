@@ -6,9 +6,9 @@ import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import USED_OPENMP,capped_distance,distance_array
-from .profile_common import _residue_label
-from .progress import track
-from .config import DEFAULT_INSTANCE_ID,analysis_groups,analysis_runs,atomic_parquet,ensure_dir,profile_dir,time_ps
+from ..profile_common import _residue_label
+from ..progress import track
+from ..config import DEFAULT_INSTANCE_ID,analysis_groups,analysis_runs,atomic_parquet,ensure_dir,profile_dir,time_ps
 DEFAULT_LIPID_RESNAMES = [
     "POPC",
     "POPE",
