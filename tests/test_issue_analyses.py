@@ -2,7 +2,7 @@
 import numpy as np
 from mdscope.analysis.core.lipid_geometry import classify_leaflets
 from mdscope.analysis.observables.lipid_enrichment import shell_fold, enrichment_frame
-from mdscope.analysis.bilayer_normal import fit_local_normals
+from mdscope.analysis.observables.bilayer_normal import fit_local_normals
 from mdscope.analysis.lipid_hydrogen_bonds import ordered_pair
 from mdscope.analysis.membrane_order import OrderSite,_profiles,_metric_name
 from mdscope.analysis.progress import track
