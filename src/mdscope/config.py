@@ -160,6 +160,11 @@ DEFAULTS = {
             "update_selections": False,
         },
         "sasa": {"enabled": False},
+        "solvation": {"enabled": False, "preset": "standard",
+                      "targets": {}, "water_selection": None, "ion_selection": None,
+                      "search_radius_A": 8.0, "rdf_bin_width_A": 0.2,
+                      "shell_cutoffs_A": {"water": 3.5, "ions": 4.0},
+                      "options": {}},
         "lifetimes": {"enabled": True, "gap_factor": 1.5},
     },
     "statistics": {

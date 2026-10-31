@@ -25,6 +25,7 @@ from ..interactions.lipid_hydrogen_bonds import (
     GLYCOLIPID_CHAIN_IDS, lipid_molecule_map, write_lipid_hydrogen_bonds,
 )
 from ..observables.sasa import sasa_instances, sasa_residue_rows, write_sasa_burial
+from ..observables.solvation import SolvationObserver
 from ..core.profiling import _residue_label
 from ..biophysical_common import heavy, box_of, residue_pairs, sequence_motifs
 from MDAnalysis.lib.distances import distance_array
@@ -33,7 +34,7 @@ from MDAnalysis.lib.distances import distance_array
 def enabled_names(cfg):
     specs = cfg.get("analyses", {})
     names = []
-    for name in ("hydrogen_bonds", "lipid_hydrogen_bonds", "dssp", "sasa", "local_environment"):
+    for name in ("hydrogen_bonds", "lipid_hydrogen_bonds", "dssp", "sasa", "local_environment", "solvation"):
         if not specs.get(name, {}).get("enabled", False):
             continue
         # MDAnalysis parallel DSSP runs have different worker semantics.
@@ -63,6 +64,7 @@ class FusedExtensions:
         self.dssp = None
         self.sasa = None
         self.local = None
+        self.solvation = None
         self.frames = 0
         self.timings = defaultdict(float)
         if "hydrogen_bonds" in self.names:
@@ -75,6 +77,8 @@ class FusedExtensions:
             self._setup_sasa()
         if "local_environment" in self.names:
             self._setup_local()
+        if "solvation" in self.names:
+            self.solvation = SolvationObserver(universe, cfg, repout)
 
     def _setup_protein_hba(self):
         spec = self.cfg["analyses"]["hydrogen_bonds"]
@@ -217,6 +221,10 @@ class FusedExtensions:
             start = time.perf_counter()
             self._update_local(t)
             self.timings["local_environment"] += time.perf_counter() - start
+        if self.solvation is not None:
+            start = time.perf_counter()
+            self.solvation.update(ts, frame_index, t)
+            self.timings['solvation'] += time.perf_counter() - start
         self.frames += 1
 
     def _update_local(self, t):
@@ -298,9 +306,13 @@ class FusedExtensions:
                     ensure_dir(self.cache / name) / f"part-{part:06d}.parquet", df
                 )
                 rows.clear()
+        if self.solvation is not None:
+            self.solvation.flush(part)
         self.timings["chunk_write"] += time.perf_counter() - start
 
     def prune_from(self, next_part):
+        if self.solvation is not None:
+            self.solvation.prune_from(next_part)
         for path in self.cache.rglob("part-*"):
             match = re.search(r"part-(\d+)", path.name)
             if match and int(match.group(1)) >= next_part and path.is_file():
@@ -359,6 +371,8 @@ class FusedExtensions:
                     self.repout / "extensions" / "local_environment" / "motifs.parquet",
                     pd.DataFrame(self.local["meta"])
                 )
+        if self.solvation is not None:
+            results['solvation'] = self.solvation.finalize()
         self.timings["finalize"] += time.perf_counter() - start
         from ..config import atomic_json
         atomic_json(self.repout / "fused_extensions_timings.json", {
