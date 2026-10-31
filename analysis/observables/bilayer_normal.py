@@ -10,7 +10,7 @@ import pandas as pd
 import MDAnalysis as mda
 from MDAnalysis.lib.distances import capped_distance,minimize_vectors
 from ..config import ensure_dir,atomic_parquet,time_ps
-from ..lipid_geometry import anchor_groups,centers,aligned_leaflets
+from ..core.lipid_geometry import anchor_groups,centers,aligned_leaflets
 from ..progress import progress
 
 def fit_local_normals(xyz,upper,box,radius=15.,min_neighbors=5,normal=2):
