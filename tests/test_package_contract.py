@@ -7,7 +7,7 @@ import sys
 def test_version_and_public_entrypoints():
     import mdscope
     from mdscope.analysis.cli import main
-    from mdscope.analysis.runner import run_all
+    from mdscope.analysis.pipeline.runner import run_all
     from mdscope.analysis.observables.msd import fit_lateral_diffusion
     assert mdscope.__version__
     assert callable(main) and callable(run_all) and callable(fit_lateral_diffusion)
