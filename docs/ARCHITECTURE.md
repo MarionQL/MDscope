@@ -12,7 +12,7 @@ policy. This document records the current canonical module layout and dependency
   structural profiles and residue–membrane distance.
 - `analysis/mechanisms/`: SDC4 conformational mechanisms, HS topology,
   mechanistic geometry, local environment and shared conformational states.
-- `analysis/statistics/`: replicate-aware inference, resampling and summaries.
+- `analysis/statistics/`: replicate-aware inference, resampling, time-series, profile and interaction summaries.
 - `analysis/reporting/`: report PDF/ZIP generation, membrane and SDC4 figures,
   coupling-screen reporting and plots.
 - `analysis/cli.py`, `analysis/config.py`, `analysis/registry.py`: current
@@ -43,3 +43,10 @@ Use the existing Python 3.11/3.13 tests, wheel and CLI checks, and real
 GROMACS smoke workflow. Structural refactors must preserve units, PBC
 handling, atom and residue identity, output schemas and replicate indexing.
 No new regression tests are required merely for relocating modules.
+Verify the package from outside the source checkout as well as in-tree, and
+check the real-GROMACS trajectory workflow before treating a refactor as
+validated. GitHub check names correspond to `.github/workflows/mdscope-checks.yml`
+and `.github/workflows/real-trajectory-smoke.yml`.
+
+A passing smoke test establishes coverage for its tested configurations,
+not numerical equivalence for every supported topology or analysis option.

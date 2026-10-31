@@ -3,11 +3,11 @@
 MDscope's regular protein/membrane streaming pass now also computes the three
 lipid observables that previously opened the same XTC separately:
 
-- **Lipid C–H order** (\`membrane_order\`), including original tail/site
+- **Lipid C–H order** (`membrane_order`), including original tail/site
   mapping, per-leaflet order and temporal profile NPZ outputs.
-- **Local bilayer normals** (\`bilayer_normal\`), including optional per-lipid
+- **Local bilayer normals** (`bilayer_normal`), including optional per-lipid
   angles and dynamic leaflet assignment.
-- **Protein-centered lipid enrichment** (\`lipid_enrichment\`), including raw
+- **Protein-centered lipid enrichment** (`lipid_enrichment`), including raw
   counts, selection audits and PBC-aware protein centers.
 
 The observer runs **before any coordinate alignment**, uses the original
@@ -44,11 +44,11 @@ rebuilding missing/corrupted outputs.
 
 HydrogenBondAnalysis and DSSP are not reimplemented with new physical
 approximations. The shared frame loop calls the original MDAnalysis
-\`_single_frame()\` detector on each raw frame, then uses the original
+`_single_frame()` detector on each raw frame, then uses the original
 MDscope event serialization, filtering and statistics. In particular,
 multi-residue glycolipid whole-molecule exclusions are preserved.
 
-**Compatibility:** \`_single_frame\`, \`_prepare\` and \`_conclude\` are
+**Compatibility:** `_single_frame`, `_prepare` and `_conclude` are
 private MDAnalysis interfaces. The CI test suite pins MDAnalysis 2.9.0 for
 the real-data parity tests; changing MDAnalysis versions requires rerunning
 these tests before production use.
@@ -64,9 +64,9 @@ summaries from these chunks **without iterating the XTC again**.
 ## Checkpoint and crash recovery
 
 All observer families write atomic part-numbered parquet or NPZ files under
-\`<replicate>/cache/fused_membrane/\`,
-\`<replicate>/cache/fused_extensions/\` and
-\`<replicate>/cache/fused_distance/\`.
+`<replicate>/cache/fused_membrane/`,
+`<replicate>/cache/fused_extensions/` and
+`<replicate>/cache/fused_distance/`.
 
 A part is persisted before the main streaming checkpoint commits. On
 restart, uncommitted part files are discarded and only the interrupted
@@ -74,9 +74,9 @@ chunk is replayed. Once all frames have been processed, the observer
 finalizers reconstruct the original public output files.
 
 Do **not** delete these intermediate chunks until the streaming completion
-marker is written. \`fused_membrane_timings.json\`,
-\`fused_extensions_timings.json\`, \`fused_distance_timings.json\` and
-\`stage_timings.json\` report the timing breakdown.
+marker is written. `fused_membrane_timings.json`,
+`fused_extensions_timings.json`, `fused_distance_timings.json` and
+`stage_timings.json` report the timing breakdown.
 
 ## Scientific correctness
 
