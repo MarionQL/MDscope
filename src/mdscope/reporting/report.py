@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import ensure_dir
+from .report_inventory import _read, _sample_frame_table, _summary_inventory, _metric_groups
 
 
 CATEGORIES = (
@@ -47,10 +48,6 @@ KEY_METRICS = (
 )
 
 
-def _read(path):
-    return pd.read_parquet(path) if path.is_file() else pd.DataFrame()
-
-
 def _fmt(value, digits=3):
     try:
         x = float(value)
@@ -65,56 +62,6 @@ def _fmt(value, digits=3):
 
 def _safe(value):
     return escape(str(value), quote=False).replace("\n", " ")
-
-
-def _sample_frame_table(df, max_frames):
-    if len(df) <= max_frames:
-        return df
-    indices = np.linspace(0, len(df)-1, max_frames).astype(int)
-    return df.iloc[np.unique(indices)].copy()
-
-
-def _summary_inventory(root, cfg, system_repouts):
-    records = []
-    for system, paths in system_repouts.items():
-        for repout in paths:
-            path = repout / "summary/timeseries.parquet"
-            if not path.is_file():
-                path = repout / "extensions/sdc4_mechanisms/timeseries.parquet"
-            data = _read(path)
-            t = pd.to_numeric(data.get("time_ps", pd.Series(dtype=float)),
-                              errors="coerce").dropna()
-            mechanism = repout / "extensions/sdc4_mechanisms"
-            audit_file = mechanism / "selection_audit.json"
-            audit = json.loads(audit_file.read_text()) if audit_file.exists() else {}
-            records.append({
-                "system": system, "replicate": repout.name,
-                "frames": len(t),
-                "first_ps": float(t.min()) if len(t) else np.nan,
-                "last_ps": float(t.max()) if len(t) else np.nan,
-                "mechanisms": (mechanism / "timeseries.parquet").exists(),
-                "lipid_maps": (mechanism / "lipid_density_maps.npz").exists(),
-                "hs_chains": len(audit.get("hs_atom_counts", {})),
-                "nxip_motifs": len(audit.get("motif_resindices", {})),
-            })
-    return pd.DataFrame(records)
-
-
-def _metric_groups(table):
-    if table.empty or "metric" not in table:
-        return []
-    names = table["metric"].dropna().astype(str).unique().tolist()
-    result = []
-    used = set()
-    for label, prefixes in CATEGORIES:
-        found = sorted(m for m in names if m.startswith(prefixes))
-        if found:
-            result.append((label, found))
-            used.update(found)
-    other = sorted(set(names) - used)
-    if other:
-        result.append(("Other available scalar observables", other))
-    return result
 
 
 def _maps_figure(system_repouts, species, field, dpi=135):
