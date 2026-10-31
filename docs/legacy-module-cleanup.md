@@ -50,3 +50,21 @@ before deleting the redundant historical import-identity test file.
 No maintained CLI, Slurm launcher or public module was moved or removed.
 A future breaking release can retire shims only after a deprecation period
 and documented import migration. Scientific results should remain unchanged.
+
+
+## Caller-audit follow-up
+
+Audited production imports in runner, streaming, membrane, fused passes,
+registry, membrane-order, core trajectory sources, topology, mechanism,
+analysis/observables and the remaining top-level analysis modules.
+Updated direct imports across 11 production modules to use canonical
+`core` / `observables` implementation paths.
+
+Updated eight test/real-test modules to use canonical imports rather than
+testing scientific functionality via compatibility wrappers. Retained the
+public `mdscope.analysis` compatibility shims because downstream notebook,
+HPC and third-party imports cannot be disproved by a repository-only audit.
+
+The legacy test-only module is the only deletion in this PR. No user launch
+script is obsolete based on this audit: both `run_mdscope.sh` and
+`finalize_mdscope.sh` remain supported entry points.
