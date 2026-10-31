@@ -19,8 +19,8 @@ import yaml
 from mdscope.analysis.runner import run_one
 from mdscope.analysis.config import Replicate, load_config
 from mdscope.analysis.membrane_order import run_membrane_order
-from mdscope.analysis.bilayer_normal import run_bilayer_normal
-from mdscope.analysis.lipid_enrichment import run_lipid_enrichment
+from mdscope.analysis.observables.bilayer_normal import run_bilayer_normal
+from mdscope.analysis.observables.lipid_enrichment import run_lipid_enrichment
 from mdscope.analysis.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
 from mdscope.analysis.residue_membrane_distance import run_residue_membrane_distance
 
