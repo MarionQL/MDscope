@@ -1,6 +1,7 @@
 """Import smoke checks for the canonical MDscope modules."""
 def test_canonical_modules_import():
-    from mdscope.analysis.pipeline import streaming, registry
+    from mdscope.analysis.pipeline import streaming
+    from mdscope.analysis import registry
     from mdscope.analysis.observables import membrane, density_1d
     from mdscope.analysis.observables import rmsd, rmsf
     from mdscope.analysis.observables import dssp, sasa, membrane_order
