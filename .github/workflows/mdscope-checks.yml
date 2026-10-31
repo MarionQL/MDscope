@@ -35,17 +35,17 @@ jobs:
       - name: Verify installed package and CLI
         run: |
           cd /tmp
-          python -c "import mdscope; import mdscope.analysis.cli; print(mdscope.__version__)"
+          python -c "import mdscope; import mdscope.cli; print(mdscope.__version__)"
           mdscope --help
       - name: Verify wheel and sdist in isolated installations
         run: |
           python -m venv /tmp/mdscope-wheel
           /tmp/mdscope-wheel/bin/pip install dist/*.whl
-          (cd /tmp && /tmp/mdscope-wheel/bin/python -c "import mdscope, mdscope.analysis.statistics, mdscope.analysis.interactions, mdscope.analysis.mechanisms, mdscope.analysis.pipeline; print(mdscope.__version__)")
+          (cd /tmp && /tmp/mdscope-wheel/bin/python -c "import mdscope, mdscope.statistics, mdscope.interactions, mdscope.mechanisms, mdscope.pipeline; print(mdscope.__version__)")
           (cd /tmp && /tmp/mdscope-wheel/bin/mdscope --help)
           python -m venv /tmp/mdscope-sdist
           /tmp/mdscope-sdist/bin/pip install dist/*.tar.gz
-          (cd /tmp && /tmp/mdscope-sdist/bin/python -c "import mdscope.analysis.cli, mdscope.analysis.pipeline.runner")
+          (cd /tmp && /tmp/mdscope-sdist/bin/python -c "import mdscope.cli, mdscope.pipeline.runner")
       - name: Run synthetic regression tests
         run: |
           pytest -q tests
