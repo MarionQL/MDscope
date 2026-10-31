@@ -320,7 +320,7 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
             if not extension_outputs[name].path.is_file():
                 raise RuntimeError(f"Missing fused output: {extension_outputs[name].path}")
             key = prefix + "-" + extension_outputs[name].checkpoint_key
-                        if not state.complete(key):
+            if not state.complete(key):
                 state.mark(key, {"fused_into": "streaming" if streaming_required and not missing
                                  else "fused-extensions-fallback"})
 
