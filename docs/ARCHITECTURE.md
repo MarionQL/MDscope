@@ -22,8 +22,8 @@ boundaries; do not assume that every planned package already exists.
 
 - `analysis/interactions/`: hydrogen bonds, salt bridges, ligand contacts,
   lipid hydrogen bonds and shared interaction tables (now grouped).
-- `analysis/pipeline/`: move streaming, fused passes, runner and finalization
-  after updating all dependent imports and HPC entry points.
+- `analysis/pipeline/`: fused trajectory execution is grouped here; streaming,
+  runner and finalization remain at top level pending a separate migration.
 - Other physical observables and plotting utilities still have flat modules;
   move them by coherent family and remove the originals.
 
