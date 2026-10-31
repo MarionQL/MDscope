@@ -2,7 +2,7 @@
 
 New code should import directly from alignment/rmsd/rmsf/membrane/density_1d/streaming.
 """
-from .alignment import _fit_transform, _apply_transform, _valid_box, resolved_selection_counts
+from .core.alignment import _fit_transform, _apply_transform, _valid_box, resolved_selection_counts
 from .rmsd import compute_rmsd
 from .rmsf import Welford, temporal_rmsf_profiles
 from .membrane import MembraneState,initialize_membrane,membrane_metrics
