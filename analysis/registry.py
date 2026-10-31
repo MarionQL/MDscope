@@ -64,18 +64,17 @@ def additional_time_series(repout:Path,cfg):
     return output
 
 
-# Canonical persisted outputs for fused observers. Keys deliberately retain the
-# existing analysis names; marker aliases preserve completed RunState histories.
+# Persisted output paths are independent of scheduling and checkpoint naming.
 FUSED_OUTPUTS = {
-    "membrane_order": ("profiles/membrane_order/timeseries.parquet", "membrane-order", "membrane"),
-    "bilayer_normal": ("extensions/bilayer_normal/timeseries.parquet", "bilayer_normal", "membrane"),
-    "lipid_enrichment": ("extensions/lipid_enrichment/timeseries.parquet", "lipid_enrichment", "membrane"),
-    "hydrogen_bonds": ("interactions/hydrogen_bonds/events.parquet", "hydrogen-bonds", "extensions"),
-    "lipid_hydrogen_bonds": ("interactions/lipid_hydrogen_bonds/events.parquet", "lipid_hydrogen_bonds", "extensions"),
-    "dssp": ("profiles/dssp/assignments.parquet", "profiles", "extensions"),
-    "sasa": ("profiles/sasa/residue_sasa.parquet", "profiles", "extensions"),
-    "local_environment": ("extensions/local_environment/timeseries.parquet", "local_environment", "extensions"),
-    "sdc4_mechanisms": ("extensions/sdc4_mechanisms/timeseries.parquet", "sdc4-mechanisms", "sdc4"),
+    "membrane_order": "profiles/membrane_order/timeseries.parquet",
+    "bilayer_normal": "extensions/bilayer_normal/timeseries.parquet",
+    "lipid_enrichment": "extensions/lipid_enrichment/timeseries.parquet",
+    "hydrogen_bonds": "interactions/hydrogen_bonds/events.parquet",
+    "lipid_hydrogen_bonds": "interactions/lipid_hydrogen_bonds/events.parquet",
+    "dssp": "profiles/dssp/assignments.parquet",
+    "sasa": "profiles/sasa/residue_sasa.parquet",
+    "local_environment": "extensions/local_environment/timeseries.parquet",
+    "sdc4_mechanisms": "extensions/sdc4_mechanisms/timeseries.parquet",
 }
 
 
@@ -83,12 +82,16 @@ FUSED_OUTPUTS = {
 class FusedOutput:
     name: str
     path: Path
-    checkpoint_key: str
-    family: str
+    run_id: str | None = None
+
+    @property
+    def checkpoint_key(self) -> str:
+        """Unambiguous current-format identifier, independent of old markers."""
+        return self.name if self.run_id is None else f"{self.name}-{self.run_id}"
 
 
 def fused_output(repout: Path, name: str, *, run_id: str | None = None) -> FusedOutput:
-    """The persisted output and legacy completion marker of a fused analysis."""
+    """Return the expected artifact for a named analysis instance."""
     if name == "residue_membrane_distance":
         if run_id is None:
             raise ValueError("residue_membrane_distance requires a run_id")
@@ -96,10 +99,11 @@ def fused_output(repout: Path, name: str, *, run_id: str | None = None) -> Fused
         run_id = _validate_path_component(str(run_id), "distance run ID")
         return FusedOutput(
             name, Path(repout) / "profiles" / name / run_id / "distance_matrix_A.npy",
-            "residue-membrane-" + run_id, "distance",
+            run_id,
         )
-    rel, key, family = FUSED_OUTPUTS[name]
-    return FusedOutput(name, Path(repout) / rel, key, family)
+    if run_id is not None:
+        raise ValueError(f"{name} does not yet support independently named runs")
+    return FusedOutput(name, Path(repout) / FUSED_OUTPUTS[name])
 
 
 def fused_output_plan(cfg: dict, repout: Path) -> tuple[FusedOutput, ...]:

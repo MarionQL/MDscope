@@ -1,4 +1,4 @@
-"""Catalog contracts: enabled planning, stable paths and checkpoint aliases."""
+"""Catalog contracts: enabled planning, persisted paths and instance IDs."""
 from copy import deepcopy
 from pathlib import Path
 import pytest
@@ -7,17 +7,17 @@ from mdscope.analysis.registry import FUSED_OUTPUTS, fused_output, fused_output_
 
 
 @pytest.mark.parametrize("name,relative,marker", [
-    ("membrane_order", "profiles/membrane_order/timeseries.parquet", "membrane-order"),
+    ("membrane_order", "profiles/membrane_order/timeseries.parquet", "membrane_order"),
     ("bilayer_normal", "extensions/bilayer_normal/timeseries.parquet", "bilayer_normal"),
     ("lipid_enrichment", "extensions/lipid_enrichment/timeseries.parquet", "lipid_enrichment"),
-    ("hydrogen_bonds", "interactions/hydrogen_bonds/events.parquet", "hydrogen-bonds"),
+    ("hydrogen_bonds", "interactions/hydrogen_bonds/events.parquet", "hydrogen_bonds"),
     ("lipid_hydrogen_bonds", "interactions/lipid_hydrogen_bonds/events.parquet", "lipid_hydrogen_bonds"),
-    ("dssp", "profiles/dssp/assignments.parquet", "profiles"),
-    ("sasa", "profiles/sasa/residue_sasa.parquet", "profiles"),
+    ("dssp", "profiles/dssp/assignments.parquet", "dssp"),
+    ("sasa", "profiles/sasa/residue_sasa.parquet", "sasa"),
     ("local_environment", "extensions/local_environment/timeseries.parquet", "local_environment"),
-    ("sdc4_mechanisms", "extensions/sdc4_mechanisms/timeseries.parquet", "sdc4-mechanisms"),
+    ("sdc4_mechanisms", "extensions/sdc4_mechanisms/timeseries.parquet", "sdc4_mechanisms"),
 ])
-def test_fused_contracts_preserve_legacy_paths(name, relative, marker, tmp_path):
+def test_fused_contracts(name, relative, marker, tmp_path):
     out = fused_output(tmp_path, name)
     assert out.path == tmp_path / relative
     assert out.checkpoint_key == marker
@@ -27,7 +27,7 @@ def test_distance_runs_are_identified_independently(tmp_path):
     a = fused_output(tmp_path, "residue_membrane_distance", run_id="r1")
     b = fused_output(tmp_path, "residue_membrane_distance", run_id="r2")
     assert a.path != b.path
-    assert a.checkpoint_key == "residue-membrane-r1"
+    assert a.checkpoint_key == "residue_membrane_distance-r1"
     with pytest.raises(ValueError, match="requires a run_id"):
         fused_output(tmp_path, "residue_membrane_distance")
 
