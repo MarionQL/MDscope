@@ -26,6 +26,24 @@ def _freesasa_structure(atoms):
     return freesasa, structure
 
 
+def _sasa_radii(atoms):
+    """Classify static atom identities once; preserve FreeSASA's exact radii."""
+    freesasa, structure = _freesasa_structure(atoms)
+    if structure.nAtoms() != len(atoms):
+        raise ValueError("FreeSASA excluded atoms from the SASA selection")
+    return freesasa, [structure.radius(i) for i in range(len(atoms))]
+
+
+def _sasa_areas(freesasa, atoms, radii, params):
+    """Calculate SASA using current coordinates and cached atomic radii."""
+    coordinates = atoms.positions.astype(np.float64, copy=False).ravel().tolist()
+    result = freesasa.calcCoord(coordinates, radii, params)
+    return np.fromiter(
+        (result.atomArea(i) for i in range(len(atoms))),
+        dtype=float, count=len(atoms)
+    )
+
+
 def _run_sasa(universe, cfg: dict, repout: Path):
     spec, tr = cfg["analyses"]["sasa"], cfg["trajectory"]
     selection = str(spec.get("selection") or cfg["selections"]["protein"])
@@ -39,35 +57,28 @@ def _run_sasa(universe, cfg: dict, repout: Path):
         dtype=int,
         count=len(atoms)
     )
+    freesasa, radii = _sasa_radii(atoms)
+    params = freesasa.Parameters()
+    algorithm = str(spec.get("algorithm", "shrake_rupley")).lower()
+    if algorithm in {"shrake_rupley", "shrake-rupley", "sr"}:
+        params.setAlgorithm(freesasa.ShrakeRupley)
+        if spec.get("n_points") is not None:
+            params.setNPoints(int(spec["n_points"]))
+    elif algorithm in {"lee_richards", "lee-richards", "lr"}:
+        params.setAlgorithm(freesasa.LeeRichards)
+        if spec.get("n_slices") is not None:
+            params.setNSlices(int(spec["n_slices"]))
+    else:
+        raise ValueError("sasa.algorithm must be shrake_rupley or lee_richards")
+    if spec.get("probe_radius_A") is not None:
+        params.setProbeRadius(float(spec["probe_radius_A"]))
+    if spec.get("n_threads") is not None:
+        params.setNThreads(int(spec["n_threads"]))
     rows = []
     frames=universe.trajectory[tr.get("start"):tr.get("stop"):int(tr["stride"])]
     for frame_index, ts in enumerate(track(frames,total=len(frames),desc="SASA",
                 enabled=cfg.get("progress",{}).get("enabled",True))):
-        # FreeSASA's structure stores coordinates, so it must be rebuilt
-        # after each trajectory update.
-        freesasa, structure = _freesasa_structure(atoms)
-        params = freesasa.Parameters()
-        algorithm = str(spec.get("algorithm", "shrake_rupley")).lower()
-        if algorithm in {"shrake_rupley", "shrake-rupley", "sr"}:
-            params.setAlgorithm(freesasa.ShrakeRupley)
-            if spec.get("n_points") is not None:
-                params.setNPoints(int(spec["n_points"]))
-        elif algorithm in {"lee_richards", "lee-richards", "lr"}:
-            params.setAlgorithm(freesasa.LeeRichards)
-            if spec.get("n_slices") is not None:
-                params.setNSlices(int(spec["n_slices"]))
-        else:
-            raise ValueError("sasa.algorithm must be shrake_rupley or lee_richards")
-        if spec.get("probe_radius_A") is not None:
-            params.setProbeRadius(float(spec["probe_radius_A"]))
-        if spec.get("n_threads") is not None:
-            params.setNThreads(int(spec["n_threads"]))
-        result = freesasa.calc(structure, params)
-        areas = np.fromiter(
-            (result.atomArea(i) for i in range(len(atoms))),
-            dtype=float,
-            count=len(atoms)
-        )
+        areas = _sasa_areas(freesasa, atoms, radii, params)
         residue_areas = (
             np.bincount(
                 atom_residue,

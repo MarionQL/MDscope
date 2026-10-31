@@ -24,7 +24,7 @@ from ..interactions.hydrogen_bonds import write_hydrogen_bonds
 from ..interactions.lipid_hydrogen_bonds import (
     GLYCOLIPID_CHAIN_IDS, lipid_molecule_map, write_lipid_hydrogen_bonds,
 )
-from ..observables.sasa import _freesasa_structure
+from ..observables.sasa import _sasa_radii, _sasa_areas
 from ..core.profiling import _residue_label
 from ..biophysical_common import heavy, box_of, residue_pairs, sequence_motifs
 from MDAnalysis.lib.distances import distance_array
@@ -194,8 +194,10 @@ class FusedExtensions:
             params.setProbeRadius(float(spec["probe_radius_A"]))
         if spec.get("n_threads") is not None:
             params.setNThreads(int(spec["n_threads"]))
+        sasa_lib, radii = _sasa_radii(atoms)
         self.sasa = {"atoms": atoms, "residues": residues,
-                     "mapping": mapping, "params": params}
+                     "mapping": mapping, "params": params,
+                     "library": sasa_lib, "radii": radii}
 
     def _setup_local(self):
         s = self.cfg["analyses"]["local_environment"]
@@ -237,13 +239,9 @@ class FusedExtensions:
             self.timings["dssp"] += time.perf_counter() - start
         if self.sasa is not None:
             start = time.perf_counter()
-            import freesasa
             state = self.sasa
-            _, structure = _freesasa_structure(state["atoms"])
-            result = freesasa.calc(structure, state["params"])
-            areas = np.fromiter(
-                (result.atomArea(i) for i in range(len(state["atoms"]))),
-                dtype=float, count=len(state["atoms"])
+            areas = _sasa_areas(
+                state["library"], state["atoms"], state["radii"], state["params"]
             )
             residue_areas = np.bincount(
                 state["mapping"], weights=areas,
