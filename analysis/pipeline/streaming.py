@@ -199,6 +199,20 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
     distances = FusedDistances(universe, cfg, repout) if distance_enabled_names(cfg) else None
     sdc4 = SDC4Mechanisms(universe, cfg, repout) if sdc4_enabled(cfg) else None
 
+    # Resolve metric-specific group filters once; grouping itself is shared.
+    metric_groups = {}
+    for metric in ("rmsd", "radius_of_gyration"):
+        requested = cfg["analyses"][metric].get("groups")
+        if requested is not None:
+            if not isinstance(requested, list) or not all(isinstance(x, str) for x in requested):
+                raise ValueError(f"analyses.{metric}.groups must be a list of group IDs")
+            unknown = set(requested) - set(groups)
+            if unknown:
+                raise ValueError(f"Unknown {metric} group IDs: {sorted(unknown)}")
+            metric_groups[metric] = set(requested)
+        else:
+            metric_groups[metric] = None
+
     processed = part = 0
     if checkpoint.exists():
         try:
@@ -353,8 +367,6 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
             group["rmsf"].update(positions)
             # Group IDs are shared by RMSD, RMSF and Rg; each metric may
             # independently select a subset without creating another observer.
-            rmsd_groups = cfg["analyses"]["rmsd"].get("groups")
-            rg_groups = rg_spec.get("groups")
             group_rows.append({
                 "time_ps": tps,
                 "group": group_id,
@@ -366,13 +378,13 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
                         )
                     )
                     if cfg["analyses"]["rmsd"].get("enabled", True)
-                    and (rmsd_groups is None or group_id in rmsd_groups)
+                    and (metric_groups["rmsd"] is None or group_id in metric_groups["rmsd"])
                     else np.nan
                 ),
                 "radius_of_gyration_A": (
                     compute_rg(group["rg"])
                     if rg_spec.get("enabled", True) and len(group["rg"])
-                    and (rg_groups is None or group_id in rg_groups)
+                    and (metric_groups["radius_of_gyration"] is None or group_id in metric_groups["radius_of_gyration"])
                     else np.nan
                 ),
             })
