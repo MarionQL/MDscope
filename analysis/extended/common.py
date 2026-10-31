@@ -133,6 +133,7 @@ def update_lipid_anchors(u, lipid_specs, known):
     mapping={int(i):n for n,i in enumerate(known.resindices)}
     for _,selector in lipid_specs.items():
         ix,xyz=centers(u.select_atoms(str(selector)))
-        for j,k in enumerate(ix):
-            coords[mapping[int(k)]]=xyz[j]
+        # Resolve residue identities once, then scatter all coordinates in NumPy.
+        rows = np.fromiter((mapping[int(k)] for k in ix), dtype=np.intp, count=len(ix))
+        coords[rows] = xyz
     return coords
