@@ -42,8 +42,8 @@ from .fused_membrane import enabled_names as fused_enabled_names, run_fused_memb
 from .fused_extensions import enabled_names as extension_enabled_names, run_fused_extensions
 from .fused_distance import enabled_names as distance_enabled_names, run_fused_distances
 from .fused_all import run_fused_only
-from .sdc4_mechanisms import enabled as sdc4_enabled, run_sdc4_mechanisms
-from .shared_states import fit_shared_states
+from .mechanisms.sdc4_mechanisms import enabled as sdc4_enabled, run_sdc4_mechanisms
+from .mechanisms.shared_states import fit_shared_states
 from .reporting.sdc4_figures import plot_sdc4_mechanisms
 from .reporting.report import generate_report
 from .registry import specialized_tasks,additional_time_series,fused_output,fused_output_plan
