@@ -61,14 +61,18 @@ analyses:
         target_selection: "protein"
         occluder_selection: "protein or resname POPC POPE POPI DOPC DPPC PSM CHL1 BGAL GM1a CER160"
         periodic: true
+        reference_run: isolated
         n_points: 200
 ```
 
 Output for each named run: `profiles/sasa/<run_id>/residue_sasa.parquet`,
 with columns `time_ps`, `topology_residue_index`, `residue`, `sasa_nm2`.
 A legacy single unnamed run retains `profiles/sasa/residue_sasa.parquet`.
-To obtain environment-buried surface, join matching per-residue time series
-and subtract membrane SASA from isolated SASA (same topology and target).
+With `reference_run: isolated`, MDscope also writes `residue_burial.parquet`
+(per-frame isolated/environment SASA, buried nm² and buried fraction) plus
+`residue_burial_summary.parquet` (means and standard deviations by residue).
+The target atom identities, radii, probe and algorithm settings must match.
+Buried fractions are NaN when isolated SASA is zero.
 FreeSASA parameters and probe radius may be configured on each run.
 
 **Scientific conventions:** Nonstandard atoms are included using a documented
@@ -85,3 +89,9 @@ whole molecule and fit within half the box along each Cartesian dimension;
 otherwise the calculation raises an error. This does not reconstruct a
 protein split across PBC. Prepare a whole-molecule trajectory first.
 Environment-occluded SASA is **not equivalent** to direct water hydration.
+
+For large occluder selections, each frame uses a radius/probe-bounded neighbor
+search to omit atoms too far from any target SASA sphere to contribute to the
+result. The single trajectory pass is preserved; this is not a second frame
+reader. Always benchmark and compare with a full-occluder reference frame
+before using a new topology/radius convention in production.
