@@ -310,13 +310,22 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
 
     extension_names = extension_enabled_names(cfg)
     if extension_names:
-        extension_outputs = {name: fused_output(repout, name) for name in extension_names}
-        missing = [name for name in extension_names if not extension_outputs[name].path.is_file()]
+        extension_outputs = {name: fused_output(repout, name)
+                             for name in extension_names if name != "sasa"}
+        if "sasa" in extension_names:
+            from ..config import analysis_runs
+            for run in analysis_runs(cfg, "sasa"):
+                extension_outputs["sasa" if run.run_id == "default" else f"sasa-{run.run_id}"] = (
+                    fused_output(repout, "sasa") if run.run_id == "default"
+                    else fused_output(repout, "sasa", run_id=run.run_id)
+                )
+        missing = [name for name, entry in extension_outputs.items()
+                   if not entry.path.is_file()]
         if missing:
             t0 = perf_counter()
             run_fused_extensions(rep, cfg, repout)
             stage_timings.append({"stage": "fused-extensions-fallback", "seconds": perf_counter() - t0})
-        for name in extension_names:
+        for name in extension_outputs:
             if not extension_outputs[name].path.is_file():
                 raise RuntimeError(f"Missing fused output: {extension_outputs[name].path}")
             key = prefix + "-" + extension_outputs[name].checkpoint_key
