@@ -13,7 +13,7 @@ from mdscope.analysis.registry import FUSED_OUTPUTS, fused_output, fused_output_
     ("hydrogen_bonds", "interactions/hydrogen_bonds/events.parquet", "hydrogen_bonds"),
     ("lipid_hydrogen_bonds", "interactions/lipid_hydrogen_bonds/events.parquet", "lipid_hydrogen_bonds"),
     ("dssp", "profiles/dssp/assignments.parquet", "dssp"),
-    ("sasa", "profiles/sasa/residue_sasa.parquet", "dssp"),
+    ("sasa", "profiles/sasa/residue_sasa.parquet", "sasa"),
     ("local_environment", "extensions/local_environment/timeseries.parquet", "local_environment"),
     ("sdc4_mechanisms", "extensions/sdc4_mechanisms/timeseries.parquet", "sdc4_mechanisms"),
 ])
