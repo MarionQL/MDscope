@@ -18,7 +18,7 @@ from .observables.msd import initialize_msd
 from .fused_membrane import FusedMembrane, enabled_names as fused_enabled_names
 from .fused_extensions import FusedExtensions, enabled_names as extension_enabled_names
 from .fused_distance import FusedDistances, enabled_names as distance_enabled_names
-from .sdc4_mechanisms import SDC4Mechanisms, enabled as sdc4_enabled
+from .mechanisms.sdc4_mechanisms import SDC4Mechanisms, enabled as sdc4_enabled
 from .core.alignment import _apply_transform,_fit_transform,_valid_box
 from .observables.rmsd import compute_rmsd
 from .observables.rmsf import Welford
