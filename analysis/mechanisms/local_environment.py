@@ -7,8 +7,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import distance_array
-from .biophysical_common import heavy,box_of,residue_pairs,sequence_motifs
-from .config import atomic_parquet,ensure_dir,time_ps
+from ..biophysical_common import heavy,box_of,residue_pairs,sequence_motifs
+from ..config import atomic_parquet,ensure_dir,time_ps
 
 def run_local_environment(rep,cfg,repout):
     import MDAnalysis as mda

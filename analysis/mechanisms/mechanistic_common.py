@@ -8,9 +8,9 @@ from __future__ import annotations
 import re
 import numpy as np
 from MDAnalysis.exceptions import NoDataError
-from .core.atom_selection import select_heavy_atoms
+from ..core.atom_selection import select_heavy_atoms
 from MDAnalysis.lib.distances import capped_distance, distance_array
-from .core.geometry import minimum_image_displacements
+from ..core.geometry import minimum_image_displacements
 
 AA3 = dict(zip(
     "ALA ARG ASN ASP CYS GLN GLU GLY HIS ILE LEU LYS MET PHE PRO SER THR TRP TYR VAL".split(),

@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 from scipy.spatial.distance import jensenshannon
 
-from .config import atomic_json, atomic_parquet, ensure_dir
+from ..config import atomic_json, atomic_parquet, ensure_dir
 
 
 def _lloyd(data, k, seed, restarts=8, max_iter=200):

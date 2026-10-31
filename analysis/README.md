@@ -10,9 +10,9 @@ Current canonical packages:
 - `extended/`: numerical support for extended membrane observers
 
 - `interactions/`: hydrogen bonds, salt bridges, ligand contacts and interaction tables
+- `mechanisms/`: SDC4, HS topology, local environment and shared states
 
-Remaining flat implementation modules will migrate to `mechanisms/`,
-`statistics/` and `pipeline/` in later changes.
+Remaining flat implementation modules will migrate to `statistics/` and `pipeline/` in later changes.
 `cli.py`, `config.py` and `registry.py` remain top-level entry points.
 
 Membrane observers consume physical coordinates before protein-only fitting.

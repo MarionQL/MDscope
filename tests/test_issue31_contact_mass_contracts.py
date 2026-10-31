@@ -5,7 +5,7 @@ from MDAnalysis.lib.distances import capped_distance
 
 from mdscope.analysis.biophysical_common import atom_contacts, residue_pairs
 from mdscope.analysis.extended.common import pairs
-from mdscope.analysis.mechanistic_common import contact_count
+from mdscope.analysis.mechanisms.mechanistic_common import contact_count
 from mdscope.analysis.observables.msd import _residue_centers
 
 

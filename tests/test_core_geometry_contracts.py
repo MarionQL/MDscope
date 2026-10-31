@@ -5,7 +5,7 @@ from MDAnalysis.lib.distances import minimize_vectors
 
 from mdscope.analysis.core.geometry import minimum_image_displacements
 from mdscope.analysis.extended.common import minimum_image, lateral_distance as extended_lateral
-from mdscope.analysis.mechanistic_common import planar_distances
+from mdscope.analysis.mechanisms.mechanistic_common import planar_distances
 from mdscope.analysis.biophysical_common import lateral_distance as pairwise_lateral
 
 BOX = np.array([40., 50., 60., 90., 90., 90.])

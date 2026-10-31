@@ -6,7 +6,7 @@ import MDAnalysis as mda
 from mdscope.analysis.core.atom_selection import heavy_atom_mask
 from mdscope.analysis.biophysical_common import heavy as biophysical_heavy
 from mdscope.analysis.extended.common import heavy as extended_heavy
-from mdscope.analysis.mechanistic_common import heavy as mechanistic_heavy
+from mdscope.analysis.mechanisms.mechanistic_common import heavy as mechanistic_heavy
 
 
 def atoms(with_elements):

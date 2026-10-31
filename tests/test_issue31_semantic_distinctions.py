@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from mdscope.analysis.biophysical_common import lateral_distance
-from mdscope.analysis.mechanistic_common import planar_distances
+from mdscope.analysis.mechanisms.mechanistic_common import planar_distances
 from mdscope.analysis.core.lipid_geometry import lateral_distances
 
 
