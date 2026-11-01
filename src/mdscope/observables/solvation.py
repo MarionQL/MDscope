@@ -119,6 +119,30 @@ def _targets(u, spec):
 
 
 
+
+def unique_target_solvent_pairs(target_indices, solvent_indices, n_targets):
+    """Count unique solvent entities per target without Python per-pair sets.
+
+    Return (counts, sorted unique local index pairs). No atom identities are
+    discarded: the caller can map local solvent indices to topology indices
+    before persistence. Duplicated coordination atoms are counted once.
+    """
+    target_indices = np.asarray(target_indices, dtype=np.intp)
+    solvent_indices = np.asarray(solvent_indices, dtype=np.intp)
+    if target_indices.shape != solvent_indices.shape:
+        raise ValueError("target/solvent arrays must have matching shape")
+    if len(target_indices) == 0:
+        return np.zeros(n_targets, dtype=np.int64), np.empty((0, 2), dtype=np.intp)
+    order = np.lexsort((solvent_indices, target_indices))
+    targets = target_indices[order]
+    solvent = solvent_indices[order]
+    first = np.r_[True, (targets[1:] != targets[:-1]) |
+                  (solvent[1:] != solvent[:-1])]
+    unique_targets = targets[first]
+    pairs = np.column_stack((unique_targets, solvent[first]))
+    return np.bincount(unique_targets, minlength=n_targets), pairs
+
+
 def water_donor_hbonds(site_xyz, water_xyz, water_hydrogens, pairs, box,
                        max_da_A=3.5, min_angle_deg=150.):
     """Return water-index/site-index/H-index triples satisfying D-H...A.
@@ -307,9 +331,17 @@ class SolvationObserver:
                 max_cutoff=float(self.edges[-1]), box=box, return_distances=True)
             indices = self.target_of_site[pair[:, 0]] if len(pair) else np.empty(0, int)
             shell = distances <= float(self.shells[solvent])
-            contacts = defaultdict(set)
-            for ti, si in zip(indices[shell], pair[shell, 1]):
-                contacts[int(ti)].add(int(atoms.indices[si]))
+            counts, unique_pairs = unique_target_solvent_pairs(
+                indices[shell], pair[shell, 1], len(self.targets))
+            # Only build per-solvent identity sets when events or bridges
+            # actually require them. The standard preset stays NumPy-only.
+            contacts = None
+            if self.events_on or self.bridges_on:
+                contacts = defaultdict(set)
+                for target_idx, solvent_local in unique_pairs:
+                    if int(target_idx) in self.tracked_target_indices:
+                        contacts[int(target_idx)].add(
+                            int(atoms.indices[solvent_local]))
             # Bin all site–solvent pairs in a single vectorized pass.
             # Per-target boolean masking here would scale as O(targets*pairs)
             # and is particularly expensive for hundreds of lipid molecules.
@@ -325,7 +357,7 @@ class SolvationObserver:
                 self.exposure[key] += self.class_atoms[class_index] * len(atoms)/volume
             for i, (target, kind, label, group) in enumerate(self.targets):
                 self.rows.append((int(frame_index), float(time_ps), solvent,
-                                  target, kind, label, len(contacts[i])))
+                                  target, kind, label, int(counts[i])))
                 if self.events_on and i in self.tracked_target_indices:
                     self.events.extend((int(frame_index), float(time_ps), solvent,
                                         target, solvent_id)
