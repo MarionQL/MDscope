@@ -45,3 +45,21 @@ def test_sasa_exact_frame_join_and_missing_residue():
     assert result.sasa_nm2.iloc[0] == .5
     assert np.isnan(result.sasa_nm2.iloc[1])
     assert result.sasa_coverage.tolist() == [1.,.5]
+
+
+def test_chunk_shell_calibration_reports_stable_vs_ambiguous():
+    from mdscope.observables.solvation_postprocess import calibration_stability
+    edges = np.arange(0, 10, .5)
+    g = np.ones(len(edges)-1) * 20
+    g[4:11] = [24, 48, 62, 44, 24, 14, 22]
+    parts = [{"solvent": "water", "target_class": "protein",
+              "site_class": "carboxylate", "exposure": 20.,
+              **{f"bin_{j}": int(x) for j, x in enumerate(g)}}
+             for _ in range(4)]
+    stable = calibration_stability(pd.DataFrame(parts), edges)
+    assert stable.status.item() == "stable"
+    assert stable.chunks_resolved.item() == 4
+    parts[-1].update({f"bin_{j}":20 for j in range(len(g))})
+    unstable = calibration_stability(pd.DataFrame(parts), edges)
+    assert unstable.status.item() == "unresolved_chunks"
+    assert unstable.chunks_resolved.item() == 3
