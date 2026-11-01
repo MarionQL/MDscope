@@ -72,6 +72,16 @@ def test_report_pdf_and_review_bundle(tmp_path):
         for system, shift in (("carb", 0.), ("nocarb", 3.))
     ]).to_parquet(stats / "replicate_statistics.parquet", index=False)
 
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    figdir=summary/"figures"/"time_series"
+    figdir.mkdir(parents=True)
+    fig,ax=plt.subplots(figsize=(4,2))
+    ax.plot([0,1,2],[1,2,1])
+    ax.set_xlabel("Time (ns)")
+    fig.savefig(figdir/"rmsd_A__timeseries.png")
+    plt.close(fig)
     output = generate_report(cfg, root, system_paths)
     pdf = summary / "report/MDscope_evidence_report.pdf"
     bundle = summary / "report/MDscope_review_bundle.zip"
@@ -86,6 +96,12 @@ def test_report_pdf_and_review_bundle(tmp_path):
         assert "carb/rep1/summary/timeseries_sample.csv" in names
         assert "carb/rep1/extensions/sdc4_mechanisms/selection_audit.json" in names
         assert "resolved_config.yaml" in names
+        assert "project_summary/figures/time_series/rmsd_A__timeseries.png" in names
+        assert "project_summary/report/figure_manifest.csv" in names
+        assert "project_summary/report/figure_coverage.csv" in names
+        manifest=pd.read_csv(z.open("project_summary/report/figure_manifest.csv"))
+        assert "project_summary/figures/time_series/rmsd_A__timeseries.png" in manifest.figure.tolist()
+
         sampled = pd.read_csv(z.open("carb/rep1/summary/timeseries_sample.csv"))
         assert len(sampled) == 5
         assert "sdc4_ectodomain_A_height_A" in sampled
