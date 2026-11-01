@@ -7,6 +7,10 @@ explicit to avoid guessing CHARMM lipid and glycan atom chemistry.
 from collections import defaultdict
 from itertools import combinations
 from pathlib import Path
+import os
+import tempfile
+
+import pyarrow.parquet as pq
 
 import numpy as np
 import pandas as pd
@@ -482,9 +486,25 @@ class SolvationObserver:
             files = sorted(cache.glob(f"{name}-*.parquet"))
             return pd.concat((pd.read_parquet(p) for p in files), ignore_index=True) if files else pd.DataFrame()
         for name in ("counts", "events", "bridges", "water_hbond_bridges"):
-            df = read(name)
-            if not df.empty or name == "counts":
-                atomic_parquet(dest / f"{name}.parquet", df)
+            files = sorted(cache.glob(f"{name}-*.parquet"))
+            if files:
+                # Keep the single-Parquet public output but stream chunk
+                # row groups without concatenating every frame in RAM.
+                target = dest / f"{name}.parquet"
+                with tempfile.NamedTemporaryFile(dir=dest, suffix=".parquet",
+                                                 delete=False) as handle:
+                    temporary = Path(handle.name)
+                try:
+                    with pq.ParquetWriter(str(temporary),
+                                          pq.read_schema(files[0])) as writer:
+                        for chunk in files:
+                            writer.write_table(pq.read_table(chunk))
+                    os.replace(temporary, target)
+                finally:
+                    temporary.unlink(missing_ok=True)
+            elif name == "counts":
+                atomic_parquet(dest / "counts.parquet",
+                               pd.DataFrame(columns=COUNT_COLUMNS))
         hist = read("hist")
         rows = []
         if not hist.empty:
