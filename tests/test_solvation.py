@@ -169,3 +169,29 @@ def test_mixed_ion_selection_configuration_rejected(tmp_path):
     }}}
     with pytest.raises(ValueError, match="OR"):
         SolvationObserver(u, cfg, tmp_path)
+
+
+def test_hs_chain_grouping_reuses_covalent_topology_not_chain_ids():
+    from mdscope.observables.solvation import _targets
+    u = mda.Universe.empty(
+        8, n_residues=6,
+        atom_resindex=[0, 1, 2, 2, 3, 4, 4, 5], trajectory=True)
+    u.add_TopologyAttr("names", ["OG", "OG", "O1", "C1", "O1", "O1", "C1", "O1"])
+    u.add_TopologyAttr("resnames",
+        ["SER", "SER", "AGLCNA", "BGLCA", "AGLCNA", "BGLCA"])
+    u.add_TopologyAttr("resids", [39, 61, 1, 2, 3, 4])
+    u.add_TopologyAttr("chainIDs", ["PROA"] * 8)
+    u.add_TopologyAttr("bonds", [(0,2), (2,3), (3,4), (1,5), (5,6), (6,7)])
+    target_spec = {
+        "targets": {"hs": {"oxygen": {
+            "selection": "resname AGLCNA BGLCA and name O1",
+            "group_by": "hs_chain"}}},
+        "hs_auto": {
+            "glycan_selection": "resname AGLCNA BGLCA",
+            "attachment_selection": "resname SER and name OG",
+            "min_glycan_residues": 2, "expected_chains": 2}}
+    grouped = _targets(u, target_spec)
+    assert len(grouped) == 2
+    assert {t[0] for t in grouped} == {
+        "hs/oxygen/PROA_S39", "hs/oxygen/PROA_S61"}
+    assert sorted(len(t[3]) for t in grouped) == [2,2]
