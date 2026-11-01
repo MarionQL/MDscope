@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import capped_distance
 from MDAnalysis.lib.mdamath import triclinic_vectors
+from ..core.geometry import minimum_image_displacements
 
 from ..config import atomic_json, atomic_parquet, ensure_dir
 
@@ -150,18 +151,17 @@ def water_donor_hbonds(site_xyz, water_xyz, water_hydrogens, pairs, box,
     Explicit water O-H bonds and target-acceptor atom selections are required.
     This deliberately does not classify target-donor/water-acceptor contacts.
     """
-    from MDAnalysis.lib.distances import minimize_vectors
     pairs = np.asarray(pairs, dtype=int).reshape(-1, 2)
     if not len(pairs):
         return np.empty((0, 3), dtype=int)
     donor = np.asarray(water_xyz, float)[pairs[:, 1]]
     acceptor = np.asarray(site_xyz, float)[pairs[:, 0]]
-    da = np.linalg.norm(minimize_vectors(acceptor-donor, box), axis=1)
+    da = np.linalg.norm(minimum_image_displacements(acceptor-donor, box), axis=1)
     output = []
     for hi in (0, 1):
         hyd = np.asarray(water_hydrogens, float)[pairs[:, 1], hi]
-        dh = minimize_vectors(donor-hyd, box)
-        ah = minimize_vectors(acceptor-hyd, box)
+        dh = minimum_image_displacements(donor-hyd, box)
+        ah = minimum_image_displacements(acceptor-hyd, box)
         norms = np.linalg.norm(dh, axis=1)*np.linalg.norm(ah, axis=1)
         cosine = np.divide(np.einsum("ij,ij->i", dh, ah), norms,
                            out=np.zeros(len(da)), where=norms > 1e-12)
@@ -277,9 +277,7 @@ class SolvationObserver:
             raise ValueError("solvation shell cutoffs must be positive and <= search radius")
         # Optional local 3D WATER density maps. The 3 anchor atoms define a
         # co-moving orthonormal frame for a named target, not a global grid.
-        from MDAnalysis.lib.distances import minimize_vectors
-        self._minimize_vectors = minimize_vectors
-        self.grid_frames = {}
+            self.grid_frames = {}
         self.grid_width = float(self.spec.get("grid_width_A", 12.0))
         self.grid_spacing = float(self.spec.get("grid_spacing_A", 0.75))
         if self.spec.get("grid_frames"):
@@ -375,7 +373,7 @@ class SolvationObserver:
                     if anchors is None:
                         continue
                     origin, second, third = anchors.positions
-                    v1, v2 = self._minimize_vectors(
+                    v1, v2 = minimum_image_displacements(
                         np.asarray([second-origin, third-origin], dtype=float), box)
                     norm1 = np.linalg.norm(v1)
                     if norm1 < 1e-7:
@@ -389,7 +387,7 @@ class SolvationObserver:
                     rotation = np.column_stack((e1, e2, np.cross(e1,e2)))
                     js = np.unique(pair[indices == target_i, 1])
                     if len(js):
-                        delta = self._minimize_vectors(
+                        delta = minimum_image_displacements(
                             np.asarray(water_xyz[js]-origin,dtype=float),box)
                         local = delta @ rotation
                         # Inscribed sphere is fully covered by the original
