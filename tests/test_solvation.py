@@ -195,3 +195,27 @@ def test_hs_chain_grouping_reuses_covalent_topology_not_chain_ids():
     assert {t[0] for t in grouped} == {
         "hs/oxygen/PROA_S39", "hs/oxygen/PROA_S61"}
     assert sorted(len(t[3]) for t in grouped) == [2,2]
+
+
+def test_tracking_class_filter_preserves_counts_but_limits_events(tmp_path):
+    u = _universe()
+    config = {"analyses": {"solvation": {
+        "enabled": True, "preset": "kinetics",
+        "targets": {
+            "protein": {"acceptor": "resname GLU and name OE1"},
+            "lipid": {"other": "resname GLU and name OE2"}},
+        "water_selection": "resname SOL and name OW",
+        "search_radius_A": 5.,
+        "options": {"track_target_classes": ["protein"]},
+    }}}
+    observer = SolvationObserver(u, config, tmp_path)
+    observer.update(u.trajectory[0], 0, 0.)
+    observer.flush(0)
+    observer.finalize()
+    result = tmp_path/"extensions/solvation"
+    counts = pd.read_parquet(result/"counts.parquet")
+    events = pd.read_parquet(result/"events.parquet")
+    assert set(counts.target_class) == {"protein", "lipid"}
+    assert set(events.target_id) == {"protein/acceptor/0"}
+    assert pd.read_parquet(result/"bridges.parquet").empty if (
+        result/"bridges.parquet").exists() else True
