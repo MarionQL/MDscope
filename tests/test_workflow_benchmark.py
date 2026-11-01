@@ -1,5 +1,8 @@
 import json
-from scripts.benchmark_workflow import summarize
+from pathlib import Path
+from runpy import run_path
+
+summarize = run_path(str(Path(__file__).resolve().parents[1] / "scripts" / "benchmark_workflow.py"))["summarize"]
 
 
 def test_workflow_benchmark_aggregates_nonoverlapping_scopes(tmp_path):
