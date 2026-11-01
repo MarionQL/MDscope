@@ -119,6 +119,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
     resample = stats.get("hierarchy", {}).get("resample_replicates", True)
     outdir = ensure_dir(root / "project_summary" / "statistics" / "interactions")
     sources, kinds = {}, set()
+    excluded_kinds = set(stats.get('interaction_exclude_kinds', []))
     for system, reps in system_repouts.items():
         for repout in reps:
             tables = interaction_tables(repout)
@@ -132,7 +133,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
             kinds.update(tables)
     rep_rows, sys_rows, comps = [], [], []
     weight_cache = {}
-    for kind in sorted(kinds):
+    for kind in sorted(kinds - excluded_kinds):
         interactions, prepared = set(), {}
         for key, (times, tables) in sources.items():
             tab = tables.get(kind, {})
@@ -154,21 +155,29 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                         else "interaction"
                     )
                     interactions.update(table["interaction"])
-            prepared[key] = (times, presence, life)
+            presence_groups = (
+                {identity: group["time_ps"].to_numpy(float)
+                 for identity, group in presence.groupby("interaction", sort=False)}
+                if not presence.empty else {}
+            )
+            life_groups = (
+                {identity: group for identity, group in life.groupby("interaction", sort=False)}
+                if not life.empty else {}
+            )
+            prepared[key] = (times, presence_groups, life_groups)
         for interaction in sorted(interactions):
             repdata = {}
             for system, reps in system_repouts.items():
                 for repout in reps:
-                    times, presence, life = prepared[(system, repout.name)]
+                    times, presence_groups, life_groups = prepared[(system, repout.name)]
                     if not len(times):
                         continue
-                    pt = presence.loc[
-                        presence.interaction == interaction,
-                        "time_ps"
-                    ].to_numpy(float) if not presence.empty else np.array([], float)
-                    ls = (
-                        life[life.interaction == interaction] if not life.empty else pd.DataFrame()
-                    )
+                    pt = presence_groups.get(interaction)
+                    if pt is None:
+                        pt = np.array([], float)
+                    ls = life_groups.get(interaction)
+                    if ls is None:
+                        ls = pd.DataFrame()
                     boot, meta = _interaction_bootstrap(
                         times,
                         pt,
