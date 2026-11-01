@@ -170,6 +170,18 @@ class SolvationObserver:
         hs_auto = self.spec.get("hs_auto") or (
             cfg.get("analyses", {}).get("sdc4_mechanisms", {}).get("hs_auto") or {})
         self.targets = _targets(universe, {**self.spec, "hs_auto": hs_auto})
+        self.track_classes = opts.get("track_target_classes")
+        if self.track_classes is not None:
+            if not isinstance(self.track_classes, (tuple, list)) or not self.track_classes:
+                raise ValueError("solvation.options.track_target_classes must be a nonempty list")
+            known = {kind for _, kind, _, _ in self.targets}
+            unknown = set(self.track_classes) - known
+            if unknown:
+                raise ValueError(f"unknown solvation tracking target classes: {sorted(unknown)}")
+        self.tracked_target_indices = {
+            i for i, (_, kind, _, _) in enumerate(self.targets)
+            if self.track_classes is None or kind in self.track_classes}
+
         indices = np.concatenate([g.indices for _, _, _, g in self.targets])
         self.site_atoms = universe.atoms[indices]
         self.target_of_site = np.concatenate(
@@ -312,7 +324,7 @@ class SolvationObserver:
             for i, (target, kind, label, group) in enumerate(self.targets):
                 self.rows.append((int(frame_index), float(time_ps), solvent,
                                   target, kind, label, len(contacts[i])))
-                if self.events_on:
+                if self.events_on and i in self.tracked_target_indices:
                     self.events.extend((int(frame_index), float(time_ps), solvent,
                                         target, solvent_id)
                                        for solvent_id in sorted(contacts[i]))
@@ -359,8 +371,9 @@ class SolvationObserver:
                     min_angle_deg=self.hbond_angle)
                 by_water = defaultdict(lambda: defaultdict(set))
                 for water_idx, site_idx, hydrogen_idx in qualified:
-                    by_water[int(water_idx)][int(self.target_of_site[site_idx])].add(
-                        int(hydrogen_idx))
+                    target_idx = int(self.target_of_site[site_idx])
+                    if target_idx in self.tracked_target_indices:
+                        by_water[int(water_idx)][target_idx].add(int(hydrogen_idx))
                 for water_idx, target_hydrogens in by_water.items():
                     for a, b in combinations(sorted(target_hydrogens), 2):
                         # Two distinct donor H atoms must participate.
@@ -373,6 +386,8 @@ class SolvationObserver:
             if self.bridges_on:
                 inverse = defaultdict(set)
                 for target_index, solvent_ids in contacts.items():
+                    if target_index not in self.tracked_target_indices:
+                        continue
                     for sid in solvent_ids:
                         inverse[sid].add(target_index)
                 for sid, target_indices in inverse.items():
@@ -480,6 +495,7 @@ class SolvationObserver:
             "3d_grid_domain": "Only observed voxels within an inscribed sphere around a target origin; other voxels are not sampled.",
             "3d_grid_edges_A": self.grid_edges.tolist() if self.grid_frames else None,
             "bridges": self.bridges_on,
+            "track_target_classes": self.track_classes,
             "water_hbond_bridges": self.water_hbond_bridges,
             "rdf_limitation": "Bulk-density normalized; no excluded-volume correction. Evaluate alongside SASA.",
             "residence_limitation": "Episodes represent consecutive sampled contacts; temporal resolution is trajectory frame interval.",
