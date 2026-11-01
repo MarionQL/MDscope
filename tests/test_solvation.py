@@ -314,3 +314,22 @@ def test_neighbor_methods_produce_identical_coordination(tmp_path):
     for counts, rdf in results[1:]:
         pd.testing.assert_frame_equal(counts, results[0][0])
         pd.testing.assert_frame_equal(rdf, results[0][1])
+
+
+def test_water_hbond_uses_shared_triclinic_minimum_image():
+    from MDAnalysis.lib.mdamath import triclinic_vectors
+    from mdscope.observables.solvation import water_donor_hbonds
+    box = np.array([30., 31., 32., 88., 94., 73.])
+    lattice = triclinic_vectors(box)
+    solvent = np.array([[12., 10., 8.]])
+    acceptor = np.array([[9.3, 10., 8.], [14.7, 10., 8.]])
+    hydrogens = np.array([[[11., 10., 8.], [13., 10., 8.]]])
+    pairs = np.array([[0, 0], [1, 0]])
+    expected = set(map(tuple, water_donor_hbonds(
+        acceptor, solvent, hydrogens, pairs, box)))
+    shifted = acceptor.copy()
+    shifted[0] += lattice[0] - lattice[1]
+    result = set(map(tuple, water_donor_hbonds(
+        shifted, solvent, hydrogens, pairs, box)))
+    assert expected == {(0, 0, 0), (0, 1, 1)}
+    assert result == expected
