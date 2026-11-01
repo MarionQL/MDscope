@@ -40,6 +40,28 @@ def collect_time_series(repout: Path) -> dict[tuple[str | None, str], pd.DataFra
                         None if group_id is None else str(group_id),
                         metric
                     )] = subset[["time_ps", metric]].rename(columns={metric: "value"})
+    # Reuse the SAME temporal block bootstrap / hierarchical statistics as
+    # every other MDscope time series. Never resample individual lipid molecules
+    # or water contacts as if they were independent simulation replicates.
+    solvation = Path(repout) / "extensions" / "solvation" / "species_timeseries.parquet"
+    if solvation.exists():
+        data = pd.read_parquet(solvation)
+        required = {"solvent", "target_class", "site_class", "time_ps",
+                    "mean_n_solvent", "hydrated_fraction"}
+        if not required.issubset(data.columns):
+            raise ValueError(
+                "solvation species_timeseries.parquet is incomplete: "
+                + ", ".join(sorted(required - set(data.columns))))
+        for (solvent, kind, label), group in data.groupby(
+                ["solvent", "target_class", "site_class"], sort=False):
+            group_id = f"solvation/{solvent}/{kind}/{label}"
+            if group.duplicated("time_ps").any():
+                raise ValueError(f"duplicate solvation time points: {group_id}")
+            group = group.sort_values("time_ps")
+            for metric in ("mean_n_solvent", "hydrated_fraction"):
+                if len(finite(group[metric])):
+                    out[(group_id, metric)] = group[["time_ps", metric]].rename(
+                        columns={metric: "value"})
     return out
 
 
