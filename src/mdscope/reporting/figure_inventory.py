@@ -83,3 +83,29 @@ def report_coverage(root, system_repouts):
                      "status":"covered" if found and has_figure else
                               "missing_figure" if found else "not_generated"})
     return pd.DataFrame(rows)
+
+
+def metric_coverage(root):
+    """Check every scalar statistic has a generated standard time-series plot.
+
+    This is exact per (group, metric), not just a family-level presence test.
+    It intentionally reports missing plots instead of silently dropping data.
+    """
+    root=Path(root)
+    source=root/"project_summary"/"statistics"/"time_series"/"system_statistics.parquet"
+    cols=["group","metric","figure","status"]
+    if not source.exists():
+        return pd.DataFrame(columns=cols)
+    table=pd.read_parquet(source,columns=["group","metric"]).drop_duplicates()
+    dest=root/"project_summary"/"figures"/"time_series"
+    records=[]
+    for item in table.itertuples(index=False):
+        group="" if pd.isna(item.group) else str(item.group)
+        metric=str(item.metric)
+        stem=metric+(f"__group_{group}" if group else "")
+        stem="".join(c if c.isalnum() or c in "-_." else "_" for c in stem).strip("_")
+        relative=f"project_summary/figures/time_series/{stem}__timeseries.png"
+        records.append({"group":group,"metric":metric,"figure":relative,
+                        "status":"covered" if (dest/(stem+"__timeseries.png")).exists()
+                        else "missing_figure"})
+    return pd.DataFrame(records,columns=cols)
