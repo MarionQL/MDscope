@@ -99,6 +99,36 @@ def _targets(u, spec):
     return result
 
 
+
+def water_donor_hbonds(site_xyz, water_xyz, water_hydrogens, pairs, box,
+                       max_da_A=3.5, min_angle_deg=150.):
+    """Return water-index/site-index/H-index triples satisfying D-H...A.
+
+    Explicit water O-H bonds and target-acceptor atom selections are required.
+    This deliberately does not classify target-donor/water-acceptor contacts.
+    """
+    from MDAnalysis.lib.distances import minimize_vectors
+    pairs = np.asarray(pairs, dtype=int).reshape(-1, 2)
+    if not len(pairs):
+        return np.empty((0, 3), dtype=int)
+    donor = np.asarray(water_xyz, float)[pairs[:, 1]]
+    acceptor = np.asarray(site_xyz, float)[pairs[:, 0]]
+    da = np.linalg.norm(minimize_vectors(acceptor-donor, box), axis=1)
+    output = []
+    for hi in (0, 1):
+        hyd = np.asarray(water_hydrogens, float)[pairs[:, 1], hi]
+        dh = minimize_vectors(donor-hyd, box)
+        ah = minimize_vectors(acceptor-hyd, box)
+        norms = np.linalg.norm(dh, axis=1)*np.linalg.norm(ah, axis=1)
+        cosine = np.divide(np.einsum("ij,ij->i", dh, ah), norms,
+                           out=np.zeros(len(da)), where=norms > 1e-12)
+        angle = np.degrees(np.arccos(np.clip(cosine, -1., 1.)))
+        output.extend((int(pairs[i,1]), int(pairs[i,0]), hi)
+                      for i in np.flatnonzero((da <= max_da_A) &
+                                               (angle >= min_angle_deg)))
+    return np.asarray(output, dtype=int).reshape(-1, 3)
+
+
 class SolvationObserver:
     """Fused observer. Histograms and compact tables are checkpointed per chunk."""
 
