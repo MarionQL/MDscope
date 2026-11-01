@@ -162,6 +162,54 @@ def aggregate_coordination(counts):
     return frame[class_columns], by_target[target_columns]
 
 
+def aggregate_coordination_parts(paths):
+    """Bounded-memory aggregation from atomic count chunks.
+
+    All frames within one saved part are complete, so per-class time
+    means can be reduced independently. Per-target sufficient statistics
+    are combined across chunks without ever loading all frames at once.
+    """
+    class_keys = ["solvent", "target_class", "site_class"]
+    target_keys = class_keys + ["target_id"]
+    class_tables = []
+    partials = []
+    for path in paths:
+        counts = pd.read_parquet(path)
+        if counts.empty:
+            continue
+        frame = counts.groupby(class_keys + ["time_ps"], as_index=False).agg(
+            target_count=("target_id", "nunique"),
+            mean_n_solvent=("n_solvent", "mean"),
+            total_target_counts=("n_solvent", "sum"))
+        class_tables.append(frame)
+        numeric = counts.assign(
+            positive=(counts["n_solvent"] > 0).astype(np.int64),
+            sum_square=np.square(counts["n_solvent"].to_numpy(dtype=np.int64)))
+        group = numeric.groupby(target_keys, as_index=False).agg(
+            n_frames=("n_solvent", "size"),
+            total=("n_solvent", "sum"),
+            positive=("positive", "sum"),
+            sum_square=("sum_square", "sum"))
+        partials.append(group)
+    empty = aggregate_coordination(pd.DataFrame())[0:2]
+    if not partials:
+        return empty
+    class_frame = pd.concat(class_tables, ignore_index=True)
+    summary = pd.concat(partials, ignore_index=True).groupby(
+        target_keys, as_index=False).agg(
+            n_frames=("n_frames", "sum"), total=("total", "sum"),
+            positive=("positive", "sum"), sum_square=("sum_square", "sum"))
+    n = summary.n_frames.to_numpy(float)
+    total = summary.total.to_numpy(float)
+    variance = (summary.sum_square.to_numpy(float)-total**2/n)/np.maximum(1., n-1.)
+    summary["mean_n_solvent"] = total/n
+    summary["sd_n_solvent"] = np.where(n > 1., np.sqrt(np.maximum(variance, 0.)), np.nan)
+    summary["hydrated_fraction"] = summary.positive/n
+    return class_frame, summary[
+        ["solvent", "target_id", "target_class", "site_class",
+         "n_frames", "mean_n_solvent", "sd_n_solvent", "hydrated_fraction"]]
+
+
 def write_solvation_derivatives(directory, repout, *, sasa_run="default"):
     """Persist optional derived outputs from previous measurements only."""
     from pathlib import Path
@@ -182,8 +230,9 @@ def write_solvation_derivatives(directory, repout, *, sasa_run="default"):
             atomic_parquet(directory / "shell_stability.parquet",
                            calibration_stability(hist, edges))
     counts = directory / "counts.parquet"
+    count_parts = sorted(cache.glob("counts-*.parquet"))
     if counts.exists():
-        by_class, by_target = aggregate_coordination(pd.read_parquet(counts))
+        by_class, by_target = aggregate_coordination_parts(count_parts)
         atomic_parquet(directory / "species_timeseries.parquet", by_class)
         atomic_parquet(directory / "target_summary.parquet", by_target)
     episodes = directory / "episodes.parquet"
