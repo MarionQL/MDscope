@@ -161,6 +161,9 @@ class SolvationObserver:
                 frame = universe.select_atoms(selection)
                 if len(frame) != 3:
                     raise ValueError(f"3D hydration frame {target} needs exactly 3 ordered atoms")
+                target_atoms = next(g for name, _, _, g in self.targets if name == target)
+                if int(frame.indices[0]) not in set(map(int, target_atoms.indices)):
+                    raise ValueError("3D grid origin must belong to the target site selection")
                 self.grid_frames[target] = frame
         self.grid_counts = {key: np.zeros((len(self.grid_edges)-1,)*3, dtype=np.int64)
                             for key in self.grid_frames} if self.grid_frames else {}
@@ -241,6 +244,11 @@ class SolvationObserver:
                         delta = self._minimize_vectors(
                             np.asarray(water_xyz[js]-origin,dtype=float),box)
                         local = delta @ rotation
+                        # Inscribed sphere is fully covered by the original
+                        # site-to-water search because origin belongs to target.
+                        # Cube corners outside that sphere have no sampling
+                        # guarantee and must never be interpreted as zero density.
+                        local = local[np.linalg.norm(local, axis=1) <= self.grid_width/2]
                         self.grid_counts[target_id] += np.histogramdd(
                             local, bins=(self.grid_edges,)*3)[0].astype(np.int64)
                 self.grid_exposure += len(atoms)/volume
@@ -327,6 +335,7 @@ class SolvationObserver:
                 for dim in "xyz":
                     grids[dim+"_A"] = self.grid_edges[grids["i"+dim].to_numpy(int)] + width/2
                 grids["g_bulk"] = grids["count"]/(width**3*exposure)
+                grids["valid_spherical_domain"] = True
             atomic_parquet(dest / "water_density_3d.parquet", grids)
         # Persist target-to-topology-residue membership for SASA reuse.
         membership = [(target, int(res.ix)) for target, _, _, group in self.targets
@@ -348,6 +357,7 @@ class SolvationObserver:
             "preset": self.spec.get("preset", "standard"), "edges_A": self.edges.tolist(),
             "shell_cutoffs_A": self.shells, "events": self.events_on,
             "3d_grid_frames": list(self.grid_frames),
+            "3d_grid_domain": "Only observed voxels within an inscribed sphere around a target origin; other voxels are not sampled.",
             "3d_grid_edges_A": self.grid_edges.tolist() if self.grid_frames else None,
             "bridges": self.bridges_on,
             "rdf_limitation": "Bulk-density normalized; no excluded-volume correction. Evaluate alongside SASA.",
