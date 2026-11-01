@@ -266,6 +266,9 @@ class SolvationObserver:
         width = float(self.spec.get("rdf_bin_width_A", 0.2))
         if not np.isfinite(radius) or not np.isfinite(width) or min(radius, width) <= 0:
             raise ValueError("solvation RDF radius and bin width must be positive")
+        self.neighbor_method = self.spec.get("neighbor_method", "auto")
+        if self.neighbor_method not in ("auto", "nsgrid", "pkdtree", "bruteforce"):
+            raise ValueError("solvation.neighbor_method must be auto, nsgrid, pkdtree or bruteforce")
         self.edges = np.linspace(0, radius, int(np.ceil(radius / width)) + 1)
         self.shells = {"water": 3.5, "ions": 4.0, **(self.spec.get("shell_cutoffs_A") or {})}
         self.shells.update({key: self.shells.get(key, self.shells["ions"])
@@ -328,7 +331,8 @@ class SolvationObserver:
         for solvent, atoms in self.solvents.items():
             pair, distances = capped_distance(
                 self.site_atoms.positions, atoms.positions,
-                max_cutoff=float(self.edges[-1]), box=box, return_distances=True)
+                max_cutoff=float(self.edges[-1]), box=box, return_distances=True,
+                method=None if self.neighbor_method == "auto" else self.neighbor_method)
             indices = self.target_of_site[pair[:, 0]] if len(pair) else np.empty(0, int)
             shell = distances <= float(self.shells[solvent])
             counts, unique_pairs = unique_target_solvent_pairs(
@@ -524,6 +528,7 @@ class SolvationObserver:
             sasa_run=self.spec.get("sasa_run", "default"))
         atomic_json(dest / "metadata.json", {
             "preset": self.spec.get("preset", "standard"), "edges_A": self.edges.tolist(),
+            "neighbor_method": self.neighbor_method,
             "shell_cutoffs_A": self.shells, "events": self.events_on,
             "3d_grid_frames": list(self.grid_frames),
             "3d_grid_domain": "Only observed voxels within an inscribed sphere around a target origin; other voxels are not sampled.",
