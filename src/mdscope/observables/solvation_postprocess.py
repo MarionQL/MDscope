@@ -134,6 +134,34 @@ def calibration_stability(chunk_histograms, edges, *, min_chunks=4, tolerance_A=
     return pd.DataFrame(output, columns=columns)
 
 
+def aggregate_coordination(counts):
+    """Derive class/time and target summaries; never sum per-site RDF counts.
+
+    Each target contributes equally to per-class means. A target's
+    multi-site waters are already de-duplicated within its molecule.
+    This does not de-duplicate waters *across different molecules*.
+    """
+    class_keys = ["solvent", "target_class", "site_class"]
+    class_columns = class_keys + ["time_ps", "target_count",
+                                   "mean_n_solvent", "total_target_counts"]
+    target_columns = ["solvent", "target_id", "target_class", "site_class",
+                      "n_frames", "mean_n_solvent", "sd_n_solvent",
+                      "hydrated_fraction"]
+    if counts.empty:
+        return (pd.DataFrame(columns=class_columns),
+                pd.DataFrame(columns=target_columns))
+    frame = counts.groupby(class_keys + ["time_ps"], as_index=False).agg(
+        target_count=("target_id", "nunique"),
+        mean_n_solvent=("n_solvent", "mean"),
+        total_target_counts=("n_solvent", "sum"))
+    by_target = counts.groupby(class_keys + ["target_id"], as_index=False).agg(
+        n_frames=("n_solvent", "size"),
+        mean_n_solvent=("n_solvent", "mean"),
+        sd_n_solvent=("n_solvent", "std"),
+        hydrated_fraction=("n_solvent", lambda x: float((x > 0).mean())))
+    return frame[class_columns], by_target[target_columns]
+
+
 def write_solvation_derivatives(directory, repout, *, sasa_run="default"):
     """Persist optional derived outputs from previous measurements only."""
     from pathlib import Path
@@ -153,6 +181,11 @@ def write_solvation_derivatives(directory, repout, *, sasa_run="default"):
             edges = np.r_[axis.r_inner_A.to_numpy(float), float(axis.r_outer_A.iloc[-1])]
             atomic_parquet(directory / "shell_stability.parquet",
                            calibration_stability(hist, edges))
+    counts = directory / "counts.parquet"
+    if counts.exists():
+        by_class, by_target = aggregate_coordination(pd.read_parquet(counts))
+        atomic_parquet(directory / "species_timeseries.parquet", by_class)
+        atomic_parquet(directory / "target_summary.parquet", by_target)
     episodes = directory / "episodes.parquet"
     if episodes.exists():
         atomic_parquet(directory / "survival.parquet",
