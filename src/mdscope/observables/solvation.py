@@ -231,6 +231,11 @@ class SolvationObserver:
         atomic_parquet(dest / "rdf.parquet", pd.DataFrame(rows, columns=[
             "solvent", "target_class", "site_class", "r_inner_A", "r_outer_A",
             "pair_count", "g_bulk"]))
+        # Persist target-to-topology-residue membership for SASA reuse.
+        membership = [(target, int(res.ix)) for target, _, _, group in self.targets
+                      for res in group.residues]
+        atomic_parquet(dest / "target_residues.parquet", pd.DataFrame(
+            membership, columns=["target_id", "topology_residue_index"]))
         if self.events_on:
             frames = read("frames").drop_duplicates("frame").sort_values("frame")
             events = read("events")
@@ -239,6 +244,9 @@ class SolvationObserver:
                 if not events.empty else [],
                 list(frames[["frame", "time_ps"]].itertuples(index=False, name=None)))
             atomic_parquet(dest / "episodes.parquet", episodes)
+        from .solvation_postprocess import write_solvation_derivatives
+        write_solvation_derivatives(dest, self.repout,
+            sasa_run=self.spec.get("sasa_run", "default"))
         atomic_json(dest / "metadata.json", {
             "preset": self.spec.get("preset", "standard"), "edges_A": self.edges.tolist(),
             "shell_cutoffs_A": self.shells, "events": self.events_on,
