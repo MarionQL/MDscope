@@ -56,7 +56,7 @@ def report_coverage(root, system_repouts):
     specs=(
         ("Time series","statistics/time_series/system_statistics.parquet",
          "project_summary/figures/time_series/"),
-        ("Profiles","statistics/profiles/system_statistics.parquet",
+        ("Profiles","statistics/profiles/system_profile_statistics.parquet",
          "project_summary/figures/profiles/"),
         ("Interactions","statistics/interactions/",
          "project_summary/figures/interactions/"),
