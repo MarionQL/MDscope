@@ -69,3 +69,19 @@ def test_chunk_shell_calibration_reports_stable_vs_ambiguous():
     unstable = calibration_stability(pd.DataFrame(parts), edges)
     assert unstable.status.item() == "unresolved_chunks"
     assert unstable.chunks_resolved.item() == 3
+
+
+def test_coordination_aggregation_equal_weight_targets():
+    from mdscope.observables.solvation_postprocess import aggregate_coordination
+    values = pd.DataFrame({
+        "solvent": ["water"]*4,
+        "target_class": ["lipid"]*4,
+        "site_class": ["GM1a"]*4,
+        "target_id": ["A", "B", "A", "B"],
+        "time_ps": [0., 0., 5., 5.],
+        "n_solvent": [2, 6, 0, 4]})
+    by_class, by_target = aggregate_coordination(values)
+    assert by_class.mean_n_solvent.tolist() == [4., 2.]
+    assert by_class.target_count.tolist() == [2, 2]
+    assert by_target.set_index("target_id").loc["A", "hydrated_fraction"] == .5
+    assert by_target.set_index("target_id").loc["B", "mean_n_solvent"] == 5.
