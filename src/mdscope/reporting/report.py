@@ -506,8 +506,8 @@ def _build_pdf(path, cfg, root, system_repouts, options):
         body("All generated solvation datasets are indexed below. Large "
              "per-frame, per-target, residence-event and 3D voxel tables are "
              "not expanded into thousands of PDF pages. The companion ZIP "
-             "contains the numerical datasets, with explicit sampling/size "
-             "limits documented in its README.")
+             "contains all full-precision solvation Parquet files, plus bounded "
+             "CSV previews for convenient inspection.")
         rows=[["System / replicate","Dataset","Rows"]]
         for item in sol_inventory.itertuples():
             rows.append([f"{item.system}/{item.replicate}",item.table,item.rows])
@@ -647,8 +647,12 @@ def _make_bundle(root, pdf, system_repouts, options):
                     sol_dir=repout/"extensions"/"solvation"
                     if sol_dir.is_dir():
                         for sol_file in sorted(sol_dir.glob("*.parquet")):
+                            # Preserve every result exactly, without loading
+                            # full million-row event tables into pandas.
+                            archive.write(sol_file,arcname=str(
+                                relative/"extensions"/"solvation"/sol_file.name))
                             if sol_file.stat().st_size > 50_000_000:
-                                continue
+                                continue  # full Parquet is already archived
                             sol_data=pd.read_parquet(sol_file)
                             large={"counts","events","episodes","bridges",
                                    "water_hbond_bridges","hydration_sasa",
@@ -682,9 +686,9 @@ def _make_bundle(root, pdf, system_repouts, options):
                 "system/replicate/extensions: selection audits, lipid maps, conditioned HS summaries\n"
                 "system/replicate/summary/timeseries_sample.csv: uniformly sampled frames "
                 f"(at most {max_frames} per replicate)\n"
-                "Solvation summary tables are complete when below the size limit; "
-                "large event, voxel and frame-level tables are sampled to at most "
-                f"{max_frames} rows each and named *_sample.csv. "
+                "All solvation Parquet tables are archived in full (no size cap). "
+                "Compact CSVs are complete; event/voxel/frame CSV previews "
+                f"contain at most {max_frames} rows each and are named *_sample.csv. "
                 "Raw trajectories, TPR files, large caches and full frame-level "
                 "time-series tables are intentionally excluded.\n",
             )
