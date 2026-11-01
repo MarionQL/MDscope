@@ -277,7 +277,7 @@ class SolvationObserver:
             raise ValueError("solvation shell cutoffs must be positive and <= search radius")
         # Optional local 3D WATER density maps. The 3 anchor atoms define a
         # co-moving orthonormal frame for a named target, not a global grid.
-            self.grid_frames = {}
+        self.grid_frames = {}
         self.grid_width = float(self.spec.get("grid_width_A", 12.0))
         self.grid_spacing = float(self.spec.get("grid_spacing_A", 0.75))
         if self.spec.get("grid_frames"):
