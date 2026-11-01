@@ -7,7 +7,7 @@ This guide consolidates the authoritative technical details formerly scattered a
 
 ### MDscope architecture
 
-See [REPOSITORY_RULES.md](../developer/contributing.md) for cleanup and refactoring
+See [REPOSITORY_RULES.md](contributing.md) for cleanup and refactoring
 policy. This document records the current canonical module layout and dependency boundaries.
 
 ### Current canonical locations
