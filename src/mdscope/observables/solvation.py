@@ -155,12 +155,29 @@ class SolvationObserver:
             [np.full(len(g), i, dtype=np.int32)
              for i, (_, _, _, g) in enumerate(self.targets)])
         self.solvents = {}
-        for name, setting in (("water", "water_selection"), ("ions", "ion_selection")):
-            if self.spec.get(setting):
-                group = universe.select_atoms(self.spec[setting])
-                if not len(group) or len(np.unique(group.resindices)) != len(group):
-                    raise ValueError(f"solvation.{setting}: choose exactly one atom per water/ion")
-                self.solvents[name] = group
+        selectors = {}
+        if self.spec.get("water_selection"):
+            selectors["water"] = self.spec["water_selection"]
+        ion_specs = self.spec.get("ion_selections") or {}
+        if ion_specs and self.spec.get("ion_selection"):
+            raise ValueError("solvation: specify ion_selection OR ion_selections")
+        if ion_specs:
+            for label, selection in ion_specs.items():
+                if not label or "/" in str(label):
+                    raise ValueError("solvation ion species labels must be nonempty and exclude '/'")
+                selectors["ions/" + str(label)] = selection
+        elif self.spec.get("ion_selection"):
+            selectors["ions"] = self.spec["ion_selection"]
+        assigned = set()
+        for name, query in selectors.items():
+            group = universe.select_atoms(query)
+            if not len(group) or len(np.unique(group.resindices)) != len(group):
+                raise ValueError(f"solvation.{name}: select exactly one atom per solvent entity")
+            overlap = set(map(int, group.indices)) & assigned
+            if overlap:
+                raise ValueError(f"solvation solvent species selections overlap: {name}")
+            assigned.update(map(int, group.indices))
+            self.solvents[name] = group
         if not self.solvents:
             raise ValueError("solvation requires water_selection and/or ion_selection")
         self.hbond_rows = []
@@ -192,6 +209,8 @@ class SolvationObserver:
             raise ValueError("solvation RDF radius and bin width must be positive")
         self.edges = np.linspace(0, radius, int(np.ceil(radius / width)) + 1)
         self.shells = {"water": 3.5, "ions": 4.0, **(self.spec.get("shell_cutoffs_A") or {})}
+        self.shells.update({key: self.shells.get(key, self.shells["ions"])
+                            for key in self.solvents if key.startswith("ions/")})
         if any(not np.isfinite(float(x)) or not 0 < float(x) <= radius for x in self.shells.values()):
             raise ValueError("solvation shell cutoffs must be positive and <= search radius")
         # Optional local 3D WATER density maps. The 3 anchor atoms define a
@@ -228,6 +247,16 @@ class SolvationObserver:
         self.exposure = defaultdict(float)
         self.rows, self.events, self.bridges, self.frame_rows = [], [], [], []
         self.frames = 0
+        self.class_names = list(dict.fromkeys(
+            (kind, label) for _, kind, label, _ in self.targets))
+        class_idx = {name: i for i, name in enumerate(self.class_names)}
+        self.class_of_target = np.array(
+            [class_idx[(kind, label)] for _, kind, label, _ in self.targets],
+            dtype=np.int32)
+        self.class_atoms = np.bincount(
+            self.class_of_target,
+            weights=[len(group) for _, _, _, group in self.targets],
+            minlength=len(self.class_names))
 
     def update(self, ts, frame_index, time_ps):
         box = np.asarray(self.u.dimensions, float)
@@ -249,24 +278,16 @@ class SolvationObserver:
             # Bin all site–solvent pairs in a single vectorized pass.
             # Per-target boolean masking here would scale as O(targets*pairs)
             # and is particularly expensive for hundreds of lipid molecules.
-            classes = list(dict.fromkeys((kind, label) for _, kind, label, _ in self.targets))
-            class_lookup = {name: i for i, name in enumerate(classes)}
-            class_of_target = np.array(
-                [class_lookup[(kind, label)] for _, kind, label, _ in self.targets],
-                dtype=np.int32)
             radial_bin = np.searchsorted(self.edges, distances, side="right")-1
             valid = (radial_bin >= 0) & (radial_bin < len(self.edges)-1)
-            flat = class_of_target[indices[valid]] * (len(self.edges)-1) + radial_bin[valid]
-            histogram = np.bincount(flat, minlength=len(classes)*(len(self.edges)-1)).reshape(
-                len(classes), len(self.edges)-1)
-            class_atoms = np.bincount(
-                class_of_target,
-                weights=[len(group) for _, _, _, group in self.targets],
-                minlength=len(classes))
-            for class_index, (kind, label) in enumerate(classes):
+            n_bins = len(self.edges)-1
+            flat = self.class_of_target[indices[valid]] * n_bins + radial_bin[valid]
+            histogram = np.bincount(flat, minlength=len(self.class_names)*n_bins).reshape(
+                len(self.class_names), n_bins)
+            for class_index, (kind, label) in enumerate(self.class_names):
                 key = (solvent, kind, label)
                 self.hist[key] += histogram[class_index]
-                self.exposure[key] += class_atoms[class_index] * len(atoms)/volume
+                self.exposure[key] += self.class_atoms[class_index] * len(atoms)/volume
             for i, (target, kind, label, group) in enumerate(self.targets):
                 self.rows.append((int(frame_index), float(time_ps), solvent,
                                   target, kind, label, len(contacts[i])))
