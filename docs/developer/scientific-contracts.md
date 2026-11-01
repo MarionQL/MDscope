@@ -53,7 +53,7 @@ displacements in a bounded-RAM temporary disk-backed array, then calls the
 pure NumPy FFT kernel in `observables/multi_origin_msd.py`. This deliberately
 incurs additional I/O and uses the same minimum-image sampling assumption;
 it does **not** reconstruct missing molecular unwrap history. See
-[MULTI_ORIGIN_MSD.md](MULTI_ORIGIN_MSD.md).
+[MULTI_ORIGIN_MSD.md](../analyses.md).
 
 For publication-quality diffusion, validate the processing provenance of
 input trajectories, fit-window sensitivity, sampling versus box displacement,
