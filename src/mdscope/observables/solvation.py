@@ -143,6 +143,9 @@ class SolvationObserver:
         opts = self.spec.get("options") or {}
         self.events_on = bool(opts.get("events", events))
         self.bridges_on = bool(opts.get("bridges", bridges))
+        self.water_hbond_bridges = bool(opts.get("water_hbond_bridges", False))
+        if self.water_hbond_bridges:
+            self.bridges_on = True
         if self.bridges_on:
             self.events_on = True
         self.targets = _targets(universe, self.spec)
@@ -160,6 +163,29 @@ class SolvationObserver:
                 self.solvents[name] = group
         if not self.solvents:
             raise ValueError("solvation requires water_selection and/or ion_selection")
+        self.hbond_rows = []
+        self.water_hydrogens = None
+        self.hbond_da_A = float(opts.get("hbond_da_cutoff_A", 3.5))
+        self.hbond_angle = float(opts.get("hbond_angle_deg", 150.))
+        if self.water_hbond_bridges:
+            if "water" not in self.solvents:
+                raise ValueError("water H-bond bridges require water_selection")
+            if not (0 < self.hbond_da_A <= float(self.spec.get("search_radius_A", 8.))
+                    and 0 < self.hbond_angle <= 180):
+                raise ValueError("invalid water H-bond bridge thresholds")
+            ids = []
+            for oxygen in self.solvents["water"]:
+                try:
+                    bonded = oxygen.bonded_atoms
+                except Exception as exc:
+                    raise ValueError("water H-bond bridging requires O-H topology bonds") from exc
+                hydrogen = [int(atom.index) for atom in bonded
+                            if str(atom.name).upper().lstrip("0123456789").startswith("H")]
+                if len(hydrogen) != 2:
+                    raise ValueError("water oxygen must have precisely two bonded H atoms")
+                ids.extend(hydrogen)
+            self.water_hydrogens = self.u.atoms[ids]
+
         radius = float(self.spec.get("search_radius_A", 8.0))
         width = float(self.spec.get("rdf_bin_width_A", 0.2))
         if not np.isfinite(radius) or not np.isfinite(width) or min(radius, width) <= 0:
