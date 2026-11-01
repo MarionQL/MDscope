@@ -85,3 +85,40 @@ def test_coordination_aggregation_equal_weight_targets():
     assert by_class.target_count.tolist() == [2, 2]
     assert by_target.set_index("target_id").loc["A", "hydrated_fraction"] == .5
     assert by_target.set_index("target_id").loc["B", "mean_n_solvent"] == 5.
+
+
+def test_chunked_coordination_summary_matches_whole_dataframe(tmp_path):
+    from mdscope.observables.solvation_postprocess import (
+        aggregate_coordination, aggregate_coordination_parts)
+    rng = np.random.default_rng(134)
+    frames = []
+    for step in range(38):
+        for target in range(5):
+            frames.append((float(step), "water", "protein", "acidic",
+                           f"p{target}", int(rng.integers(0, 7))))
+    df = pd.DataFrame(frames, columns=[
+        "time_ps", "solvent", "target_class", "site_class",
+        "target_id", "n_solvent"])
+    paths = []
+    for i, indices in enumerate(np.array_split(np.arange(len(df)), 6)):
+        path = tmp_path / f"counts-{i:06d}.parquet"
+        df.iloc[indices].to_parquet(path, index=False)
+        paths.append(path)
+    # A frame can span chunks only if a caller explicitly splits it;
+    # the fused flush machinery always writes entire frames.
+    whole_class, whole_target = aggregate_coordination(df)
+    partial_class, partial_target = aggregate_coordination_parts(paths)
+    for actual, expected in (
+        (partial_class, whole_class), (partial_target, whole_target)):
+        keys = [k for k in ("time_ps", "target_id", "solvent")
+                if k in actual.columns]
+        actual = actual.sort_values(keys).reset_index(drop=True)
+        expected = expected.sort_values(keys).reset_index(drop=True)
+        pd.testing.assert_frame_equal(actual, expected, check_dtype=False,
+                                      rtol=1e-10, atol=1e-10)
+
+
+def test_chunked_coordination_summary_empty_inputs():
+    from mdscope.observables.solvation_postprocess import aggregate_coordination_parts
+    by_class, by_target = aggregate_coordination_parts([])
+    assert by_class.empty and by_target.empty
