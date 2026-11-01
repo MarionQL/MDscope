@@ -1,0 +1,92 @@
+name: Full finalization benchmark
+
+# This benchmark consumes already-computed six-replicate MDscope outputs.
+# The published release contains short trajectory samples, not the complete
+# production results; benchmarking those samples would not predict finalization.
+on:
+  workflow_dispatch:
+    inputs:
+      results_url:
+        description: "HTTPS URL of a .tar.gz containing results_memb_full_mechanisms/"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      PYTHONUNBUFFERED: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install MDscope
+        run: python -m pip install -e .
+      - name: Fetch existing production results
+        env:
+          RESULTS_URL: ${{ inputs.results_url }}
+        run: |
+          python - <<'PY'
+          import os
+          from urllib.parse import urlparse
+          url = urlparse(os.environ["RESULTS_URL"])
+          if url.scheme != "https" or not url.hostname:
+              raise SystemExit("results_url must be an HTTPS URL")
+          PY
+          curl --fail --location --retry 3 --output results.tar.gz "$RESULTS_URL"
+          mkdir -p benchmark_input
+          tar -tzf results.tar.gz | head -n 10 || true
+          tar -xzf results.tar.gz -C benchmark_input --no-same-owner --no-same-permissions
+          test -d benchmark_input/results_memb_full_mechanisms
+      - name: Prepare isolated benchmark configuration
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+          cfg = yaml.safe_load(Path("synd4_full_mechanisms.yaml").read_text())
+          cfg["project"]["output"] = str(Path("benchmark_input/results_memb_full_mechanisms").resolve())
+          # Finalization uses existing per-replicate artifacts. TPR/XTC files
+          # are not downloaded or reopened by this workflow.
+          Path("benchmark.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+          PY
+      - name: Profile complete finalize
+        run: |
+          set -o pipefail
+          /usr/bin/time -v -o resource_usage.txt \
+            python -m cProfile -o finalize.prof -m mdscope.cli finalize benchmark.yaml \
+            2>&1 | tee finalize.log
+      - name: Summarize CPU hotspots
+        if: always()
+        run: |
+          python - <<'PY'
+          import pstats
+          from pathlib import Path
+          if Path("finalize.prof").exists():
+              with open("profile_summary.txt", "w") as f:
+                  p = pstats.Stats("finalize.prof", stream=f)
+                  p.sort_stats("cumulative").print_stats(75)
+                  p.sort_stats("tottime").print_stats(75)
+          PY
+          cat resource_usage.txt 2>/dev/null || true
+          grep 'TIMING finalize' finalize.log 2>/dev/null || true
+          head -n 100 profile_summary.txt 2>/dev/null || true
+      - name: Upload timing and profiling diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-finalization-benchmark
+          path: |
+            finalize.log
+            finalize.prof
+            profile_summary.txt
+            resource_usage.txt
+            benchmark_input/results_memb_full_mechanisms/project_summary/finalization_timings.json
+          if-no-files-found: warn
+          retention-days: 7
