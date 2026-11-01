@@ -127,3 +127,43 @@ def solvation_comparison_rows(root):
     if "group" not in df:
         return pd.DataFrame()
     return df[df.group.fillna("").astype(str).str.startswith("solvation/")]
+
+
+def solvation_survival_figure(system_repouts, *, max_curves=8):
+    """Show descriptive censored contact-survival curves, if recorded."""
+    import pyarrow.parquet as pq
+    curves=[]
+    for system,reps in system_repouts.items():
+        for rep in reps:
+            path=Path(rep)/"extensions"/"solvation"/"survival.parquet"
+            if not path.exists():
+                continue
+            cols=pq.ParquetFile(path).schema_arrow.names
+            if not {"time_ps","survival_probability"}.issubset(cols):
+                continue
+            df=pd.read_parquet(path)
+            keys=[k for k in ("solvent","target_id") if k in df]
+            groups=df.groupby(keys,sort=False) if keys else [((),df)]
+            for key,group in groups:
+                if len(curves)>=max_curves:
+                    break
+                curves.append((f"{system}/{rep.name}/{key}",group))
+    if not curves:
+        return None
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    fig,ax=plt.subplots(figsize=(7.2,3.7))
+    for label,df in curves:
+        df=df.sort_values("time_ps")
+        ax.step(df.time_ps,df.survival_probability,where="post",label=label,lw=1)
+    ax.set_xlabel("Observed contact duration (ps)")
+    ax.set_ylabel("Survival probability")
+    ax.set_ylim(0,1.02)
+    ax.legend(fontsize=6,frameon=False)
+    fig.tight_layout()
+    buf=BytesIO()
+    fig.savefig(buf,format="png",dpi=150)
+    plt.close(fig)
+    buf.seek(0)
+    return buf,len(curves)
