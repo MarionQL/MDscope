@@ -284,3 +284,26 @@ def test_unique_coordination_matches_python_reference_with_duplicates():
         np.empty(0, int), np.empty(0, int), 5)
     assert empty_counts.tolist() == [0]*5
     assert empty_pairs.shape == (0, 2)
+
+
+def test_neighbor_methods_produce_identical_coordination(tmp_path):
+    config = {"analyses": {"solvation": {
+        "enabled": True, "preset": "standard",
+        "targets": {"protein": {"acid": "resname GLU and name OE1 OE2"}},
+        "water_selection": "resname SOL and name OW",
+        "search_radius_A": 5.,
+    }}}
+    results = []
+    for backend in ("auto", "nsgrid", "pkdtree", "bruteforce"):
+        config["analyses"]["solvation"]["neighbor_method"] = backend
+        u = _universe()
+        observer = SolvationObserver(u, config, tmp_path/backend)
+        observer.update(u.trajectory[0], 0, 0.)
+        observer.flush(0)
+        observer.finalize()
+        root = tmp_path/backend/"extensions/solvation"
+        results.append((pd.read_parquet(root/"counts.parquet"),
+                        pd.read_parquet(root/"rdf.parquet")))
+    for counts, rdf in results[1:]:
+        pd.testing.assert_frame_equal(counts, results[0][0])
+        pd.testing.assert_frame_equal(rdf, results[0][1])
