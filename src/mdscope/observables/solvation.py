@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import capped_distance
 from MDAnalysis.lib.mdamath import triclinic_vectors
+from ..core.geometry import minimum_image_displacements
 
 from ..config import atomic_json, atomic_parquet, ensure_dir
 
@@ -119,6 +120,30 @@ def _targets(u, spec):
 
 
 
+
+def unique_target_solvent_pairs(target_indices, solvent_indices, n_targets):
+    """Count unique solvent entities per target without Python per-pair sets.
+
+    Return (counts, sorted unique local index pairs). No atom identities are
+    discarded: the caller can map local solvent indices to topology indices
+    before persistence. Duplicated coordination atoms are counted once.
+    """
+    target_indices = np.asarray(target_indices, dtype=np.intp)
+    solvent_indices = np.asarray(solvent_indices, dtype=np.intp)
+    if target_indices.shape != solvent_indices.shape:
+        raise ValueError("target/solvent arrays must have matching shape")
+    if len(target_indices) == 0:
+        return np.zeros(n_targets, dtype=np.int64), np.empty((0, 2), dtype=np.intp)
+    order = np.lexsort((solvent_indices, target_indices))
+    targets = target_indices[order]
+    solvent = solvent_indices[order]
+    first = np.r_[True, (targets[1:] != targets[:-1]) |
+                  (solvent[1:] != solvent[:-1])]
+    unique_targets = targets[first]
+    pairs = np.column_stack((unique_targets, solvent[first]))
+    return np.bincount(unique_targets, minlength=n_targets), pairs
+
+
 def water_donor_hbonds(site_xyz, water_xyz, water_hydrogens, pairs, box,
                        max_da_A=3.5, min_angle_deg=150.):
     """Return water-index/site-index/H-index triples satisfying D-H...A.
@@ -126,18 +151,17 @@ def water_donor_hbonds(site_xyz, water_xyz, water_hydrogens, pairs, box,
     Explicit water O-H bonds and target-acceptor atom selections are required.
     This deliberately does not classify target-donor/water-acceptor contacts.
     """
-    from MDAnalysis.lib.distances import minimize_vectors
     pairs = np.asarray(pairs, dtype=int).reshape(-1, 2)
     if not len(pairs):
         return np.empty((0, 3), dtype=int)
     donor = np.asarray(water_xyz, float)[pairs[:, 1]]
     acceptor = np.asarray(site_xyz, float)[pairs[:, 0]]
-    da = np.linalg.norm(minimize_vectors(acceptor-donor, box), axis=1)
+    da = np.linalg.norm(minimum_image_displacements(acceptor-donor, box), axis=1)
     output = []
     for hi in (0, 1):
         hyd = np.asarray(water_hydrogens, float)[pairs[:, 1], hi]
-        dh = minimize_vectors(donor-hyd, box)
-        ah = minimize_vectors(acceptor-hyd, box)
+        dh = minimum_image_displacements(donor-hyd, box)
+        ah = minimum_image_displacements(acceptor-hyd, box)
         norms = np.linalg.norm(dh, axis=1)*np.linalg.norm(ah, axis=1)
         cosine = np.divide(np.einsum("ij,ij->i", dh, ah), norms,
                            out=np.zeros(len(da)), where=norms > 1e-12)
@@ -242,6 +266,9 @@ class SolvationObserver:
         width = float(self.spec.get("rdf_bin_width_A", 0.2))
         if not np.isfinite(radius) or not np.isfinite(width) or min(radius, width) <= 0:
             raise ValueError("solvation RDF radius and bin width must be positive")
+        self.neighbor_method = self.spec.get("neighbor_method", "auto")
+        if self.neighbor_method not in ("auto", "nsgrid", "pkdtree", "bruteforce"):
+            raise ValueError("solvation.neighbor_method must be auto, nsgrid, pkdtree or bruteforce")
         self.edges = np.linspace(0, radius, int(np.ceil(radius / width)) + 1)
         self.shells = {"water": 3.5, "ions": 4.0, **(self.spec.get("shell_cutoffs_A") or {})}
         self.shells.update({key: self.shells.get(key, self.shells["ions"])
@@ -250,8 +277,6 @@ class SolvationObserver:
             raise ValueError("solvation shell cutoffs must be positive and <= search radius")
         # Optional local 3D WATER density maps. The 3 anchor atoms define a
         # co-moving orthonormal frame for a named target, not a global grid.
-        from MDAnalysis.lib.distances import minimize_vectors
-        self._minimize_vectors = minimize_vectors
         self.grid_frames = {}
         self.grid_width = float(self.spec.get("grid_width_A", 12.0))
         self.grid_spacing = float(self.spec.get("grid_spacing_A", 0.75))
@@ -304,12 +329,21 @@ class SolvationObserver:
         for solvent, atoms in self.solvents.items():
             pair, distances = capped_distance(
                 self.site_atoms.positions, atoms.positions,
-                max_cutoff=float(self.edges[-1]), box=box, return_distances=True)
+                max_cutoff=float(self.edges[-1]), box=box, return_distances=True,
+                method=None if self.neighbor_method == "auto" else self.neighbor_method)
             indices = self.target_of_site[pair[:, 0]] if len(pair) else np.empty(0, int)
             shell = distances <= float(self.shells[solvent])
-            contacts = defaultdict(set)
-            for ti, si in zip(indices[shell], pair[shell, 1]):
-                contacts[int(ti)].add(int(atoms.indices[si]))
+            counts, unique_pairs = unique_target_solvent_pairs(
+                indices[shell], pair[shell, 1], len(self.targets))
+            # Only build per-solvent identity sets when events or bridges
+            # actually require them. The standard preset stays NumPy-only.
+            contacts = None
+            if self.events_on or self.bridges_on:
+                contacts = defaultdict(set)
+                for target_idx, solvent_local in unique_pairs:
+                    if int(target_idx) in self.tracked_target_indices:
+                        contacts[int(target_idx)].add(
+                            int(atoms.indices[solvent_local]))
             # Bin all site–solvent pairs in a single vectorized pass.
             # Per-target boolean masking here would scale as O(targets*pairs)
             # and is particularly expensive for hundreds of lipid molecules.
@@ -325,7 +359,7 @@ class SolvationObserver:
                 self.exposure[key] += self.class_atoms[class_index] * len(atoms)/volume
             for i, (target, kind, label, group) in enumerate(self.targets):
                 self.rows.append((int(frame_index), float(time_ps), solvent,
-                                  target, kind, label, len(contacts[i])))
+                                  target, kind, label, int(counts[i])))
                 if self.events_on and i in self.tracked_target_indices:
                     self.events.extend((int(frame_index), float(time_ps), solvent,
                                         target, solvent_id)
@@ -339,7 +373,7 @@ class SolvationObserver:
                     if anchors is None:
                         continue
                     origin, second, third = anchors.positions
-                    v1, v2 = self._minimize_vectors(
+                    v1, v2 = minimum_image_displacements(
                         np.asarray([second-origin, third-origin], dtype=float), box)
                     norm1 = np.linalg.norm(v1)
                     if norm1 < 1e-7:
@@ -353,7 +387,7 @@ class SolvationObserver:
                     rotation = np.column_stack((e1, e2, np.cross(e1,e2)))
                     js = np.unique(pair[indices == target_i, 1])
                     if len(js):
-                        delta = self._minimize_vectors(
+                        delta = minimum_image_displacements(
                             np.asarray(water_xyz[js]-origin,dtype=float),box)
                         local = delta @ rotation
                         # Inscribed sphere is fully covered by the original
@@ -492,6 +526,7 @@ class SolvationObserver:
             sasa_run=self.spec.get("sasa_run", "default"))
         atomic_json(dest / "metadata.json", {
             "preset": self.spec.get("preset", "standard"), "edges_A": self.edges.tolist(),
+            "neighbor_method": self.neighbor_method,
             "shell_cutoffs_A": self.shells, "events": self.events_on,
             "3d_grid_frames": list(self.grid_frames),
             "3d_grid_domain": "Only observed voxels within an inscribed sphere around a target origin; other voxels are not sampled.",

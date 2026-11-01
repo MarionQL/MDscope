@@ -266,3 +266,70 @@ def test_target_water_overlap_is_rejected(tmp_path):
         "water_selection": "resname SOL and name OW"}}}
     with pytest.raises(ValueError, match="overlap"):
         SolvationObserver(u, cfg, tmp_path)
+
+
+def test_unique_coordination_matches_python_reference_with_duplicates():
+    from collections import defaultdict
+    from mdscope.observables.solvation import unique_target_solvent_pairs
+    targets = np.array([2, 0, 2, 2, 1, 0, 2, 1, 0], dtype=np.int32)
+    water = np.array([7, 3, 7, 9, 1, 3, 8, 1, 4], dtype=np.int32)
+    reference = defaultdict(set)
+    for i, j in zip(targets, water):
+        reference[int(i)].add(int(j))
+    counts, pairs = unique_target_solvent_pairs(targets, water, 5)
+    assert counts.tolist() == [2, 1, 3, 0, 0]
+    assert set(map(tuple, pairs)) == {
+        (i, j) for i, values in reference.items() for j in values}
+    empty_counts, empty_pairs = unique_target_solvent_pairs(
+        np.empty(0, int), np.empty(0, int), 5)
+    assert empty_counts.tolist() == [0]*5
+    assert empty_pairs.shape == (0, 2)
+
+
+def test_neighbor_methods_produce_identical_coordination(tmp_path):
+    config = {"analyses": {"solvation": {
+        "enabled": True, "preset": "standard",
+        "targets": {"protein": {"acid": "resname GLU and name OE1 OE2"}},
+        "water_selection": "resname SOL and name OW",
+        "search_radius_A": 5.,
+    }}}
+    results = []
+    for backend in ("auto", "nsgrid", "pkdtree", "bruteforce"):
+        config["analyses"]["solvation"]["neighbor_method"] = backend
+        u = _universe()
+        observer = SolvationObserver(u, config, tmp_path/backend)
+        ts = u.trajectory[0]
+        # The shared fixture contains an EXACT RDF bin-edge separation
+        # (2.0 Å). Distinct native PBC backends may round that distance
+        # to opposite sides of the edge without changing coordination.
+        # Move only this test's solvent slightly off that discontinuity.
+        u.atoms[2].position = [3.07, 1., 1.]
+        u.atoms[3].position = [19.43, 1., 1.]
+        observer.update(ts, 0, 0.)
+        observer.flush(0)
+        observer.finalize()
+        root = tmp_path/backend/"extensions/solvation"
+        results.append((pd.read_parquet(root/"counts.parquet"),
+                        pd.read_parquet(root/"rdf.parquet")))
+    for counts, rdf in results[1:]:
+        pd.testing.assert_frame_equal(counts, results[0][0])
+        pd.testing.assert_frame_equal(rdf, results[0][1])
+
+
+def test_water_hbond_uses_shared_triclinic_minimum_image():
+    from MDAnalysis.lib.mdamath import triclinic_vectors
+    from mdscope.observables.solvation import water_donor_hbonds
+    box = np.array([30., 31., 32., 88., 94., 73.])
+    lattice = triclinic_vectors(box)
+    solvent = np.array([[12., 10., 8.]])
+    acceptor = np.array([[9.3, 10., 8.], [14.7, 10., 8.]])
+    hydrogens = np.array([[[11., 10., 8.], [13., 10., 8.]]])
+    pairs = np.array([[0, 0], [1, 0]])
+    expected = set(map(tuple, water_donor_hbonds(
+        acceptor, solvent, hydrogens, pairs, box)))
+    shifted = acceptor.copy()
+    shifted[0] += lattice[0] - lattice[1]
+    result = set(map(tuple, water_donor_hbonds(
+        shifted, solvent, hydrogens, pairs, box)))
+    assert expected == {(0, 0, 0), (0, 1, 1)}
+    assert result == expected

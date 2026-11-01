@@ -40,7 +40,7 @@ def audit(observer):
                 for name, group in observer.solvents.items()}}
 
 
-def benchmark(cfg, config_path, *, system, replicate, frames, preset, output=None):
+def benchmark(cfg, config_path, *, system, replicate, frames, preset, output=None, neighbor_method=None):
     choices = [rep for rep in iter_replicates(cfg, config_path)
                if rep.system == system and rep.label == replicate]
     if len(choices) != 1:
@@ -49,6 +49,8 @@ def benchmark(cfg, config_path, *, system, replicate, frames, preset, output=Non
     if not cfg["analyses"]["solvation"].get("enabled", False):
         raise ValueError("Enable analyses.solvation in the configuration")
     cfg["analyses"]["solvation"]["preset"] = preset
+    if neighbor_method:
+        cfg["analyses"]["solvation"]["neighbor_method"] = neighbor_method
     # Select just the specified frames; preserve original stride and start.
     tr = cfg["trajectory"]
     start = 0 if tr.get("start") is None else int(tr["start"])
@@ -88,6 +90,7 @@ def benchmark(cfg, config_path, *, system, replicate, frames, preset, output=Non
             "topology": str(rep.topology),
             "trajectory": str(rep.trajectory),
             "system": rep.system, "replicate": rep.label, "preset": preset,
+            "neighbor_method": cfg["analyses"]["solvation"].get("neighbor_method", "auto"),
             "analyzed_frames": completed,
             "time_s_total": round(elapsed, 4),
             "time_s_updates": round(update_time, 4),
@@ -119,11 +122,12 @@ def main():
     parser.add_argument("--preset", choices=("standard", "detailed", "kinetics"),
                         default="standard")
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--neighbor-method", choices=("auto", "nsgrid", "pkdtree", "bruteforce"))
     args = parser.parse_args()
     cfg = load_config(args.config)
     print(json.dumps(benchmark(cfg, args.config, system=args.system,
           replicate=args.rep, frames=args.frames, preset=args.preset,
-          output=args.output), indent=2))
+          output=args.output, neighbor_method=args.neighbor_method), indent=2))
 
 
 if __name__ == "__main__":
