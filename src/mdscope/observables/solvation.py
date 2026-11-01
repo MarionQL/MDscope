@@ -79,6 +79,25 @@ def _targets(u, spec):
             if grouping == "residue":
                 chunks = [(str(res.ix), atoms[atoms.resindices == res.ix])
                           for res in atoms.residues]
+            elif grouping == "hs_chain":
+                # Topology-derived HS chain identities (never chainID alone).
+                # HS is attached to the protein, so generic bonded fragments
+                # cannot distinguish HS chains connected to the same protomer.
+                auto = spec.get("hs_auto") or {}
+                if not auto.get("glycan_selection") or not auto.get("attachment_selection"):
+                    raise ValueError("solvation hs_chain grouping requires hs_auto glycan and attachment selections")
+                from ..mechanisms.hs_topology import discover_covalent_hs
+                chains, _, _ = discover_covalent_hs(u, auto)
+                chunks = []
+                covered = set()
+                selected = set(map(int, atoms.indices))
+                for identity, glycan in chains.items():
+                    atom_ids = sorted(selected.intersection(map(int, glycan.indices)))
+                    if atom_ids:
+                        chunks.append((identity, u.atoms[atom_ids]))
+                        covered.update(atom_ids)
+                if covered != selected:
+                    raise ValueError("solvation hs_chain selected atoms not covered by discovered HS chains")
             elif grouping == "selection":
                 chunks = [("all", atoms)]
             elif grouping == "fragment":
@@ -148,7 +167,9 @@ class SolvationObserver:
             self.bridges_on = True
         if self.bridges_on:
             self.events_on = True
-        self.targets = _targets(universe, self.spec)
+        hs_auto = self.spec.get("hs_auto") or (
+            cfg.get("analyses", {}).get("sdc4_mechanisms", {}).get("hs_auto") or {})
+        self.targets = _targets(universe, {**self.spec, "hs_auto": hs_auto})
         indices = np.concatenate([g.indices for _, _, _, g in self.targets])
         self.site_atoms = universe.atoms[indices]
         self.target_of_site = np.concatenate(
