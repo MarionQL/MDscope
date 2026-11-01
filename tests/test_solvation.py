@@ -133,3 +133,39 @@ def test_water_donor_bridge_persisted_with_topology_bonds(tmp_path):
     assert len(bridge) == 1
     assert {bridge.target_a.iloc[0], bridge.target_b.iloc[0]} == {
         "protein/acceptor/0", "protein/acceptor/1"}
+
+
+def test_explicit_ion_species_labels_and_nonoverlap(tmp_path):
+    u = _universe()
+    cfg = {"analyses": {"solvation": {
+        "enabled": True, "preset": "standard",
+        "targets": {"protein": {"acidic": "resname GLU and name OE1 OE2"}},
+        "ion_selections": {"Na": "resname SOD"},
+        "search_radius_A": 5., "shell_cutoffs_A": {"ions": 4.},
+    }}}
+    obs = SolvationObserver(u, cfg, tmp_path)
+    obs.update(u.trajectory[0], 0, 0.)
+    obs.flush(0)
+    obs.finalize()
+    counts = pd.read_parquet(tmp_path/"extensions/solvation/counts.parquet")
+    assert counts.solvent.tolist() == ["ions/Na"]
+    assert counts.n_solvent.tolist() == [1]
+    rdf = pd.read_parquet(tmp_path/"extensions/solvation/rdf.parquet")
+    assert set(rdf.solvent) == {"ions/Na"}
+    cfg["analyses"]["solvation"]["ion_selections"] = {
+        "Na": "resname SOD", "Duplicate": "resname SOD"}
+    import pytest
+    with pytest.raises(ValueError, match="overlap"):
+        SolvationObserver(u, cfg, tmp_path/"bad")
+
+
+def test_mixed_ion_selection_configuration_rejected(tmp_path):
+    import pytest
+    u = _universe()
+    cfg = {"analyses": {"solvation": {
+        "enabled": True,
+        "targets": {"protein": {"acidic": "resname GLU"}},
+        "ion_selection": "resname SOD", "ion_selections": {"Na":"resname SOD"}
+    }}}
+    with pytest.raises(ValueError, match="OR"):
+        SolvationObserver(u, cfg, tmp_path)
