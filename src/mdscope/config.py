@@ -160,6 +160,12 @@ DEFAULTS = {
             "update_selections": False,
         },
         "sasa": {"enabled": False},
+        "solvation": {"enabled": False, "preset": "standard",
+                      "targets": {}, "water_selection": None, "ion_selection": None,
+                      "ion_selections": {},
+                      "search_radius_A": 8.0, "rdf_bin_width_A": 0.2,
+                      "shell_cutoffs_A": {"water": 3.5, "ions": 4.0},
+                      "options": {}},
         "lifetimes": {"enabled": True, "gap_factor": 1.5},
     },
     "statistics": {
@@ -644,6 +650,35 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
     lipid_hb = cfg["analyses"].get("lipid_hydrogen_bonds",{})
     if lipid_hb.get("enabled") and not lipid_hb.get("lipid_selection"):
         raise ValueError("lipid_hydrogen_bonds.lipid_selection is required")
+
+    solvation = cfg["analyses"].get("solvation", {})
+    if solvation.get("enabled"):
+        if solvation.get("preset", "standard") not in ("standard", "detailed", "kinetics"):
+            raise ValueError("solvation.preset must be standard, detailed or kinetics")
+        if not isinstance(solvation.get("targets"), dict) or not solvation["targets"]:
+            raise ValueError("solvation.targets must define explicit chemical-site selections")
+        if solvation.get("ion_selection") and solvation.get("ion_selections"):
+            raise ValueError("solvation: specify ion_selection OR ion_selections")
+        if not (solvation.get("water_selection") or solvation.get("ion_selection")
+                or solvation.get("ion_selections")):
+            raise ValueError("solvation requires water_selection or ion selections")
+        for kind, groups in solvation["targets"].items():
+            if not isinstance(groups, dict) or not groups:
+                raise ValueError(f"solvation.targets.{kind} must map labels to sites")
+            for label, selection in groups.items():
+                actual = selection if isinstance(selection, str) else (
+                    selection.get("selection") if isinstance(selection, dict) else None)
+                if not isinstance(actual, str) or not actual.strip():
+                    raise ValueError(f"solvation.targets.{kind}.{label} needs a selection")
+        if solvation.get("ion_selections") and not isinstance(solvation["ion_selections"], dict):
+            raise ValueError("solvation.ion_selections must be a mapping")
+        radius = float(solvation.get("search_radius_A", 8.0))
+        width = float(solvation.get("rdf_bin_width_A", .2))
+        if not (np.isfinite(radius) and np.isfinite(width) and 0 < width <= radius):
+            raise ValueError("solvation: invalid search radius or RDF bin width")
+        if any(not 0 < float(value) <= radius
+               for value in (solvation.get("shell_cutoffs_A") or {}).values()):
+            raise ValueError("solvation shell cutoffs must be positive and <= search radius")
 
     mechanisms = cfg["analyses"].get("sdc4_mechanisms", {})
     if mechanisms.get("enabled"):

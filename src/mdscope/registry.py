@@ -74,6 +74,7 @@ FUSED_OUTPUTS = {
     "dssp": "profiles/dssp/assignments.parquet",
     "sasa": "profiles/sasa/residue_sasa.parquet",
     "local_environment": "extensions/local_environment/timeseries.parquet",
+    "solvation": "extensions/solvation/counts.parquet",
     "sdc4_mechanisms": "extensions/sdc4_mechanisms/timeseries.parquet",
 }
 
