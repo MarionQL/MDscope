@@ -22,6 +22,10 @@ import pandas as pd
 
 from ..config import ensure_dir
 from .report_inventory import _read, _sample_frame_table, _summary_inventory, _metric_groups
+from .figure_inventory import figure_inventory, report_coverage, metric_coverage
+from .solvation_figures import (solvation_inventory, solvation_rdf_figure,
+    solvation_timeseries_figure, solvation_survival_figure,
+    solvation_stat_rows, solvation_comparison_rows)
 
 
 CATEGORIES = (
@@ -447,6 +451,141 @@ def _build_pdf(path, cfg, root, system_repouts, options):
                 body(f"{len(conditional)-max_cond} additional conditioned rows "
                      "are included in the companion ZIP.")
 
+    # Solvation results are reported explicitly, rather than hidden among
+    # generic scalar metrics. Large per-target/event tables are indexed here
+    # and included at full precision in the companion ZIP.
+    sol_inventory = solvation_inventory(system_repouts)
+    if not sol_inventory.empty:
+        story.append(PageBreak())
+        header("Solvation, hydration and ion coordination")
+        body("Solvation counts are unique solvent entities within configured shells. "
+             "The hydration fraction is the fraction of targets with at least one "
+             "solvent in the shell. RDF g(r) uses a bulk-density normalization "
+             "without excluded-volume correction. Replicates, not frames or "
+             "molecular sites, are independent sampling units.")
+        summary = solvation_stat_rows(root)
+        if not summary.empty:
+            sub("System-level hydration and coordination statistics")
+            body("Moving-block and hierarchical bootstrap confidence intervals "
+                 "reuse the project-wide statistics settings.")
+            rows = [["System", "Solvent / target class / site", "Metric",
+                     "Mean [95% CI]", "n reps"]]
+            for item in summary.head(55).itertuples():
+                rows.append([item.system, str(item.group).replace("solvation/",""),
+                    item.metric, f"{_fmt(item.mean)} [{_fmt(item.mean_ci_low)}, "
+                    f"{_fmt(item.mean_ci_high)}]", item.n_replicates])
+            table(rows,[77,174,91,125,43])
+            if len(summary)>55:
+                body(f"Showing 55 of {len(summary)} system/metric rows. "
+                     "All rows are preserved in the review ZIP.")
+        comparisons_sol=solvation_comparison_rows(root)
+        if not comparisons_sol.empty:
+            sub("Between-condition solvation differences")
+            rows=[["Comparison","Solvent / target class / site","Metric",
+                   "Difference [95% CI]"]]
+            for item in comparisons_sol.head(35).itertuples():
+                rows.append([f"{item.system_2} - {item.system_1}",
+                    str(item.group).replace("solvation/",""),item.metric,
+                    f"{_fmt(item.mean_difference_system2_minus_system1)} "
+                    f"[{_fmt(item.mean_difference_ci_low)}, "
+                    f"{_fmt(item.mean_difference_ci_high)}]"])
+            table(rows,[100,166,92,152])
+            if len(comparisons_sol)>35:
+                body(f"Showing 35 of {len(comparisons_sol)} comparisons; "
+                     "full results including p/q values are in the ZIP.")
+        rdf_figure=solvation_rdf_figure(root,system_repouts)
+        if rdf_figure:
+            sub("Radial distribution functions")
+            figure(rdf_figure[0],"Replicate-mean RDFs with ±1 replicate SD bands. "
+                   f"Showing {rdf_figure[1]} of {rdf_figure[2]} chemical classes; "
+                   "all numerical curves are in the review ZIP.")
+        series_figure=solvation_timeseries_figure(system_repouts)
+        if series_figure:
+            sub("Coordination over simulation time")
+            figure(series_figure[0],"Per-replicate coordination time series. "
+                   f"Showing {series_figure[1]} of {series_figure[2]} chemical classes.")
+        survival_figure=solvation_survival_figure(system_repouts)
+        if survival_figure:
+            sub("Observed solvent-contact survival")
+            figure(survival_figure[0],"Descriptive survival curves from sampled "
+                   "contact episodes, with recorded censoring. "
+                   f"Showing up to {survival_figure[1]} curves; no uncertainty "
+                   "bands are inferred.")
+        # Compact previews of the remaining scientific observables. The
+        # full data remain lossless in the bundle; no invented CI is shown.
+        for filename,title_,columns in (
+            ("target_summary","Per-target hydration and ion coordination",
+             ["solvent","target_id","mean_n_solvent","hydrated_fraction"]),
+            ("shell_candidates","Candidate hydration-shell boundaries",
+             ["solvent","target_class","site_class","suggested_cutoff_A","status"]),
+            ("shell_stability","Hydration-shell convergence diagnostics",
+             ["solvent","target_class","site_class","median_cutoff_A","status"]),
+            ("survival","Water/ion contact survival",
+             ["solvent","target_id","time_ps","survival_probability"]),
+            ("hydration_sasa","Hydration and solvent accessibility",
+             ["time_ps","target_id","n_solvent","sasa_nm2","sasa_coverage"]),
+            ("water_density_3d","Local 3D water-density voxel values",
+             ["target_id","x_A","y_A","z_A","g_bulk"]),
+            ("bridges","Solvent-mediated target bridges",
+             ["time_ps","solvent","target_a","target_b"]),
+            ("water_hbond_bridges","Geometry-qualified water bridges",
+             ["time_ps","target_a","target_b"]),
+            ("episodes","Sampled solvent residence episodes",
+             ["solvent","target_id","duration_ps","right_censored"]),
+        ):
+            examples=[]
+            total=0
+            for system_,paths_ in system_repouts.items():
+                for rep_ in paths_:
+                    path_=rep_/"extensions"/"solvation"/(filename+".parquet")
+                    if not path_.exists():
+                        continue
+                    import pyarrow.parquet as pq
+                    pf=pq.ParquetFile(path_)
+                    total+=pf.metadata.num_rows
+                    if len(examples)>=8:
+                        continue
+                    available=[c for c in columns if c in pf.schema_arrow.names]
+                    if not available:
+                        continue
+                    batch=next(pf.iter_batches(batch_size=8,columns=available),None)
+                    if batch is None:
+                        continue
+                    for record in batch.to_pylist()[:max(0,8-len(examples))]:
+                        examples.append((f"{system_}/{rep_.name}",record))
+            if not total:
+                continue
+            sub(title_)
+            body(f"{total} rows available across replicas. "
+                 "The following are representative table entries, not "
+                 "statistical summaries; complete results are in the ZIP.")
+            keys=list(examples[0][1]) if examples else []
+            if keys:
+                rows=[["System / replicate"]+keys]
+                for origin,record in examples:
+                    rows.append([origin]+[
+                        _fmt(record[k]) if isinstance(record[k],(int,float,np.number))
+                        else str(record[k])[:38] for k in keys])
+                width=510/(len(keys)+1)
+                table(rows,[width]*(len(keys)+1))
+        sub("Solvation output inventory")
+        body("All generated solvation datasets are indexed below. Large "
+             "per-frame, per-target, residence-event and 3D voxel tables are "
+             "not expanded into thousands of PDF pages. The companion ZIP "
+             "contains all full-precision solvation Parquet files, plus bounded "
+             "CSV previews for convenient inspection.")
+        rows=[["System / replicate","Dataset","Rows"]]
+        for item in sol_inventory.itertuples():
+            rows.append([f"{item.system}/{item.replicate}",item.table,item.rows])
+        # Split long inventories to keep ReportLab tables manageable.
+        for start in range(1,len(rows),45):
+            table([rows[0]]+rows[start:start+45],[175,230,105])
+        body("Residence survival curves are descriptive and account for "
+             "recorded censoring; no confidence interval is implied. "
+             "3D density grids are sparse, target-local and only sampled "
+             "within the documented spherical domain. Missing or disabled "
+             "outputs are not treated as zero.")
+
     story.append(PageBreak())
     header("Selection audits and methodological limitations")
     for system, paths in system_repouts.items():
@@ -507,6 +646,59 @@ def _build_pdf(path, cfg, root, system_repouts, options):
                                "Replicate-mean, TM-centered leaflet maps. "
                                "A missing species is not plotted as zero enrichment.")
 
+    # Standardized, analysis-agnostic figure gallery. Every primary figure
+    # generated by the plotting pipeline is eligible for the report. Keep a
+    # configurable bound on PDF pages; the ZIP always carries all figures.
+    story.append(PageBreak())
+    header("Scientific figure atlas and coverage audit")
+    coverage=report_coverage(root,system_repouts)
+    if not coverage.empty:
+        rows=[["Analysis family","Data present","Visual present","Coverage"]]
+        for item in coverage.itertuples():
+            rows.append([item.analysis,"yes" if item.data_available else "no",
+                         "yes" if item.figure_available else "no",item.status])
+        table(rows,[162,93,93,162])
+        missing=coverage[coverage.status=="missing_figure"]
+        if not missing.empty:
+            body("WARNING: Analysis outputs without a generated figure: "+
+                 ", ".join(missing.analysis.astype(str))+
+                 ". Review the figure manifest and plot configuration.")
+    metric_audit=metric_coverage(root)
+    if not metric_audit.empty:
+        missing_metrics=metric_audit[metric_audit.status=="missing_figure"]
+        body(f"Per-metric visual coverage: {len(metric_audit)-len(missing_metrics)} "
+             f"of {len(metric_audit)} scalar statistical observables have "
+             "their expected standardized time-series figure.")
+        if not missing_metrics.empty:
+            body("Missing per-metric figures (first 15): "+
+                 ", ".join((missing_metrics.metric.astype(str)+
+                            " ["+missing_metrics.group.astype(str)+"]").head(15))+
+                 ". The complete list is in figure_metric_coverage.csv.")
+    figures=figure_inventory(root,system_repouts)
+    max_gallery=int(options.get("max_gallery_figures",100))
+    if max_gallery<0:
+        raise ValueError("report.max_gallery_figures must be >= 0")
+    if figures.empty:
+        body("No generated scientific figures were found. "
+             "Enable plots and run the plotting pipeline before exporting.")
+    else:
+        primary=figures[figures.kind=="primary"]
+        # Deterministic ordering and captions preserve the source location.
+        body(f"{len(figures)} generated figures found; "
+             f"{len(primary)} are primary analysis figures. "
+             "The complete manifest and all original PNGs are in the review ZIP.")
+        for item in primary.head(max_gallery).itertuples():
+            path_=root/item.figure
+            sub(Path(item.figure).stem.replace("_"," ").replace("  "," "))
+            figure(path_,f"Source: {item.figure}. "
+                   "See the accompanying statistical tables for uncertainty "
+                   "and the relevant analysis metadata for selections.")
+        if len(primary)>max_gallery:
+            body(f"{len(primary)-max_gallery} additional primary figures are "
+                 "indexed in the complete manifest and preserved in the ZIP. "
+                 "Increase report.max_gallery_figures to include more in the PDF.")
+        body("Supplementary distribution, autocorrelation and bootstrap-table "
+             "figures are preserved in the ZIP rather than repeated in the PDF.")
     story.append(PageBreak())
     header("Files to share for deeper analysis")
     body("Send this PDF for an initial scientific review. For detailed "
@@ -533,6 +725,18 @@ def _make_bundle(root, pdf, system_repouts, options):
         with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED,
                              compresslevel=6) as archive:
             archive.write(pdf, arcname=pdf.name)
+            # Complete machine-readable figure manifest and coverage audit.
+            figures=figure_inventory(root,system_repouts)
+            coverage=report_coverage(root,system_repouts)
+            archive.writestr("project_summary/report/figure_manifest.csv",
+                             figures.to_csv(index=False))
+            archive.writestr("project_summary/report/figure_coverage.csv",
+                             coverage.to_csv(index=False))
+            archive.writestr("project_summary/report/figure_metric_coverage.csv",
+                             metric_coverage(root).to_csv(index=False))
+            for item in figures.itertuples():
+                path_=root/item.figure
+                archive.write(path_,arcname=item.figure)
             for name in ("resolved_config.yaml", "run_metadata.json"):
                 path = root / name
                 if path.is_file():
@@ -569,6 +773,34 @@ def _make_bundle(root, pdf, system_repouts, options):
                             )
                         else:
                             archive.write(path, arcname=str(relative / name))
+                    # Include full compact solvation summaries and bounded
+                    # samples of large event/voxel/frame-level tables.
+                    sol_dir=repout/"extensions"/"solvation"
+                    if sol_dir.is_dir():
+                        for sol_file in sorted(sol_dir.glob("*.parquet")):
+                            # Preserve every result exactly, without loading
+                            # full million-row event tables into pandas.
+                            archive.write(sol_file,arcname=str(
+                                relative/"extensions"/"solvation"/sol_file.name))
+                            if sol_file.stat().st_size > 50_000_000:
+                                continue  # full Parquet is already archived
+                            sol_data=pd.read_parquet(sol_file)
+                            large={"counts","events","episodes","bridges",
+                                   "water_hbond_bridges","hydration_sasa",
+                                   "water_density_3d","species_timeseries"}
+                            if sol_file.stem in large:
+                                sol_data=_sample_frame_table(sol_data,max_frames)
+                                suffix="_sample.csv"
+                            else:
+                                suffix=".csv"
+                            archive.writestr(
+                                str(relative/"extensions"/"solvation"/
+                                    (sol_file.stem+suffix)),
+                                sol_data.to_csv(index=False))
+                        metadata=sol_dir/"metadata.json"
+                        if metadata.exists():
+                            archive.write(metadata,arcname=str(
+                                relative/"extensions"/"solvation"/"metadata.json"))
                     path = repout / "summary/timeseries.parquet"
                     if path.is_file():
                         sampled = _sample_frame_table(pd.read_parquet(path), max_frames)
@@ -581,6 +813,8 @@ def _make_bundle(root, pdf, system_repouts, options):
                 "MDscope scientific review bundle\n"
                 "PDF: MDscope_evidence_report.pdf\n"
                 "project_summary/statistics: full-precision exported statistical tables\n"
+                "project_summary/report/figure_manifest.csv: all generated PNGs\n"
+                "project_summary/report/figure_coverage.csv: family-level visual audit\n"
                 "project_summary/shared_states: model and state tables\n"
                 "system/replicate/extensions: selection audits, lipid maps, conditioned HS summaries\n"
                 "system/replicate/summary/timeseries_sample.csv: uniformly sampled frames "
