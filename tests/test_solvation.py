@@ -104,3 +104,32 @@ def test_water_hbond_kernel_checks_angle_and_periodic_geometry():
     assert set(map(tuple, wrapped)) == set(map(tuple, found))
     assert not len(water_donor_hbonds(sites, waters, hydrogens,
                                      candidate, box, min_angle_deg=181.))
+
+
+def test_water_donor_bridge_persisted_with_topology_bonds(tmp_path):
+    u = mda.Universe.empty(5, n_residues=3, atom_resindex=[0, 1, 2, 2, 2],
+                           trajectory=True)
+    u.add_TopologyAttr("names", ["OD1", "OE1", "OW", "H1", "H2"])
+    u.add_TopologyAttr("resnames", ["ASP", "GLU", "SOL"])
+    u.add_TopologyAttr("resids", [2, 5, 9])
+    u.add_TopologyAttr("bonds", [(2, 3), (2, 4)])
+    xyz = np.array([[-2.7, 0, 0], [2.7, 0, 0], [0, 0, 0],
+                    [-1, 0, 0], [1, 0, 0]], dtype=np.float32) + [10, 10, 10]
+    u.load_new(xyz[None, :, :], format=MemoryReader,
+               dimensions=np.array([[30, 30, 30, 90, 90, 90]]))
+    cfg = {"analyses": {"solvation": {
+        "enabled": True, "preset": "detailed",
+        "targets": {"protein": {"acceptor": "resname ASP GLU and name OD1 OE1"}},
+        "water_selection": "resname SOL and name OW",
+        "search_radius_A": 5.,
+        "options": {"water_hbond_bridges": True},
+    }}}
+    observer = SolvationObserver(u, cfg, tmp_path)
+    observer.update(u.trajectory[0], 0, 0.)
+    observer.flush(0)
+    observer.finalize()
+    bridge = pd.read_parquet(
+        tmp_path/"extensions/solvation/water_hbond_bridges.parquet")
+    assert len(bridge) == 1
+    assert {bridge.target_a.iloc[0], bridge.target_b.iloc[0]} == {
+        "protein/acceptor/0", "protein/acceptor/1"}
