@@ -47,7 +47,7 @@ def collect_time_series(repout: Path) -> dict[tuple[str | None, str], pd.DataFra
     if solvation.exists():
         data = pd.read_parquet(solvation)
         required = {"solvent", "target_class", "site_class", "time_ps",
-                    "mean_n_solvent", "hydrated_fraction"}
+                    "mean_n_solvent"}
         if not required.issubset(data.columns):
             raise ValueError(
                 "solvation species_timeseries.parquet is incomplete: "
@@ -59,7 +59,7 @@ def collect_time_series(repout: Path) -> dict[tuple[str | None, str], pd.DataFra
                 raise ValueError(f"duplicate solvation time points: {group_id}")
             group = group.sort_values("time_ps")
             for metric in ("mean_n_solvent", "hydrated_fraction"):
-                if len(finite(group[metric])):
+                if metric in group and len(finite(group[metric])):
                     out[(group_id, metric)] = group[["time_ps", metric]].rename(
                         columns={metric: "value"})
     return out
