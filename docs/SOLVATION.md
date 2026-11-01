@@ -170,3 +170,21 @@ template and `scripts/benchmark_solvation_real.py` for a **real observer**
 preflight and benchmark against existing HPC XTC+TPR inputs. The GitHub
 repository does not contain the full HPC trajectories, so publication-scale
 timing and memory cannot be claimed from CI or synthetic benchmarks.
+
+## Bounded identity tracking
+
+The standard preset computes RDFs and per-target counts for **all** configured
+targets without writing solvent identities. Detailed/kinetics mode can limit
+expensive solvent identities and bridge enumeration to selected classes:
+
+```yaml
+    preset: kinetics
+    options:
+      track_target_classes: [protein, hs]
+```
+
+This retains water/ion coordination counts and RDFs for lipids, but
+persists interaction identities and bridges only when their constituent
+targets are among the specified classes. An omitted filter tracks all
+classes (potentially very expensive); avoid full-system water tracking
+without first benchmarking a representative frame window.
