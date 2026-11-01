@@ -23,7 +23,8 @@ import pandas as pd
 from ..config import ensure_dir
 from .report_inventory import _read, _sample_frame_table, _summary_inventory, _metric_groups
 from .solvation_figures import (solvation_inventory, solvation_rdf_figure,
-    solvation_timeseries_figure, solvation_stat_rows, solvation_comparison_rows)
+    solvation_timeseries_figure, solvation_survival_figure,
+    solvation_stat_rows, solvation_comparison_rows)
 
 
 CATEGORIES = (
@@ -502,6 +503,13 @@ def _build_pdf(path, cfg, root, system_repouts, options):
             sub("Coordination over simulation time")
             figure(series_figure[0],"Per-replicate coordination time series. "
                    f"Showing {series_figure[1]} of {series_figure[2]} chemical classes.")
+        survival_figure=solvation_survival_figure(system_repouts)
+        if survival_figure:
+            sub("Observed solvent-contact survival")
+            figure(survival_figure[0],"Descriptive survival curves from sampled "
+                   "contact episodes, with recorded censoring. "
+                   f"Showing up to {survival_figure[1]} curves; no uncertainty "
+                   "bands are inferred.")
         # Compact previews of the remaining scientific observables. The
         # full data remain lossless in the bundle; no invented CI is shown.
         for filename,title_,columns in (
