@@ -51,6 +51,34 @@ def test_report_pdf_and_review_bundle(tmp_path):
             "lipid_counts": {"POPC": 12, "CHL1": 7},
         }))
         system_paths[system] = [folder]
+    for system, shift in (("carb",0.),("nocarb",1.)):
+        sol=system_paths[system][0]/"extensions"/"solvation"
+        sol.mkdir(parents=True)
+        pd.DataFrame({
+            "time_ps":np.arange(12,dtype=float)*100,
+            "solvent":"water","target_class":"protein","site_class":"acidic",
+            "mean_n_solvent":np.arange(12)*.1+shift,
+            "hydrated_fraction":.5
+        }).to_parquet(sol/"species_timeseries.parquet")
+        pd.DataFrame({
+            "solvent":["water"],"target_id":["acidic_1"],
+            "target_class":["protein"],"site_class":["acidic"],
+            "n_frames":[12],"mean_n_solvent":[2.+shift],
+            "sd_n_solvent":[.2],"hydrated_fraction":[.5]
+        }).to_parquet(sol/"target_summary.parquet")
+        pd.DataFrame({"frame":np.arange(12),"time_ps":np.arange(12)*100.,
+            "solvent":"water","target_id":"acidic_1","solvent_id":np.arange(12)}
+        ).to_parquet(sol/"events.parquet")
+    rdfdir=summary/"statistics"/"solvation"
+    rdfdir.mkdir(parents=True)
+    pd.DataFrame([
+        {"system":system,"solvent":"water","target_class":"protein",
+         "site_class":"acidic","r_inner_A":float(i),
+         "r_outer_A":float(i+1),"mean_g_bulk":1.+shift+.1*i,
+         "sd_g_bulk":.2,"n_replicates":3}
+        for system,shift in (("carb",0.),("nocarb",1.))
+        for i in range(5)
+    ]).to_parquet(rdfdir/"system_rdf.parquet")
     metric = "sdc4_ectodomain_A_height_A"
     pd.DataFrame([
         {"system": system, "group": None, "metric": metric,
@@ -86,6 +114,11 @@ def test_report_pdf_and_review_bundle(tmp_path):
         assert "carb/rep1/summary/timeseries_sample.csv" in names
         assert "carb/rep1/extensions/sdc4_mechanisms/selection_audit.json" in names
         assert "resolved_config.yaml" in names
+        assert "carb/rep1/extensions/solvation/target_summary.csv" in names
+        assert "carb/rep1/extensions/solvation/events_sample.csv" in names
+        assert "project_summary/statistics/solvation/system_rdf.csv" in names
+        assert len(pd.read_csv(z.open(
+            "carb/rep1/extensions/solvation/events_sample.csv"))) == 5
         sampled = pd.read_csv(z.open("carb/rep1/summary/timeseries_sample.csv"))
         assert len(sampled) == 5
         assert "sdc4_ectodomain_A_height_A" in sampled
