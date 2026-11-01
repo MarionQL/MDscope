@@ -266,3 +266,21 @@ def test_target_water_overlap_is_rejected(tmp_path):
         "water_selection": "resname SOL and name OW"}}}
     with pytest.raises(ValueError, match="overlap"):
         SolvationObserver(u, cfg, tmp_path)
+
+
+def test_unique_coordination_matches_python_reference_with_duplicates():
+    from collections import defaultdict
+    from mdscope.observables.solvation import unique_target_solvent_pairs
+    targets = np.array([2, 0, 2, 2, 1, 0, 2, 1, 0], dtype=np.int32)
+    water = np.array([7, 3, 7, 9, 1, 3, 8, 1, 4], dtype=np.int32)
+    reference = defaultdict(set)
+    for i, j in zip(targets, water):
+        reference[int(i)].add(int(j))
+    counts, pairs = unique_target_solvent_pairs(targets, water, 5)
+    assert counts.tolist() == [2, 1, 3, 0, 0]
+    assert set(map(tuple, pairs)) == {
+        (i, j) for i, values in reference.items() for j in values}
+    empty_counts, empty_pairs = unique_target_solvent_pairs(
+        np.empty(0, int), np.empty(0, int), 5)
+    assert empty_counts.tolist() == [0]*5
+    assert empty_pairs.shape == (0, 2)
