@@ -98,7 +98,10 @@ For optional locally aligned 3D hydration maps, specify exact target IDs and
 
 The numeric ID and atom indices above are placeholders. Maps use the same
 periodic candidate-water pairs as the radial calculations and accumulate
-co-moving local density in `water_density_3d.parquet`. By design, this
+co-moving local density in `water_density_3d.parquet`. Only the inscribed
+sphere (radius half the grid width) is sampled, and the frame origin must be
+part of the target site selection. Missing voxels *inside* this sphere have
+zero observed density; voxels outside are undefined, not zero. By design, this
 is a sparse observed-density map: absent voxels correspond to zero observed
 counts. Its `g_bulk` uses bulk density and does not adjust for inaccessible
 local volume. A local map cannot be interpreted as an equilibrium fixed-frame
