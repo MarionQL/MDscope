@@ -116,6 +116,7 @@ def test_report_pdf_and_review_bundle(tmp_path):
         assert "resolved_config.yaml" in names
         assert "carb/rep1/extensions/solvation/target_summary.csv" in names
         assert "carb/rep1/extensions/solvation/events_sample.csv" in names
+        assert "carb/rep1/extensions/solvation/events.parquet" in names
         assert "project_summary/statistics/solvation/system_rdf.csv" in names
         assert len(pd.read_csv(z.open(
             "carb/rep1/extensions/solvation/events_sample.csv"))) == 5
