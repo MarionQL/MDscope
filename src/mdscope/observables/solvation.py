@@ -138,6 +138,33 @@ class SolvationObserver:
         self.shells = {"water": 3.5, "ions": 4.0, **(self.spec.get("shell_cutoffs_A") or {})}
         if any(not np.isfinite(float(x)) or not 0 < float(x) <= radius for x in self.shells.values()):
             raise ValueError("solvation shell cutoffs must be positive and <= search radius")
+        # Optional local 3D WATER density maps. The 3 anchor atoms define a
+        # co-moving orthonormal frame for a named target, not a global grid.
+        from MDAnalysis.lib.distances import minimize_vectors
+        self._minimize_vectors = minimize_vectors
+        self.grid_frames = {}
+        self.grid_width = float(self.spec.get("grid_width_A", 12.0))
+        self.grid_spacing = float(self.spec.get("grid_spacing_A", 0.75))
+        if self.spec.get("grid_frames"):
+            if "water" not in self.solvents:
+                raise ValueError("solvation 3D hydration maps require water_selection")
+            if not 0 < self.grid_spacing <= self.grid_width <= 24.0:
+                raise ValueError("solvation grid width must be <=24 Å and spacing positive")
+            n = int(np.ceil(self.grid_width / self.grid_spacing))
+            if n > 64:
+                raise ValueError("solvation grid exceeds 64 bins per axis")
+            self.grid_edges = np.linspace(-self.grid_width/2, self.grid_width/2, n+1)
+            known = {target for target, _, _, _ in self.targets}
+            for target, selection in self.spec["grid_frames"].items():
+                if target not in known:
+                    raise ValueError(f"unknown 3D hydration target {target}")
+                frame = universe.select_atoms(selection)
+                if len(frame) != 3:
+                    raise ValueError(f"3D hydration frame {target} needs exactly 3 ordered atoms")
+                self.grid_frames[target] = frame
+        self.grid_counts = {key: np.zeros((len(self.grid_edges)-1,)*3, dtype=np.int64)
+                            for key in self.grid_frames} if self.grid_frames else {}
+        self.grid_exposure = 0.0
         self.hist = defaultdict(lambda: np.zeros(len(self.edges) - 1, np.int64))
         self.exposure = defaultdict(float)
         self.rows, self.events, self.bridges, self.frame_rows = [], [], [], []
@@ -170,6 +197,35 @@ class SolvationObserver:
                     self.events.extend((int(frame_index), float(time_ps), solvent,
                                         target, solvent_id)
                                        for solvent_id in sorted(contacts[i]))
+            if solvent == "water" and self.grid_frames:
+                # Reuse candidate pairs from the same periodic neighbor search.
+                # For each target, map water positions to its local anchor frame.
+                water_xyz = atoms.positions
+                for target_i, (target_id, _, _, _) in enumerate(self.targets):
+                    anchors = self.grid_frames.get(target_id)
+                    if anchors is None:
+                        continue
+                    origin, second, third = anchors.positions
+                    v1, v2 = self._minimize_vectors(
+                        np.asarray([second-origin, third-origin], dtype=float), box)
+                    norm1 = np.linalg.norm(v1)
+                    if norm1 < 1e-7:
+                        raise ValueError(f"degenerate 3D grid frame for {target_id}")
+                    e1 = v1/norm1
+                    v2 = v2-np.dot(v2,e1)*e1
+                    norm2 = np.linalg.norm(v2)
+                    if norm2 < 1e-7:
+                        raise ValueError(f"collinear 3D grid frame for {target_id}")
+                    e2 = v2/norm2
+                    rotation = np.column_stack((e1, e2, np.cross(e1,e2)))
+                    js = np.unique(pair[indices == target_i, 1])
+                    if len(js):
+                        delta = self._minimize_vectors(
+                            np.asarray(water_xyz[js]-origin,dtype=float),box)
+                        local = delta @ rotation
+                        self.grid_counts[target_id] += np.histogramdd(
+                            local, bins=(self.grid_edges,)*3)[0].astype(np.int64)
+                self.grid_exposure += len(atoms)/volume
             if self.bridges_on:
                 inverse = defaultdict(set)
                 for target_index, solvent_ids in contacts.items():
@@ -198,6 +254,18 @@ class SolvationObserver:
         atomic_parquet(root / f"hist-{part:06d}.parquet",
             pd.DataFrame(history, columns=["solvent", "target_class", "site_class"]
                          + [f"bin_{i}" for i in range(len(self.edges)-1)] + ["exposure"]))
+        if self.grid_frames:
+            records = []
+            for target, grid in self.grid_counts.items():
+                i,j,k = np.nonzero(grid)
+                records.extend((target,int(x),int(y),int(z),int(grid[x,y,z]))
+                               for x,y,z in zip(i,j,k))
+                grid.fill(0)
+            atomic_parquet(root / f"grid-{part:06d}.parquet", pd.DataFrame(
+                records, columns=["target_id","ix","iy","iz","count"]))
+            atomic_parquet(root / f"grid_exposure-{part:06d}.parquet",
+                           pd.DataFrame({"exposure":[self.grid_exposure]}))
+            self.grid_exposure = 0.
         self.hist.clear()
         self.exposure.clear()
 
@@ -231,6 +299,17 @@ class SolvationObserver:
         atomic_parquet(dest / "rdf.parquet", pd.DataFrame(rows, columns=[
             "solvent", "target_class", "site_class", "r_inner_A", "r_outer_A",
             "pair_count", "g_bulk"]))
+        if self.grid_frames:
+            grids = read("grid")
+            exposure = read("grid_exposure").exposure.sum()
+            if not grids.empty:
+                grids = grids.groupby(["target_id","ix","iy","iz"],as_index=False).agg(
+                    count=("count","sum"))
+                width = float(self.grid_edges[1]-self.grid_edges[0])
+                for dim in "xyz":
+                    grids[dim+"_A"] = self.grid_edges[grids["i"+dim].to_numpy(int)] + width/2
+                grids["g_bulk"] = grids["count"]/(width**3*exposure)
+            atomic_parquet(dest / "water_density_3d.parquet", grids)
         # Persist target-to-topology-residue membership for SASA reuse.
         membership = [(target, int(res.ix)) for target, _, _, group in self.targets
                       for res in group.residues]
@@ -250,6 +329,8 @@ class SolvationObserver:
         atomic_json(dest / "metadata.json", {
             "preset": self.spec.get("preset", "standard"), "edges_A": self.edges.tolist(),
             "shell_cutoffs_A": self.shells, "events": self.events_on,
+            "3d_grid_frames": list(self.grid_frames),
+            "3d_grid_edges_A": self.grid_edges.tolist() if self.grid_frames else None,
             "bridges": self.bridges_on,
             "rdf_limitation": "Bulk-density normalized; no excluded-volume correction. Evaluate alongside SASA.",
             "residence_limitation": "Episodes represent consecutive sampled contacts; temporal resolution is trajectory frame interval.",

@@ -65,3 +65,41 @@ angles, solvent-excluded-volume-normalized RDF, intermittent contact
 correlations, or Kaplan–Meier survival estimates. Those require additional
 validated definitions; episodes are the sufficient sampled-contact input
 for later continuous survival estimation.
+
+## Postprocessing and optional 3D water density
+
+After the fused pass, `shell_candidates.parquet` records a candidate first
+minimum of each bulk-normalized RDF with an explicit quality status. It does
+not automatically change already computed coordination cutoffs: calibrate on
+representative frames and fix the same chemical-class cutoff across compared
+conditions before conducting kinetics. Ambiguous RDFs yield missing candidates.
+
+`target_residues.parquet` maps target IDs to topology residue indices. When
+a matching SASA run exists, `hydration_sasa.parquet` combines the **saved**
+per-residue SASA with per-target solvent counts using exact frame time; missing
+constituent residues produce NaN rather than partial SASA. Set `sasa_run` to
+the selected run ID if needed. SASA exposure is a contextual covariate, not an
+automatic correction to bulk-normalized RDFs.
+
+When identity tracking is enabled, `survival.parquet` provides Kaplan–Meier
+sampled-contact survival estimates per solvent/target. Left-censored episodes
+are excluded; right-censored episodes remain at risk. Assess uncertainty across
+simulation replicates, not across individual correlated contact episodes.
+
+For optional locally aligned 3D hydration maps, specify exact target IDs and
+**three ordered, noncollinear atoms** defining a moving coordinate frame:
+
+```yaml
+    grid_width_A: 12.0
+    grid_spacing_A: 0.75
+    grid_frames:
+      protein/acidic_oxygen/42: "index 100 101 102"
+```
+
+The numeric ID and atom indices above are placeholders. Maps use the same
+periodic candidate-water pairs as the radial calculations and accumulate
+co-moving local density in `water_density_3d.parquet`. By design, this
+is a sparse observed-density map: absent voxels correspond to zero observed
+counts. Its `g_bulk` uses bulk density and does not adjust for inaccessible
+local volume. A local map cannot be interpreted as an equilibrium fixed-frame
+binding site if its neighboring molecular environment varies substantially.

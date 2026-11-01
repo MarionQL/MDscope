@@ -67,3 +67,22 @@ def test_periodic_unique_water_count_and_restart_histograms(tmp_path):
     assert len(events[events.solvent == "water"]) == 3
     assert (root / "episodes.parquet").exists()
     assert (root / "metadata.json").exists()
+
+
+def test_local_grid_uses_same_water_candidates(tmp_path):
+    u = _universe()
+    cfg = {"analyses": {"solvation": {
+        "enabled": True, "preset": "standard",
+        "targets": {"protein": {"oxygen": "resname GLU and name OE1 OE2"}},
+        "water_selection": "resname SOL and name OW",
+        "grid_frames": {"protein/oxygen/0": "index 0 1 4"},
+        "grid_width_A": 10., "grid_spacing_A": 1.,
+        "search_radius_A": 8.,
+    }}}
+    observer = SolvationObserver(u, cfg, tmp_path)
+    observer.update(u.trajectory[0], 0, 0.)
+    observer.flush(0)
+    observer.finalize()
+    density = pd.read_parquet(tmp_path/"extensions/solvation/water_density_3d.parquet")
+    assert density["count"].sum() == 2
+    assert np.all(np.isfinite(density["g_bulk"]))
