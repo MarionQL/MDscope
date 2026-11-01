@@ -100,9 +100,9 @@ def test_chunked_coordination_summary_matches_whole_dataframe(tmp_path):
         "time_ps", "solvent", "target_class", "site_class",
         "target_id", "n_solvent"])
     paths = []
-    for i, indices in enumerate(np.array_split(np.arange(len(df)), 6)):
+    for i, frame_indices in enumerate(np.array_split(np.arange(38), 6)):
         path = tmp_path / f"counts-{i:06d}.parquet"
-        df.iloc[indices].to_parquet(path, index=False)
+        df[df.time_ps.isin(frame_indices)].to_parquet(path, index=False)
         paths.append(path)
     # A frame can span chunks only if a caller explicitly splits it;
     # the fused flush machinery always writes entire frames.
