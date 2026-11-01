@@ -51,7 +51,7 @@ def test_chunk_shell_calibration_reports_stable_vs_ambiguous():
     from mdscope.observables.solvation_postprocess import calibration_stability
     edges = np.arange(0, 10, .5)
     g = np.ones(len(edges)-1) * 20
-    g[4:11] = [24, 48, 62, 44, 24, 14, 22]
+    g[4:14] = [24, 48, 62, 44, 24, 14, 18, 19, 20, 20]
     parts = [{"solvent": "water", "target_class": "protein",
               "site_class": "carboxylate", "exposure": 20.,
               **{f"bin_{j}": int(x) for j, x in enumerate(g)}}
