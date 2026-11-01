@@ -96,6 +96,44 @@ def join_existing_sasa(counts, target_residues, sasa):
                         validate="many_to_one")
 
 
+
+def calibration_stability(chunk_histograms, edges, *, min_chunks=4, tolerance_A=0.5):
+    """Check RDF minimum consistency across chunk-level persisted histograms.
+
+    Chunks are correlated trajectory segments, not independent replicas.
+    This is a convergence diagnostic, not a confidence interval.
+    """
+    columns = ["solvent", "target_class", "site_class", "chunks_total",
+               "chunks_resolved", "median_cutoff_A", "range_A", "status"]
+    if chunk_histograms.empty:
+        return pd.DataFrame(columns=columns)
+    bin_cols = sorted((c for c in chunk_histograms if c.startswith("bin_")),
+                      key=lambda c: int(c[4:]))
+    from .solvation import rdf_from_counts
+    output = []
+    for key, group in chunk_histograms.groupby(
+            ["solvent", "target_class", "site_class"], sort=True):
+        estimates = []
+        for _, part in group.iterrows():
+            g = rdf_from_counts(part[bin_cols].to_numpy(float), edges,
+                                float(part["exposure"]))
+            rdf = pd.DataFrame({"solvent": key[0], "target_class": key[1],
+                "site_class": key[2], "r_inner_A": edges[:-1],
+                "r_outer_A": edges[1:], "g_bulk": g})
+            candidate = suggest_shell_boundaries(rdf).suggested_cutoff_A.iloc[0]
+            if np.isfinite(candidate):
+                estimates.append(float(candidate))
+        n, resolved = len(group), len(estimates)
+        spread = float(np.ptp(estimates)) if estimates else np.nan
+        status = ("insufficient_chunks" if n < min_chunks else
+                  "unresolved_chunks" if resolved != n else
+                  "unstable_minimum" if spread > tolerance_A else "stable")
+        output.append((*key, n, resolved,
+                       float(np.median(estimates)) if estimates else np.nan,
+                       spread, status))
+    return pd.DataFrame(output, columns=columns)
+
+
 def write_solvation_derivatives(directory, repout, *, sasa_run="default"):
     """Persist optional derived outputs from previous measurements only."""
     from pathlib import Path
@@ -104,6 +142,17 @@ def write_solvation_derivatives(directory, repout, *, sasa_run="default"):
     if rdf.exists():
         atomic_parquet(directory / "shell_candidates.parquet",
                        suggest_shell_boundaries(pd.read_parquet(rdf)))
+    cache = repout / "cache" / "solvation"
+    histogram_parts = sorted(cache.glob("hist-*.parquet"))
+    if histogram_parts and rdf.exists():
+        hist = pd.concat([pd.read_parquet(p) for p in histogram_parts],
+                         ignore_index=True)
+        full = pd.read_parquet(rdf)
+        axis = full[["r_inner_A", "r_outer_A"]].drop_duplicates().sort_values("r_inner_A")
+        if not axis.empty:
+            edges = np.r_[axis.r_inner_A.to_numpy(float), float(axis.r_outer_A.iloc[-1])]
+            atomic_parquet(directory / "shell_stability.parquet",
+                           calibration_stability(hist, edges))
     episodes = directory / "episodes.parquet"
     if episodes.exists():
         atomic_parquet(directory / "survival.parquet",
