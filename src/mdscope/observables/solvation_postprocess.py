@@ -143,17 +143,20 @@ def aggregate_coordination(counts):
     """
     class_keys = ["solvent", "target_class", "site_class"]
     class_columns = class_keys + ["time_ps", "target_count",
-                                   "mean_n_solvent", "total_target_counts"]
+                                   "mean_n_solvent", "total_target_counts",
+                                   "hydrated_fraction"]
     target_columns = ["solvent", "target_id", "target_class", "site_class",
                       "n_frames", "mean_n_solvent", "sd_n_solvent",
                       "hydrated_fraction"]
     if counts.empty:
         return (pd.DataFrame(columns=class_columns),
                 pd.DataFrame(columns=target_columns))
-    frame = counts.groupby(class_keys + ["time_ps"], as_index=False).agg(
+    frame = counts.assign(hydrated=(counts.n_solvent > 0).astype(float)).groupby(
+        class_keys + ["time_ps"], as_index=False).agg(
         target_count=("target_id", "nunique"),
         mean_n_solvent=("n_solvent", "mean"),
-        total_target_counts=("n_solvent", "sum"))
+        total_target_counts=("n_solvent", "sum"),
+        hydrated_fraction=("hydrated", "mean"))
     by_target = counts.groupby(class_keys + ["target_id"], as_index=False).agg(
         n_frames=("n_solvent", "size"),
         mean_n_solvent=("n_solvent", "mean"),
@@ -177,10 +180,12 @@ def aggregate_coordination_parts(paths):
         counts = pd.read_parquet(path)
         if counts.empty:
             continue
-        frame = counts.groupby(class_keys + ["time_ps"], as_index=False).agg(
+        frame = counts.assign(hydrated=(counts.n_solvent > 0).astype(float)).groupby(
+            class_keys + ["time_ps"], as_index=False).agg(
             target_count=("target_id", "nunique"),
             mean_n_solvent=("n_solvent", "mean"),
-            total_target_counts=("n_solvent", "sum"))
+            total_target_counts=("n_solvent", "sum"),
+            hydrated_fraction=("hydrated", "mean"))
         class_tables.append(frame)
         numeric = counts.assign(
             positive=(counts["n_solvent"] > 0).astype(np.int64),
