@@ -76,6 +76,33 @@ def _targets(u, spec):
     seen = set()
     for kind, groups in (spec.get("targets") or {}).items():
         for label, definition in groups.items():
+            motif = definition.get("sequence") if isinstance(definition, dict) else None
+            if motif is not None:
+                from ..mechanisms.mechanistic_common import sequence_matches
+                import re
+                # Exact protein sequence, not regex: prevent accidental
+                # partial/wildcard matching and verify chain-specific identity.
+                pattern = str(motif).upper()
+                if not re.fullmatch("[ACDEFGHIKLMNPQRSTVWY]+", pattern):
+                    raise ValueError(f"solvation motif {kind}/{label} must be an exact amino-acid sequence")
+                selection = definition.get("selection", "protein and name CA")
+                ca = u.select_atoms(selection)
+                ca = ca.select_atoms("name CA")
+                matches = sequence_matches(ca, {label: re.escape(pattern)})
+                if not matches:
+                    raise ValueError(f"solvation motif {kind}/{label} sequence {pattern} not found in topology")
+                for match_id, residues in matches.items():
+                    # Whole heavy-atom sidechains and backbone; not CA-only.
+                    atoms = u.atoms[np.isin(u.atoms.resindices, residues)]
+                    atoms = atoms.select_atoms("not name H*")
+                    if not len(atoms):
+                        raise ValueError(f"solvation motif {kind}/{label} has no heavy atoms")
+                    overlap = seen.intersection(map(int, atoms.indices))
+                    if overlap:
+                        raise ValueError(f"solvation motif {kind}/{label} overlaps another target")
+                    seen.update(map(int, atoms.indices))
+                    result.append((f"{kind}/{label}/{match_id}", kind, label, atoms))
+                continue
             selection = definition if isinstance(definition, str) else definition["selection"]
             grouping = "residue" if isinstance(definition, str) else definition.get("group_by", "residue")
             atoms = u.select_atoms(selection)

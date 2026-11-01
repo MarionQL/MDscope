@@ -248,6 +248,7 @@ analyses:
     motif_selection: "protein and name CA"
     motifs:
       NxIP: "N.IP"
+      acidic_patch: "DDEDVVGPGQESDDFELSGSGDLDDLED"
     require_motifs: true
     # Real TPR audit found a GXXXG match in PROA, but none in the
     # selected PROB TM sequence. Report this rather than inventing one.
@@ -263,6 +264,29 @@ analyses:
       enabled: true
       lipid_selection: "resname POPC DPPC POPE POPI POPS PSM DOPC"
       min_carbons_per_tail: 4
+
+  # Sequence-resolved hydration and ion coordination of the acidic patch.
+  # The exact sequence is matched independently in each protein chain from
+  # the loaded TPR; absent/mismatched sequences fail rather than silently
+  # analyzing incorrect residue numbers. Each patch is one target per chain.
+  solvation:
+    enabled: true
+    preset: detailed
+    targets:
+      motif:
+        acidic_patch:
+          sequence: "DDEDVVGPGQESDDFELSGSGDLDDLED"
+          selection: "protein and name CA and (chainID PROA or chainID PROB)"
+          group_by: selection
+    water_selection: "resname TIP3 and name OH2"
+    ion_selections:
+      K: "resname POT"
+      Cl: "resname CLA"
+    search_radius_A: 8.0
+    rdf_bin_width_A: 0.2
+    shell_cutoffs_A:
+      water: 3.5
+      ions: 4.0
 
   # Fit one state model across all six replicates and both conditions.
   shared_states:

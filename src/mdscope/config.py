@@ -666,6 +666,24 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
             if not isinstance(groups, dict) or not groups:
                 raise ValueError(f"solvation.targets.{kind} must map labels to sites")
             for label, selection in groups.items():
+                if isinstance(selection, dict) and "sequence" in selection:
+                    import re
+                    sequence = selection["sequence"]
+                    if not isinstance(sequence, str) or not re.fullmatch(
+                        "[ACDEFGHIKLMNPQRSTVWY]+", sequence.upper()
+                    ):
+                        raise ValueError(
+                            f"solvation.targets.{kind}.{label}.sequence must be an exact protein sequence")
+                    if "selection" in selection and (
+                        not isinstance(selection["selection"], str)
+                        or not selection["selection"].strip()
+                    ):
+                        raise ValueError(
+                            f"solvation.targets.{kind}.{label}.selection must be nonempty")
+                    if selection.get("group_by", "selection") != "selection":
+                        raise ValueError(
+                            f"solvation.targets.{kind}.{label}: sequence targets are grouped by motif")
+                    continue
                 actual = selection if isinstance(selection, str) else (
                     selection.get("selection") if isinstance(selection, dict) else None)
                 if not isinstance(actual, str) or not actual.strip():
