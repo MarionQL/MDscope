@@ -444,16 +444,30 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None):
     }
     # Finalization only consumes persisted tables/arrays: no
     # trajectories are reopened.
-    analyze_project(cfg, root, system_repouts)
-    plot_all(cfg, root, system_repouts)
-    plot_lipid_enrichment_matrix(cfg,root)
-    fit_shared_states(cfg, root, system_repouts)
-    plot_sdc4_mechanisms(cfg, root, system_repouts)
-    summarize_project_diffusion(root,system_repouts,cfg)
-    summarize_project_multi_origin(root,system_repouts)
+    finalization_timings = []
+    def timed(stage, fn, *args):
+        started = perf_counter()
+        try:
+            return fn(*args)
+        finally:
+            seconds = perf_counter() - started
+            finalization_timings.append({"stage": stage, "seconds": seconds})
+            atomic_json(project_summary / "finalization_timings.json", {
+                "stages": finalization_timings,
+                "total_seconds": sum(row["seconds"] for row in finalization_timings),
+            })
+            print(f"TIMING finalize {stage}: {seconds:.3f} s", flush=True)
+
+    timed("statistics", analyze_project, cfg, root, system_repouts)
+    timed("standard_plots", plot_all, cfg, root, system_repouts)
+    timed("lipid_enrichment_plots", plot_lipid_enrichment_matrix, cfg, root)
+    timed("shared_states", fit_shared_states, cfg, root, system_repouts)
+    timed("sdc4_plots", plot_sdc4_mechanisms, cfg, root, system_repouts)
+    timed("diffusion_summary", summarize_project_diffusion, root, system_repouts, cfg)
+    timed("multi_origin_summary", summarize_project_multi_origin, root, system_repouts)
     if cfg.get('analyses',{}).get('coupling_screen',{}).get('enabled',False):
-        screen_couplings(cfg,root,system_repouts)
-    report_result = generate_report(cfg, root, system_repouts)
+        timed("coupling_screen", screen_couplings, cfg, root, system_repouts)
+    report_result = timed("pdf_and_bundle", generate_report, cfg, root, system_repouts)
     if report_result:
         print(f"REPORT PDF: {report_result['pdf']}", flush=True)
         if report_result.get('bundle'):
