@@ -56,7 +56,7 @@ The project output directory contains the resolved configuration and environment
 
 For the full two-condition, six-replicate SDC4 mechanism analysis, see
 [`synd4_full_mechanisms.yaml`](synd4_full_mechanisms.yaml) and
-[`REPORT.md`](docs/REPORT.md). The original system/trajectory paths are
+[`REPORT.md`](docs/workflows.md). The original system/trajectory paths are
 unchanged; the expanded analysis writes to a separate results directory.
 
 When `report.enabled: true`, finalization creates:
@@ -711,7 +711,7 @@ For production MD comparisons:
 
 ## Modular architecture and diffusion fits (experimental branch)
 
-RMSD and RMSF live in `src/mdscope/observables/rmsd.py` and `src/mdscope/observables/rmsf.py`. Other structural and interaction analyses are similarly split into single-purpose modules while `src/mdscope/pipeline/streaming.py` reads the XTC once for inexpensive framewise measurements. `src/mdscope/registry.py` is the extension point for restartable specialized analyses. The existing statistics and plotting backends are **shared by output data structure**, not duplicated in individual analysis scripts. See [NEURONAL_EXTENSION.md](docs/NEURONAL_EXTENSION.md) for a module map and contribution contract.
+RMSD and RMSF live in `src/mdscope/observables/rmsd.py` and `src/mdscope/observables/rmsf.py`. Other structural and interaction analyses are similarly split into single-purpose modules while `src/mdscope/pipeline/streaming.py` reads the XTC once for inexpensive framewise measurements. `src/mdscope/registry.py` is the extension point for restartable specialized analyses. The existing statistics and plotting backends are **shared by output data structure**, not duplicated in individual analysis scripts. See [NEURONAL_EXTENSION.md](docs/analyses.md) for a module map and contribution contract.
 
 The existing `membrane.msd` code is retained in `src/mdscope/observables/msd.py` and now optionally produces **replicate-level diffusion coefficients** as well. Configure `analyses.membrane.msd.slope_start_fraction` (default `0.2`) and `slope_end_fraction` (default `0.8`). This is a descriptive **single-origin MSD** slope fit; it does not claim species-resolved or multi-origin diffusion, and it does not treat time-correlated frames as independent replicates.
 
@@ -720,7 +720,7 @@ Prior results with a mismatched code/configuration hash are archived in `.archiv
 
 ## Lipid analyses from issues #1–#5
 
-The optional membrane extensions include leaflet-resolved C–H order profiles, terminal/Slurm progress indicators, local bilayer-normal deviation, protein-centered lipid enrichment/depletion, and lipid–lipid hydrogen-bond events grouped by lipid type. See [ISSUE_ANALYSES.md](docs/ISSUE_ANALYSES.md) for YAML examples, precise definitions, saved tables and limitations. They use the existing MDscope replicate-aware statistical engine and plot conventions.
+The optional membrane extensions include leaflet-resolved C–H order profiles, terminal/Slurm progress indicators, local bilayer-normal deviation, protein-centered lipid enrichment/depletion, and lipid–lipid hydrogen-bond events grouped by lipid type. See [ISSUE_ANALYSES.md](docs/analyses.md) for YAML examples, precise definitions, saved tables and limitations. They use the existing MDscope replicate-aware statistical engine and plot conventions.
 
 
 ### Monitoring progress in Slurm
