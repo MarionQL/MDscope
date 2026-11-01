@@ -60,11 +60,8 @@ boundaries using stable first minima and cutoff sensitivity analysis.
 Shell cutoffs are explicit and are *not automatically fitted* in this version.
 The pooled site-class RDF must not be mistaken for per-residue density.
 
-This version does not yet calculate 3D local water density, hydrogen-bond
-angles, solvent-excluded-volume-normalized RDF, intermittent contact
-correlations, or Kaplan–Meier survival estimates. Those require additional
-validated definitions; episodes are the sufficient sampled-contact input
-for later continuous survival estimation.
+Current limitations include no solvent-excluded-volume normalization, no full
+intermittent contact correlations, and no general water-acceptor bridge detector.
 
 ## Postprocessing and optional 3D water density
 
@@ -122,3 +119,25 @@ then measure throughput and peak memory using normal system profiling tools
 on a single replicate. The optional event/bridge presets can produce large
 outputs for all-water tracking; enable them only for selected chemical sites.
 No production-scale performance benchmark has been measured in this PR.
+
+## Optional geometry-qualified water bridges
+
+Set `options.water_hbond_bridges: true` in the detailed or kinetics preset
+(or any preset). The selected water oxygen must have exactly two covalently
+bonded hydrogen atoms in the topology; the solvation target atoms must be
+**hydrogen-bond acceptor atoms**. The implementation screens the existing
+site–water neighbor pairs and checks each water O–H···acceptor angle (default
+150°) and oxygen–acceptor separation (default 3.5 Å). It reports a
+`water_hbond_bridges.parquet` event when **two different water hydrogens**
+simultaneously donate to distinct targets. This intentionally does not cover
+target-donor→water-acceptor hydrogen bonds or mixed-direction bridges.
+Consequently, it is a *specific, conservative subset* of water hydrogen
+bonding, not a comprehensive solvent-bridge detector. Incorrect acceptor
+selections can produce false assignments; validate against topology chemistry.
+
+```yaml
+    options:
+      water_hbond_bridges: true
+      hbond_da_cutoff_A: 3.5
+      hbond_angle_deg: 150
+```
