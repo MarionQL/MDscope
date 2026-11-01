@@ -1,7 +1,7 @@
 # MDscope analysis package
 
-See [the current architecture](../../docs/ARCHITECTURE.md) and
-[repository rules](../../docs/REPOSITORY_RULES.md).
+See [the current architecture](../../docs/developer/architecture.md) and
+[repository rules](../../docs/developer/contributing.md).
 
 Current canonical packages:
 - `core/`: geometry, alignment, atom selection, trajectory sources and checkpoints
