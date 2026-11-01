@@ -303,6 +303,7 @@ def test_neighbor_methods_produce_identical_coordination(tmp_path):
         # (2.0 Å). Distinct native PBC backends may round that distance
         # to opposite sides of the edge without changing coordination.
         # Move only this test's solvent slightly off that discontinuity.
+        u.atoms[2].position = [3.07, 1., 1.]
         u.atoms[3].position = [19.43, 1., 1.]
         observer.update(ts, 0, 0.)
         observer.flush(0)
