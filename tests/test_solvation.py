@@ -298,7 +298,13 @@ def test_neighbor_methods_produce_identical_coordination(tmp_path):
         config["analyses"]["solvation"]["neighbor_method"] = backend
         u = _universe()
         observer = SolvationObserver(u, config, tmp_path/backend)
-        observer.update(u.trajectory[0], 0, 0.)
+        ts = u.trajectory[0]
+        # The shared fixture contains an EXACT RDF bin-edge separation
+        # (2.0 Å). Distinct native PBC backends may round that distance
+        # to opposite sides of the edge without changing coordination.
+        # Move only this test's solvent slightly off that discontinuity.
+        u.atoms[3].position = [19.43, 1., 1.]
+        observer.update(ts, 0, 0.)
         observer.flush(0)
         observer.finalize()
         root = tmp_path/backend/"extensions/solvation"
