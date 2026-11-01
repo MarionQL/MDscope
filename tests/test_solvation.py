@@ -86,3 +86,21 @@ def test_local_grid_uses_same_water_candidates(tmp_path):
     density = pd.read_parquet(tmp_path/"extensions/solvation/water_density_3d.parquet")
     assert density["count"].sum() == 2
     assert np.all(np.isfinite(density["g_bulk"]))
+
+
+def test_water_hbond_kernel_checks_angle_and_periodic_geometry():
+    from mdscope.observables.solvation import water_donor_hbonds
+    box = np.array([30., 30., 30., 90., 90., 90.])
+    sites = np.array([[-2.7, 0., 0.], [2.7, 0., 0.],
+                      [0., 2.7, 0.]])
+    waters = np.array([[0., 0., 0.]])
+    hydrogens = np.array([[[-1., 0., 0.], [1., 0., 0.]]])
+    candidate = np.array([[0,0],[1,0],[2,0]])
+    found = water_donor_hbonds(sites, waters, hydrogens, candidate, box)
+    assert set(map(tuple, found)) == {(0,0,0), (0,1,1)}
+    shifted = sites.copy()
+    shifted[0, 0] += 30.
+    wrapped = water_donor_hbonds(shifted, waters, hydrogens, candidate, box)
+    assert set(map(tuple, wrapped)) == set(map(tuple, found))
+    assert not len(water_donor_hbonds(sites, waters, hydrogens,
+                                     candidate, box, min_angle_deg=181.))
