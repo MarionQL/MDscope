@@ -1,15 +1,9 @@
-name: Full finalization benchmark
+name: Full finalization benchmark (release trajectories)
 
-# This benchmark consumes already-computed six-replicate MDscope outputs.
-# The published release contains short trajectory samples, not the complete
-# production results; benchmarking those samples would not predict finalization.
+# Manually benchmark actual finalization after generating outputs from the
+# two published SDC4 TPR/XTC samples. No external URL or HPC files required.
 on:
   workflow_dispatch:
-    inputs:
-      results_url:
-        description: "HTTPS URL of a .tar.gz containing results_memb_full_mechanisms/"
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -22,6 +16,7 @@ jobs:
       PYTHONUNBUFFERED: "1"
       OPENBLAS_NUM_THREADS: "1"
       OMP_NUM_THREADS: "1"
+      MPLBACKEND: Agg
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -29,64 +24,108 @@ jobs:
           python-version: "3.11"
       - name: Install MDscope
         run: python -m pip install -e .
-      - name: Fetch existing production results
+      - name: Download both published trajectory/topology pairs
         env:
-          RESULTS_URL: ${{ inputs.results_url }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          python - <<'PY'
-          import os
-          from urllib.parse import urlparse
-          url = urlparse(os.environ["RESULTS_URL"])
-          if url.scheme != "https" or not url.hostname:
-              raise SystemExit("results_url must be an HTTPS URL")
-          PY
-          curl --fail --location --retry 3 --output results.tar.gz "$RESULTS_URL"
-          mkdir -p benchmark_input
-          tar -tzf results.tar.gz | head -n 10 || true
-          tar -xzf results.tar.gz -C benchmark_input --no-same-owner --no-same-permissions
-          test -d benchmark_input/results_memb_full_mechanisms
-      - name: Prepare isolated benchmark configuration
+          mkdir -p real_test_data
+          gh release download test-data-v1 --repo MarionQL/MDscope --dir real_test_data
+          ls -lh real_test_data
+      - name: Build paired benchmark configuration
         run: |
           python - <<'PY'
           from pathlib import Path
           import yaml
+
           cfg = yaml.safe_load(Path("synd4_full_mechanisms.yaml").read_text())
-          cfg["project"]["output"] = str(Path("benchmark_input/results_memb_full_mechanisms").resolve())
-          # Finalization uses existing per-replicate artifacts. TPR/XTC files
-          # are not downloaded or reopened by this workflow.
+          data = Path("real_test_data").resolve()
+          cfg["project"] = {"name": "release_finalize_benchmark",
+                            "output": str(Path("release_finalize_results").resolve())}
+          cfg["systems"] = {
+              "synd4_glycolipids": {
+                  "label": "Synd4 + Glycolipids",
+                  "topology": str(data / "carb-sdc4-step7_production.tpr"),
+                  "replicates": [{"label": "rep1", "trajectory": str(data / "carb-sdc4-rep1_test.xtc")}],
+              },
+              "synd4_no_glycolipids": {
+                  "label": "Synd4 - Glycolipids",
+                  "topology": str(data / "nocarb-sdc4-step7_production.tpr"),
+                  "replicates": [{"label": "rep1", "trajectory": str(data / "nocarb-sdc4-rep1_test.xtc")}],
+              },
+          }
+          # These samples contain ~200 frames, not the 1000+ production
+          # frames excluded by the production YAML's start=1000.
+          cfg["trajectory"] = {"start": 0, "stop": None, "stride": 1, "chunk_frames": 50}
+          # Benchmark actual statistics, plotting and PDF finalization on
+          # representative real outputs. Expensive full-production analysis
+          # kernels are NOT being benchmarked here.
+          enabled = {"alignment", "rmsd", "radius_of_gyration",
+                     "density_1d", "membrane", "membrane_order", "lipid_enrichment"}
+          for name, spec in cfg["analyses"].items():
+              if isinstance(spec, dict):
+                  spec["enabled"] = name in enabled
+              else:
+                  cfg["analyses"][name] = {"enabled": name in enabled}
+          cfg["cache"]["aligned_coordinates"] = False
+          cfg["statistics"]["enabled"] = True
+          cfg["statistics"]["bootstrap_draws"] = 5000
+          cfg["report"]["enabled"] = True
+          cfg["report"]["bundle_enabled"] = True
+          cfg["plots"]["enabled"] = True
+          cfg["report"]["sample_frames_per_replicate"] = 100
           Path("benchmark.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+          print("Two release trajectories; 5000 bootstrap draws; one replica per system.")
+          print("Excluded full-production mechanisms/solvation/shared-states analyses.")
           PY
-      - name: Profile complete finalize
+          python -m mdscope.cli validate benchmark.yaml
+      - name: Generate completed per-replicate outputs (not timed as finalization)
+        run: |
+          set -o pipefail
+          python -u -m mdscope.cli replicate benchmark.yaml --index 0 2>&1 | tee prep-glycolipids.log
+          python -u -m mdscope.cli replicate benchmark.yaml --index 1 2>&1 | tee prep-no-glycolipids.log
+      - name: Profile actual finalize command
         run: |
           set -o pipefail
           /usr/bin/time -v -o resource_usage.txt \
-            python -m cProfile -o finalize.prof -m mdscope.cli finalize benchmark.yaml \
+            python -u -m cProfile -o finalize.prof -m mdscope.cli finalize benchmark.yaml \
             2>&1 | tee finalize.log
-      - name: Summarize CPU hotspots
+      - name: Summarize finalization stages and CPU hotspots
         if: always()
         run: |
           python - <<'PY'
+          import json
           import pstats
           from pathlib import Path
-          if Path("finalize.prof").exists():
-              with open("profile_summary.txt", "w") as f:
-                  p = pstats.Stats("finalize.prof", stream=f)
-                  p.sort_stats("cumulative").print_stats(75)
-                  p.sort_stats("tottime").print_stats(75)
+
+          profile = Path("finalize.prof")
+          if profile.exists():
+              with Path("profile_summary.txt").open("w") as handle:
+                  stats = pstats.Stats(str(profile), stream=handle)
+                  stats.sort_stats("cumulative").print_stats(75)
+                  stats.sort_stats("tottime").print_stats(75)
+          timing = Path("release_finalize_results/project_summary/finalization_timings.json")
+          if timing.exists():
+              data = json.loads(timing.read_text())
+              for row in data.get("stages", []):
+                  print(f"FINALIZE {row['stage']}: {row['seconds']:.2f} s")
+              print(f"TOTAL FINALIZE: {data.get('total_seconds', 0):.2f} s")
           PY
           cat resource_usage.txt 2>/dev/null || true
-          grep 'TIMING finalize' finalize.log 2>/dev/null || true
           head -n 100 profile_summary.txt 2>/dev/null || true
-      - name: Upload timing and profiling diagnostics
+      - name: Upload benchmark artifacts even after failure
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: full-finalization-benchmark
+          name: release-finalization-benchmark
           path: |
+            benchmark.yaml
+            prep-glycolipids.log
+            prep-no-glycolipids.log
             finalize.log
             finalize.prof
             profile_summary.txt
             resource_usage.txt
-            benchmark_input/results_memb_full_mechanisms/project_summary/finalization_timings.json
+            release_finalize_results/project_summary/finalization_timings.json
+            release_finalize_results/*/rep1/stage_timings.json
           if-no-files-found: warn
           retention-days: 7
