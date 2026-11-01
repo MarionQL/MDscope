@@ -122,7 +122,11 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
     excluded_kinds = set(stats.get('interaction_exclude_kinds', []))
     for system, reps in system_repouts.items():
         for repout in reps:
-            tables = interaction_tables(repout)
+            tables = interaction_tables(
+                repout,
+                exclude_kinds=excluded_kinds,
+                table_names=("presence", "lifetimes"),
+            )
             path = repout / "summary" / "timeseries.parquet"
             times = (
                 pd.read_parquet(
