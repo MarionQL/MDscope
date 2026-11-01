@@ -219,3 +219,50 @@ def test_tracking_class_filter_preserves_counts_but_limits_events(tmp_path):
     assert set(events.target_id) == {"protein/acceptor/0"}
     assert pd.read_parquet(result/"bridges.parquet").empty if (
         result/"bridges.parquet").exists() else True
+
+
+def test_fused_solvation_restart_rebuilds_same_outputs(tmp_path):
+    from mdscope.pipeline.fused_extensions import FusedExtensions
+    cfg = {"analyses": {"solvation": {
+        "enabled": True, "preset": "kinetics",
+        "targets": {"protein": {"acidic": "resname GLU and name OE1 OE2"}},
+        "water_selection": "resname SOL and name OW",
+        "ion_selections": {"Na": "resname SOD"},
+        "search_radius_A": 5., "rdf_bin_width_A": .5,
+        "shell_cutoffs_A": {"water": 3.5, "ions": 4.},
+    }}, "time": {"dt_ps": 5., "origin_ps": 0.}}
+    paths = []
+    for restart in (False, True):
+        root = tmp_path/("resumed" if restart else "clean")
+        u = _universe()
+        obs = FusedExtensions(u, cfg, root)
+        obs.prune_from(0)
+        obs.update(u.trajectory[0], 0)
+        obs.flush(0)
+        if restart:
+            # Reconstruct observer at chunk boundary. Solvation histograms,
+            # events and frame mapping must be rebuilt from saved chunks.
+            u = _universe()
+            obs = FusedExtensions(u, cfg, root)
+            obs.prune_from(1)
+        obs.update(u.trajectory[1], 1)
+        obs.flush(1)
+        obs.finalize()
+        paths.append(root/"extensions/solvation")
+    for name in ("counts.parquet", "rdf.parquet", "events.parquet",
+                 "episodes.parquet", "survival.parquet",
+                 "species_timeseries.parquet", "target_summary.parquet"):
+        pd.testing.assert_frame_equal(
+            pd.read_parquet(paths[0]/name),
+            pd.read_parquet(paths[1]/name), check_dtype=False)
+
+
+def test_target_water_overlap_is_rejected(tmp_path):
+    import pytest
+    u = _universe()
+    cfg = {"analyses": {"solvation": {
+        "enabled": True,
+        "targets": {"water": {"self": "resname SOL and name OW"}},
+        "water_selection": "resname SOL and name OW"}}}
+    with pytest.raises(ValueError, match="overlap"):
+        SolvationObserver(u, cfg, tmp_path)
