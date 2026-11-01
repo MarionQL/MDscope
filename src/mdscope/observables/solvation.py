@@ -187,10 +187,28 @@ class SolvationObserver:
             contacts = defaultdict(set)
             for ti, si in zip(indices[shell], pair[shell, 1]):
                 contacts[int(ti)].add(int(atoms.indices[si]))
-            for i, (target, kind, label, group) in enumerate(self.targets):
+            # Bin all site–solvent pairs in a single vectorized pass.
+            # Per-target boolean masking here would scale as O(targets*pairs)
+            # and is particularly expensive for hundreds of lipid molecules.
+            classes = list(dict.fromkeys((kind, label) for _, kind, label, _ in self.targets))
+            class_lookup = {name: i for i, name in enumerate(classes)}
+            class_of_target = np.array(
+                [class_lookup[(kind, label)] for _, kind, label, _ in self.targets],
+                dtype=np.int32)
+            radial_bin = np.searchsorted(self.edges, distances, side="right")-1
+            valid = (radial_bin >= 0) & (radial_bin < len(self.edges)-1)
+            flat = class_of_target[indices[valid]] * (len(self.edges)-1) + radial_bin[valid]
+            histogram = np.bincount(flat, minlength=len(classes)*(len(self.edges)-1)).reshape(
+                len(classes), len(self.edges)-1)
+            class_atoms = np.bincount(
+                class_of_target,
+                weights=[len(group) for _, _, _, group in self.targets],
+                minlength=len(classes))
+            for class_index, (kind, label) in enumerate(classes):
                 key = (solvent, kind, label)
-                self.hist[key] += np.histogram(distances[indices == i], bins=self.edges)[0]
-                self.exposure[key] += len(group) * len(atoms) / volume
+                self.hist[key] += histogram[class_index]
+                self.exposure[key] += class_atoms[class_index] * len(atoms)/volume
+            for i, (target, kind, label, group) in enumerate(self.targets):
                 self.rows.append((int(frame_index), float(time_ps), solvent,
                                   target, kind, label, len(contacts[i])))
                 if self.events_on:
