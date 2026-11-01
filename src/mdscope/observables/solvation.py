@@ -308,6 +308,26 @@ class SolvationObserver:
                         self.grid_counts[target_id] += np.histogramdd(
                             local, bins=(self.grid_edges,)*3)[0].astype(np.int64)
                 self.grid_exposure += len(atoms)/volume
+            if solvent == "water" and self.water_hbond_bridges:
+                candidate = pair[distances <= self.hbond_da_A]
+                qualified = water_donor_hbonds(
+                    self.site_atoms.positions, atoms.positions,
+                    self.water_hydrogens.positions.reshape(-1, 2, 3),
+                    candidate, box, max_da_A=self.hbond_da_A,
+                    min_angle_deg=self.hbond_angle)
+                by_water = defaultdict(lambda: defaultdict(set))
+                for water_idx, site_idx, hydrogen_idx in qualified:
+                    by_water[int(water_idx)][int(self.target_of_site[site_idx])].add(
+                        int(hydrogen_idx))
+                for water_idx, target_hydrogens in by_water.items():
+                    for a, b in combinations(sorted(target_hydrogens), 2):
+                        # Two distinct donor H atoms must participate.
+                        if any(h1 != h2 for h1 in target_hydrogens[a]
+                               for h2 in target_hydrogens[b]):
+                            self.hbond_rows.append(
+                                (int(frame_index), float(time_ps),
+                                 int(atoms.indices[water_idx]),
+                                 self.targets[a][0], self.targets[b][0]))
             if self.bridges_on:
                 inverse = defaultdict(set)
                 for target_index, solvent_ids in contacts.items():
@@ -325,6 +345,8 @@ class SolvationObserver:
             ("counts", self.rows, COUNT_COLUMNS),
             ("events", self.events, EVENT_COLUMNS),
             ("bridges", self.bridges, BRIDGE_COLUMNS),
+            ("water_hbond_bridges", self.hbond_rows,
+             ["frame", "time_ps", "water_id", "target_a", "target_b"]),
             ("frames", self.frame_rows, ["frame", "time_ps"]),
         ):
             if values or name in {"counts", "frames"}:
@@ -366,7 +388,7 @@ class SolvationObserver:
         def read(name):
             files = sorted(cache.glob(f"{name}-*.parquet"))
             return pd.concat((pd.read_parquet(p) for p in files), ignore_index=True) if files else pd.DataFrame()
-        for name in ("counts", "events", "bridges"):
+        for name in ("counts", "events", "bridges", "water_hbond_bridges"):
             df = read(name)
             if not df.empty or name == "counts":
                 atomic_parquet(dest / f"{name}.parquet", df)
@@ -416,6 +438,7 @@ class SolvationObserver:
             "3d_grid_domain": "Only observed voxels within an inscribed sphere around a target origin; other voxels are not sampled.",
             "3d_grid_edges_A": self.grid_edges.tolist() if self.grid_frames else None,
             "bridges": self.bridges_on,
+            "water_hbond_bridges": self.water_hbond_bridges,
             "rdf_limitation": "Bulk-density normalized; no excluded-volume correction. Evaluate alongside SASA.",
             "residence_limitation": "Episodes represent consecutive sampled contacts; temporal resolution is trajectory frame interval.",
         })
