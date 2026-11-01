@@ -210,6 +210,8 @@ class SolvationObserver:
             if overlap:
                 raise ValueError(f"solvation solvent species selections overlap: {name}")
             assigned.update(map(int, group.indices))
+            if set(map(int, group.indices)).intersection(map(int, indices)):
+                raise ValueError(f"solvation target sites overlap solvent selection {name}")
             self.solvents[name] = group
         if not self.solvents:
             raise ValueError("solvation requires water_selection and/or ion_selection")
