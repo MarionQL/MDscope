@@ -22,6 +22,8 @@ import pandas as pd
 
 from ..config import ensure_dir
 from .report_inventory import _read, _sample_frame_table, _summary_inventory, _metric_groups
+from .solvation_figures import (solvation_inventory, solvation_rdf_figure,
+    solvation_timeseries_figure, solvation_stat_rows, solvation_comparison_rows)
 
 
 CATEGORIES = (
@@ -447,6 +449,77 @@ def _build_pdf(path, cfg, root, system_repouts, options):
                 body(f"{len(conditional)-max_cond} additional conditioned rows "
                      "are included in the companion ZIP.")
 
+    # Solvation results are reported explicitly, rather than hidden among
+    # generic scalar metrics. Large per-target/event tables are indexed here
+    # and included at full precision in the companion ZIP.
+    sol_inventory = solvation_inventory(system_repouts)
+    if not sol_inventory.empty:
+        story.append(PageBreak())
+        header("Solvation, hydration and ion coordination")
+        body("Solvation counts are unique solvent entities within configured shells. "
+             "The hydration fraction is the fraction of targets with at least one "
+             "solvent in the shell. RDF g(r) uses a bulk-density normalization "
+             "without excluded-volume correction. Replicates, not frames or "
+             "molecular sites, are independent sampling units.")
+        summary = solvation_stat_rows(root)
+        if not summary.empty:
+            sub("System-level hydration and coordination statistics")
+            body("Moving-block and hierarchical bootstrap confidence intervals "
+                 "reuse the project-wide statistics settings.")
+            rows = [["System", "Solvent / target class / site", "Metric",
+                     "Mean [95% CI]", "n reps"]]
+            for item in summary.head(55).itertuples():
+                rows.append([item.system, str(item.group).replace("solvation/",""),
+                    item.metric, f"{_fmt(item.mean)} [{_fmt(item.mean_ci_low)}, "
+                    f"{_fmt(item.mean_ci_high)}]", item.n_replicates])
+            table(rows,[77,174,91,125,43])
+            if len(summary)>55:
+                body(f"Showing 55 of {len(summary)} system/metric rows. "
+                     "All rows are preserved in the review ZIP.")
+        comparisons_sol=solvation_comparison_rows(root)
+        if not comparisons_sol.empty:
+            sub("Between-condition solvation differences")
+            rows=[["Comparison","Solvent / target class / site","Metric",
+                   "Difference [95% CI]"]]
+            for item in comparisons_sol.head(35).itertuples():
+                rows.append([f"{item.system_2} - {item.system_1}",
+                    str(item.group).replace("solvation/",""),item.metric,
+                    f"{_fmt(item.mean_difference_system2_minus_system1)} "
+                    f"[{_fmt(item.mean_difference_ci_low)}, "
+                    f"{_fmt(item.mean_difference_ci_high)}]"])
+            table(rows,[100,166,92,152])
+            if len(comparisons_sol)>35:
+                body(f"Showing 35 of {len(comparisons_sol)} comparisons; "
+                     "full results including p/q values are in the ZIP.")
+        rdf_figure=solvation_rdf_figure(root,system_repouts)
+        if rdf_figure:
+            sub("Radial distribution functions")
+            figure(rdf_figure[0],"Replicate-mean RDFs with ±1 replicate SD bands. "
+                   f"Showing {rdf_figure[1]} of {rdf_figure[2]} chemical classes; "
+                   "all numerical curves are in the review ZIP.")
+        series_figure=solvation_timeseries_figure(system_repouts)
+        if series_figure:
+            sub("Coordination over simulation time")
+            figure(series_figure[0],"Per-replicate coordination time series. "
+                   f"Showing {series_figure[1]} of {series_figure[2]} chemical classes.")
+        sub("Solvation output inventory")
+        body("All generated solvation datasets are indexed below. Large "
+             "per-frame, per-target, residence-event and 3D voxel tables are "
+             "not expanded into thousands of PDF pages. The companion ZIP "
+             "contains the numerical datasets, with explicit sampling/size "
+             "limits documented in its README.")
+        rows=[["System / replicate","Dataset","Rows"]]
+        for item in sol_inventory.itertuples():
+            rows.append([f"{item.system}/{item.replicate}",item.table,item.rows])
+        # Split long inventories to keep ReportLab tables manageable.
+        for start in range(1,len(rows),45):
+            table([rows[0]]+rows[start:start+45],[175,230,105])
+        body("Residence survival curves are descriptive and account for "
+             "recorded censoring; no confidence interval is implied. "
+             "3D density grids are sparse, target-local and only sampled "
+             "within the documented spherical domain. Missing or disabled "
+             "outputs are not treated as zero.")
+
     story.append(PageBreak())
     header("Selection audits and methodological limitations")
     for system, paths in system_repouts.items():
@@ -569,6 +642,30 @@ def _make_bundle(root, pdf, system_repouts, options):
                             )
                         else:
                             archive.write(path, arcname=str(relative / name))
+                    # Include full compact solvation summaries and bounded
+                    # samples of large event/voxel/frame-level tables.
+                    sol_dir=repout/"extensions"/"solvation"
+                    if sol_dir.is_dir():
+                        for sol_file in sorted(sol_dir.glob("*.parquet")):
+                            if sol_file.stat().st_size > 50_000_000:
+                                continue
+                            sol_data=pd.read_parquet(sol_file)
+                            large={"counts","events","episodes","bridges",
+                                   "water_hbond_bridges","hydration_sasa",
+                                   "water_density_3d","species_timeseries"}
+                            if sol_file.stem in large:
+                                sol_data=_sample_frame_table(sol_data,max_frames)
+                                suffix="_sample.csv"
+                            else:
+                                suffix=".csv"
+                            archive.writestr(
+                                str(relative/"extensions"/"solvation"/
+                                    (sol_file.stem+suffix)),
+                                sol_data.to_csv(index=False))
+                        metadata=sol_dir/"metadata.json"
+                        if metadata.exists():
+                            archive.write(metadata,arcname=str(
+                                relative/"extensions"/"solvation"/"metadata.json"))
                     path = repout / "summary/timeseries.parquet"
                     if path.is_file():
                         sampled = _sample_frame_table(pd.read_parquet(path), max_frames)
@@ -585,6 +682,9 @@ def _make_bundle(root, pdf, system_repouts, options):
                 "system/replicate/extensions: selection audits, lipid maps, conditioned HS summaries\n"
                 "system/replicate/summary/timeseries_sample.csv: uniformly sampled frames "
                 f"(at most {max_frames} per replicate)\n"
+                "Solvation summary tables are complete when below the size limit; "
+                "large event, voxel and frame-level tables are sampled to at most "
+                f"{max_frames} rows each and named *_sample.csv. "
                 "Raw trajectories, TPR files, large caches and full frame-level "
                 "time-series tables are intentionally excluded.\n",
             )
