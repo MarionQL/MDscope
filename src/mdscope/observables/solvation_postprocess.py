@@ -177,13 +177,19 @@ def aggregate_coordination_parts(paths):
         counts = pd.read_parquet(path)
         if counts.empty:
             continue
-        frame, _ = aggregate_coordination(counts)
+        frame = counts.groupby(class_keys + ["time_ps"], as_index=False).agg(
+            target_count=("target_id", "nunique"),
+            mean_n_solvent=("n_solvent", "mean"),
+            total_target_counts=("n_solvent", "sum"))
         class_tables.append(frame)
-        group = counts.groupby(target_keys, as_index=False).agg(
+        numeric = counts.assign(
+            positive=(counts["n_solvent"] > 0).astype(np.int64),
+            sum_square=np.square(counts["n_solvent"].to_numpy(dtype=np.int64)))
+        group = numeric.groupby(target_keys, as_index=False).agg(
             n_frames=("n_solvent", "size"),
             total=("n_solvent", "sum"),
-            positive=("n_solvent", lambda x: int((x > 0).sum())),
-            sum_square=("n_solvent", lambda x: int(np.square(x.to_numpy(dtype=np.int64)).sum())))
+            positive=("positive", "sum"),
+            sum_square=("sum_square", "sum"))
         partials.append(group)
     empty = aggregate_coordination(pd.DataFrame())[0:2]
     if not partials:
