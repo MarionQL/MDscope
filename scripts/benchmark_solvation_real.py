@@ -23,6 +23,18 @@ from mdscope.config import iter_replicates, load_config, time_ps
 from mdscope.observables.solvation import SolvationObserver
 
 
+def _rss_mib():
+    """Current RSS (different from lifetime maximum). Linux-only."""
+    try:
+        with open("/proc/self/status") as stream:
+            for line in stream:
+                if line.startswith("VmRSS:"):
+                    return round(int(line.split()[1]) / 1024, 2)
+    except OSError:
+        return None
+    return None
+
+
 def audit(observer):
     """Validate selections against the loaded, actual topology."""
     rows = []
@@ -62,9 +74,11 @@ def benchmark(cfg, config_path, *, system, replicate, frames, preset, output=Non
     if start >= len(u.trajectory):
         raise ValueError("trajectory.start is beyond available frames")
     u.trajectory[start]
+    after_universe_rss = _rss_mib()
     with tempfile.TemporaryDirectory(prefix="mdscope-solvation-bench-") as scratch:
         obs = SolvationObserver(u, cfg, scratch)
         topology_audit = audit(obs)
+        after_init_rss = _rss_mib()
         init_t = time.perf_counter()
         update_time = 0.
         completed = 0
@@ -80,8 +94,10 @@ def benchmark(cfg, config_path, *, system, replicate, frames, preset, output=Non
                 obs.flush((completed-1)//int(tr["chunk_frames"]))
         if completed % int(tr.get("chunk_frames", 1000)):
             obs.flush(completed//int(tr["chunk_frames"]))
+        after_updates_rss = _rss_mib()
         before_finalize = time.perf_counter()
         obs.finalize()
+        after_finalize_rss = _rss_mib()
         elapsed = time.perf_counter()-init_t
         finalize_time = time.perf_counter()-before_finalize
         sizes = {str(p.relative_to(scratch)): p.stat().st_size
@@ -99,7 +115,13 @@ def benchmark(cfg, config_path, *, system, replicate, frames, preset, output=Non
                                           if update_time else None),
             "peak_rss_MiB": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024
                             if os.uname().sysname == "Linux" else None,
+            "rss_MiB_after_universe": after_universe_rss,
+            "rss_MiB_after_observer_init": after_init_rss,
+            "rss_MiB_after_updates": after_updates_rss,
+            "rss_MiB_after_finalize": after_finalize_rss,
             "output_bytes": sizes, "total_output_bytes": sum(sizes.values()),
+            "cache_bytes": sum(v for k, v in sizes.items() if k.startswith("cache/")),
+            "finalized_bytes": sum(v for k, v in sizes.items() if k.startswith("extensions/")),
             "audit": topology_audit,
             "limitations": [
                 "Python process peak RSS includes Universe and module imports.",
