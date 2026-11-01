@@ -11,7 +11,10 @@ analyses:
     enabled: true
     preset: standard  # standard | detailed | kinetics
     water_selection: "resname TIP3 and name OH2"
-    ion_selection: "resname SOD and name SOD"
+    ion_selections:
+      Na: "resname SOD"
+      K: "resname POT"
+      Cl: "resname CLA"
     targets:
       protein:
         acidic_oxygen:
@@ -38,7 +41,7 @@ missing bonds must be corrected in the topology, not guessed spatially.
 Target selections must be disjoint.
 
 - Standard: compact per-target hydration/ion counts and site-class RDFs.
-- Detailed: also saves selected solvent identity events and candidate bridges.
+- Detailed: also saves solvent identity events and candidate bridges.
 - Kinetics: same identity tracking for sampled-frame episode analysis.
 - `options: {events: false, bridges: false}` can override preset behavior.
 
@@ -141,3 +144,29 @@ selections can produce false assignments; validate against topology chemistry.
       hbond_da_cutoff_A: 3.5
       hbond_angle_deg: 150
 ```
+
+
+## Molecular aggregation and ion species
+
+Set `ion_selections` to an explicit disjoint mapping such as
+`{K: "resname POT", Cl: "resname CLA"}` to obtain separate `ions/K`
+and `ions/Cl` outputs from separate small ion searches. The legacy
+`ion_selection` aggregates all selected ions; use one or the other.
+Explicit species selections permit distinct per-species RDF interpretation,
+with the same search machinery and checkpointing.
+
+`species_timeseries.parquet` reports per-frame mean coordination per
+molecule/target in each configured class and the total of target counts;
+`target_summary.parquet` reports each molecule/residue's mean, SD and
+hydrated fraction. These are **not counts of distinct waters across an
+entire chemical class**, because one water may coordinate two molecules.
+Per-HS-chain grouping uses `group_by: hs_chain` and the already available
+covalent HS-discovery implementation, not chainID or fragment grouping.
+It requires full glycan bond topology and the `hs_auto` configuration;
+MDscope reuses `sdc4_mechanisms.hs_auto` when provided.
+
+See `docs/SOLVATION_SDC4.md` for an old-build SDC4 selection
+template and `scripts/benchmark_solvation_real.py` for a **real observer**
+preflight and benchmark against existing HPC XTC+TPR inputs. The GitHub
+repository does not contain the full HPC trajectories, so publication-scale
+timing and memory cannot be claimed from CI or synthetic benchmarks.
