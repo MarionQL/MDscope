@@ -502,6 +502,63 @@ def _build_pdf(path, cfg, root, system_repouts, options):
             sub("Coordination over simulation time")
             figure(series_figure[0],"Per-replicate coordination time series. "
                    f"Showing {series_figure[1]} of {series_figure[2]} chemical classes.")
+        # Compact previews of the remaining scientific observables. The
+        # full data remain lossless in the bundle; no invented CI is shown.
+        for filename,title_,columns in (
+            ("target_summary","Per-target hydration and ion coordination",
+             ["solvent","target_id","mean_n_solvent","hydrated_fraction"]),
+            ("shell_candidates","Candidate hydration-shell boundaries",
+             ["solvent","target_class","site_class","suggested_cutoff_A","status"]),
+            ("shell_stability","Hydration-shell convergence diagnostics",
+             ["solvent","target_class","site_class","median_cutoff_A","status"]),
+            ("survival","Water/ion contact survival",
+             ["solvent","target_id","time_ps","survival_probability"]),
+            ("hydration_sasa","Hydration and solvent accessibility",
+             ["time_ps","target_id","n_solvent","sasa_nm2","sasa_coverage"]),
+            ("water_density_3d","Local 3D water-density voxel values",
+             ["target_id","x_A","y_A","z_A","g_bulk"]),
+            ("bridges","Solvent-mediated target bridges",
+             ["time_ps","solvent","target_a","target_b"]),
+            ("water_hbond_bridges","Geometry-qualified water bridges",
+             ["time_ps","target_a","target_b"]),
+            ("episodes","Sampled solvent residence episodes",
+             ["solvent","target_id","duration_ps","right_censored"]),
+        ):
+            examples=[]
+            total=0
+            for system_,paths_ in system_repouts.items():
+                for rep_ in paths_:
+                    path_=rep_/"extensions"/"solvation"/(filename+".parquet")
+                    if not path_.exists():
+                        continue
+                    import pyarrow.parquet as pq
+                    pf=pq.ParquetFile(path_)
+                    total+=pf.metadata.num_rows
+                    if len(examples)>=8:
+                        continue
+                    available=[c for c in columns if c in pf.schema_arrow.names]
+                    if not available:
+                        continue
+                    batch=next(pf.iter_batches(batch_size=8,columns=available),None)
+                    if batch is None:
+                        continue
+                    for record in batch.to_pylist()[:max(0,8-len(examples))]:
+                        examples.append((f"{system_}/{rep_.name}",record))
+            if not total:
+                continue
+            sub(title_)
+            body(f"{total} rows available across replicas. "
+                 "The following are representative table entries, not "
+                 "statistical summaries; complete results are in the ZIP.")
+            keys=list(examples[0][1]) if examples else []
+            if keys:
+                rows=[["System / replicate"]+keys]
+                for origin,record in examples:
+                    rows.append([origin]+[
+                        _fmt(record[k]) if isinstance(record[k],(int,float,np.number))
+                        else str(record[k])[:38] for k in keys])
+                width=510/(len(keys)+1)
+                table(rows,[width]*(len(keys)+1))
         sub("Solvation output inventory")
         body("All generated solvation datasets are indexed below. Large "
              "per-frame, per-target, residence-event and 3D voxel tables are "
