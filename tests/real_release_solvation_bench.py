@@ -85,7 +85,7 @@ def _configuration(topology, trajectory, system, data, *, n_frames):
     return cfg, summary
 
 
-def run(data_dir, output_dir, *, standard_frames, kinetics_frames):
+def run(data_dir, output_dir, *, standard_frames, kinetics_frames, sustained_frames=120):
     data_dir = Path(data_dir).resolve()
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -105,9 +105,10 @@ def run(data_dir, output_dir, *, standard_frames, kinetics_frames):
         for preset, n, methods in (
             ("standard", standard_frames, ("auto", "nsgrid")),
             ("kinetics", kinetics_frames, ("auto",)),
+            ("standard", sustained_frames, ("auto",)),
         ):
             for method in methods:
-                report_path = output_dir / f"{system}-{preset}-{method}.json"
+                report_path = output_dir / f"{system}-{preset}-{method}-{n}frames.json"
                 command = [
                     sys.executable, str(BENCH), str(config_path),
                     "--system", system, "--rep", "rep1",
@@ -132,7 +133,10 @@ def run(data_dir, output_dir, *, standard_frames, kinetics_frames):
                     "system", "preset", "neighbor_method",
                     "analyzed_frames", "time_s_total", "time_s_updates",
                     "time_s_finalize", "frames_per_second_updates",
-                    "peak_rss_MiB", "total_output_bytes")}
+                    "peak_rss_MiB", "rss_MiB_after_universe",
+                    "rss_MiB_after_observer_init", "rss_MiB_after_updates",
+                    "rss_MiB_after_finalize", "cache_bytes",
+                    "finalized_bytes", "total_output_bytes")}
                 print("BENCHMARK_RESULT " + json.dumps(compact, sort_keys=True),
                       flush=True)
                 reports.append(compact)
@@ -149,12 +153,14 @@ def main():
     parser.add_argument("--output-dir", default="release_solvation_benchmark")
     parser.add_argument("--standard-frames", type=int, default=24)
     parser.add_argument("--kinetics-frames", type=int, default=12)
+    parser.add_argument("--sustained-frames", type=int, default=120)
     args = parser.parse_args()
-    if min(args.standard_frames, args.kinetics_frames) < 1:
+    if min(args.standard_frames, args.kinetics_frames, args.sustained_frames) < 1:
         parser.error("frame counts must be positive")
     run(args.data_dir, args.output_dir,
         standard_frames=args.standard_frames,
-        kinetics_frames=args.kinetics_frames)
+        kinetics_frames=args.kinetics_frames,
+        sustained_frames=args.sustained_frames)
 
 
 if __name__ == "__main__":
