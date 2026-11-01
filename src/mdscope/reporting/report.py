@@ -22,7 +22,7 @@ import pandas as pd
 
 from ..config import ensure_dir
 from .report_inventory import _read, _sample_frame_table, _summary_inventory, _metric_groups
-from .figure_inventory import figure_inventory, report_coverage
+from .figure_inventory import figure_inventory, report_coverage, metric_coverage
 from .solvation_figures import (solvation_inventory, solvation_rdf_figure,
     solvation_timeseries_figure, solvation_survival_figure,
     solvation_stat_rows, solvation_comparison_rows)
@@ -663,6 +663,17 @@ def _build_pdf(path, cfg, root, system_repouts, options):
             body("WARNING: Analysis outputs without a generated figure: "+
                  ", ".join(missing.analysis.astype(str))+
                  ". Review the figure manifest and plot configuration.")
+    metric_audit=metric_coverage(root)
+    if not metric_audit.empty:
+        missing_metrics=metric_audit[metric_audit.status=="missing_figure"]
+        body(f"Per-metric visual coverage: {len(metric_audit)-len(missing_metrics)} "
+             f"of {len(metric_audit)} scalar statistical observables have "
+             "their expected standardized time-series figure.")
+        if not missing_metrics.empty:
+            body("Missing per-metric figures (first 15): "+
+                 ", ".join((missing_metrics.metric.astype(str)+
+                            " ["+missing_metrics.group.astype(str)+"]").head(15))+
+                 ". The complete list is in figure_metric_coverage.csv.")
     figures=figure_inventory(root,system_repouts)
     max_gallery=int(options.get("max_gallery_figures",100))
     if max_gallery<0:
@@ -721,6 +732,8 @@ def _make_bundle(root, pdf, system_repouts, options):
                              figures.to_csv(index=False))
             archive.writestr("project_summary/report/figure_coverage.csv",
                              coverage.to_csv(index=False))
+            archive.writestr("project_summary/report/figure_metric_coverage.csv",
+                             metric_coverage(root).to_csv(index=False))
             for item in figures.itertuples():
                 path_=root/item.figure
                 archive.write(path_,arcname=item.figure)
