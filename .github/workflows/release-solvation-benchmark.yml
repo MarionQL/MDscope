@@ -1,0 +1,53 @@
+name: MDscope release solvation memory and runtime benchmark
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "tests/real_release_solvation_bench.py"
+      - ".github/workflows/release-solvation-benchmark.yml"
+      - "scripts/benchmark_solvation_real.py"
+      - "src/mdscope/observables/solvation.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-solvation-benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-solvation-benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install MDscope
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+      - name: Download published matched SDC4 trajectories and topology
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p real_test_data
+          gh release download test-data-v1 --repo MarionQL/MDscope --dir real_test_data
+          ls -lh real_test_data
+          df -h .
+      - name: Benchmark released trajectories (fresh process per variant)
+        run: |
+          python tests/real_release_solvation_bench.py --data-dir real_test_data \
+            --output-dir release_solvation_benchmark \
+            --standard-frames 24 --kinetics-frames 12
+      - name: Upload complete runtime, RSS and output-size reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-solvation-benchmark
+          path: release_solvation_benchmark/*.json
+          if-no-files-found: warn
+          retention-days: 14
