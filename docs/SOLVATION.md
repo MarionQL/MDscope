@@ -106,3 +106,19 @@ is a sparse observed-density map: absent voxels correspond to zero observed
 counts. Its `g_bulk` uses bulk density and does not adjust for inaccessible
 local volume. A local map cannot be interpreted as an equilibrium fixed-frame
 binding site if its neighboring molecular environment varies substantially.
+
+## Reliability and performance validation
+
+`tests/test_solvation.py` validates PBC, unique solvent counts and saved products.
+`tests/test_solvation_postprocess.py` checks RDF minima, censored survival,
+SASA joins, and chunk-level shell stability. `shell_stability.parquet` is a
+convergence diagnostic computed entirely from already persisted histogram
+chunks; the result is not an uncertainty interval from independent replicates.
+A stable minimum needs four resolvable chunks with ≤0.5 Å cutoff spread.
+Use a common validated cutoff for each chemical site class across systems.
+
+For production workloads, first run standard mode with representative frames,
+then measure throughput and peak memory using normal system profiling tools
+on a single replicate. The optional event/bridge presets can produce large
+outputs for all-water tracking; enable them only for selected chemical sites.
+No production-scale performance benchmark has been measured in this PR.
