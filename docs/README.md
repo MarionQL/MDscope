@@ -1,27 +1,17 @@
 # MDscope documentation
 
-Start with the [repository README](../README.md) for installation and CLI usage. The guides below describe methods, configuration and scientific contracts.
+Start with the [repository README](../README.md) for installation, basic usage, and CLI commands. For the production syndecan workflow, see [workflows](workflows.md) and the checked-in `synd4_full_mechanisms.yaml`.
 
-## Architecture and development
+## Using MDscope
 
-- [Architecture](ARCHITECTURE.md) — current code ownership and validation gates
-- [Repository rules](REPOSITORY_RULES.md) — refactoring requirements
-- [Registry](ANALYSIS_REGISTRY.md) — analysis configuration and registration
-- [Coordinate contracts](COORDINATE_CONTRACTS.md) — PBC, alignment and frame semantics
-- [Trajectory passes](TRAJECTORY_PASSES.md) — fused execution and checkpoints
+- [Configuration and analysis registration](configuration.md) — YAML options, selection groups and registry behavior.
+- [Scientific analyses and methods](analyses.md) — membrane, lipid, SDC4, solvation, interaction and diffusion methods; assumptions and limitations.
+- [Workflows and reporting](workflows.md) — trajectory streaming, SLURM execution, finalization and report artifacts.
 
-## Scientific analyses
+## Developing MDscope
 
-- [Neuronal extensions](NEURONAL_EXTENSION.md) — optional membrane and interface analyses
-- [SDC4 mechanisms](SDC4_MECHANISMS.md) — topology and mechanistic observer settings
-- [Issue analyses](ISSUE_ANALYSES.md) — opt-in observable definitions
-- [Report workflow](REPORT.md) — end-to-end SDC4 example
-- [Multi-origin MSD](MULTI_ORIGIN_MSD.md) — diffusion methodology
+- [Architecture](developer/architecture.md) — package boundaries and installation model.
+- [Scientific contracts](developer/scientific-contracts.md) — coordinate conventions, geometry, numerical regression and validation.
+- [Contributing](developer/contributing.md) — refactoring rules and testing expectations.
 
-## Historical numerical audits
-
-These records document earlier implementation choices; they are **not** authoritative module-location guides. Consult the current architecture and source code before following a historical path.
-
-- [Geometry audit](GEOMETRY_AUDIT.md)
-- [Geometry consolidation audit](GEOMETRY_CONSOLIDATION_AUDIT.md)
-- [Issue 31 numerical primitive audit](issue31-numerical-primitive-audit.md)
+Documentation is organized by enduring functionality, not GitHub issue numbers. Historical development discussions remain available in Git history and closed issues.
