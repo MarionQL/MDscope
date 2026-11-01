@@ -17,11 +17,15 @@ set -euo pipefail
 exec 2>&1
 
 # Run from the directory with YAML
-ROOT="${SLURM_SUBMIT_DIR}"
+ROOT="${SLURM_SUBMIT_DIR:-$(pwd)}"
 YAML="${1:-${ROOT}/synd4_full_mechanisms.yaml}"
 
 mkdir -p "${ROOT}/slurm-out/mdscope"
 cd "${ROOT}"
+if [[ ! -f "${YAML}" ]]; then
+    echo "ERROR: YAML not found: ${YAML}" >&2
+    exit 2
+fi
 
 # Activate the environment containing MDscope and its dependencies.
 source /apps/common/software/Miniconda3/24.7.1-0/etc/profile.d/conda.sh
