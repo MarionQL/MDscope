@@ -90,10 +90,39 @@ class FusedExtensions:
             between = [self.cfg["selections"]["protein"], ligand]
         elif between is None:
             between = [self.cfg["selections"]["protein"]] * 2
+        donors_sel = spec.get("donors_sel")
+        hydrogens_sel = spec.get("hydrogens_sel")
+        acceptors_sel = spec.get("acceptors_sel")
+        # Opt-in fast path. MDAnalysis applies 'between' *after* generating
+        # donor/acceptor candidates; on solvated systems this can include
+        # hundreds of thousands of water atoms. Restrict candidate chemistry
+        # before the distance search, retaining the original between filter.
+        # Keep explicit selections and other modes unchanged.
+        if (spec.get("restrict_search_to_protein", False)
+                and spec.get("mode", "protein_protein") == "protein_protein"
+                and spec.get("between") is None):
+            protein = self.cfg["selections"]["protein"]
+            if hydrogens_sel is None or acceptors_sel is None:
+                guesser = HydrogenBondAnalysis(
+                    self.u, donors_sel=None,
+                    hydrogens_sel="name __MDSCOPE_NONE__",
+                    acceptors_sel="name __MDSCOPE_NONE__",
+                    update_selections=False,
+                )
+                if hydrogens_sel is None:
+                    hydrogens_sel = guesser.guess_hydrogens(protein)
+                if acceptors_sel is None:
+                    acceptors_sel = guesser.guess_acceptors(protein)
+            if not hydrogens_sel or not acceptors_sel:
+                raise ValueError("No protein H-bond hydrogens/acceptors inferred")
+            hydrogens_sel = f"({hydrogens_sel}) and ({protein})"
+            acceptors_sel = f"({acceptors_sel}) and ({protein})"
+            if donors_sel is not None:
+                donors_sel = f"({donors_sel}) and ({protein})"
         hba = HydrogenBondAnalysis(
-            self.u, donors_sel=spec.get("donors_sel"),
-            hydrogens_sel=spec.get("hydrogens_sel"),
-            acceptors_sel=spec.get("acceptors_sel"),
+            self.u, donors_sel=donors_sel,
+            hydrogens_sel=hydrogens_sel,
+            acceptors_sel=acceptors_sel,
             between=between,
             d_h_cutoff=float(spec.get("d_h_cutoff_A", 1.2)),
             d_a_cutoff=float(spec.get("d_a_cutoff_A", 3.0)),

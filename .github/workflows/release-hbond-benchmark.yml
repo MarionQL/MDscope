@@ -1,0 +1,44 @@
+name: Release protein H-bond parity and benchmark
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/mdscope/pipeline/fused_extensions.py"
+      - "tests/real_hbond_benchmark.py"
+      - ".github/workflows/release-hbond-benchmark.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  hbond-release-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      PYTHONUNBUFFERED: "1"
+      MDSCOPE_REAL_DATA: real_test_data
+      MDSCOPE_HBOND_BENCH_FRAMES: "8"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install MDscope
+        run: python -m pip install -e .
+      - name: Download paired release trajectories and TPRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p real_test_data
+          gh release download test-data-v1 --repo MarionQL/MDscope --dir real_test_data
+      - name: Compare original and protein-only H-bond detector
+        run: python tests/real_hbond_benchmark.py
+      - name: Publish parity and runtime report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-hbond-benchmark
+          path: real_test_results/hbond_benchmark/results.json
+          if-no-files-found: warn
