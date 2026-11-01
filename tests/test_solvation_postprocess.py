@@ -50,16 +50,22 @@ def test_sasa_exact_frame_join_and_missing_residue():
 def test_chunk_shell_calibration_reports_stable_vs_ambiguous():
     from mdscope.observables.solvation_postprocess import calibration_stability
     edges = np.arange(0, 10, .5)
-    g = np.ones(len(edges)-1) * 20
-    g[4:14] = [24, 48, 62, 44, 24, 14, 18, 19, 20, 20]
+    # Construct PAIR COUNTS from a known RDF, including r² shell volume.
+    # Flat counts are not a flat RDF and would spuriously remove its peak.
+    g = np.ones(len(edges)-1)
+    g[4:14] = [1.2, 2.4, 3.1, 2.2, 1.2, .7, .9, 1., 1., 1.]
+    volume = 4*np.pi/3*np.diff(edges**3)
+    exposure = 1000.
+    counts = np.rint(g*volume*exposure).astype(int)
     parts = [{"solvent": "water", "target_class": "protein",
-              "site_class": "carboxylate", "exposure": 20.,
-              **{f"bin_{j}": int(x) for j, x in enumerate(g)}}
+              "site_class": "carboxylate", "exposure": exposure,
+              **{f"bin_{j}": int(x) for j, x in enumerate(counts)}}
              for _ in range(4)]
     stable = calibration_stability(pd.DataFrame(parts), edges)
     assert stable.status.item() == "stable"
     assert stable.chunks_resolved.item() == 4
-    parts[-1].update({f"bin_{j}":20 for j in range(len(g))})
+    parts[-1].update({f"bin_{j}": int(x) for j, x in
+                      enumerate(np.rint(volume*exposure).astype(int))})
     unstable = calibration_stability(pd.DataFrame(parts), edges)
     assert unstable.status.item() == "unresolved_chunks"
     assert unstable.chunks_resolved.item() == 3
