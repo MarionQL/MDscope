@@ -1,4 +1,4 @@
-# MDscope repository rules
+# Contributing and repository rules
 
 This document is the single source of truth for structural refactoring.
 
@@ -15,7 +15,7 @@ This document is the single source of truth for structural refactoring.
 11. **Require meaningful CI.** Run existing Python 3.11/3.13 checks and real-GROMACS workflows for changed paths.
 12. **Prefer net simplification.** Explain what a cleanup PR removes, and avoid mass formatting.
 
-## Target layout
+## Package ownership
 
 - `src/mdscope/core/`: geometry, coordinate and topology contracts, selections, trajectory inputs, persistence and checkpoints
 - `src/mdscope/observables/`: RMSD, RMSF, MSD, radius of gyration, membrane and protein observables

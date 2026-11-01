@@ -1,4 +1,11 @@
-# Analysis instances and grouping
+# Configuration and analysis registration
+
+This guide consolidates the authoritative technical details formerly scattered across topic and implementation-history files. Sections retain their scientific caveats and validation limitations; consult the source code for the executable contract.
+
+
+---
+
+### Analysis instances and grouping
 
 MDscope uses **one shared group definition**: `selections.groups`. A group specifies
 its atom selection and optional independent alignment selection. The streaming
@@ -41,7 +48,7 @@ The shared trajectory pass remains the execution engine. Every independently
 configured instance needs its own output identity and verifiable completion
 state. Existing algorithms, PBC rules and coordinate spaces must be preserved.
 
-## SASA: named targets and environments
+### SASA: named targets and environments
 
 SASA supports named runs that all share the existing trajectory pass.
 Each run computes **per-frame, per-residue target SASA**, with all selected

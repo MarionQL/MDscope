@@ -1,9 +1,16 @@
-# MDscope architecture
+# Architecture and packaging
 
-See [REPOSITORY_RULES.md](REPOSITORY_RULES.md) for cleanup and refactoring
+This guide consolidates the authoritative technical details formerly scattered across topic and implementation-history files. Sections retain their scientific caveats and validation limitations; consult the source code for the executable contract.
+
+
+---
+
+### MDscope architecture
+
+See [REPOSITORY_RULES.md](contributing.md) for cleanup and refactoring
 policy. This document records the current canonical module layout and dependency boundaries.
 
-## Current canonical locations
+### Current canonical locations
 
 - `src/mdscope/core/`: alignment, trajectory and provenance helpers, periodic
   geometry, atom selection, checkpoints, persistence.
@@ -30,14 +37,14 @@ The repository intentionally does **not** preserve legacy Python import
 aliases after a replacement is migrated. `mdscope` CLI commands and YAML
 configuration stay unchanged unless a separate change is approved.
 
-## Dependency direction
+### Dependency direction
 
 Core numerical kernels and observables must not import reporting. Pipeline
 coordinates readers and observers; statistics operates on persisted numerical
 results; reporting consumes finalized tables and images without rerunning
 trajectories. Keep framewise computations fused and sparse where applicable.
 
-## Quality gates
+### Quality gates
 
 Use the existing Python 3.11/3.13 tests, wheel and CLI checks, and real
 GROMACS smoke workflow. Structural refactors must preserve units, PBC
@@ -51,7 +58,7 @@ and `.github/workflows/real-trajectory-smoke.yml`.
 A passing smoke test establishes coverage for its tested configurations,
 not numerical equivalence for every supported topology or analysis option.
 
-## Issue #33 — observable and interaction ownership audit (2026-10-31)
+### Issue #33 — observable and interaction ownership audit (2026-10-31)
 
 The former `src/mdscope/timeseries.py`, `src/mdscope/profiles.py` and
 `src/mdscope/interactions.py` facades were intentionally removed by earlier
@@ -69,3 +76,27 @@ PBC geometry, topology-residue contacts, mixed protein–membrane and
 membrane-only selections, explicit coordinate roles, and fused frame
 lifecycle. Broader numerical, topology, and trajectory provenance validation
 belongs to issue #36 rather than repeated architecture reorganization.
+
+---
+
+### Packaging and source layout
+
+MDscope uses a conventional `src/mdscope/` package layout.
+The public imports remain `mdscope.*` and the CLI remains `mdscope`.
+
+Install from a checkout with `python -m pip install -e ".[dev]"`.
+For HPC where dependencies already exist, `python -m pip install --no-deps -e .`
+registers the checkout in the active environment; do not rely on a global
+`PYTHONPATH` pointing to a named parent directory. Run `mdscope --help`,
+`python -m mdscope.cli validate <config.yaml>`, or the existing
+SLURM scripts after installing.
+
+Build with `python -m build` and validate using `python -m twine check dist/*`.
+Check both wheel and source distributions in clean virtual environments from
+outside the repository. All seven functional subpackages are included through
+setuptools package discovery, not a manually curated list.
+
+The package relocation did not change scientific kernels, YAML schemas, output
+paths, units, or trajectory passes. The supported imports are `mdscope.*`;
+`mdscope.analysis.*` is not an alias. HPC scripts use the installed lowercase
+package consistently.
