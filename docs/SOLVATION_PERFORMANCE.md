@@ -85,3 +85,21 @@ maximum RSS and bytes of output, not just the native PBC search speed.
 
 **No production TPR/XTC was accessible in this environment; performance
 numbers are synthetic and do not establish real MDscope throughput.**
+
+## Shared PBC implementation
+
+The review also found duplicate calls to MDAnalysis
+`minimize_vectors` inside the solvation H-bond kernel and local 3D
+water-density alignment. Both now use MDscope's existing
+`core.geometry.minimum_image_displacements`, which preserves a single
+triclinic minimum-image validation contract. A dedicated triclinic wrapped
+H-bond regression was added. The sparse neighbor search still calls
+MDAnalysis `capped_distance` directly because its atom-pair + distance
+output is not equivalent to the existing `biophysical_common.atom_contacts`
+(pair-only API); forcing one API onto the other would add complexity and
+unnecessary distance computation for existing callers.
+
+RDF histogram values at *exact* bin boundaries remain sensitive to
+floating-point rounding between native distance backends. This is a
+histogram numerical-convention issue, not a distinct PBC convention;
+ordinary nonboundary backend parity is tested separately.
