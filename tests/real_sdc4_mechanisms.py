@@ -206,6 +206,19 @@ def run():
         assert set(contact_events["species"]).issubset(molecule_counts)
 
 
+        specificity = pd.read_parquet(
+            out / "extensions/sdc4_mechanisms/lipid_region_specificity.parquet"
+        )
+        assert not specificity.empty
+        assert {"GM1a", "BGAL"}.issubset(
+            set(specificity.species)
+        ) if system == "carb_sdc4" else "CER160" in set(specificity.species)
+        assert (specificity.contacted_molecules <=
+                specificity.available_molecules).all()
+        available = specificity.available_molecules > 0
+        assert specificity.loc[~available, "contact_fraction"].isna().all()
+        assert specificity.loc[available, "contact_fraction"].between(0, 1).all()
+        assert len(specificity.time_ps.unique()) == 4
         assert any(col.endswith("_P4_phi_deg") for col in df.columns)
         assert any(col.endswith("_P7_psi_deg") for col in df.columns)
 
