@@ -882,6 +882,24 @@ class SDC4Mechanisms:
                         ].sum().rename(columns={"sasa_nm2": label})
                         df = df.merge(values, on="time_ps", how="left",
                                       validate="one_to_one")
+        # Reuse per-atom FreeSASA areas: non-backbone carbon exposure,
+        # not a claim that all carbon atoms have identical hydrophobicity.
+        atom_path = self.repout / "profiles/sasa/atom_sasa.parquet"
+        if atom_path.is_file():
+            atom_data = pd.read_parquet(atom_path)
+            for name, info in self.motifs.items():
+                if not name.startswith("proline_hydrophobic_"):
+                    continue
+                subset = atom_data.loc[
+                    atom_data["topology_residue_index"].isin(info["resindices"])
+                ]
+                if not subset.empty:
+                    col = f"sdc4_motif_{name}_sidechain_carbon_sasa_nm2"
+                    values = subset.groupby("time_ps", as_index=False)[
+                        "sasa_nm2"
+                    ].sum().rename(columns={"sasa_nm2": col})
+                    df = df.merge(values, on="time_ps", how="left",
+                                  validate="one_to_one")
         out = ensure_dir(self.repout / "extensions" / "sdc4_mechanisms")
         atomic_parquet(out / "timeseries.parquet", df)
         counts = np.zeros_like(self.map_counts)

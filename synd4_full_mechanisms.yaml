@@ -346,6 +346,8 @@ analyses:
   sasa:
     enabled: true
     selection: "protein"
+    # Preserve side-chain carbon areas from the existing FreeSASA pass.
+    atom_sasa_selection: "protein and name C* and not name C CA"
 
   salt_bridges:
     enabled: true

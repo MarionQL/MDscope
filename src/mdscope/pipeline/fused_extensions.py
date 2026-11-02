@@ -244,7 +244,9 @@ class FusedExtensions:
             start = time.perf_counter()
             for run_id, state in self.sasa.items():
                 name = "sasa" if run_id == "default" else f"sasa__{run_id}"
-                self.rows[name].extend(sasa_residue_rows(state, t))
+                atom_sink = (self.rows[f"sasa_atoms_{run_id}"]
+                             if len(state["atom_positions"]) else None)
+                self.rows[name].extend(sasa_residue_rows(state, t, atom_sink))
             self.timings["sasa"] += time.perf_counter() - start
         if self.local is not None:
             start = time.perf_counter()
@@ -321,7 +323,12 @@ class FusedExtensions:
             entry["times"].clear()
         for name, rows in self.rows.items():
             if rows:
-                if name == "sasa" or name.startswith("sasa__"):
+                if name.startswith("sasa_atoms_"):
+                    df = pd.DataFrame(rows, columns=[
+                        "time_ps", "atom_index", "topology_residue_index",
+                        "atom_name", "sasa_nm2",
+                    ])
+                elif name == "sasa" or name.startswith("sasa__"):
                     df = pd.DataFrame(rows, columns=[
                         "time_ps", "topology_residue_index", "residue", "sasa_nm2"
                     ])
@@ -387,6 +394,11 @@ class FusedExtensions:
                 atomic_parquet(output, _concat(self.cache / name))
                 results[name] = {"frames": self.frames, "fused": True}
             for run_id, state in self.sasa.items():
+                if len(state["atom_positions"]):
+                    output = (self.repout / "profiles" / "sasa" /
+                              (run_id if run_id != "default" else "") /
+                              "atom_sasa.parquet")
+                    atomic_parquet(output, _concat(self.cache / f"sasa_atoms_{run_id}"))
                 if state["reference_run"] is not None:
                     write_sasa_burial(self.repout, run_id, state["reference_run"])
         if self.local is not None:

@@ -53,6 +53,13 @@ def sasa_instances(universe, cfg):
         target_idx = np.flatnonzero(np.isin(occluders.indices, target.indices))
         if len(target_idx) != len(target):
             raise ValueError(f"SASA run {run.run_id}: occluders must include every target atom")
+        atom_selection = spec.get("atom_sasa_selection")
+        requested = (universe.select_atoms(str(atom_selection)).indices
+                     if atom_selection else np.empty(0, dtype=int))
+        atom_positions = np.flatnonzero(np.isin(target.indices, requested))
+        if atom_selection and (not len(atom_positions) or
+                               len(atom_positions) != len(requested)):
+            raise ValueError("atom_sasa_selection must be a nonempty subset of SASA target atoms")
         residues = list(target.residues)
         residue_ids = np.asarray([r.ix for r in residues], dtype=int)
         mapping = np.searchsorted(residue_ids, target.resindices)
@@ -102,6 +109,10 @@ def sasa_instances(universe, cfg):
             params.setNThreads(int(spec["n_threads"]))
         instances[run.run_id] = {
             "occluders": occluders, "radii": radii, "target_idx": target_idx,
+            "atom_positions": atom_positions,
+            "selected_atom_indices": target.indices[atom_positions],
+            "selected_atom_resindices": target.resindices[atom_positions],
+            "selected_atom_names": target.names[atom_positions],
             "residues": residues, "mapping": mapping, "params": params,
             "library": freesasa, "periodic": bool(spec.get("periodic", False)),
             "reference_run": spec.get("reference_run"),
@@ -167,7 +178,7 @@ def write_sasa_burial(repout, run_id, reference_run):
     atomic_parquet(target / "residue_burial_summary.parquet", summary)
 
 
-def sasa_residue_rows(state, time):
+def sasa_residue_rows(state, time, atom_sink=None):
     """Return per-residue protein SASA in nm², including occlusion by other atoms."""
     atoms = state["occluders"]
     coords = atoms.positions.astype(np.float64, copy=False)
@@ -211,6 +222,14 @@ def sasa_residue_rows(state, time):
         (result.atomArea(int(i)) for i in candidate_target_idx),
         dtype=float, count=len(target_idx),
     )
+    if atom_sink is not None:
+        for j, target_position in enumerate(state["atom_positions"]):
+            atom_sink.append((
+                time, int(state["selected_atom_indices"][j]),
+                int(state["selected_atom_resindices"][j]),
+                str(state["selected_atom_names"][j]),
+                float(areas[target_position] / 100.),
+            ))
     values = np.bincount(
         state["mapping"], weights=areas, minlength=len(state["residues"])
     ) / 100.0
@@ -223,13 +242,14 @@ def _run_sasa(universe, cfg: dict, repout: Path):
     states = sasa_instances(universe, cfg)
     tr = cfg["trajectory"]
     rows = {key: [] for key in states}
+    atom_rows = {key: [] for key in states}
     frames = universe.trajectory[tr.get("start"):tr.get("stop"):int(tr["stride"])]
     for frame_index, ts in enumerate(track(
             frames, total=len(frames), desc="SASA",
             enabled=cfg.get("progress", {}).get("enabled", True))):
         t = time_ps(ts, frame_index, cfg)
         for key, state in states.items():
-            rows[key].extend(sasa_residue_rows(state, t))
+            rows[key].extend(sasa_residue_rows(state, t, atom_rows[key]))
     for key, values in rows.items():
         output_dir = (Path(repout) / "profiles" / "sasa" /
                       key if key != "default" else Path(repout) / "profiles" / "sasa")
@@ -237,6 +257,12 @@ def _run_sasa(universe, cfg: dict, repout: Path):
                        pd.DataFrame(values, columns=[
                            "time_ps", "topology_residue_index", "residue", "sasa_nm2"
                        ]))
+        if atom_rows[key]:
+            atomic_parquet(ensure_dir(output_dir) / "atom_sasa.parquet",
+                           pd.DataFrame(atom_rows[key], columns=[
+                               "time_ps", "atom_index", "topology_residue_index",
+                               "atom_name", "sasa_nm2"
+                           ]))
     for key, state in states.items():
         if state["reference_run"] is not None:
             write_sasa_burial(repout, key, state["reference_run"])
