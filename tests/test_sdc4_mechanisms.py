@@ -345,6 +345,17 @@ def test_shared_states_exports_replica_conditioned_nxip(tmp_path):
                 "sdc4_hs_A1_membrane_contact_state": np.zeros(20, dtype=int),
                 "sdc4_hs_A1_hydration_water_per_heavy_atom": np.ones(20),
             }).to_parquet(dest / "timeseries.parquet", index=False)
+            pd.DataFrame({
+                "time_ps": np.arange(20) * 10.,
+                "region": ["TM_A"] * 20,
+                "species": ["GM1a" if sys == "with" else "CER160"] * 20,
+                "leaflet": ["upper"] * 20,
+                "moiety": ["any"] * 20,
+                "contact_fraction": np.full(20, 0.25 * r),
+                "composition_enrichment": np.full(20, 1.5 * r),
+                "local_composition_enrichment": np.full(20, float(r)),
+                "available_molecules": np.full(20, 4),
+            }).to_parquet(dest / "lipid_region_specificity.parquet", index=False)
             paths[sys].append(folder)
     output = fit_shared_states(cfg, tmp_path, paths)
     cond = pd.read_parquet(output / "state_conditioned_nxip.parquet")
@@ -355,6 +366,20 @@ def test_shared_states_exports_replica_conditioned_nxip(tmp_path):
     assert len(comp) == 2
     assert (comp["n_replicates_0"] == 2).all()
     assert set(comp["inference"]) == {"exploratory; no multiplicity-adjusted test"}
+    lipid_rep = pd.read_parquet(output / "lipid_specificity_replicate_statistics.parquet")
+    assert len(lipid_rep) == 4
+    assert set(lipid_rep.species) == {"GM1a", "CER160"}
+    sys_stats = pd.read_parquet(output / "lipid_specificity_system_statistics.parquet")
+    row = sys_stats.loc[
+        sys_stats.system.eq("with")
+        & sys_stats.species.eq("GM1a")
+        & sys_stats.measure.eq("mean_contact_fraction")
+    ].iloc[0]
+    assert row.n_replicates == 2
+    assert row.replicate_mean == pytest.approx(.375)
+    assert row.replicate_bootstrap_ci_low >= .25
+    assert row.replicate_bootstrap_ci_high <= .5
+
 
 
 def test_intermittent_lipid_residence_gap_and_censoring():
