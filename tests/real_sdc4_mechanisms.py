@@ -57,6 +57,28 @@ def run():
             assert len(u.select_atoms(selection)) >= 4, (
                 f"{system}: missing real SDC4 selection {selection}"
             )
+        for chain in ("A", "B"):
+            ecto_atoms = u.select_atoms(ecto[chain])
+            tm_atoms = u.select_atoms(tm[chain])
+            assert len(tm_atoms) == 25, (system, chain, len(tm_atoms))
+            assert len(ecto_atoms) == 145, (system, chain, len(ecto_atoms))
+            assert not np.intersect1d(ecto_atoms.resindices, tm_atoms.resindices).size, (
+                system, chain, "overlapping ectodomain / TM selections"
+            )
+        # Check the independent residue-membrane distance selection uses
+        # precisely the configured ectodomain residues and no TM residues.
+        rmd = u.select_atoms(
+            "protein and name CA and ((chainID PROA and resid 1:145) "
+            "or (chainID PROB and resid 270:414))"
+        )
+        ecto_ids = np.union1d(
+            u.select_atoms(ecto["A"]).resindices,
+            u.select_atoms(ecto["B"]).resindices,
+        )
+        np.testing.assert_array_equal(
+            np.unique(rmd.resindices), ecto_ids,
+            err_msg=f"{system}: residue_membrane_distance target drift",
+        )
         # Release-data diagnostic: report the complete SDC4 chain sequence and
         # selected TM segment independently, so a missing GGIVG cannot be
         # confused with zero physical interhelical contacts.
