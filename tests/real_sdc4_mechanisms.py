@@ -275,6 +275,28 @@ def run():
         assert {"locally_available_molecules", "min_contact_distance_A",
                 "local_composition_enrichment"}.issubset(specificity.columns)
         assert (specificity["locally_available_molecules"] >= 0).all()
+        assert {"locally_contacted_molecules",
+                "matched_local_contact_fraction",
+                "matched_local_composition_enrichment"}.issubset(specificity.columns)
+        assert (specificity.loc[:, "locally_contacted_molecules"]
+                <= specificity.loc[:, "locally_available_molecules"]).all()
+        assert (specificity.loc[:, "locally_contacted_molecules"]
+                <= specificity.loc[:, "contacted_molecules"]).all()
+        local_absent = specificity["locally_available_molecules"].eq(0)
+        assert specificity.loc[local_absent, "matched_local_contact_fraction"].isna().all()
+        assert specificity.loc[local_absent, "matched_local_composition_enrichment"].isna().all()
+        print(
+            f"REAL MATCHED CONTACT AUDIT {system}: " +
+            str({
+                "legacy_finite": int(specificity.local_composition_enrichment.notna().sum()),
+                "matched_finite": int(specificity.matched_local_composition_enrichment.notna().sum()),
+                "contacted_outside_local_population": int(
+                    (specificity.contacted_molecules >
+                     specificity.locally_contacted_molecules).sum()
+                ),
+            }), flush=True,
+        )
+
         assert {"local_accessible_area_nm2",
                 "local_number_density_per_nm2"}.issubset(specificity)
         assert (specificity["min_contact_distance_A"].dropna() <= 5.0 + 1e-5).all()
