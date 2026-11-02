@@ -284,7 +284,17 @@ class SDC4Mechanisms:
             if label not in ("glycan", "ceramide_head", "ceramide_tail"):
                 raise ValueError(f"Unknown lipid moiety {label}")
             atoms = selected(universe, selection, required=True)
-            self.lipid_moiety_membership[label] = set(map(int, atoms.indices))
+            indices = set(map(int, atoms.indices))
+            if not indices:
+                raise ValueError(f"Empty lipid moiety selection: {label}")
+            if not indices.issubset(set(map(int, self.lipid_contact.indices))):
+                raise ValueError(f"{label} contains atoms outside lipid contact selection")
+            for previous_label, previous_indices in self.lipid_moiety_membership.items():
+                if indices & previous_indices:
+                    raise ValueError(
+                        f"Lipid moiety selections overlap: {label} and {previous_label}"
+                    )
+            self.lipid_moiety_membership[label] = indices
         self.lipid_anchor_index_by_molecule = {}
         if self.motif_lipid_residence_enabled:
             anchor_index_by_residue = {
@@ -406,6 +416,9 @@ class SDC4Mechanisms:
                                  for k, v in self.gxxxg.items()},
             "gxxxg_tm_sequences": self.gxxxg_sequences,
             "motif_lipid_residence_unmapped_fragments": self.unmapped_lipid_fragment_count,
+            "lipid_moiety_selection_atom_counts": {
+                label: len(indices) for label, indices in self.lipid_moiety_membership.items()
+            },
             "motif_lipid_residence_molecules_by_species": {
                 species: sum(v == species for v in self.lipid_molecule_species.values())
                 for species in sorted(set(self.lipid_molecule_species.values()))
