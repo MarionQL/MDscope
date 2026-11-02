@@ -295,7 +295,7 @@ analyses:
     seed: 2026
     training_frames_per_replicate: 2000
     bootstrap_draws: 1000
-    min_complete_fraction: 0.90
+    min_complete_fraction: 0.80
     block_frames: null
     features:
       - sdc4_ectodomain_A_height_A

@@ -224,6 +224,10 @@ def main():
     p = sub.add_parser("finalize")
     p.add_argument("config")
     p.set_defaults(func=lambda a: print(finalize_project(a.config)))
+    for phase in ("statistics", "plotting"):
+        p = sub.add_parser(phase, help=f"Run only the {phase} finalization phase")
+        p.add_argument("config")
+        p.set_defaults(func=lambda a, phase=phase: print(finalize_project(a.config, phase=phase)))
     p = sub.add_parser("report", help="Rebuild PDF/ZIP from existing finalized tables without re-running or archiving")
     p.add_argument("config")
     def _report(args):

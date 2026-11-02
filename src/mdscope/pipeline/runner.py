@@ -411,7 +411,9 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
             print(f"TIMING {rep.system}/{rep.label} {item['stage']}: {item['seconds']:.3f} s", flush=True)
 
 
-def finalize_project(config_path: str | Path, cfg=None, root=None, state=None):
+def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, phase="all"):
+    if phase not in {"all", "statistics", "plotting"}:
+        raise ValueError(f"Unknown finalization phase: {phase}")
     cfg = cfg or load_config(config_path)
     if root is None or state is None:
         root, state = initialize(config_path, cfg)
@@ -439,7 +441,7 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None):
             + "; ".join(missing)
         )
     project_summary = root / "project_summary"
-    if project_summary.exists():
+    if phase != "plotting" and project_summary.exists():
         archived=_archive_previous_output(project_summary,root/".archives"/"project_summary",state.config_hash)
         print(f"Archived previous project summary: {archived}")
     # Finalization always provides a project summary directory, even when
@@ -455,7 +457,14 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None):
     }
     # Finalization only consumes persisted tables/arrays: no
     # trajectories are reopened.
-    finalization_timings = []
+    timings_path = project_summary / "finalization_timings.json"
+    if phase == "plotting" and timings_path.exists():
+        try:
+            finalization_timings = json.loads(timings_path.read_text()).get("stages", [])
+        except (ValueError, OSError):
+            finalization_timings = []
+    else:
+        finalization_timings = []
     def timed(stage, fn, *args):
         started = perf_counter()
         try:
@@ -469,7 +478,12 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None):
             })
             print(f"TIMING finalize {stage}: {seconds:.3f} s", flush=True)
 
-    timed("statistics", analyze_project, cfg, root, system_repouts)
+    if phase in {"all", "statistics"}:
+        timed("statistics", analyze_project, cfg, root, system_repouts)
+    if phase == "statistics":
+        return root
+    if phase == "plotting" and not (project_summary / "statistics").is_dir():
+        raise RuntimeError("Missing project_summary/statistics; run statistics phase first")
     timed("standard_plots", plot_all, cfg, root, system_repouts)
     timed("lipid_enrichment_plots", plot_lipid_enrichment_matrix, cfg, root)
     timed("shared_states", fit_shared_states, cfg, root, system_repouts)
