@@ -92,3 +92,16 @@ def test_mechanistic_overlapping_motif_matches_are_intentionally_retained():
     assert set(hits) == {"pair_A_1", "pair_A_2"}
     np.testing.assert_array_equal(hits["pair_A_1"], [0, 1])
     np.testing.assert_array_equal(hits["pair_A_2"], [1, 2])
+
+
+@pytest.mark.parametrize("histidine_name", ["HSD", "HSE", "HSP", "HID", "HIE", "HIP"])
+def test_proline_motif_detects_histidine_topology_variants(histidine_name):
+    from mdscope.mechanisms.mechanistic_common import AA3
+    from mdscope.biophysical_common import AA
+    names = ["VAL", "VAL", histidine_name, "PRO", "LEU", "VAL", "PRO", "LEU"]
+    atoms = [SimpleNamespace(chainID="PROB", segid="PROB", resname=aa,
+                             resindex=i + 27) for i, aa in enumerate(names)]
+    hits = sequence_matches(atoms, {"proline_hydrophobic": "VVHPLVPL"})
+    assert list(hits) == ["proline_hydrophobic_PROB_1"]
+    np.testing.assert_array_equal(next(iter(hits.values())), np.arange(27, 35))
+    assert AA3[histidine_name] == AA[histidine_name] == "H"
