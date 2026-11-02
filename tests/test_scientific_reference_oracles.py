@@ -207,3 +207,22 @@ def test_residence_duration_and_occupancy_have_separate_contracts():
     assert set(result.duration_convention) == {
         "next_sample_interval_or_terminal_median"
     }
+
+
+def test_solvation_and_lipid_residence_share_explicit_duration_contract():
+    from mdscope.observables.solvation import contact_episodes
+    observed = [(0, 0.), (1, 3.), (2, 7.), (3, 12.)]
+    events = [(0, "water", "patch", 91),
+              (1, "water", "patch", 91),
+              (3, "water", "patch", 91)]
+    water = contact_episodes(events, observed)
+    lipid = summarize_lipid_residence(_events([0., 3., 12.]),
+                                      np.array([0., 3., 7., 12.]))
+    assert water.duration_ps.tolist() == pytest.approx([3., 0.])
+    assert water.sampled_duration_ps.tolist() == pytest.approx([7., 4.])
+    assert water.sampled_duration_ps.tolist() == pytest.approx(
+        lipid.duration_ps.tolist()
+    )
+    assert water.duration_convention.tolist() == lipid.duration_convention.tolist()
+    with pytest.raises(ValueError, match="outside observation"):
+        contact_episodes([(99, "water", "patch", 91)], observed)
