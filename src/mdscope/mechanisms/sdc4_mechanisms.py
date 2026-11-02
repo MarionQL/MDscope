@@ -100,7 +100,7 @@ def _proline_rama_region(phi, psi):
     return "other"
 
 
-def _composition_enrichment(table, availability_column):
+def _composition_enrichment(table, availability_column, contact_column="contacted_molecules"):
     """Species contact share divided by availability share, within each
     frame/region/leaflet. Undefined fractions remain NaN."""
     result = np.full(len(table), np.nan)
@@ -110,10 +110,10 @@ def _composition_enrichment(table, availability_column):
     subset = table.loc[any_contact]
     totals = subset.groupby(
         ["time_ps", "region", "leaflet"], sort=False
-    )[["contacted_molecules", availability_column]].transform("sum")
-    contacts = subset["contacted_molecules"].to_numpy(float)
+    )[[contact_column, availability_column]].transform("sum")
+    contacts = subset[contact_column].to_numpy(float)
     available = subset[availability_column].to_numpy(float)
-    contact_totals = totals["contacted_molecules"].to_numpy(float)
+    contact_totals = totals[contact_column].to_numpy(float)
     available_totals = totals[availability_column].to_numpy(float)
     valid = ((contacts >= 0) & (available > 0) &
              (contact_totals > 0) & (available_totals > 0))
@@ -750,6 +750,7 @@ class SDC4Mechanisms:
                 )
                 observed = {}
                 minima = {}
+                local_observed = {}
                 residue_contacts = set()
                 # Local composition is measured using available anchor molecules
                 # in a fixed xy disk, rather than the whole membrane leaflet.
@@ -785,6 +786,8 @@ class SDC4Mechanisms:
                     species = self.lipid_molecule_species[molecule]
                     leaflet = "upper" if leaf[anchor] else "lower"
                     observed.setdefault((species, leaflet, "any"), set()).add(molecule)
+                    if inside[anchor]:
+                        local_observed.setdefault((species, leaflet, "any"), set()).add(molecule)
                     key = (species, leaflet)
                     minima[key] = min(minima.get(key, np.inf), float(distance))
                     residue_contacts.add((
@@ -793,11 +796,17 @@ class SDC4Mechanisms:
                     if species in ("GM1a", "BGAL", "CER160"):
                         if species in ("GM1a", "BGAL") and lipid_atom.resname != "CER160":
                             observed.setdefault((species, leaflet, "glycan"), set()).add(molecule)
+                            if inside[anchor]:
+                                local_observed.setdefault((species, leaflet, "glycan"), set()).add(molecule)
                         elif lipid_atom.resname == "CER160":
                             observed.setdefault((species, leaflet, "ceramide"), set()).add(molecule)
+                            if inside[anchor]:
+                                local_observed.setdefault((species, leaflet, "ceramide"), set()).add(molecule)
                         for label, member_indices in self.lipid_moiety_membership.items():
                             if int(lipid_atom.index) in member_indices:
                                 observed.setdefault((species, leaflet, label), set()).add(molecule)
+                                if inside[anchor]:
+                                    local_observed.setdefault((species, leaflet, label), set()).add(molecule)
                 for residue_index, molecule, species, leaflet in sorted(residue_contacts):
                     self.rows["lipid_residue_contacts"].append({
                         "time_ps": t, "region": region,
@@ -828,6 +837,7 @@ class SDC4Mechanisms:
                             "time_ps": t, "region": region, "species": species,
                             "leaflet": leaflet, "moiety": moiety,
                             "contacted_molecules": count,
+                            "locally_contacted_molecules": len(local_observed.get((species, leaflet, moiety), ())),
                             "available_molecules": denominator,
                             "locally_available_molecules": local_availability[(species, leaflet)],
                             "local_accessible_area_nm2": leaflet_areas.get(leaflet, np.nan),
@@ -898,7 +908,7 @@ class SDC4Mechanisms:
                 self.cache / f"specificity-{part:06d}.parquet",
                 pd.DataFrame(self.rows["lipid_specificity"], columns=[
                     "time_ps", "region", "species", "leaflet", "moiety",
-                    "contacted_molecules", "available_molecules",
+                    "contacted_molecules", "locally_contacted_molecules", "available_molecules",
                     "locally_available_molecules", "local_accessible_area_nm2",
                     "local_number_density_per_nm2", "min_contact_distance_A",
                     "contact_fraction",
@@ -1020,9 +1030,23 @@ class SDC4Mechanisms:
             specificity = pd.concat(
                 (pd.read_parquet(p) for p in pieces), ignore_index=True
             ) if pieces else pd.DataFrame()
+            # Historical enrichment is retained for comparison; it can
+            # include contacts whose anchor lies outside the local disk.
             specificity["local_composition_enrichment"] = _composition_enrichment(
                 specificity, "locally_available_molecules"
             )
+            specificity["matched_local_composition_enrichment"] = _composition_enrichment(
+                specificity, "locally_available_molecules",
+                contact_column="locally_contacted_molecules",
+            )
+            numerator = specificity["locally_contacted_molecules"].to_numpy(float)
+            denominator = specificity["locally_available_molecules"].to_numpy(float)
+            specificity["matched_local_contact_fraction"] = np.divide(
+                numerator, denominator, out=np.full(len(specificity), np.nan),
+                where=denominator > 0,
+            )
+            if np.any(numerator > denominator):
+                raise ValueError("Local contact count exceeds matched local population")
             specificity["composition_enrichment"] = _composition_enrichment(
                 specificity, "available_molecules"
             )
