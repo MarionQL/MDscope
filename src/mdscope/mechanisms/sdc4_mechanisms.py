@@ -762,6 +762,12 @@ class SDC4Mechanisms:
                 events, df["time_ps"].to_numpy(float)
             )
             atomic_parquet(out / "motif_lipid_residence.parquet", residence)
+            from .motif_residence import summarize_intermittent_residence
+            intermittent = summarize_intermittent_residence(
+                events, df["time_ps"].to_numpy(float), gap_frames=1
+            )
+            atomic_parquet(out / "motif_lipid_residence_intermittent.parquet",
+                           intermittent)
             pieces = sorted(self.cache.glob("specificity-*.parquet"))
             specificity = pd.concat(
                 (pd.read_parquet(p) for p in pieces), ignore_index=True
