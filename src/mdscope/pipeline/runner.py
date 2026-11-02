@@ -431,7 +431,7 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None):
             times = pd.read_parquet(timeseries, columns=["time_ps"])["time_ps"]
             if times.empty or times.isna().any():
                 missing.append(f"{rep.system}/{rep.label}: invalid time_ps")
-        except (OSError, ValueError, KeyError) as exc:
+        except (OSError, ValueError, KeyError, ImportError) as exc:
             missing.append(f"{rep.system}/{rep.label}: unreadable time_ps ({exc})")
     if missing:
         raise RuntimeError(
