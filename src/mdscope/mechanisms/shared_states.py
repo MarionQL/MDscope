@@ -99,6 +99,9 @@ def fit_shared_states(cfg, root, system_repouts):
     rng = np.random.default_rng(seed)
     replicates = {}
     repout_paths = {}
+    observation_indices = {}
+    observation_counts = {}
+    regular_sampling = {}
     training = []
     for system, paths in system_repouts.items():
         for repout in paths:
@@ -109,6 +112,8 @@ def fit_shared_states(cfg, root, system_repouts):
             missing = [name for name in features if name not in data]
             if missing:
                 raise ValueError(f"Shared-state features absent in {path}: {missing}")
+            if not np.isfinite(data["time_ps"].to_numpy(float)).all():
+                raise ValueError(f"Nonfinite frame times in {path}")
             if data["time_ps"].duplicated().any():
                 raise ValueError(f"Duplicate frame times in {path}")
             data = data.sort_values("time_ps").reset_index(drop=True)
@@ -121,6 +126,11 @@ def fit_shared_states(cfg, root, system_repouts):
             clean = data.loc[good].reset_index(drop=True)
             key = (system, Path(repout).name)
             replicates[key] = clean
+            observation_indices[key] = np.flatnonzero(good)
+            observation_counts[key] = len(data)
+            intervals = np.diff(data["time_ps"].to_numpy(float))
+            regular_sampling[key] = len(intervals) > 0 and np.allclose(
+                intervals, intervals[0], rtol=1e-5, atol=1e-8)
             repout_paths[key] = Path(repout)
             x = X[good]
             # Evenly spaced, equal-count training points per replicate.
@@ -176,7 +186,14 @@ def fit_shared_states(cfg, root, system_repouts):
         counts = np.bincount(labels, minlength=k)
         fractions = counts / n
         block = max(2, int(spec.get("block_frames") or np.sqrt(n)))
-        lo, hi = _moving_block_ci(labels, k, draws, min(block, n), rng)
+        complete = observation_counts[(system, replicate)] == n
+        temporal_valid = complete and regular_sampling[(system, replicate)]
+        if temporal_valid:
+            lo, hi = _moving_block_ci(labels, k, draws, min(block, n), rng)
+        else:
+            # Dropping feature frames or unequal time intervals makes adjacent
+            # retained rows unsuitable for frame-based temporal resampling.
+            lo = hi = np.full(k, np.nan)
         rep_fraction[system].append(fractions)
         for j in range(k):
             populations.append({
@@ -193,9 +210,16 @@ def fit_shared_states(cfg, root, system_repouts):
             js = float(jensenshannon(a, b, base=2.)**2)
         else:
             js = np.nan
-        transitions = int(np.count_nonzero(np.diff(labels))) if n > 1 else 0
+        adjacent = np.diff(observation_indices[(system, replicate)]) == 1
+        changed = np.diff(labels) != 0
+        transitions = int(np.count_nonzero(changed & adjacent))
         diagnostics.append({
             "system": system, "replicate": replicate, "frames": n,
+            "input_frames": observation_counts[(system, replicate)],
+            "missing_feature_frames": observation_counts[(system, replicate)] - n,
+            "complete_feature_fraction": n / observation_counts[(system, replicate)],
+            "transitions_across_missing_gaps": int(np.count_nonzero(changed & ~adjacent)),
+            "temporal_resampling_status": "available" if temporal_valid else "unavailable_missing_features_or_irregular_times",
             "first_second_half_js_divergence": js,
             "observed_transitions": transitions,
             "block_frames": block,
@@ -260,7 +284,7 @@ def fit_shared_states(cfg, root, system_repouts):
             if endpoint not in df:
                 continue
             y = df[endpoint].to_numpy(float)
-            if len(y) < 4:
+            if len(y) < 4 or not temporal_valid:
                 continue
             shifts = np.unique(np.linspace(
                 1, len(y) - 1, min(100, len(y) - 1), dtype=int
@@ -616,6 +640,7 @@ def fit_shared_states(cfg, root, system_repouts):
         "pca_directions": pcs.tolist(), "training_inertia": inertia,
         "training_frames_per_replicate": n_train,
         "n_replicates": len(replicates),
+        "missing_frame_policy": "Populations condition on complete feature frames; transitions exclude missing gaps. Temporal block intervals and shift nulls are omitted for incomplete or irregularly sampled traces.",
         "interpretation": "One global model. System CIs resample independent replicates; "
                           "within-replicate block CIs and half-trajectory JS are descriptive "
                           "and cannot establish equilibrium or causal effects.",

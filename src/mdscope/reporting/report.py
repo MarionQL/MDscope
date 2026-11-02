@@ -393,6 +393,8 @@ def _build_pdf(path, cfg, root, system_repouts, options):
              f"training frames per replicate: "
              f"{model.get('training_frames_per_replicate')}.")
         body("Features: " + ", ".join(model.get("features", [])))
+        if model.get("missing_frame_policy"):
+            body(model["missing_frame_policy"])
         body("One common scaler and clustering model are used across conditions. "
              "State labels are comparable between systems, but their populations "
              "are not direct free-energy estimates.")
@@ -429,6 +431,11 @@ def _build_pdf(path, cfg, root, system_repouts, options):
                     item.observed_transitions, item.frames,
                 ])
             table(rows, [130, 82, 95, 80, 65])
+            if "missing_feature_frames" in diagnostics:
+                body("Missing state-feature frames by replica: " + "; ".join(
+                    f"{item.system}/{item.replicate}: {item.missing_feature_frames} "
+                    f"of {item.input_frames}; {item.temporal_resampling_status}"
+                    for item in diagnostics.itertuples()))
             body("First/second-half Jensen-Shannon divergence is a descriptive "
                  "sampling diagnostic; a low value is not proof of convergence.")
         figure(state_dir / "state_populations.png",
@@ -493,7 +500,7 @@ def _build_pdf(path, cfg, root, system_repouts, options):
         header("Solvation, hydration and ion coordination")
         body("Solvation counts are unique solvent entities within configured shells. "
              "The hydration fraction is the fraction of targets with at least one "
-             "solvent in the shell. RDF g(r) uses a bulk-density normalization "
+             "solvent in the shell. RDF g(r) uses selected solvent count / full periodic cell volume "
              "without excluded-volume correction. Replicates, not frames or "
              "molecular sites, are independent sampling units.")
         summary = solvation_stat_rows(root)

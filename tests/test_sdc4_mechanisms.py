@@ -530,3 +530,29 @@ def test_proline_ramachandran_region_reference_and_boundaries():
     assert _proline_rama_region(np.nan, 150.) == "missing"
     assert _proline_rama_region(-105., 100.) == "PPII_like"
 
+
+
+@pytest.mark.parametrize("missing,irregular", [(True, False), (False, True)])
+def test_shared_states_do_not_resample_across_unknown_temporal_gaps(tmp_path, missing, irregular):
+    folder = tmp_path / "system/rep1"
+    out = folder / "extensions/sdc4_mechanisms"
+    out.mkdir(parents=True)
+    x = np.r_[np.zeros(5), np.nan if missing else 0., np.ones(6)*10.]
+    times = np.arange(12, dtype=float)
+    if irregular:
+        times[6:] += 2.
+    pd.DataFrame({"time_ps": times, "height": x,
+                  "sdc4_motif_NxIP_PROA_1_steric_occlusion_fraction": np.nan_to_num(x)/10.
+                  }).to_parquet(out / "timeseries.parquet")
+    cfg = {"analyses": {"sdc4_mechanisms": {"enabled": True},
+                       "shared_states": {"enabled": True, "features": ["height"],
+                                         "n_states": 2, "bootstrap_draws": 20,
+                                         "min_complete_fraction": .8}}}
+    result = fit_shared_states(cfg, tmp_path, {"system": [folder]})
+    diag = pd.read_parquet(result / "sampling_diagnostics.parquet").iloc[0]
+    assert diag.missing_feature_frames == int(missing)
+    assert diag.observed_transitions == (0 if missing else 1)
+    assert diag.transitions_across_missing_gaps == int(missing)
+    pop = pd.read_parquet(result / "replicate_populations.parquet")
+    assert pop.within_replicate_block_ci_low.isna().all()
+    assert pd.read_parquet(result / "nxip_state_circular_shift_null.parquet").empty

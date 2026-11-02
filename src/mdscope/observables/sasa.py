@@ -233,15 +233,33 @@ def sasa_residue_rows(state, time, atom_sink=None):
         candidate_idx = np.union1d(target_idx, pairs[:, 1])
     else:
         candidate_idx = np.arange(len(coords))
-    result = state["library"].calcCoord(
-        coords[candidate_idx].ravel().tolist(),
-        np.asarray(state["radii"])[candidate_idx].tolist(), state["params"],
+    candidate_xyz = coords[candidate_idx]
+    candidate_radii = np.asarray(state["radii"])[candidate_idx]
+    # FreeSASA 2.2.1 Shrake-Rupley can crash in native code when an atom
+    # has no overlapping probe-inflated neighbor. Its area is exactly a
+    # sphere: remove such atoms from the native input and calculate it
+    # analytically. They cannot occlude any remaining atom by definition.
+    from MDAnalysis.lib.distances import capped_distance
+    inflated = candidate_radii + state["probe_radius"]
+    pairs, distances = capped_distance(
+        candidate_xyz, candidate_xyz, 2*float(inflated.max()),
+        return_distances=True,
     )
+    overlap = ((pairs[:, 0] != pairs[:, 1])
+               & (distances < inflated[pairs[:, 0]] + inflated[pairs[:, 1]]))
+    connected = np.unique(pairs[overlap].ravel())
+    candidate_areas = 4*np.pi*inflated**2
+    if len(connected):
+        result = state["library"].calcCoord(
+            candidate_xyz[connected].ravel().tolist(),
+            candidate_radii[connected].tolist(), state["params"],
+        )
+        candidate_areas[connected] = np.fromiter(
+            (result.atomArea(int(i)) for i in range(len(connected))),
+            dtype=float, count=len(connected),
+        )
     candidate_target_idx = np.searchsorted(candidate_idx, target_idx)
-    areas = np.fromiter(
-        (result.atomArea(int(i)) for i in candidate_target_idx),
-        dtype=float, count=len(target_idx),
-    )
+    areas = candidate_areas[candidate_target_idx]
     if atom_sink is not None:
         for j, target_position in enumerate(state["atom_positions"]):
             atom_sink.append((
@@ -286,3 +304,4 @@ def _run_sasa(universe, cfg: dict, repout: Path):
     for key, state in states.items():
         if state["reference_run"] is not None:
             write_sasa_burial(repout, key, state["reference_run"])
+

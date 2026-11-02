@@ -49,11 +49,14 @@ def analyze_solvation_rdfs(cfg, root, system_repouts):
         sd_g_bulk=("g_bulk", "std"))
     # A missing replicate/bin must not be presented as a complete
     # uncertainty estimate for that chemical class.
-    expected = reps.groupby(
-        ["system", "solvent", "target_class", "site_class"])["replicate"].nunique()
-    count = system.set_index(["system", "solvent", "target_class", "site_class"]).index
+    # Compare against requested replicas, including those whose entire RDF
+    # file/class is absent. Inferring the denominator from present data can
+    # incorrectly label an incomplete analysis as complete.
+    expected = {name: len(paths) for name, paths in system_repouts.items()}
+    system["expected_replicates"] = system.system.map(expected).astype(int)
     system["complete_replica_coverage"] = (
-        system.n_replicates.to_numpy() == expected.reindex(count).to_numpy())
+        system.n_replicates == system.expected_replicates)
     dest = ensure_dir(Path(root)/"project_summary"/"statistics"/"solvation")
     atomic_parquet(dest/"replicate_rdf.parquet", reps)
     atomic_parquet(dest/"system_rdf.parquet", system)
+

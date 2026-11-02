@@ -629,6 +629,7 @@ class SDC4Mechanisms:
                 row[f"sdc4_proline_{label}_phi_deg"],
                 row[f"sdc4_proline_{label}_psi_deg"],
             )
+        motif_lipid_pairs = {}
         for name, info in self.motifs.items():
             ag = info["atoms"]
             own = info["resindices"]
@@ -646,7 +647,12 @@ class SDC4Mechanisms:
                 g.indices for g in self.hs.values()
             ]))] if self.hs else self.u.atoms[[]]
             gly_hits = _contacts(ag, glycan_all, self.contact_A, box)
-            lip_hits = _contacts(ag, self.lipid_contact, self.contact_A, box)
+            lip_hits, lip_distances = capped_distance(
+                ag.positions, self.lipid_contact.positions,
+                max_cutoff=self.contact_A, box=box, return_distances=True,
+            )
+            if self.motif_lipid_residence_enabled:
+                motif_lipid_pairs[f"motif_{name}"] = (lip_hits, lip_distances)
             occluded = np.unique(np.concatenate([
                 contacts[:, 0], gly_hits[:, 0], lip_hits[:, 0]
             ])) if (len(contacts) or len(gly_hits) or len(lip_hits)) else np.empty(0, int)
@@ -744,10 +750,15 @@ class SDC4Mechanisms:
                         (self.species == species) & mask
                     ))
             for region, atoms in regions.items():
-                hits, hit_distances = capped_distance(
-                    atoms.positions, self.lipid_contact.positions,
-                    max_cutoff=self.contact_A, box=box, return_distances=True
-                )
+                if region in motif_lipid_pairs:
+                    # Identical atoms, coordinates and cutoff: reuse the
+                    # motif query for occupancy, chemistry and residence.
+                    hits, hit_distances = motif_lipid_pairs[region]
+                else:
+                    hits, hit_distances = capped_distance(
+                        atoms.positions, self.lipid_contact.positions,
+                        max_cutoff=self.contact_A, box=box, return_distances=True
+                    )
                 observed = {}
                 minima = {}
                 local_observed = {}
@@ -1114,3 +1125,4 @@ def run_sdc4_mechanisms(rep, cfg, repout):
     if count % chunk:
         observer.flush(count // chunk)
     return observer.finalize()
+

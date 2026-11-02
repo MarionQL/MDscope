@@ -497,7 +497,7 @@ does not alter standard streaming checkpoints.
 
 The solvation observer shares MDscope's raw-frame fused processing. It runs one
 periodic capped-distance query per solvent class and frame, writes atomic chunks,
-and reuses them for offline counts, bulk-normalized radial distributions and
+and reuses them for offline counts, full-cell-density-normalized radial distributions and
 sampled-frame contact episodes.
 
 ```yaml
@@ -549,8 +549,9 @@ duration zero for a single observed frame does not mean zero physical lifetime.
 Censor flags show whether contacts touched analyzed boundaries. Genuine
 high-frequency exchange cannot be inferred from coarsely saved trajectories.
 
-The RDF is normalized to the **bulk** number density computed from total
-selected waters/ions and periodic cell volume. This is **not corrected**
+The RDF uses a **full periodic cell average** number density: total
+selected waters/ions divided by periodic cell volume. It does not measure
+a separate aqueous bulk reference; `g_bulk` is retained as a legacy column name. This is **not corrected**
 for the solvent-excluded volume of protein, glycans and bilayer. Buried sites
 can exhibit lower radial density solely because water is inaccessible.
 Interpret RDF alongside SASA and occlusion, and calibrate first-shell
@@ -564,7 +565,7 @@ intermittent contact correlations, and no general water-acceptor bridge detector
 ### Postprocessing and optional 3D water density
 
 After the fused pass, `shell_candidates.parquet` records a candidate first
-minimum of each bulk-normalized RDF with an explicit quality status. It does
+minimum of each full-cell-density-normalized RDF with an explicit quality status. It does
 not automatically change already computed coordination cutoffs: calibrate on
 representative frames and fix the same chemical-class cutoff across compared
 conditions before conducting kinetics. Ambiguous RDFs yield missing candidates.
@@ -574,7 +575,7 @@ a matching SASA run exists, `hydration_sasa.parquet` combines the **saved**
 per-residue SASA with per-target solvent counts using exact frame time; missing
 constituent residues produce NaN rather than partial SASA. Set `sasa_run` to
 the selected run ID if needed. SASA exposure is a contextual covariate, not an
-automatic correction to bulk-normalized RDFs.
+automatic correction to full-cell-density-normalized RDFs.
 
 When identity tracking is enabled, `survival.parquet` provides Kaplan–Meier
 sampled-contact survival estimates per solvent/target. Left-censored episodes
@@ -598,7 +599,7 @@ sphere (radius half the grid width) is sampled, and the frame origin must be
 part of the target site selection. Missing voxels *inside* this sphere have
 zero observed density; voxels outside are undefined, not zero. By design, this
 is a sparse observed-density map: absent voxels correspond to zero observed
-counts. Its `g_bulk` uses bulk density and does not adjust for inaccessible
+counts. Its legacy-named `g_bulk` uses full periodic cell average density and does not adjust for inaccessible
 local volume. A local map cannot be interpreted as an equilibrium fixed-frame
 binding site if its neighboring molecular environment varies substantially.
 
@@ -774,7 +775,7 @@ actual solvation observer (including chunk flush and finalization), but
 not the rest of MDscope's complete analysis pipeline. Memory numbers
 include the loaded Universe and dependencies.
 
-**Scientific limitations:** RDF normalization uses bulk water density, not
+**Scientific limitations:** RDF normalization uses selected-water count / full periodic cell volume, not
 the solvent-accessible volume around a site. Analyze saved SASA with water
 counts and RDFs, and evaluate cutoff stability across trajectory chunks
 and independent replicates. Unresolved RDF minima should not be accepted
@@ -803,7 +804,7 @@ The per-replicate solvation observer already writes:
 - `extensions/solvation/counts.parquet`: per-frame, per-target unique solvent counts with solvent species, target IDs/classes and time.
 - `extensions/solvation/species_timeseries.parquet`: per-frame chemical-class average coordination and count; now also `hydrated_fraction`, the fraction of configured targets with ≥1 solvent entity within its coordination shell.
 - `extensions/solvation/target_summary.parquet`: per-residue or per-molecule mean, standard deviation and hydrated-frame fraction, descriptive **within a replicate**.
-- `extensions/solvation/rdf.parquet`: bulk-number-density-normalized radial distribution by solvent and target/site class, with saved radial bins and raw pair counts.
+- `extensions/solvation/rdf.parquet`: full-cell-number-density-normalized radial distribution by solvent and target/site class, with saved radial bins and raw pair counts.
 - `extensions/solvation/{events,bridges,water_hbond_bridges,episodes,survival}.parquet` when the relevant opt-in modes are enabled; other outputs include `shell_candidates`, `shell_stability`, `target_residues`, optional `hydration_sasa`, and optional sparse `water_density_3d`.
 
 ### What has changed
@@ -968,3 +969,4 @@ RDF histogram values at *exact* bin boundaries remain sensitive to
 floating-point rounding between native distance backends. This is a
 histogram numerical-convention issue, not a distinct PBC convention;
 ordinary nonboundary backend parity is tested separately.
+

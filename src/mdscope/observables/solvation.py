@@ -1,6 +1,6 @@
 """Shared periodic solvation neighbor search, compact RDFs and optional identity events.
 
-Bulk-normalized radial distributions are NOT corrected for inaccessible volume.
+Box-density-normalized radial distributions are NOT corrected for inaccessible volume.
 All distances are Å and times ps; the actual water/ion atom selections are
 explicit to avoid guessing CHARMM lipid and glycan atom chemistry.
 """
@@ -29,7 +29,7 @@ BRIDGE_COLUMNS = ["frame", "time_ps", "solvent", "solvent_id", "target_a", "targ
 
 
 def rdf_from_counts(counts, edges, density_exposure):
-    """Number of observed pairs / expected pairs at BULK solvent density."""
+    """Observed pairs / expected pairs at the supplied reference density exposure."""
     shell_volume = (4 * np.pi / 3) * np.diff(np.asarray(edges, float) ** 3)
     if density_exposure <= 0:
         return np.full(len(counts), np.nan)
@@ -597,7 +597,9 @@ class SolvationObserver:
             "bridges": self.bridges_on,
             "track_target_classes": self.track_classes,
             "water_hbond_bridges": self.water_hbond_bridges,
-            "rdf_limitation": "Bulk-density normalized; no excluded-volume correction. Evaluate alongside SASA.",
+            "density_reference": "selected solvent entities / instantaneous full periodic cell volume",
+            "rdf_value_column": "g_bulk (legacy name; full-cell average density reference)",
+            "rdf_limitation": "Not independently measured aqueous bulk density; no excluded-volume correction. Evaluate alongside SASA and membrane geometry.",
             "residence_limitation": "Episodes represent consecutive sampled contacts; temporal resolution is trajectory frame interval.",
         })
         return {"frames": len(read("frames")), "fused": True}

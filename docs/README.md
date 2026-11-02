@@ -11,7 +11,9 @@ Start with the [repository README](../README.md) for installation, basic usage, 
 ## Developing MDscope
 
 - [Architecture](developer/architecture.md) — package boundaries and installation model.
+- [Scientific audit and outstanding validation](developer/scientific-audit.md) — prioritized methodology findings, corrections, benchmarks and production commands.
 - [Scientific contracts](developer/scientific-contracts.md) — coordinate conventions, geometry, numerical regression and validation.
 - [Contributing](developer/contributing.md) — refactoring rules and testing expectations.
 
 Documentation is organized by enduring functionality, not GitHub issue numbers. Historical development discussions remain available in Git history and closed issues.
+
