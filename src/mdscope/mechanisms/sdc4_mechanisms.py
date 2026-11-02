@@ -595,6 +595,31 @@ class SDC4Mechanisms:
             )
             row[prefix + "glycan_contacts"] = len(gly_hits)
             row[prefix + "lipid_contacts"] = len(lip_hits)
+            # Separate distinct physical occluders so NxIP exposure
+            # cannot be attributed entirely to protein self-packing.
+            row[prefix + "protein_occluded_atom_fraction"] = (
+                len(np.unique(contacts[:, 0])) / len(ag) if len(contacts) else 0.
+            )
+            row[prefix + "glycan_occluded_atom_fraction"] = (
+                len(np.unique(gly_hits[:, 0])) / len(ag) if len(gly_hits) else 0.
+            )
+            row[prefix + "lipid_occluded_atom_fraction"] = (
+                len(np.unique(lip_hits[:, 0])) / len(ag) if len(lip_hits) else 0.
+            )
+            water_hits = _contacts(ag, self.water, self.hydration_A, box)
+            row[prefix + "hydration_water_count"] = (
+                len(np.unique(self.water.indices[water_hits[:, 1]]))
+                if len(water_hits) else 0
+            )
+            if name.startswith("proline_hydrophobic_"):
+                chain = "A" if "_PROA_" in name else "B"
+                nxip = next((item["atoms"] for label, item in self.motifs.items()
+                             if label.startswith(f"NxIP_PRO{chain}_")), None)
+                if nxip is not None:
+                    row[prefix + "to_NxIP_min_distance_A"] = nearest(ag, nxip, box)
+                # Heavy-atom hydrophobic C/SASA is a separate endpoint; this
+                # frame-level water count remains proximity, not solvation energy.
+
             if self.motif_lipid_residence_enabled and len(lip_hits):
                 molecules = {
                     self.lipid_molecule_by_atom[int(self.lipid_contact.indices[j])]
