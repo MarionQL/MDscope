@@ -164,3 +164,46 @@ def test_ceramide_head_tail_glycan_chemistry_selection_oracle():
     assert not (set(head.indices) & set(tail.indices))
     assert not (set(glycan.indices) & (set(head.indices) | set(tail.indices)))
     assert "O1" in set(head.names)  # free ceramide hydroxyl in control
+
+
+def test_matched_local_contact_population_independent_reference():
+    # Whole leaflet: one GM1 and three POPC, with one contact each.
+    # Local disk: GM1 anchor is outside, POPC has 3 available, 1 contacting.
+    # Historical local enrichment compares 1 GM1 contact to zero local GM1.
+    # Matched local enrichment conditions on the disk, so POPC alone has
+    # contact share 1 and availability share 1, yielding enrichment 1.
+    frame = pd.DataFrame({
+        "time_ps": [0., 0.], "region": ["TM_A"] * 2,
+        "leaflet": ["upper"] * 2, "species": ["GM1a", "POPC"],
+        "moiety": ["any"] * 2,
+        "contacted_molecules": [1, 1],
+        "locally_contacted_molecules": [0, 1],
+        "available_molecules": [1, 3],
+        "locally_available_molecules": [0, 3],
+    })
+    numerator = frame.loc[:, "locally_contacted_molecules"].to_numpy()
+    denominator = frame.loc[:, "locally_available_molecules"].to_numpy()
+    assert np.all(numerator <= denominator)
+    fractions = np.divide(numerator, denominator,
+                          out=np.full(2, np.nan), where=denominator > 0)
+    assert np.isnan(fractions[0])
+    assert fractions[1] == pytest.approx(1 / 3)
+    matched = _composition_enrichment(
+        frame, "locally_available_molecules", "locally_contacted_molecules"
+    )
+    assert np.isnan(matched[0])
+    assert matched[1] == pytest.approx(1.)
+    historic = _composition_enrichment(frame, "locally_available_molecules")
+    assert historic[1] == pytest.approx(.5)
+
+
+def test_residence_duration_and_occupancy_have_separate_contracts():
+    times = np.array([0., 3., 7., 12.])
+    result = summarize_lipid_residence(_events([0., 3., 12.]), times)
+    assert result.observed_span_ps.tolist() == pytest.approx([3., 0.])
+    assert result.episode_contact_fraction.tolist() == pytest.approx([.5, .25])
+    assert result.occupancy_fraction.tolist() == pytest.approx([.75, .75])
+    assert result.duration_ps.tolist() == pytest.approx([7., 4.])
+    assert set(result.duration_convention) == {
+        "next_sample_interval_or_terminal_median"
+    }
