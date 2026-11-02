@@ -11,3 +11,14 @@ def analyze_project(cfg, root, system_repouts):
     analyze_profiles(cfg, root, system_repouts)
     analyze_interactions(cfg, root, system_repouts)
     analyze_solvation_rdfs(cfg, root, system_repouts)
+
+
+    from ..config import atomic_json, config_hash, statistics_family_config
+    from pathlib import Path
+    families = ("time_series", "profiles", "interactions", "solvation_rdfs")
+    atomic_json(Path(root) / "project_summary/statistics/manifest.json", {
+        "statistics_hash": config_hash(cfg.get("statistics", {})),
+        "families": {name: "enabled" if statistics_family_config(cfg, name) is not None else "disabled"
+                     for name in families},
+        "methods": cfg.get("statistics", {}),
+    })

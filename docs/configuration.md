@@ -169,3 +169,55 @@ zero. Scalar comparison labels use adjusted q-values for support, never the
 sign of a bootstrap interval. Disabled PDF sections do not leave separator-only
 pages. `report_provenance.json` and `figure_manifest.csv` support offline review;
 no trajectory is reopened to regenerate the report.
+### Independent statistics families
+
+`statistics.families` accepts `time_series`, `profiles`, `interactions`, and
+`solvation_rdfs`. Values may be booleans or mappings containing `enabled`,
+`bootstrap_draws` (>=100), `ci`, and `hypothesis_tests` (boolean). Omitted
+families retain the historical behavior. Overrides apply to one family and
+never mutate the trajectory configuration. Example:
+
+```yaml
+statistics:
+  families:
+    time_series: {enabled: true, bootstrap_draws: 1000}
+    profiles: false
+    interactions: {enabled: true, hypothesis_tests: false}
+    solvation_rdfs: true
+  interaction_include_kinds: [salt_bridges, hydrogen_bonds]
+  interaction_exclude_kinds: [lipid_hydrogen_bonds]
+  interaction_progress_every: 1000
+  hypothesis_families:
+    primary: [sdc4_motif_NxIP_PROB_1_steric_occlusion_fraction]
+```
+
+Inclusion/exclusion occurs before interaction Parquet reads; exclusions take
+precedence. Scalar hypothesis-family membership partitions BH adjustment by
+condition contrast and family. All unlisted endpoints remain exploratory.
+Define families before follow-up inference, never after inspecting p-values.
+Without this configuration, the original global scalar BH family is retained.
+A two-sided independent exact test with 3+3 replicas has minimum p=2/20=0.1;
+a narrow bootstrap interval is not FDR-adjusted significance.
+
+Gapped/nonfinite or irregular scalar traces retain finite-observation point
+estimates but have unavailable ACF/effective-sample estimates and temporal CIs.
+System temporal intervals are also unavailable when any constituent replica
+has an invalid time axis; an invalid replica is not silently dropped.
+`statistics/manifest.json` records methods and enabled/disabled families.
+This does not repair missing-not-at-random sampling or establish convergence.
+
+Run optional timing benchmarks with
+`pytest -q -s -m benchmark tests/test_performance_benchmarks.py`.
+Normal pytest excludes timings; direct COM/MSD and planar-normal references
+remain in the correctness suite. Packaging smoke checks are consolidated in
+`test_package_contract.py`; wheel/sdist and outside-checkout checks remain CI
+installation gates. Existing config persistence/provenance exports remain
+supported and their atomic-write/rollback tests are retained.
+
+
+Invalid forward frame windows are rejected before opening trajectories;
+negative Python frame indexing remains supported. With invalid/gapped scalar
+series, omitted temporal draws intentionally change subsequent scalar RNG
+progression compared with the old compressed-time behavior. Complete regular
+data retains its draw ordering; the interaction grouping optimization and its
+RNG sequence are unaffected by this scientific correction.

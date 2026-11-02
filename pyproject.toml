@@ -37,4 +37,6 @@ namespaces = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-m 'not benchmark'"
+markers = ["benchmark: optional numerical profiling, no wall-clock pass thresholds"]
 
