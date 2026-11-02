@@ -57,3 +57,51 @@ def summarize_lipid_residence(events: pd.DataFrame, frame_times) -> pd.DataFrame
                 "occupancy_fraction": float(len(frames) / len(times)),
             })
     return pd.DataFrame(rows, columns=COLUMNS)
+
+
+def summarize_intermittent_residence(events: pd.DataFrame, frame_times, gap_frames=1):
+    """Episodes allowing at most gap_frames *absent* sampled frames.
+
+    Bridged gaps do not imply continuous microscopic contact. Durations
+    include the gap and are distinct from occupancy, which counts only
+    observed contact frames.
+    """
+    if not isinstance(gap_frames, int) or gap_frames < 0:
+        raise ValueError("gap_frames must be a nonnegative integer")
+    times = np.asarray(frame_times, dtype=float)
+    if times.ndim != 1 or not len(times) or not np.isfinite(times).all() or (
+        len(times) > 1 and np.any(np.diff(times) <= 0)
+    ):
+        raise ValueError("Frame times must increase strictly")
+    if events.empty:
+        return pd.DataFrame(columns=COLUMNS)
+    required = {"time_ps", "motif", "molecule_id", "species"}
+    if not required.issubset(events.columns):
+        raise ValueError("Missing residence event fields")
+    if events.duplicated(["time_ps", "motif", "molecule_id"]).any():
+        raise ValueError("Duplicate molecule contact events")
+    indices = pd.Index(times).get_indexer(events["time_ps"].to_numpy(float))
+    if np.any(indices < 0):
+        raise ValueError("Contact events do not align with trajectory times")
+    tagged = events.assign(frame_idx=indices)
+    dt = float(np.median(np.diff(times))) if len(times) > 1 else np.nan
+    rows = []
+    for (motif, molecule), group in tagged.groupby(["motif", "molecule_id"], sort=True):
+        if group.species.nunique() != 1:
+            raise ValueError("Molecule changes species")
+        frames = np.sort(group.frame_idx.to_numpy(int))
+        cuts = np.r_[0, np.flatnonzero(np.diff(frames) > gap_frames + 1) + 1, len(frames)]
+        for begin, end in zip(cuts[:-1], cuts[1:]):
+            left, right = frames[begin], frames[end - 1]
+            step = times[right+1] - times[right] if right+1 < len(times) else dt
+            rows.append({
+                "motif": motif, "species": group.species.iloc[0],
+                "molecule_id": int(molecule),
+                "start_ps": float(times[left]), "end_ps": float(times[right]),
+                "duration_ps": float(times[right] - times[left] + step),
+                "n_frames": int(end - begin),
+                "left_censored": bool(left == 0),
+                "right_censored": bool(right == len(times)-1),
+                "occupancy_fraction": float((end - begin) / len(times)),
+            })
+    return pd.DataFrame(rows, columns=COLUMNS)
