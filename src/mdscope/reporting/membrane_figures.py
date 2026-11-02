@@ -46,3 +46,36 @@ def plot_lipid_enrichment_matrix(cfg,root):
     dest=ensure_dir(Path(root)/"project_summary"/"figures"/"membrane")
     fig.savefig(dest/"lipid_enrichment_heatmap.png",dpi=int(cfg.get("plots",{}).get("dpi",250)))
     plt.close(fig)
+
+
+
+def plot_lipid_contacts(cfg, root, system_repouts):
+    """Offline equal-replica mean neighbor matrices, distinct from H-bonds."""
+    if (not cfg.get('plots', {}).get('enabled', True)
+            or not cfg.get('plots', {}).get('families', {}).get('lipid_contacts', True)
+            or not cfg.get('analyses', {}).get('lipid_contacts', {}).get('enabled', False)):
+        return
+    tables = []
+    for system, paths in system_repouts.items():
+        for repout in paths:
+            path = Path(repout)/'extensions/lipid_contacts/matrix.parquet'
+            if path.exists():
+                data = pd.read_parquet(path)
+                tables.append(data.groupby(['leaflet','species_a','species_b'], as_index=False)[['neighbors_per_molecule','enrichment']].mean().assign(system=system, replicate=Path(repout).name))
+    if not tables:
+        return
+    replicas = pd.concat(tables, ignore_index=True)
+    dest = ensure_dir(Path(root)/'project_summary/figures/lipid_contacts')
+    replicas.to_csv(dest/'replicate_matrices.csv', index=False)
+    for (system, leaflet), group in replicas.groupby(['system','leaflet']):
+        for metric in ('neighbors_per_molecule','enrichment'):
+            values = group.groupby(['species_a','species_b'])[metric].mean().unstack()
+            fig, ax = plt.subplots(figsize=(7,6))
+            image = ax.imshow(values, cmap='viridis')
+            ax.set_xticks(range(len(values.columns)), values.columns, rotation=60)
+            ax.set_yticks(range(len(values)), values.index)
+            ax.set_xlabel('Neighbor species B'); ax.set_ylabel('Reference species A')
+            ax.set_title(f'{system} / {leaflet}: {metric.replace("_", " ")}')
+            fig.colorbar(image, ax=ax, label='Neighbors per molecule' if metric == 'neighbors_per_molecule' else 'Contact share / possible-pair share')
+            fig.tight_layout(); fig.savefig(dest/f'lipid_contact_matrix_{system}_{leaflet}_{metric}.png', dpi=180)
+            plt.close(fig)

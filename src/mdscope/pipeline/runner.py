@@ -33,7 +33,7 @@ from ..interactions import run_hydrogen_bonds
 from ..interactions import postprocess_interactions
 from ..observables.membrane_order import membrane_order_timeseries, run_membrane_order
 from ..reporting.plotting import plot_all
-from ..reporting.membrane_figures import plot_lipid_enrichment_matrix
+from ..reporting.membrane_figures import plot_lipid_enrichment_matrix, plot_lipid_contacts
 from ..observables.residue_membrane_distance import run_residue_membrane_distance
 from ..observables.structure_profiles import postprocess_structure_profiles, run_structure_profiles
 from ..statistics import analyze_project
@@ -488,6 +488,7 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
     timed("lipid_enrichment_plots", plot_lipid_enrichment_matrix, cfg, root)
     timed("shared_states", fit_shared_states, cfg, root, system_repouts)
     timed("sdc4_plots", plot_sdc4_mechanisms, cfg, root, system_repouts)
+    timed("lipid_contact_plots", plot_lipid_contacts, cfg, root, system_repouts)
     timed("diffusion_summary", summarize_project_diffusion, root, system_repouts, cfg)
     timed("multi_origin_summary", summarize_project_multi_origin, root, system_repouts)
     if cfg.get('analyses',{}).get('coupling_screen',{}).get('enabled',False):
@@ -522,3 +523,4 @@ def run_all(config_path: str | Path):
         run_replicate(rep, cfg, root, state)
     finalize_project(config_path, cfg, root, state)
     return root
+

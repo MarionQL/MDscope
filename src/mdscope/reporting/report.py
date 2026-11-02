@@ -824,6 +824,11 @@ def _make_bundle(root, pdf, system_repouts, options):
                             )
                         else:
                             archive.write(path, arcname=str(relative / name))
+                    lipid_contacts = repout/'extensions/lipid_contacts'
+                    if lipid_contacts.exists():
+                        for path in sorted(lipid_contacts.iterdir()):
+                            if path.suffix in {'.parquet','.json'}:
+                                archive.write(path, arcname=str(relative/'extensions/lipid_contacts'/path.name))
                     # Preserve mechanistic event/residence tables as
                     # compressed Parquet. Avoid expanding large sparse
                     # molecule-contact maps into enormous CSVs in memory.

@@ -244,6 +244,13 @@ def write_solvation_derivatives(directory, repout, *, sasa_run="default"):
     if episodes.exists():
         atomic_parquet(directory / "survival.parquet",
                        kaplan_meier(pd.read_parquet(episodes)))
+    bridges_path = directory/'bridges.parquet'
+    frame_parts = sorted(cache.glob('frames-*.parquet'))
+    if bridges_path.exists() and frame_parts:
+        frame_times = pd.concat([pd.read_parquet(p) for p in frame_parts])['time_ps'].drop_duplicates().sort_values().to_numpy(float)
+        bridges = pd.read_parquet(bridges_path)
+        for gap, name in ((0, 'bridge_residence'), (1, 'bridge_residence_intermittent')):
+            atomic_parquet(directory/f'{name}.parquet', bridge_residence(bridges, frame_times, gap))
     sasa = repout / "profiles/sasa"
     if sasa_run != "default":
         sasa = sasa / sasa_run
@@ -255,3 +262,25 @@ def write_solvation_derivatives(directory, repout, *, sasa_run="default"):
                 pd.read_parquet(directory/"counts.parquet"),
                 pd.read_parquet(directory/"target_residues.parquet"),
                 pd.read_parquet(sasa)))
+
+
+
+def bridge_residence(bridges, frame_times, gap_frames=0):
+    """Same-solvent simultaneous target coordination, not chemical binding.
+
+    Derive pair-specific episodes from existing sparse bridge records. Only
+    observed target pairs enter this table; no observed pair is not proof of
+    zero occupancy for an unconfigured or untracked target pair.
+    """
+    from ..mechanisms.motif_residence import summarize_lipid_residence
+    columns = ['target_a','target_b']
+    if bridges.empty:
+        return pd.DataFrame(columns=columns + ['species','molecule_id','duration_ps',
+            'observed_span_ps','left_censored','right_censored'])
+    pairs = bridges[columns].drop_duplicates().sort_values(columns).reset_index(drop=True)
+    pairs['motif'] = [f'bridge_{i}' for i in range(len(pairs))]
+    events = bridges.merge(pairs, on=columns, validate='many_to_one').rename(
+        columns={'solvent':'species', 'solvent_id':'molecule_id'})
+    events = events[['time_ps','motif','species','molecule_id']].drop_duplicates()
+    episodes = summarize_lipid_residence(events, frame_times, gap_frames=gap_frames)
+    return episodes.merge(pairs, on='motif', validate='many_to_one')

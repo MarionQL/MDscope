@@ -62,6 +62,12 @@ def collect_time_series(repout: Path) -> dict[tuple[str | None, str], pd.DataFra
                 if metric in group and len(finite(group[metric])):
                     out[(group_id, metric)] = group[["time_ps", metric]].rename(
                         columns={metric: "value"})
+    matrix = Path(repout)/'extensions/lipid_contacts/matrix.parquet'
+    if matrix.exists():
+        data = pd.read_parquet(matrix)
+        for (leaf, a, b), group in data.groupby(['leaflet','species_a','species_b'], sort=False):
+            for metric in ('neighbors_per_molecule','enrichment'):
+                out[(f'lipid_contacts/{leaf}/{a}/{b}', metric)] = group[['time_ps',metric]].rename(columns={metric:'value'})
     return out
 
 
@@ -276,5 +282,6 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
             comp = _fdr(comp, "mean_p_value", "mean_q_value", ["system_1", "system_2"])
             comp = _fdr(comp, "median_p_value", "median_q_value", ["system_1", "system_2"])
         atomic_parquet(outdir / "system_comparisons.parquet", comp)
+
 
 

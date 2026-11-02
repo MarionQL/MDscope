@@ -448,6 +448,12 @@ def load_config(path: str | Path) -> dict[str, Any]:
 
 
 def validate_config(cfg: dict, base: Path = Path(".")) -> None:
+    contacts = cfg.get('analyses', {}).get('lipid_contacts', {})
+    if contacts.get('enabled', False):
+        if not contacts.get('selection') or not contacts.get('species_selections'):
+            raise ValueError('lipid_contacts requires selection and species_selections')
+        if float(contacts.get('cutoff_A', 5.)) <= 0 or int(contacts.get('batch_atoms', 4096)) < 1:
+            raise ValueError('lipid_contacts cutoff_A and batch_atoms must be positive')
     systems = cfg.get("systems")
     if not systems:
         raise ValueError("Config must define at least one system under systems:")
@@ -802,3 +808,4 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
             )
         if str(tests.get("multiple_testing", "fdr_bh")) not in {"fdr_bh", "none"}:
             raise ValueError("statistics.hypothesis_tests.multiple_testing must be fdr_bh or none")
+

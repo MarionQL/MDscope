@@ -110,7 +110,7 @@ def _targets(u, spec):
                 for match_id, residues in matches.items():
                     # Whole heavy-atom sidechains and backbone; not CA-only.
                     atoms = u.atoms[np.isin(u.atoms.resindices, residues)]
-                    atoms = atoms.select_atoms("not name H*")
+                    atoms = atoms.select_atoms(definition.get("atom_selection", "not name H*"))
                     if not len(atoms):
                         raise ValueError(f"solvation motif {kind}/{label} has no heavy atoms")
                     overlap = seen.intersection(map(int, atoms.indices))

@@ -40,7 +40,7 @@ def figure_inventory(root, system_repouts):
     rows=[]
     for path in sorted(set(paths)):
         name=path.name
-        kind=("primary" if name.endswith(PRIMARY_SUFFIXES) else
+        kind=("primary" if name.startswith("lipid_contact_matrix_") or name.endswith(PRIMARY_SUFFIXES) else
               "supplement" if name.endswith(SUPPLEMENT_SUFFIXES) else "other")
         rows.append({"figure":str(path.relative_to(root)),
                      "section":str(path.parent.relative_to(root)),
