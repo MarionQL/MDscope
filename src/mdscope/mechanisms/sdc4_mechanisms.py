@@ -360,6 +360,10 @@ class SDC4Mechanisms:
                                  for k, v in self.gxxxg.items()},
             "gxxxg_tm_sequences": self.gxxxg_sequences,
             "motif_lipid_residence_unmapped_fragments": self.unmapped_lipid_fragment_count,
+            "motif_lipid_residence_molecules_by_species": {
+                species: sum(v == species for v in self.lipid_molecule_species.values())
+                for species in sorted(set(self.lipid_molecule_species.values()))
+            },
             "surface_anchor_species": list(self.surface_species),
             "lipid_counts": {str(k): int(np.count_nonzero(self.species == k))
                              for k in sorted(set(self.species))},
