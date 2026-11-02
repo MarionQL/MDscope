@@ -293,3 +293,63 @@ def test_tm_axis_orientation_and_crossing_angle_oracle():
     np.testing.assert_allclose(a, [1, 0, 0], atol=1e-6)
     np.testing.assert_allclose(b, [0, 1, 0], atol=1e-6)
     assert _angle(a, b) == pytest.approx(90., abs=1e-6)
+
+
+def test_lipid_residence_tracks_molecules_and_censors():
+    from mdscope.mechanisms.motif_residence import summarize_lipid_residence
+    times = np.array([0., 10., 20., 30., 40., 50.])
+    events = pd.DataFrame([
+        {"time_ps": t, "motif": "proline_hydrophobic_A_1",
+         "molecule_id": 13, "species": "GM1a"}
+        for t in [0., 10., 30., 40., 50.]
+    ])
+    episodes = summarize_lipid_residence(events, times)
+    assert len(episodes) == 2
+    assert episodes["duration_ps"].tolist() == [20., 30.]
+    assert episodes["n_frames"].tolist() == [2, 3]
+    assert episodes["left_censored"].tolist() == [True, False]
+    assert episodes["right_censored"].tolist() == [False, True]
+    assert episodes["occupancy_fraction"].iloc[0] == pytest.approx(5 / 6)
+    with pytest.raises(ValueError, match="Duplicate"):
+        summarize_lipid_residence(pd.concat([events, events.iloc[:1]]), times)
+    with pytest.raises(ValueError, match="align"):
+        summarize_lipid_residence(events.assign(time_ps=events.time_ps + 1), times)
+    assert summarize_lipid_residence(events.iloc[:0], times).empty
+
+
+def test_shared_states_exports_replica_conditioned_nxip(tmp_path):
+    from mdscope.mechanisms.shared_states import fit_shared_states
+    cfg = {"analyses": {"sdc4_mechanisms": {"enabled": True},
+                         "shared_states": {"enabled": True, "features": [
+                             "sdc4_ectodomain_A_height_A",
+                             "sdc4_ectodomain_B_height_A"],
+                             "n_states": 2, "seed": 5,
+                             "bootstrap_draws": 30,
+                             "training_frames_per_replicate": 20,
+                             "min_complete_fraction": 1.0}}}
+    paths = {}
+    for sys, shift in (("with", 0.0), ("without", 1.0)):
+        paths[sys] = []
+        for r in (1, 2):
+            folder = tmp_path / sys / f"rep{r}"
+            dest = folder / "extensions/sdc4_mechanisms"
+            dest.mkdir(parents=True)
+            height = np.r_[np.linspace(1, 2, 10),
+                           np.linspace(7, 8, 10)] + shift
+            pd.DataFrame({
+                "time_ps": np.arange(20) * 10.,
+                "sdc4_ectodomain_A_height_A": height,
+                "sdc4_ectodomain_B_height_A": height * 1.5,
+                "sdc4_motif_NxIP_PROB_1_steric_occlusion_fraction":
+                    np.r_[np.full(10, .8), np.full(10, .2)],
+            }).to_parquet(dest / "timeseries.parquet", index=False)
+            paths[sys].append(folder)
+    output = fit_shared_states(cfg, tmp_path, paths)
+    cond = pd.read_parquet(output / "state_conditioned_nxip.parquet")
+    assert set(cond["replicate"]) == {"rep1", "rep2"}
+    assert len(cond) == 8
+    assert (cond["frames_in_state"] > 0).all()
+    comp = pd.read_parquet(output / "state_conditioned_nxip_comparisons.parquet")
+    assert len(comp) == 2
+    assert (comp["n_replicates_0"] == 2).all()
+    assert set(comp["inference"]) == {"exploratory; no multiplicity-adjusted test"}
