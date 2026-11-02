@@ -140,7 +140,26 @@ def run():
         out = ROOT / "sdc4_mechanisms_smoke" / system
         observer = SDC4Mechanisms(u, cfg, out)
         observer.prune_from(0)
+        def independent_residue_pairs(left, right, cutoff=5.0):
+            # Independent brute-force orthorhombic minimum-image oracle for
+            # the real released TPR; not the production neighbor search.
+            pairs = set()
+            xyz_b = right.positions.astype(float)
+            box = u.dimensions[:3].astype(float)
+            for atom, resid in zip(left.positions, left.resindices):
+                delta = xyz_b - atom
+                delta -= np.rint(delta / box) * box
+                neighbors = np.flatnonzero(np.einsum("ij,ij->i", delta, delta) <= cutoff**2)
+                pairs.update((int(resid), int(right.resindices[k])) for k in neighbors)
+            return len(pairs)
+
+        reference = []
         for i in range(4):
+            u.trajectory[i]
+            reference.append((
+                independent_residue_pairs(observer.tm_heavy["A"], observer.tm_heavy["B"]),
+                independent_residue_pairs(observer.gxxxg["A"], observer.gxxxg["B"]),
+            ))
             observer.update(u.trajectory[i], i)
             if i % 2 == 1:
                 observer.flush(i // 2)
@@ -150,6 +169,12 @@ def run():
         assert np.all(np.isfinite(df["sdc4_tm_crossing_angle_deg"]))
         assert np.all(np.isfinite(df["sdc4_ectodomain_A_height_A"]))
         assert result["n_hs_chains"] == 6
+        actual_tm = df["sdc4_tm_interface_residue_pairs"].to_numpy()
+        actual_motif = df["sdc4_gxxxg_interface_residue_pairs"].to_numpy()
+        np.testing.assert_array_equal(actual_tm, np.asarray(reference)[:, 0])
+        np.testing.assert_array_equal(actual_motif, np.asarray(reference)[:, 1])
+        print(f"REAL TM GEOMETRY {system}: TM pairs={actual_tm.tolist()} "
+              f"GGIVG pairs={actual_motif.tolist()}", flush=True)
         assert "sdc4_hs_PROA_S39_hydration_water_count" in df
         assert "sdc4_hs_PROB_S333_lipid_contact_lipids" in df
         with np.load(out / "extensions/sdc4_mechanisms/lipid_density_maps.npz") as maps:
