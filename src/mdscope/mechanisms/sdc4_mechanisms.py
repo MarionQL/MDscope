@@ -283,9 +283,14 @@ class SDC4Mechanisms:
         for label, selection in (s.get("lipid_moiety_selections") or {}).items():
             if label not in ("glycan", "ceramide_head", "ceramide_tail"):
                 raise ValueError(f"Unknown lipid moiety {label}")
-            atoms = selected(universe, selection, required=True)
+            atoms = selected(universe, selection)
             indices = set(map(int, atoms.indices))
             if not indices:
+                # The no-glycolipid condition has no glycan moiety.
+                if label == "glycan" and not (
+                    {"GM1a", "BGAL"} & set(self.lipid_molecule_species.values())
+                ):
+                    continue
                 raise ValueError(f"Empty lipid moiety selection: {label}")
             if not indices.issubset(set(map(int, self.lipid_contact.indices))):
                 raise ValueError(f"{label} contains atoms outside lipid contact selection")
