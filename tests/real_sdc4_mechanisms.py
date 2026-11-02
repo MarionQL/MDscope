@@ -196,6 +196,15 @@ def run():
             (out / "extensions/sdc4_mechanisms/selection_audit.json").read_text()
         )
         assert residence_audit["motif_lipid_residence_unmapped_fragments"] >= 0
+        molecule_counts = residence_audit["motif_lipid_residence_molecules_by_species"]
+        if system == "carb_sdc4":
+            assert molecule_counts.get("GM1a", 0) > 0
+            assert molecule_counts.get("BGAL", 0) > 0
+        else:
+            assert molecule_counts.get("CER160", 0) > 0
+        contact_events = pd.read_parquet(events_path)
+        assert set(contact_events["species"]).issubset(molecule_counts)
+
 
         assert any(col.endswith("_P4_phi_deg") for col in df.columns)
         assert any(col.endswith("_P7_psi_deg") for col in df.columns)
