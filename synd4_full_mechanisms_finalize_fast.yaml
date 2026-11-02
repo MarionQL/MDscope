@@ -254,6 +254,7 @@ analyses:
     require_motifs: true
     # Require validated GGIVG on both TM chains; invalid mapping is fatal.
     require_gxxxg: true
+    motif_lipid_residence: true
     contact_cutoff_A: 5.0
     hydration_cutoff_A: 3.5
     ion_cutoff_A: 4.0
