@@ -480,3 +480,21 @@ def test_lipid_composition_enrichment_independent_toy_denominators():
     assert local_result[1] == pytest.approx(2 / 3)
     assert np.isnan(global_result[3]) and np.isnan(global_result[4])
     assert np.isnan(local_result[3]) and np.isnan(local_result[4])
+
+
+def test_accessible_area_grid_pbc_and_excluded_protein_reference():
+    from mdscope.mechanisms.sdc4_mechanisms import _accessible_area_grid
+    values = np.arange(-2., 3., 1.)
+    grid = np.stack(np.meshgrid(values, values), -1).reshape(-1, 2)
+    grid = grid[np.sum(grid * grid, axis=1) <= 4.]
+    box = np.array([100., 100., 100., 90., 90., 90.])
+    assert len(grid) == 13
+    full = _accessible_area_grid([0., 0.], 0., [[20., 20., 0.]],
+                                 box, grid, 1., .5, 1.)
+    blocked = _accessible_area_grid([0., 0.], 0., [[99.8, 0., 0.]],
+                                    box, grid, 1., .5, 1.)
+    assert full == pytest.approx(13.)
+    assert blocked == pytest.approx(12.)
+    assert _accessible_area_grid(
+        [0., 0.], 0., [[99.8, 0., 10.]], box, grid, 1., .5, 1.
+    ) == pytest.approx(full)

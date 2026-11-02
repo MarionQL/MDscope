@@ -275,6 +275,8 @@ def run():
         assert {"locally_available_molecules", "min_contact_distance_A",
                 "local_composition_enrichment"}.issubset(specificity.columns)
         assert (specificity["locally_available_molecules"] >= 0).all()
+        assert {"local_accessible_area_nm2",
+                "local_number_density_per_nm2"}.issubset(specificity)
         assert (specificity["min_contact_distance_A"].dropna() <= 5.0 + 1e-5).all()
         zero_local = specificity.loc[
             specificity["moiety"].eq("any")

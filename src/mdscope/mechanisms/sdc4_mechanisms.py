@@ -20,6 +20,7 @@ import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import capped_distance, minimize_vectors, calc_dihedrals
+from scipy.spatial import cKDTree
 
 from ..config import DEFAULTS, atomic_json, atomic_parquet, ensure_dir, time_ps
 from ..core.lipid_geometry import anchor_groups, aligned_leaflets, periodic_center
@@ -64,6 +65,26 @@ def _angle(a, b):
     return float(np.degrees(np.arccos(np.clip(np.dot(a, b), -1., 1.)))) if (
         np.all(np.isfinite(a)) and np.all(np.isfinite(b))
     ) else np.nan
+
+
+def _accessible_area_grid(center_xy, surface_z, protein_xyz, box,
+                          sample_xy, spacing_A, exclusion_A, slab_A):
+    """Projected lipid-accessible area (Å²), excluding nearby protein discs.
+
+    This parameterized grid estimate is not a molecular free-energy or
+    exact lipid excluded-volume calculation. Minimum-image geometry is used.
+    """
+    center = np.array([center_xy[0], center_xy[1], surface_z], float)
+    rel = minimize_vectors(np.asarray(protein_xyz, float) - center, box)
+    near = (
+        (np.abs(rel[:, 2]) <= slab_A)
+        & (np.einsum("ij,ij->i", rel[:, :2], rel[:, :2])
+           <= (np.max(np.linalg.norm(sample_xy, axis=1)) + exclusion_A) ** 2)
+    )
+    if not np.any(near):
+        return float(len(sample_xy) * spacing_A ** 2)
+    distances = cKDTree(rel[near, :2]).query(sample_xy, k=1)[0]
+    return float(np.count_nonzero(distances > exclusion_A) * spacing_A ** 2)
 
 
 def _composition_enrichment(table, availability_column):
@@ -393,6 +414,17 @@ class SDC4Mechanisms:
         self.hydration_A = float(s.get("hydration_cutoff_A", 3.5))
         self.ion_A = float(s.get("ion_cutoff_A", 4.))
         self.local_A = float(s.get("local_radius_A", 20.))
+        self.accessible_area_enabled = bool(s.get("accessible_area_enabled", False))
+        self.area_grid_A = float(s.get("accessible_area_grid_A", 2.0))
+        self.area_exclusion_A = float(s.get("protein_footprint_exclusion_A", 3.0))
+        self.area_slab_A = float(s.get("protein_footprint_slab_A", 5.0))
+        if self.accessible_area_enabled:
+            if min(self.area_grid_A, self.area_exclusion_A, self.area_slab_A) <= 0:
+                raise ValueError("Accessible-area grid/exclusion/slab parameters must be positive")
+            coords = np.arange(-self.local_A, self.local_A + .5 * self.area_grid_A,
+                               self.area_grid_A)
+            xy = np.stack(np.meshgrid(coords, coords, indexing="ij"), -1).reshape(-1, 2)
+            self.area_samples = xy[np.sum(xy * xy, axis=1) <= self.local_A ** 2]
         self.min_lipids = int(s.get("local_min_lipids", 8))
         if min(self.contact_A, self.hydration_A, self.ion_A, self.local_A) <= 0:
             raise ValueError("All SDC4 mechanism distance cutoffs must be positive")
@@ -434,6 +466,13 @@ class SDC4Mechanisms:
             "map_rotation": "x axis TM chain 1 -> TM chain 2; y is +90 degree rotation",
             "map_density_units": "lipids/nm^2; no protein excluded-area correction",
             "local_curvature_units": "A^-1, small-slope quadratic approximation",
+            "accessible_area_grid_model": {
+                "enabled": self.accessible_area_enabled,
+                "grid_spacing_A": self.area_grid_A,
+                "exclusion_radius_A": self.area_exclusion_A,
+                "leaflet_slab_halfwidth_A": self.area_slab_A,
+                "meaning": "projected accessible-area approximation; not exact lipid free area",
+            },
         }
 
     def update(self, ts, frame_index):
@@ -708,6 +747,15 @@ class SDC4Mechanisms:
                     ))
                     for species, leaflet in availability
                 }
+                leaflet_areas = {}
+                if self.accessible_area_enabled:
+                    region_center = _center(atoms, box)
+                    for leaflet, surface in (("upper", upper_z), ("lower", lower_z)):
+                        leaflet_areas[leaflet] = _accessible_area_grid(
+                            region_center[:2], surface, self.protein.positions,
+                            box, self.area_samples, self.area_grid_A,
+                            self.area_exclusion_A, self.area_slab_A,
+                        ) / 100.
                 for (i, j), distance in zip(hits, hit_distances):
                     lipid_atom = self.lipid_contact[int(j)]
                     molecule = self.lipid_molecule_by_atom.get(int(lipid_atom.index))
@@ -764,6 +812,11 @@ class SDC4Mechanisms:
                             "contacted_molecules": count,
                             "available_molecules": denominator,
                             "locally_available_molecules": local_availability[(species, leaflet)],
+                            "local_accessible_area_nm2": leaflet_areas.get(leaflet, np.nan),
+                            "local_number_density_per_nm2": (
+                                local_availability[(species, leaflet)] / leaflet_areas[leaflet]
+                                if leaflet_areas.get(leaflet, 0) > 0 else np.nan
+                            ),
                             "min_contact_distance_A": minima.get((species, leaflet), np.nan),
                             "contact_fraction": (
                                 count / denominator if denominator else np.nan
@@ -828,7 +881,8 @@ class SDC4Mechanisms:
                 pd.DataFrame(self.rows["lipid_specificity"], columns=[
                     "time_ps", "region", "species", "leaflet", "moiety",
                     "contacted_molecules", "available_molecules",
-                    "locally_available_molecules", "min_contact_distance_A",
+                    "locally_available_molecules", "local_accessible_area_nm2",
+                    "local_number_density_per_nm2", "min_contact_distance_A",
                     "contact_fraction",
                 ]),
             )
