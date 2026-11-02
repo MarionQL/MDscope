@@ -67,7 +67,8 @@ def test_sasa_fused_vs_independent(monkeypatch, tmp_path):
         "time": {"dt_ps": 2., "origin_ps": 0.},
         "selections": {"protein": "resname ALA"},
         "analyses": {
-            "sasa": {"enabled": True, "selection": "resname ALA"},
+            "sasa": {"enabled": True, "selection": "resname ALA",
+                     "atom_sasa_selection": "name CA"},
             "dssp": {"enabled": False},
             "hydrogen_bonds": {"enabled": False},
             "lipid_hydrogen_bonds": {"enabled": False},
@@ -88,5 +89,10 @@ def test_sasa_fused_vs_independent(monkeypatch, tmp_path):
     pd.testing.assert_frame_equal(
         pd.read_parquet(independent / "profiles/sasa/residue_sasa.parquet"),
         pd.read_parquet(fused / "profiles/sasa/residue_sasa.parquet"),
+        check_dtype=False, rtol=1e-12, atol=1e-12,
+    )
+    pd.testing.assert_frame_equal(
+        pd.read_parquet(independent / "profiles/sasa/atom_sasa.parquet"),
+        pd.read_parquet(fused / "profiles/sasa/atom_sasa.parquet"),
         check_dtype=False, rtol=1e-12, atol=1e-12,
     )

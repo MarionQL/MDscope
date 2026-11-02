@@ -773,6 +773,23 @@ def _make_bundle(root, pdf, system_repouts, options):
                             )
                         else:
                             archive.write(path, arcname=str(relative / name))
+                    # Preserve mechanistic event/residence tables as
+                    # compressed Parquet. Avoid expanding large sparse
+                    # molecule-contact maps into enormous CSVs in memory.
+                    mechanism = repout / "extensions" / "sdc4_mechanisms"
+                    for name in (
+                        "lipid_region_specificity.parquet",
+                        "lipid_residue_contacts.parquet",
+                        "motif_lipid_residence.parquet",
+                        "motif_lipid_residence_intermittent.parquet",
+                        "motif_lipid_contact_events.parquet",
+                    ):
+                        path = mechanism / name
+                        if path.is_file():
+                            archive.write(
+                                path, arcname=str(relative / "extensions" /
+                                                  "sdc4_mechanisms" / name)
+                            )
                     # Include full compact solvation summaries and bounded
                     # samples of large event/voxel/frame-level tables.
                     sol_dir=repout/"extensions"/"solvation"

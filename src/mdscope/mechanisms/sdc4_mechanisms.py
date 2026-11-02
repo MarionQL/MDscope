@@ -20,6 +20,7 @@ import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import capped_distance, minimize_vectors, calc_dihedrals
+from scipy.spatial import cKDTree
 
 from ..config import DEFAULTS, atomic_json, atomic_parquet, ensure_dir, time_ps
 from ..core.lipid_geometry import anchor_groups, aligned_leaflets, periodic_center
@@ -64,6 +65,39 @@ def _angle(a, b):
     return float(np.degrees(np.arccos(np.clip(np.dot(a, b), -1., 1.)))) if (
         np.all(np.isfinite(a)) and np.all(np.isfinite(b))
     ) else np.nan
+
+
+def _accessible_area_grid(center_xy, surface_z, protein_xyz, box,
+                          sample_xy, spacing_A, exclusion_A, slab_A):
+    """Projected lipid-accessible area (Å²), excluding nearby protein discs.
+
+    This parameterized grid estimate is not a molecular free-energy or
+    exact lipid excluded-volume calculation. Minimum-image geometry is used.
+    """
+    center = np.array([center_xy[0], center_xy[1], surface_z], float)
+    rel = minimize_vectors(np.asarray(protein_xyz, float) - center, box)
+    near = (
+        (np.abs(rel[:, 2]) <= slab_A)
+        & (np.einsum("ij,ij->i", rel[:, :2], rel[:, :2])
+           <= (np.max(np.linalg.norm(sample_xy, axis=1)) + exclusion_A) ** 2)
+    )
+    if not np.any(near):
+        return float(len(sample_xy) * spacing_A ** 2)
+    distances = cKDTree(rel[near, :2]).query(sample_xy, k=1)[0]
+    return float(np.count_nonzero(distances > exclusion_A) * spacing_A ** 2)
+
+
+def _proline_rama_region(phi, psi):
+    """Operational single-residue Ramachandran region; not DSSP or beta-turn."""
+    if not np.isfinite(phi) or not np.isfinite(psi):
+        return "missing"
+    if -105. <= phi <= -50. and 100. <= psi <= 180.:
+        return "PPII_like"
+    if -180. <= phi < -105. and 90. <= psi <= 180.:
+        return "beta_extended_like"
+    if -100. <= phi <= -30. and -80. <= psi <= 10.:
+        return "alphaR_like"
+    return "other"
 
 
 def _composition_enrichment(table, availability_column):
@@ -283,9 +317,14 @@ class SDC4Mechanisms:
         for label, selection in (s.get("lipid_moiety_selections") or {}).items():
             if label not in ("glycan", "ceramide_head", "ceramide_tail"):
                 raise ValueError(f"Unknown lipid moiety {label}")
-            atoms = selected(universe, selection, required=True)
+            atoms = selected(universe, selection)
             indices = set(map(int, atoms.indices))
             if not indices:
+                # The no-glycolipid condition has no glycan moiety.
+                if label == "glycan" and not (
+                    {"GM1a", "BGAL"} & set(self.lipid_molecule_species.values())
+                ):
+                    continue
                 raise ValueError(f"Empty lipid moiety selection: {label}")
             if not indices.issubset(set(map(int, self.lipid_contact.indices))):
                 raise ValueError(f"{label} contains atoms outside lipid contact selection")
@@ -388,6 +427,17 @@ class SDC4Mechanisms:
         self.hydration_A = float(s.get("hydration_cutoff_A", 3.5))
         self.ion_A = float(s.get("ion_cutoff_A", 4.))
         self.local_A = float(s.get("local_radius_A", 20.))
+        self.accessible_area_enabled = bool(s.get("accessible_area_enabled", False))
+        self.area_grid_A = float(s.get("accessible_area_grid_A", 2.0))
+        self.area_exclusion_A = float(s.get("protein_footprint_exclusion_A", 3.0))
+        self.area_slab_A = float(s.get("protein_footprint_slab_A", 5.0))
+        if self.accessible_area_enabled:
+            if min(self.area_grid_A, self.area_exclusion_A, self.area_slab_A) <= 0:
+                raise ValueError("Accessible-area grid/exclusion/slab parameters must be positive")
+            coords = np.arange(-self.local_A, self.local_A + .5 * self.area_grid_A,
+                               self.area_grid_A)
+            xy = np.stack(np.meshgrid(coords, coords, indexing="ij"), -1).reshape(-1, 2)
+            self.area_samples = xy[np.sum(xy * xy, axis=1) <= self.local_A ** 2]
         self.min_lipids = int(s.get("local_min_lipids", 8))
         if min(self.contact_A, self.hydration_A, self.ion_A, self.local_A) <= 0:
             raise ValueError("All SDC4 mechanism distance cutoffs must be positive")
@@ -429,6 +479,13 @@ class SDC4Mechanisms:
             "map_rotation": "x axis TM chain 1 -> TM chain 2; y is +90 degree rotation",
             "map_density_units": "lipids/nm^2; no protein excluded-area correction",
             "local_curvature_units": "A^-1, small-slope quadratic approximation",
+            "accessible_area_grid_model": {
+                "enabled": self.accessible_area_enabled,
+                "grid_spacing_A": self.area_grid_A,
+                "exclusion_radius_A": self.area_exclusion_A,
+                "leaflet_slab_halfwidth_A": self.area_slab_A,
+                "meaning": "projected accessible-area approximation; not exact lipid free area",
+            },
         }
 
     def update(self, ts, frame_index):
@@ -567,6 +624,11 @@ class SDC4Mechanisms:
                         points[0], points[1], points[2], points[3], box=box
                     )))
                 row[f"sdc4_proline_{label}_{suffix}"] = value
+        for label in self.proline_torsions:
+            row[f"sdc4_proline_{label}_rama_region"] = _proline_rama_region(
+                row[f"sdc4_proline_{label}_phi_deg"],
+                row[f"sdc4_proline_{label}_psi_deg"],
+            )
         for name, info in self.motifs.items():
             ag = info["atoms"]
             own = info["resindices"]
@@ -594,7 +656,68 @@ class SDC4Mechanisms:
                 len(np.unique(protein_other.resindices[contacts[:, 1]])) if len(contacts) else 0
             )
             row[prefix + "glycan_contacts"] = len(gly_hits)
+            contacted_hs_atoms = set(
+                map(int, glycan_all.indices[gly_hits[:, 1]])
+            ) if len(gly_hits) else set()
+            for hs_name, hs_atoms in self.hs.items():
+                n_hs = len(contacted_hs_atoms.intersection(map(int, hs_atoms.indices)))
+                row[prefix + f"hs_{hs_name}_contact_state"] = int(n_hs > 0)
+
             row[prefix + "lipid_contacts"] = len(lip_hits)
+            # Separate distinct physical occluders so NxIP exposure
+            # cannot be attributed entirely to protein self-packing.
+            row[prefix + "protein_occluded_atom_fraction"] = (
+                len(np.unique(contacts[:, 0])) / len(ag) if len(contacts) else 0.
+            )
+            row[prefix + "glycan_occluded_atom_fraction"] = (
+                len(np.unique(gly_hits[:, 0])) / len(ag) if len(gly_hits) else 0.
+            )
+            row[prefix + "lipid_occluded_atom_fraction"] = (
+                len(np.unique(lip_hits[:, 0])) / len(ag) if len(lip_hits) else 0.
+            )
+            water_hits = _contacts(ag, self.water, self.hydration_A, box)
+            row[prefix + "hydration_water_count"] = (
+                len(np.unique(self.water.indices[water_hits[:, 1]]))
+                if len(water_hits) else 0
+            )
+            if name.startswith("proline_hydrophobic_"):
+                # Signed distance from the local leaflet surface. Positive
+                # means extracellular/aqueous; not a membrane insertion test.
+                motif_center = _center(ag, box)
+                dz = _vector(
+                    [midpoint[0], midpoint[1], mid_z], motif_center, box
+                )[2]
+                side = 1. if dz >= 0 else -1.
+                leaflet_z = upper_z if side > 0 else lower_z
+                row[prefix + "leaflet_relative_height_A"] = float(
+                    side * _vector(
+                        [midpoint[0], midpoint[1], leaflet_z], motif_center, box
+                    )[2]
+                )
+                ca_motif = ag.select_atoms("name CA")
+                if len(ca_motif) >= 2:
+                    direction = _vector(ca_motif[0].position, ca_motif[-1].position, box)
+                    row[prefix + "axis_normal_cos"] = float(
+                        np.dot(unit(direction), [0., 0., side])
+                    )
+                else:
+                    row[prefix + "axis_normal_cos"] = np.nan
+                chain = "A" if "_PROA_" in name else "B"
+                nxip = next((item["atoms"] for label, item in self.motifs.items()
+                             if label.startswith(f"NxIP_PRO{chain}_")), None)
+                if nxip is not None:
+                    row[prefix + "to_NxIP_min_distance_A"] = nearest(ag, nxip, box)
+                same_chain_hs = [
+                    group for label, group in self.hs.items()
+                    if label.startswith(f"PRO{chain}_")
+                ]
+                row[prefix + "to_HS_min_distance_A"] = (
+                    min(nearest(ag, group, box) for group in same_chain_hs)
+                    if same_chain_hs else np.nan
+                )
+                # Heavy-atom hydrophobic C/SASA is a separate endpoint; this
+                # frame-level water count remains proximity, not solvation energy.
+
             if self.motif_lipid_residence_enabled and len(lip_hits):
                 molecules = {
                     self.lipid_molecule_by_atom[int(self.lipid_contact.indices[j])]
@@ -627,6 +750,7 @@ class SDC4Mechanisms:
                 )
                 observed = {}
                 minima = {}
+                residue_contacts = set()
                 # Local composition is measured using available anchor molecules
                 # in a fixed xy disk, rather than the whole membrane leaflet.
                 # This is NOT an accessible-area correction.
@@ -641,6 +765,15 @@ class SDC4Mechanisms:
                     ))
                     for species, leaflet in availability
                 }
+                leaflet_areas = {}
+                if self.accessible_area_enabled:
+                    region_center = _center(atoms, box)
+                    for leaflet, surface in (("upper", upper_z), ("lower", lower_z)):
+                        leaflet_areas[leaflet] = _accessible_area_grid(
+                            region_center[:2], surface, self.protein.positions,
+                            box, self.area_samples, self.area_grid_A,
+                            self.area_exclusion_A, self.area_slab_A,
+                        ) / 100.
                 for (i, j), distance in zip(hits, hit_distances):
                     lipid_atom = self.lipid_contact[int(j)]
                     molecule = self.lipid_molecule_by_atom.get(int(lipid_atom.index))
@@ -654,6 +787,9 @@ class SDC4Mechanisms:
                     observed.setdefault((species, leaflet, "any"), set()).add(molecule)
                     key = (species, leaflet)
                     minima[key] = min(minima.get(key, np.inf), float(distance))
+                    residue_contacts.add((
+                        int(atoms.resindices[int(i)]), molecule, species, leaflet
+                    ))
                     if species in ("GM1a", "BGAL", "CER160"):
                         if species in ("GM1a", "BGAL") and lipid_atom.resname != "CER160":
                             observed.setdefault((species, leaflet, "glycan"), set()).add(molecule)
@@ -662,6 +798,13 @@ class SDC4Mechanisms:
                         for label, member_indices in self.lipid_moiety_membership.items():
                             if int(lipid_atom.index) in member_indices:
                                 observed.setdefault((species, leaflet, label), set()).add(molecule)
+                for residue_index, molecule, species, leaflet in sorted(residue_contacts):
+                    self.rows["lipid_residue_contacts"].append({
+                        "time_ps": t, "region": region,
+                        "topology_residue_index": residue_index,
+                        "lipid_molecule_id": molecule, "species": species,
+                        "leaflet": leaflet,
+                    })
                 # Reuse the existing censored-episode reducer for TM/motif
                 # molecule contacts, without building dense per-lipid arrays.
                 residence_molecules = set().union(*(
@@ -678,7 +821,7 @@ class SDC4Mechanisms:
                     moieties = (("any", "glycan", "ceramide")
                                if species in ("GM1a", "BGAL") else
                                ("any", "ceramide") if species == "CER160" else ("any",))
-                    moieties += tuple(self.lipid_moiety_membership)
+                    moieties = tuple(dict.fromkeys((*moieties, *self.lipid_moiety_membership)))
                     for moiety in moieties:
                         count = len(observed.get((species, leaflet, moiety), ()))
                         self.rows["lipid_specificity"].append({
@@ -687,6 +830,11 @@ class SDC4Mechanisms:
                             "contacted_molecules": count,
                             "available_molecules": denominator,
                             "locally_available_molecules": local_availability[(species, leaflet)],
+                            "local_accessible_area_nm2": leaflet_areas.get(leaflet, np.nan),
+                            "local_number_density_per_nm2": (
+                                local_availability[(species, leaflet)] / leaflet_areas[leaflet]
+                                if leaflet_areas.get(leaflet, 0) > 0 else np.nan
+                            ),
                             "min_contact_distance_A": minima.get((species, leaflet), np.nan),
                             "contact_fraction": (
                                 count / denominator if denominator else np.nan
@@ -738,11 +886,21 @@ class SDC4Mechanisms:
             self.rows["timeseries"].clear()
         if self.motif_lipid_residence_enabled:
             atomic_parquet(
+                self.cache / f"residue-contacts-{part:06d}.parquet",
+                pd.DataFrame(self.rows["lipid_residue_contacts"], columns=[
+                    "time_ps", "region", "topology_residue_index",
+                    "lipid_molecule_id", "species", "leaflet",
+                ]),
+            )
+            self.rows["lipid_residue_contacts"].clear()
+        if self.motif_lipid_residence_enabled:
+            atomic_parquet(
                 self.cache / f"specificity-{part:06d}.parquet",
                 pd.DataFrame(self.rows["lipid_specificity"], columns=[
                     "time_ps", "region", "species", "leaflet", "moiety",
                     "contacted_molecules", "available_molecules",
-                    "locally_available_molecules", "min_contact_distance_A",
+                    "locally_available_molecules", "local_accessible_area_nm2",
+                    "local_number_density_per_nm2", "min_contact_distance_A",
                     "contact_fraction",
                 ]),
             )
@@ -767,7 +925,7 @@ class SDC4Mechanisms:
 
     def prune_from(self, part):
         for path in self.cache.glob("*"):
-            match = re.match(r"(?:part|map|residence|specificity)-(\d+)\.(?:parquet|npz)$", path.name)
+            match = re.match(r"(?:part|map|residence|specificity|residue-contacts)-(\d+)\.(?:parquet|npz)$", path.name)
             if match and int(match.group(1)) >= part:
                 path.unlink()
 
@@ -796,6 +954,24 @@ class SDC4Mechanisms:
                         ].sum().rename(columns={"sasa_nm2": label})
                         df = df.merge(values, on="time_ps", how="left",
                                       validate="one_to_one")
+        # Reuse per-atom FreeSASA areas: non-backbone carbon exposure,
+        # not a claim that all carbon atoms have identical hydrophobicity.
+        atom_path = self.repout / "profiles/sasa/atom_sasa.parquet"
+        if atom_path.is_file():
+            atom_data = pd.read_parquet(atom_path)
+            for name, info in self.motifs.items():
+                if not name.startswith("proline_hydrophobic_"):
+                    continue
+                subset = atom_data.loc[
+                    atom_data["topology_residue_index"].isin(info["resindices"])
+                ]
+                if not subset.empty:
+                    col = f"sdc4_motif_{name}_sidechain_carbon_sasa_nm2"
+                    values = subset.groupby("time_ps", as_index=False)[
+                        "sasa_nm2"
+                    ].sum().rename(columns={"sasa_nm2": col})
+                    df = df.merge(values, on="time_ps", how="left",
+                                  validate="one_to_one")
         out = ensure_dir(self.repout / "extensions" / "sdc4_mechanisms")
         atomic_parquet(out / "timeseries.parquet", df)
         counts = np.zeros_like(self.map_counts)
@@ -851,6 +1027,12 @@ class SDC4Mechanisms:
                 specificity, "available_molecules"
             )
             atomic_parquet(out / "lipid_region_specificity.parquet", specificity)
+            residue_parts = sorted(self.cache.glob("residue-contacts-*.parquet"))
+            residue_contacts = pd.concat(
+                (pd.read_parquet(part) for part in residue_parts),
+                ignore_index=True,
+            ) if residue_parts else pd.DataFrame()
+            atomic_parquet(out / "lipid_residue_contacts.parquet", residue_contacts)
 
         # Contact-conditioned hydration is a *within-replicate* descriptive
         # comparison, not an independent-frame significance test.

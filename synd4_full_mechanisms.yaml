@@ -255,6 +255,12 @@ analyses:
     # Require validated GGIVG on both TM chains; invalid mapping is fatal.
     require_gxxxg: true
     motif_lipid_residence: true
+    # Validated CHARMM CER160 topology: explicit polar atoms versus
+    # hydrocarbon carbons. Do not classify all CER160 atoms as tails.
+    lipid_moiety_selections:
+      glycan: "chainID GM1a BGAL and not resname CER160 and not name H*"
+      ceramide_head: "chainID GM1a BGAL CER160 and resname CER160 and name C1S C2S C3S NF O3 O1 C1F OF"
+      ceramide_tail: "chainID GM1a BGAL CER160 and resname CER160 and name C4S C5S C6S C7S C8S C9S C10S C11S C12S C13S C14S C15S C16S C17S C18S C2F C3F C4F C5F C6F C7F C8F C9F C10F C11F C12F C13F C14F C15F C16F"
     contact_cutoff_A: 5.0
     hydration_cutoff_A: 3.5
     ion_cutoff_A: 4.0
@@ -262,6 +268,12 @@ analyses:
     map_bin_A: 2.0
     local_radius_A: 20.0
     local_min_lipids: 8
+    # Discretized leaflet-projected protein-excluded local area; operational
+    # steric geometry, not an exact lipid thermodynamic accessible area.
+    accessible_area_enabled: true
+    accessible_area_grid_A: 2.0
+    protein_footprint_exclusion_A: 3.0
+    protein_footprint_slab_A: 5.0
     local_order:
       enabled: true
       lipid_selection: "resname POPC DPPC POPE POPI POPS PSM DOPC"
@@ -340,6 +352,10 @@ analyses:
   sasa:
     enabled: true
     selection: "protein"
+    # Preserve side-chain carbon areas from the existing FreeSASA pass.
+    atom_sasa_selection: "protein and name C* and not name C CA"
+    atom_sasa_sequences: ["VVHPLVPL"]
+    atom_sasa_expected_matches: 2
 
   salt_bridges:
     enabled: true

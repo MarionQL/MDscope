@@ -342,6 +342,8 @@ def test_shared_states_exports_replica_conditioned_nxip(tmp_path):
                 "sdc4_ectodomain_B_height_A": height * 1.5,
                 "sdc4_motif_NxIP_PROB_1_steric_occlusion_fraction":
                     np.r_[np.full(10, .8), np.full(10, .2)],
+                "sdc4_motif_NxIP_PROB_1_hs_PROB_S309_contact_state": np.r_[np.ones(10), np.zeros(10)],
+                "sdc4_ectodomain_B_membrane_contact_state": np.r_[np.ones(10), np.zeros(10)],
                 "sdc4_hs_A1_membrane_contact_state": np.zeros(20, dtype=int),
                 "sdc4_hs_A1_hydration_water_per_heavy_atom": np.ones(20),
             }).to_parquet(dest / "timeseries.parquet", index=False)
@@ -366,6 +368,40 @@ def test_shared_states_exports_replica_conditioned_nxip(tmp_path):
     assert len(comp) == 2
     assert (comp["n_replicates_0"] == 2).all()
     assert set(comp["inference"]) == {"exploratory; no multiplicity-adjusted test"}
+    hs = pd.read_parquet(output / "nxip_hs_contact_conditioning.parquet")
+    assert len(hs) == 4
+    assert set(hs["hs_chain"]) == {"PROB_S309"}
+    membrane = pd.read_parquet(
+        output / "nxip_membrane_contact_conditioning.parquet"
+    )
+    assert len(membrane) == 8
+    subset = membrane[membrane.chain.eq("B")]
+    assert (subset.frames == 10).all()
+    expected = {0: .2, 1: .8}
+    for row in subset.itertuples():
+        assert row.mean_nxip_occlusion == pytest.approx(
+            expected[row.membrane_contact_state]
+        )
+
+    assert (hs["frames_contact"] == 10).all()
+    assert (hs["frames_no_contact"] == 10).all()
+    np.testing.assert_allclose(hs["occlusion_contact_mean"], .8)
+    np.testing.assert_allclose(hs["occlusion_no_contact_mean"], .2)
+
+    exposure = pd.read_parquet(
+        output / "nxip_state_exposure_threshold_sensitivity.parquet"
+    )
+    assert set(exposure.threshold) == {.25, .5, .75}
+    null = pd.read_parquet(output / "nxip_state_circular_shift_null.parquet")
+    assert len(null) == 8
+    assert (null.n_shifts == 19).all()
+    assert null.observed_difference.notna().all()
+    assert (null.shift_null_ci_low <= null.shift_null_ci_high).all()
+
+    assert exposure["exposed_fraction_given_state"].between(0, 1).all()
+    mid = exposure[exposure.threshold.eq(.5)]
+    assert set(mid["exposed_fraction_given_state"]) == {0., 1.}
+
     lipid_rep = pd.read_parquet(output / "lipid_specificity_replicate_statistics.parquet")
     assert len(lipid_rep) == 4
     assert set(lipid_rep.species) == {"GM1a", "CER160"}
@@ -444,3 +480,31 @@ def test_lipid_composition_enrichment_independent_toy_denominators():
     assert local_result[1] == pytest.approx(2 / 3)
     assert np.isnan(global_result[3]) and np.isnan(global_result[4])
     assert np.isnan(local_result[3]) and np.isnan(local_result[4])
+
+
+def test_accessible_area_grid_pbc_and_excluded_protein_reference():
+    from mdscope.mechanisms.sdc4_mechanisms import _accessible_area_grid
+    values = np.arange(-2., 3., 1.)
+    grid = np.stack(np.meshgrid(values, values), -1).reshape(-1, 2)
+    grid = grid[np.sum(grid * grid, axis=1) <= 4.]
+    box = np.array([100., 100., 100., 90., 90., 90.])
+    assert len(grid) == 13
+    full = _accessible_area_grid([0., 0.], 0., [[20., 20., 0.]],
+                                 box, grid, 1., .5, 1.)
+    blocked = _accessible_area_grid([0., 0.], 0., [[99.8, 0., 0.]],
+                                    box, grid, 1., .5, 1.)
+    assert full == pytest.approx(13.)
+    assert blocked == pytest.approx(12.)
+    assert _accessible_area_grid(
+        [0., 0.], 0., [[99.8, 0., 10.]], box, grid, 1., .5, 1.
+    ) == pytest.approx(full)
+
+
+def test_proline_ramachandran_region_reference_and_boundaries():
+    from mdscope.mechanisms.sdc4_mechanisms import _proline_rama_region
+    assert _proline_rama_region(-75., 150.) == "PPII_like"
+    assert _proline_rama_region(-130., 130.) == "beta_extended_like"
+    assert _proline_rama_region(-65., -30.) == "alphaR_like"
+    assert _proline_rama_region(-75., 50.) == "other"
+    assert _proline_rama_region(np.nan, 150.) == "missing"
+    assert _proline_rama_region(-105., 100.) == "PPII_like"

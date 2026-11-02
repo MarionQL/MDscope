@@ -153,8 +153,13 @@ def fit_shared_states(cfg, root, system_repouts):
     assignments, populations, diagnostics, conditioned = [], [], [], []
     rep_fraction = defaultdict(list)
     lipid_state_rows = []
+    nxip_lipid_rows = []
+    nxip_hs_rows = []
+    nxip_membrane_rows = []
+    nxip_shift_null_rows = []
     lipid_replica_rows = []
     nxip_conditioned = []
+    nxip_joint = []
     for (system, replicate), df in replicates.items():
         x = df[features].to_numpy(float)
         labels = _assign((x - location) / scale, centers)
@@ -225,6 +230,113 @@ def fit_shared_states(cfg, root, system_repouts):
                             if mask.any() and other.any() else np.nan
                         ),
                     })
+        # Threshold sensitivity, not a data-fitted "binding state".
+        # 0.25/0.50/0.75 are prespecified occluded-heavy-atom fractions.
+        for chain in ("A", "B"):
+            endpoint = f"sdc4_motif_NxIP_PRO{chain}_1_steric_occlusion_fraction"
+            if endpoint not in df:
+                continue
+            values = df[endpoint].to_numpy(float)
+            finite = np.isfinite(values)
+            for threshold in (.25, .50, .75):
+                exposed = values <= threshold
+                for state in range(k):
+                    mask = finite & (labels == state)
+                    n = int(mask.sum())
+                    nxip_joint.append({
+                        "system": system, "replicate": replicate,
+                        "chain": chain, "state": state, "threshold": threshold,
+                        "frames_in_state": n,
+                        "frames_exposed_in_state": int((mask & exposed).sum()),
+                        "exposed_fraction_given_state": (
+                            float((mask & exposed).sum() / n) if n else np.nan
+                        ),
+                    })
+        # Circular-shift control preserves each NxIP trace's temporal
+        # autocorrelation but breaks exact framewise alignment to states.
+        # Exploratory only: nonstationary trajectories can invalidate this null.
+        for chain in ("A", "B"):
+            endpoint = f"sdc4_motif_NxIP_PRO{chain}_1_steric_occlusion_fraction"
+            if endpoint not in df:
+                continue
+            y = df[endpoint].to_numpy(float)
+            if len(y) < 4:
+                continue
+            shifts = np.unique(np.linspace(
+                1, len(y) - 1, min(100, len(y) - 1), dtype=int
+            ))
+            for state in range(k):
+                state_mask = labels == state
+                mask = np.isfinite(y)
+                if not np.any(state_mask & mask) or not np.any(~state_mask & mask):
+                    continue
+                observed = float(y[state_mask & mask].mean() -
+                                 y[~state_mask & mask].mean())
+                null = []
+                for shift in shifts:
+                    shifted = np.roll(y, int(shift))
+                    valid = np.isfinite(shifted)
+                    if (state_mask & valid).any() and (~state_mask & valid).any():
+                        null.append(float(
+                            shifted[state_mask & valid].mean() -
+                            shifted[~state_mask & valid].mean()
+                        ))
+                if not null:
+                    continue
+                lo, hi = np.quantile(null, (.025, .975))
+                nxip_shift_null_rows.append({
+                    "system": system, "replicate": replicate,
+                    "chain": chain, "state": state,
+                    "observed_difference": observed,
+                    "shift_null_ci_low": float(lo),
+                    "shift_null_ci_high": float(hi),
+                    "n_shifts": len(null),
+                })
+        # Within-replica NxIP exposure conditional on ectodomain–membrane
+        # contact: no frame-level p-values and no fitted cutoffs.
+        for chain in ("A", "B"):
+            nxip_name = f"sdc4_motif_NxIP_PRO{chain}_1_steric_occlusion_fraction"
+            contact_name = f"sdc4_ectodomain_{chain}_membrane_contact_state"
+            if nxip_name not in df or contact_name not in df:
+                continue
+            nxip = df[nxip_name].to_numpy(float)
+            contacts = df[contact_name].to_numpy(float)
+            available = np.isfinite(nxip) & np.isfinite(contacts)
+            for contact_value in (0, 1):
+                mask = available & (contacts == contact_value)
+                nxip_membrane_rows.append({
+                    "system": system, "replicate": replicate, "chain": chain,
+                    "membrane_contact_state": contact_value,
+                    "frames": int(mask.sum()),
+                    "mean_nxip_occlusion": float(nxip[mask].mean()) if mask.any() else np.nan,
+                    "nxip_exposed_fraction_threshold_0_5": (
+                        float(np.mean(nxip[mask] <= .5)) if mask.any() else np.nan
+                    ),
+                })
+        # HS-conditioned NxIP occlusion uses molecule-resolved HS contacts
+        # already computed during the same trajectory pass.
+        for chain in ("A", "B"):
+            endpoint = f"sdc4_motif_NxIP_PRO{chain}_1_steric_occlusion_fraction"
+            hs_prefix = f"sdc4_motif_NxIP_PRO{chain}_1_hs_"
+            if endpoint not in df:
+                continue
+            for hs_col in (col for col in df.columns
+                           if col.startswith(hs_prefix)
+                           and col.endswith("_contact_state")):
+                occlusion = df[endpoint].to_numpy(float)
+                contact = df[hs_col].to_numpy(float)
+                valid = np.isfinite(occlusion) & np.isfinite(contact)
+                yes = valid & (contact > 0)
+                no = valid & (contact == 0)
+                nxip_hs_rows.append({
+                    "system": system, "replicate": replicate,
+                    "chain": chain,
+                    "hs_chain": hs_col[len(hs_prefix):-len("_contact_state")],
+                    "frames_contact": int(yes.sum()),
+                    "frames_no_contact": int(no.sum()),
+                    "occlusion_contact_mean": float(occlusion[yes].mean()) if yes.any() else np.nan,
+                    "occlusion_no_contact_mean": float(occlusion[no].mean()) if no.any() else np.nan,
+                })
         # A frame-aligned downstream outcome; lipid contacts do not enter
         # geometric state training or assignments.
         lipid_path = repout_paths[(system, replicate)] / "extensions/sdc4_mechanisms/lipid_region_specificity.parquet"
@@ -246,6 +358,45 @@ def fit_shared_states(cfg, root, system_repouts):
                         "mean_contact_fraction": float(item.contact_fraction.mean()),
                         "mean_composition_enrichment": float(item.composition_enrichment.mean()),
                         "mean_local_enrichment": float(item.local_composition_enrichment.mean()),
+                    })
+                # Issue #101: contact-conditioned NxIP exposure, computed
+                # within replica and matched exactly by time. Species absent
+                # in a frame are excluded, not mislabelled noncontact.
+                lip = lipid_data.loc[
+                    lipid_data.moiety.eq("any")
+                    & lipid_data.region.str.startswith("motif_NxIP_")
+                ].copy()
+                for (region, species, leaflet), group in lip.groupby(
+                    ["region", "species", "leaflet"], sort=True
+                ):
+                    chain = "A" if "_PROA_" in region else "B" if "_PROB_" in region else None
+                    if chain is None:
+                        continue
+                    endpoint = f"sdc4_motif_NxIP_PRO{chain}_1_steric_occlusion_fraction"
+                    if endpoint not in df:
+                        continue
+                    outcome = df[["time_ps", endpoint]].merge(
+                        group[["time_ps", "contacted_molecules", "available_molecules"]],
+                        on="time_ps", how="inner", validate="one_to_one",
+                    )
+                    outcome = outcome.loc[
+                        outcome.available_molecules.gt(0)
+                        & outcome[endpoint].notna()
+                    ]
+                    contact = outcome.contacted_molecules.gt(0)
+                    nxip_lipid_rows.append({
+                        "system": system, "replicate": replicate,
+                        "chain": chain, "species": species, "leaflet": leaflet,
+                        "frames_contact": int(contact.sum()),
+                        "frames_no_contact": int((~contact).sum()),
+                        "occlusion_contact_mean": (
+                            float(outcome.loc[contact, endpoint].mean())
+                            if contact.any() else np.nan
+                        ),
+                        "occlusion_no_contact_mean": (
+                            float(outcome.loc[~contact, endpoint].mean())
+                            if (~contact).any() else np.nan
+                        ),
                     })
                 for keys, subgroup in merged.groupby(
                     ["region", "species", "leaflet", "moiety", "state"],
@@ -298,6 +449,14 @@ def fit_shared_states(cfg, root, system_repouts):
         "mean_outside_state", "within_replicate_difference",
     ])
     atomic_parquet(out / "state_conditioned_nxip.parquet", nxip_df)
+    atomic_parquet(
+        out / "nxip_state_exposure_threshold_sensitivity.parquet",
+        pd.DataFrame(nxip_joint, columns=[
+            "system", "replicate", "chain", "state", "threshold",
+            "frames_in_state", "frames_exposed_in_state",
+            "exposed_fraction_given_state",
+        ]),
+    )
     # A condition contrast is computed only from independent replicate-level
     # contrasts. With three trajectories per condition these intervals are
     # exploratory; no frame-based p-values or significance stars are emitted.
@@ -383,6 +542,38 @@ def fit_shared_states(cfg, root, system_repouts):
                        "n_replicates", "replicate_mean", "replicate_sd",
                        "replicate_bootstrap_ci_low", "replicate_bootstrap_ci_high",
                    ]))
+    atomic_parquet(
+        out / "nxip_state_circular_shift_null.parquet",
+        pd.DataFrame(nxip_shift_null_rows, columns=[
+            "system", "replicate", "chain", "state",
+            "observed_difference", "shift_null_ci_low",
+            "shift_null_ci_high", "n_shifts",
+        ]),
+    )
+    atomic_parquet(
+        out / "nxip_membrane_contact_conditioning.parquet",
+        pd.DataFrame(nxip_membrane_rows, columns=[
+            "system", "replicate", "chain", "membrane_contact_state",
+            "frames", "mean_nxip_occlusion",
+            "nxip_exposed_fraction_threshold_0_5",
+        ]),
+    )
+    atomic_parquet(
+        out / "nxip_hs_contact_conditioning.parquet",
+        pd.DataFrame(nxip_hs_rows, columns=[
+            "system", "replicate", "chain", "hs_chain",
+            "frames_contact", "frames_no_contact",
+            "occlusion_contact_mean", "occlusion_no_contact_mean",
+        ]),
+    )
+    atomic_parquet(
+        out / "nxip_lipid_contact_conditioning.parquet",
+        pd.DataFrame(nxip_lipid_rows, columns=[
+            "system", "replicate", "chain", "species", "leaflet",
+            "frames_contact", "frames_no_contact",
+            "occlusion_contact_mean", "occlusion_no_contact_mean",
+        ]),
+    )
     atomic_parquet(out / "frame_assignments.parquet", pd.concat(assignments, ignore_index=True))
     atomic_parquet(out / "replicate_populations.parquet", pd.DataFrame(populations))
     atomic_parquet(out / "sampling_diagnostics.parquet", pd.DataFrame(diagnostics))

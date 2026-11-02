@@ -20,8 +20,43 @@ def plot_sdc4_mechanisms(cfg, root, system_repouts):
             specificity_file = (Path(repout) / "extensions/sdc4_mechanisms"
                                 / "lipid_region_specificity.parquet")
             if specificity_file.exists():
-                contacts = pd.read_parquet(specificity_file)
-                contacts = contacts.loc[contacts.moiety.eq("any")]
+                all_contacts = pd.read_parquet(specificity_file)
+                chemistry = all_contacts.loc[
+                    all_contacts.moiety.isin(
+                        ("glycan", "ceramide_head", "ceramide_tail")
+                    )
+                ]
+                if not chemistry.empty:
+                    chem = chemistry.groupby(
+                        ["region", "species", "leaflet", "moiety"], as_index=False
+                    ).agg(mean_fraction=("contact_fraction", "mean"))
+                    groups = ("glycan", "ceramide_head", "ceramide_tail")
+                    fig, axs = plt.subplots(
+                        len(groups), 1,
+                        figsize=(max(8, 1.2 * chem.region.nunique()), 9),
+                        constrained_layout=True,
+                    )
+                    for ax, moiety in zip(axs, groups):
+                        panel = chem.loc[chem.moiety.eq(moiety)]
+                        for (species, leaflet), group in panel.groupby(
+                            ["species", "leaflet"], sort=True
+                        ):
+                            ax.scatter(
+                                group.region, group.mean_fraction,
+                                s=25, label=f"{species} ({leaflet})"
+                            )
+                        ax.set_ylim(-.03, 1.03)
+                        ax.set_ylabel(f"{moiety} contact fraction")
+                        ax.tick_params(axis="x", rotation=60)
+                        if not panel.empty:
+                            ax.legend(fontsize="x-small", ncol=3)
+                    fig.savefig(
+                        specificity_file.with_name(
+                            "lipid_region_moiety_contact_fraction.png"
+                        ), dpi=180,
+                    )
+                    plt.close(fig)
+                contacts = all_contacts.loc[all_contacts.moiety.eq("any")]
                 if not contacts.empty:
                     summary = contacts.groupby(
                         ["region", "species", "leaflet"], as_index=False

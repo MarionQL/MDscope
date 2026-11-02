@@ -13,6 +13,7 @@ from pathlib import Path
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
+import yaml
 
 from mdscope.mechanisms.sdc4_mechanisms import SDC4Mechanisms
 
@@ -149,6 +150,31 @@ def run():
             "local_radius_A": 25., "local_min_lipids": 8,
             "local_order": {"enabled": False},
         }
+        production = yaml.safe_load(
+            Path("synd4_full_mechanisms.yaml").read_text()
+        )["analyses"]["sdc4_mechanisms"]
+        spec["lipid_moiety_selections"] = production["lipid_moiety_selections"]
+        chemical = {
+            label: u.select_atoms(selection)
+            for label, selection in spec["lipid_moiety_selections"].items()
+        }
+        required_groups = ("ceramide_head", "ceramide_tail") + (
+            ("glycan",) if system == "carb_sdc4" else ()
+        )
+        assert all(len(chemical[key]) for key in required_groups), (
+            system, {k: len(v) for k, v in chemical.items()}
+        )
+        if system == "nocarb_sdc4":
+            assert len(chemical["glycan"]) == 0
+        for left, left_group in chemical.items():
+            for right, right_group in chemical.items():
+                if left < right:
+                    assert not np.intersect1d(
+                        left_group.indices, right_group.indices
+                    ).size, (system, left, right)
+        assert set(chemical["ceramide_tail"].resnames) == {"CER160"}
+        assert set(chemical["ceramide_head"].resnames) == {"CER160"}
+        assert not (set(chemical["glycan"].resnames) & {"CER160"})
         cfg = {
             "analyses": {"sdc4_mechanisms": spec},
             "selections": {"protein": "protein"},
@@ -228,6 +254,15 @@ def run():
             out / "extensions/sdc4_mechanisms/lipid_region_specificity.parquet"
         )
         assert not specificity.empty
+        residue_map = pd.read_parquet(
+            out / "extensions/sdc4_mechanisms/lipid_residue_contacts.parquet"
+        )
+        assert {"time_ps", "region", "topology_residue_index",
+                "lipid_molecule_id", "species", "leaflet"}.issubset(residue_map)
+        assert not residue_map.duplicated(
+            ["time_ps", "region", "topology_residue_index", "lipid_molecule_id"]
+        ).any()
+
         assert {"GM1a", "BGAL"}.issubset(
             set(specificity.species)
         ) if system == "carb_sdc4" else "CER160" in set(specificity.species)
@@ -240,6 +275,8 @@ def run():
         assert {"locally_available_molecules", "min_contact_distance_A",
                 "local_composition_enrichment"}.issubset(specificity.columns)
         assert (specificity["locally_available_molecules"] >= 0).all()
+        assert {"local_accessible_area_nm2",
+                "local_number_density_per_nm2"}.issubset(specificity)
         assert (specificity["min_contact_distance_A"].dropna() <= 5.0 + 1e-5).all()
         zero_local = specificity.loc[
             specificity["moiety"].eq("any")
@@ -250,8 +287,18 @@ def run():
         absent = specificity.available_molecules.eq(0)
         assert specificity.loc[absent, "composition_enrichment"].isna().all()
         assert (specificity["moiety"] == "any").any()
+        chemistry = {"ceramide_head", "ceramide_tail"}
         assert set(specificity.loc[specificity.species.eq("GM1a"), "moiety"]) == (
-            {"any", "glycan", "ceramide"} if system == "carb_sdc4" else set()
+            {"any", "glycan", "ceramide"} | chemistry
+            if system == "carb_sdc4" else set()
+        )
+        assert set(specificity.loc[specificity.species.eq("BGAL"), "moiety"]) == (
+            {"any", "glycan", "ceramide"} | chemistry
+            if system == "carb_sdc4" else set()
+        )
+        assert set(specificity.loc[specificity.species.eq("CER160"), "moiety"]) == (
+            {"any", "ceramide"} | chemistry
+            if system == "nocarb_sdc4" else set()
         )
 
         assert any(col.endswith("_P4_phi_deg") for col in df.columns)
@@ -267,6 +314,30 @@ def run():
         assert "sdc4_motif_proline_hydrophobic_PROB_1_steric_occlusion_fraction" in df
         # Issue #101: chain-resolved NxIP and ectodomain signals must be
         # present in the same frame-indexed table for conditional analyses.
+        for chain in ("PROA", "PROB"):
+            for motif in ("NxIP", "proline_hydrophobic"):
+                prefix = f"sdc4_motif_{motif}_{chain}_1_"
+                for endpoint in (
+                    "protein_occluded_atom_fraction",
+                    "glycan_occluded_atom_fraction",
+                    "lipid_occluded_atom_fraction",
+                    "hydration_water_count",
+                ):
+                    col = prefix + endpoint
+                    assert col in df, (system, col)
+                    assert df[col].notna().all(), (system, col)
+                    if endpoint.endswith("fraction"):
+                        assert df[col].between(0, 1).all(), (system, col)
+            col = f"sdc4_motif_proline_hydrophobic_{chain}_1_to_NxIP_min_distance_A"
+            assert col in df and (df[col] > 0).all(), (system, col)
+            for suffix in ("leaflet_relative_height_A", "axis_normal_cos",
+                           "to_HS_min_distance_A"):
+                prop = f"sdc4_motif_proline_hydrophobic_{chain}_1_" + suffix
+                assert prop in df, (system, prop)
+                assert np.isfinite(df[prop]).all(), (system, prop)
+            orient = df[f"sdc4_motif_proline_hydrophobic_{chain}_1_axis_normal_cos"]
+            assert orient.between(-1.00001, 1.00001).all()
+
         assert "sdc4_ectodomain_B_height_A" in df
         assert "sdc4_motif_NxIP_PROB_1_steric_occlusion_fraction" in df
         assert df["time_ps"].is_unique

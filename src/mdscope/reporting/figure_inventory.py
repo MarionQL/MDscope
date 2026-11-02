@@ -18,6 +18,7 @@ PRIMARY_SUFFIXES = (
     "lipid_density_maps.png", "lipid_enrichment_maps.png",
     "lipid_region_mean_contact_fraction.png",
     "lipid_region_mean_local_enrichment.png",
+    "lipid_region_moiety_contact_fraction.png",
 )
 SUPPLEMENT_SUFFIXES = (
     "__distribution.png", "__autocorrelation.png",
