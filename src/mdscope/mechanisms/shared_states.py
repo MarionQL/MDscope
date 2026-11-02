@@ -156,6 +156,7 @@ def fit_shared_states(cfg, root, system_repouts):
     nxip_lipid_rows = []
     nxip_hs_rows = []
     nxip_membrane_rows = []
+    nxip_shift_null_rows = []
     lipid_replica_rows = []
     nxip_conditioned = []
     nxip_joint = []
@@ -251,6 +252,46 @@ def fit_shared_states(cfg, root, system_repouts):
                             float((mask & exposed).sum() / n) if n else np.nan
                         ),
                     })
+        # Circular-shift control preserves each NxIP trace's temporal
+        # autocorrelation but breaks exact framewise alignment to states.
+        # Exploratory only: nonstationary trajectories can invalidate this null.
+        for chain in ("A", "B"):
+            endpoint = f"sdc4_motif_NxIP_PRO{chain}_1_steric_occlusion_fraction"
+            if endpoint not in df:
+                continue
+            y = df[endpoint].to_numpy(float)
+            if len(y) < 4:
+                continue
+            shifts = np.unique(np.linspace(
+                1, len(y) - 1, min(100, len(y) - 1), dtype=int
+            ))
+            for state in range(k):
+                state_mask = labels == state
+                mask = np.isfinite(y)
+                if not np.any(state_mask & mask) or not np.any(~state_mask & mask):
+                    continue
+                observed = float(y[state_mask & mask].mean() -
+                                 y[~state_mask & mask].mean())
+                null = []
+                for shift in shifts:
+                    shifted = np.roll(y, int(shift))
+                    valid = np.isfinite(shifted)
+                    if (state_mask & valid).any() and (~state_mask & valid).any():
+                        null.append(float(
+                            shifted[state_mask & valid].mean() -
+                            shifted[~state_mask & valid].mean()
+                        ))
+                if not null:
+                    continue
+                lo, hi = np.quantile(null, (.025, .975))
+                nxip_shift_null_rows.append({
+                    "system": system, "replicate": replicate,
+                    "chain": chain, "state": state,
+                    "observed_difference": observed,
+                    "shift_null_ci_low": float(lo),
+                    "shift_null_ci_high": float(hi),
+                    "n_shifts": len(null),
+                })
         # Within-replica NxIP exposure conditional on ectodomain–membrane
         # contact: no frame-level p-values and no fitted cutoffs.
         for chain in ("A", "B"):
@@ -501,6 +542,14 @@ def fit_shared_states(cfg, root, system_repouts):
                        "n_replicates", "replicate_mean", "replicate_sd",
                        "replicate_bootstrap_ci_low", "replicate_bootstrap_ci_high",
                    ]))
+    atomic_parquet(
+        out / "nxip_state_circular_shift_null.parquet",
+        pd.DataFrame(nxip_shift_null_rows, columns=[
+            "system", "replicate", "chain", "state",
+            "observed_difference", "shift_null_ci_low",
+            "shift_null_ci_high", "n_shifts",
+        ]),
+    )
     atomic_parquet(
         out / "nxip_membrane_contact_conditioning.parquet",
         pd.DataFrame(nxip_membrane_rows, columns=[
