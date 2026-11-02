@@ -219,6 +219,14 @@ def run():
         assert specificity.loc[~available, "contact_fraction"].isna().all()
         assert specificity.loc[available, "contact_fraction"].between(0, 1).all()
         assert len(specificity.time_ps.unique()) == 4
+        assert "composition_enrichment" in specificity
+        absent = specificity.available_molecules.eq(0)
+        assert specificity.loc[absent, "composition_enrichment"].isna().all()
+        assert (specificity["moiety"] == "any").any()
+        assert set(specificity.loc[specificity.species.eq("GM1a"), "moiety"]) == (
+            {"any", "glycan", "ceramide"} if system == "carb_sdc4" else set()
+        )
+
         assert any(col.endswith("_P4_phi_deg") for col in df.columns)
         assert any(col.endswith("_P7_psi_deg") for col in df.columns)
 
