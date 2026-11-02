@@ -155,6 +155,7 @@ def fit_shared_states(cfg, root, system_repouts):
     lipid_state_rows = []
     nxip_lipid_rows = []
     nxip_hs_rows = []
+    nxip_membrane_rows = []
     lipid_replica_rows = []
     nxip_conditioned = []
     nxip_joint = []
@@ -250,6 +251,27 @@ def fit_shared_states(cfg, root, system_repouts):
                             float((mask & exposed).sum() / n) if n else np.nan
                         ),
                     })
+        # Within-replica NxIP exposure conditional on ectodomain–membrane
+        # contact: no frame-level p-values and no fitted cutoffs.
+        for chain in ("A", "B"):
+            nxip_name = f"sdc4_motif_NxIP_PRO{chain}_1_steric_occlusion_fraction"
+            contact_name = f"sdc4_ectodomain_{chain}_membrane_contact_state"
+            if nxip_name not in df or contact_name not in df:
+                continue
+            nxip = df[nxip_name].to_numpy(float)
+            contacts = df[contact_name].to_numpy(float)
+            available = np.isfinite(nxip) & np.isfinite(contacts)
+            for contact_value in (0, 1):
+                mask = available & (contacts == contact_value)
+                nxip_membrane_rows.append({
+                    "system": system, "replicate": replicate, "chain": chain,
+                    "membrane_contact_state": contact_value,
+                    "frames": int(mask.sum()),
+                    "mean_nxip_occlusion": float(nxip[mask].mean()) if mask.any() else np.nan,
+                    "nxip_exposed_fraction_threshold_0_5": (
+                        float(np.mean(nxip[mask] <= .5)) if mask.any() else np.nan
+                    ),
+                })
         # HS-conditioned NxIP occlusion uses molecule-resolved HS contacts
         # already computed during the same trajectory pass.
         for chain in ("A", "B"):
@@ -479,6 +501,14 @@ def fit_shared_states(cfg, root, system_repouts):
                        "n_replicates", "replicate_mean", "replicate_sd",
                        "replicate_bootstrap_ci_low", "replicate_bootstrap_ci_high",
                    ]))
+    atomic_parquet(
+        out / "nxip_membrane_contact_conditioning.parquet",
+        pd.DataFrame(nxip_membrane_rows, columns=[
+            "system", "replicate", "chain", "membrane_contact_state",
+            "frames", "mean_nxip_occlusion",
+            "nxip_exposed_fraction_threshold_0_5",
+        ]),
+    )
     atomic_parquet(
         out / "nxip_hs_contact_conditioning.parquet",
         pd.DataFrame(nxip_hs_rows, columns=[
