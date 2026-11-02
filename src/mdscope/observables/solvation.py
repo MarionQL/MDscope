@@ -37,22 +37,30 @@ def rdf_from_counts(counts, edges, density_exposure):
 
 
 def contact_episodes(events, observed_frames):
-    """Continuous *sampled-frame* contact runs, preserving boundary censoring.
+    """Continuous sampled-frame runs with both observed and imputed durations.
 
-    observed_frames is the ordered (frame, time_ps) sequence. Missing contact
-    records represent absent contacts, not unknown observations.
+    Legacy duration_ps remains the observed first-to-last span. The added
+    sampled_duration_ps follows the lipid-residence sampled interval rule.
     """
+    from ..core.residence import sampled_episode_durations
     columns = ["solvent", "target_id", "solvent_id", "start_frame", "end_frame",
-               "duration_ps", "left_censored", "right_censored"]
-    if not observed_frames:
+               "duration_ps", "left_censored", "right_censored",
+               "sampled_duration_ps", "duration_convention"]
+    if len(observed_frames) == 0:
         return pd.DataFrame(columns=columns)
     frames = [int(f) for f, _ in observed_frames]
-    times = {int(f): float(t) for f, t in observed_frames}
+    frame_times = np.asarray([float(t) for _, t in observed_frames])
+    if len(set(frames)) != len(frames):
+        raise ValueError("Duplicate observation frames")
+    if not np.isfinite(frame_times).all() or np.any(np.diff(frame_times) <= 0):
+        raise ValueError("Episode observation times must increase")
     order = {f: i for i, f in enumerate(frames)}
     pairs = defaultdict(set)
     for f, solvent, target, molecule in events:
+        if int(f) not in order:
+            raise ValueError("Contact event outside observation frames")
         pairs[(solvent, target, molecule)].add(int(f))
-    rows = []
+    rows, bounds = [], []
     for (solvent, target, molecule), active in pairs.items():
         previous = start = None
         for frame in sorted(active, key=order.__getitem__):
@@ -61,14 +69,22 @@ def contact_episodes(events, observed_frames):
             elif order[frame] == order[previous] + 1:
                 previous = frame
             else:
+                bounds.append((order[start], order[previous]))
                 rows.append((solvent, target, molecule, start, previous,
-                             times[previous] - times[start], start == frames[0],
-                             previous == frames[-1]))
+                             np.nan, start == frames[0], previous == frames[-1],
+                             np.nan, "next_sample_interval_or_terminal_median"))
                 start = previous = frame
+        bounds.append((order[start], order[previous]))
         rows.append((solvent, target, molecule, start, previous,
-                     times[previous] - times[start], start == frames[0],
-                     previous == frames[-1]))
-    return pd.DataFrame(rows, columns=columns)
+                     np.nan, start == frames[0], previous == frames[-1],
+                     np.nan, "next_sample_interval_or_terminal_median"))
+    result = pd.DataFrame(rows, columns=columns)
+    if bounds:
+        first, last = np.asarray(bounds, dtype=int).T
+        result["duration_ps"], result["sampled_duration_ps"] = sampled_episode_durations(
+            frame_times, first, last
+        )
+    return result
 
 
 def _targets(u, spec):
@@ -585,3 +601,4 @@ class SolvationObserver:
             "residence_limitation": "Episodes represent consecutive sampled contacts; temporal resolution is trajectory frame interval.",
         })
         return {"frames": len(read("frames")), "fused": True}
+

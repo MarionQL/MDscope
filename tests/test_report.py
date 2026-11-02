@@ -79,6 +79,14 @@ def test_report_pdf_and_review_bundle(tmp_path):
         for system,shift in (("carb",0.),("nocarb",1.))
         for i in range(5)
     ]).to_parquet(rdfdir/"system_rdf.parquet")
+    shared = summary / "shared_states"
+    shared.mkdir()
+    pd.DataFrame([{
+        "system": "carb", "region": "TM_A", "species": "GM1a", "leaflet": "upper",
+        "measure": "mean_matched_local_enrichment", "replicate_mean": 1.5,
+        "replicate_bootstrap_ci_low": 1., "replicate_bootstrap_ci_high": 2.,
+        "n_replicates": 3,
+    }]).to_parquet(shared / "lipid_specificity_system_statistics.parquet")
     metric = "sdc4_ectodomain_A_height_A"
     pd.DataFrame([
         {"system": system, "group": None, "metric": metric,
@@ -148,3 +156,4 @@ def test_bounded_sample_preserves_endpoints():
     assert len(sampled) == 7
     assert sampled.iloc[0].time_ps == 0
     assert sampled.iloc[-1].time_ps == 99
+

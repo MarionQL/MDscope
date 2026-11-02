@@ -105,8 +105,11 @@ def _cfg():
     }
 
 
-def _run(out, resume=False):
+def _run(out, resume=False, lipid=False):
     u, cfg = _synthetic(), _cfg()
+    if lipid:
+        u.add_TopologyAttr("bonds", [])
+        cfg["analyses"]["sdc4_mechanisms"]["motif_lipid_residence"] = True
     obs = SDC4Mechanisms(u, cfg, out)
     if resume:
         for i in range(3):
@@ -115,6 +118,9 @@ def _run(out, resume=False):
                 obs.flush(0)
         obs.flush(1)
         u, cfg = _synthetic(), _cfg()
+        if lipid:
+            u.add_TopologyAttr("bonds", [])
+            cfg["analyses"]["sdc4_mechanisms"]["motif_lipid_residence"] = True
         obs = SDC4Mechanisms(u, cfg, out)
         obs.prune_from(1)
         start, part = 2, 1
@@ -130,9 +136,10 @@ def _run(out, resume=False):
     return cfg
 
 
-def test_sdc4_observer_and_checkpoint_recovery(tmp_path):
-    _run(tmp_path / "clean")
-    _run(tmp_path / "resume", resume=True)
+@pytest.mark.parametrize("lipid", [False, True])
+def test_sdc4_observer_and_checkpoint_recovery(tmp_path, lipid):
+    _run(tmp_path / "clean", lipid=lipid)
+    _run(tmp_path / "resume", resume=True, lipid=lipid)
     for folder in ("clean", "resume"):
         out = tmp_path / folder / "extensions/sdc4_mechanisms"
         data = pd.read_parquet(out / "timeseries.parquet")
@@ -156,6 +163,11 @@ def test_sdc4_observer_and_checkpoint_recovery(tmp_path):
     b = tmp_path / "resume/extensions/sdc4_mechanisms"
     pd.testing.assert_frame_equal(pd.read_parquet(a / "timeseries.parquet"),
                                   pd.read_parquet(b / "timeseries.parquet"))
+    if lipid:
+        for name in ("lipid_region_specificity", "motif_lipid_residence",
+                     "motif_lipid_residence_intermittent", "lipid_residue_contacts"):
+            pd.testing.assert_frame_equal(pd.read_parquet(a / f"{name}.parquet"),
+                                          pd.read_parquet(b / f"{name}.parquet"))
     with np.load(a / "lipid_density_maps.npz") as left, np.load(b / "lipid_density_maps.npz") as right:
         np.testing.assert_array_equal(left["counts"], right["counts"])
 
@@ -356,6 +368,8 @@ def test_shared_states_exports_replica_conditioned_nxip(tmp_path):
                 "contact_fraction": np.full(20, 0.25 * r),
                 "composition_enrichment": np.full(20, 1.5 * r),
                 "local_composition_enrichment": np.full(20, float(r)),
+                "matched_local_contact_fraction": np.full(20, .1 * r),
+                "matched_local_composition_enrichment": np.r_[np.full(10, .5 * r), np.full(10, np.nan)],
                 "available_molecules": np.full(20, 4),
             }).to_parquet(dest / "lipid_region_specificity.parquet", index=False)
             paths[sys].append(folder)
@@ -415,6 +429,13 @@ def test_shared_states_exports_replica_conditioned_nxip(tmp_path):
     assert row.replicate_mean == pytest.approx(.375)
     assert row.replicate_bootstrap_ci_low >= .25
     assert row.replicate_bootstrap_ci_high <= .5
+    matched = sys_stats.loc[
+        sys_stats.system.eq("with")
+        & sys_stats.measure.eq("mean_matched_local_enrichment")
+    ].iloc[0]
+    assert matched.replicate_mean == pytest.approx(.75)
+    assert lipid_rep.frames_matched_local_enrichment.eq(10).all()
+    assert lipid_rep.frames_matched_local_available.eq(20).all()
 
 
 
@@ -508,3 +529,4 @@ def test_proline_ramachandran_region_reference_and_boundaries():
     assert _proline_rama_region(-75., 50.) == "other"
     assert _proline_rama_region(np.nan, 150.) == "missing"
     assert _proline_rama_region(-105., 100.) == "PPII_like"
+

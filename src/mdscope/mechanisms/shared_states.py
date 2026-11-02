@@ -358,6 +358,14 @@ def fit_shared_states(cfg, root, system_repouts):
                         "mean_contact_fraction": float(item.contact_fraction.mean()),
                         "mean_composition_enrichment": float(item.composition_enrichment.mean()),
                         "mean_local_enrichment": float(item.local_composition_enrichment.mean()),
+                        "mean_matched_local_contact_fraction": float(item.get(
+                            "matched_local_contact_fraction", pd.Series(dtype=float)).mean()),
+                        "mean_matched_local_enrichment": float(item.get(
+                            "matched_local_composition_enrichment", pd.Series(dtype=float)).mean()),
+                        "frames_matched_local_available": int(item.get(
+                            "matched_local_contact_fraction", pd.Series(dtype=float)).notna().sum()),
+                        "frames_matched_local_enrichment": int(item.get(
+                            "matched_local_composition_enrichment", pd.Series(dtype=float)).notna().sum()),
                     })
                 # Issue #101: contact-conditioned NxIP exposure, computed
                 # within replica and matched exactly by time. Species absent
@@ -510,6 +518,8 @@ def fit_shared_states(cfg, root, system_repouts):
         "system", "replicate", "region", "species", "leaflet",
         "frames_available", "mean_contact_fraction",
         "mean_composition_enrichment", "mean_local_enrichment",
+        "mean_matched_local_contact_fraction", "mean_matched_local_enrichment",
+        "frames_matched_local_available", "frames_matched_local_enrichment",
     ])
     atomic_parquet(out / "lipid_specificity_replicate_statistics.parquet",
                    lipid_replica_df)
@@ -519,7 +529,8 @@ def fit_shared_states(cfg, root, system_repouts):
         ["system", "region", "species", "leaflet"], sort=True
     ):
         for measure in ("mean_contact_fraction", "mean_composition_enrichment",
-                        "mean_local_enrichment"):
+                        "mean_local_enrichment", "mean_matched_local_contact_fraction",
+                        "mean_matched_local_enrichment"):
             vals = subset[measure].dropna().to_numpy(float)
             if not len(vals):
                 continue
@@ -610,4 +621,5 @@ def fit_shared_states(cfg, root, system_repouts):
                           "and cannot establish equilibrium or causal effects.",
     })
     return out
+
 

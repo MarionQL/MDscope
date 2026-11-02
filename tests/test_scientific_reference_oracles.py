@@ -164,3 +164,114 @@ def test_ceramide_head_tail_glycan_chemistry_selection_oracle():
     assert not (set(head.indices) & set(tail.indices))
     assert not (set(glycan.indices) & (set(head.indices) | set(tail.indices)))
     assert "O1" in set(head.names)  # free ceramide hydroxyl in control
+
+
+def test_matched_local_contact_population_independent_reference():
+    # Whole leaflet: one GM1 and three POPC, with one contact each.
+    # Local disk: GM1 anchor is outside, POPC has 3 available, 1 contacting.
+    # Historical local enrichment compares 1 GM1 contact to zero local GM1.
+    # Matched local enrichment conditions on the disk, so POPC alone has
+    # contact share 1 and availability share 1, yielding enrichment 1.
+    frame = pd.DataFrame({
+        "time_ps": [0., 0.], "region": ["TM_A"] * 2,
+        "leaflet": ["upper"] * 2, "species": ["GM1a", "POPC"],
+        "moiety": ["any"] * 2,
+        "contacted_molecules": [1, 1],
+        "locally_contacted_molecules": [0, 1],
+        "available_molecules": [1, 3],
+        "locally_available_molecules": [0, 3],
+    })
+    numerator = frame.loc[:, "locally_contacted_molecules"].to_numpy()
+    denominator = frame.loc[:, "locally_available_molecules"].to_numpy()
+    assert np.all(numerator <= denominator)
+    fractions = np.divide(numerator, denominator,
+                          out=np.full(2, np.nan), where=denominator > 0)
+    assert np.isnan(fractions[0])
+    assert fractions[1] == pytest.approx(1 / 3)
+    matched = _composition_enrichment(
+        frame, "locally_available_molecules", "locally_contacted_molecules"
+    )
+    assert np.isnan(matched[0])
+    assert matched[1] == pytest.approx(1.)
+    historic = _composition_enrichment(frame, "locally_available_molecules")
+    assert historic[1] == pytest.approx(.5)
+
+
+def test_residence_duration_and_occupancy_have_separate_contracts():
+    times = np.array([0., 3., 7., 12.])
+    result = summarize_lipid_residence(_events([0., 3., 12.]), times)
+    assert result.observed_span_ps.tolist() == pytest.approx([3., 0.])
+    assert result.episode_contact_fraction.tolist() == pytest.approx([.5, .25])
+    assert result.occupancy_fraction.tolist() == pytest.approx([.75, .75])
+    assert result.duration_ps.tolist() == pytest.approx([7., 4.])
+    assert set(result.duration_convention) == {
+        "next_sample_interval_or_terminal_median"
+    }
+
+
+def test_solvation_and_lipid_residence_share_explicit_duration_contract():
+    from mdscope.observables.solvation import contact_episodes
+    observed = [(0, 0.), (1, 3.), (2, 7.), (3, 12.)]
+    events = [(0, "water", "patch", 91),
+              (1, "water", "patch", 91),
+              (3, "water", "patch", 91)]
+    water = contact_episodes(events, observed)
+    lipid = summarize_lipid_residence(_events([0., 3., 12.]),
+                                      np.array([0., 3., 7., 12.]))
+    assert water.duration_ps.tolist() == pytest.approx([3., 0.])
+    assert water.sampled_duration_ps.tolist() == pytest.approx([7., 4.])
+    assert water.sampled_duration_ps.tolist() == pytest.approx(
+        lipid.duration_ps.tolist()
+    )
+    assert water.duration_convention.tolist() == lipid.duration_convention.tolist()
+    with pytest.raises(ValueError, match="outside observation"):
+        contact_episodes([(99, "water", "patch", 91)], observed)
+
+
+
+@pytest.mark.parametrize("times", [[0., np.nan], [np.inf], [1., 1.], [2., 1.]])
+def test_episode_time_axis_rejects_unknown_or_nonincreasing_samples(times):
+    from mdscope.core.residence import sampled_episode_durations
+    from mdscope.observables.solvation import contact_episodes
+    with pytest.raises(ValueError, match="times"):
+        sampled_episode_durations(times, 0, 0)
+    with pytest.raises(ValueError, match="times"):
+        contact_episodes([], list(enumerate(times)))
+
+
+def test_batched_duration_oracle_and_single_observation():
+    from mdscope.core.residence import sampled_episode_durations
+    # Intervals: 3, 4, 5 ps; terminal median: 4 ps.
+    span, imputed = sampled_episode_durations(
+        [0., 3., 7., 12.], np.array([0, 1, 3]), np.array([1, 2, 3]))
+    np.testing.assert_allclose(span, [3., 4., 0.])
+    np.testing.assert_allclose(imputed, [7., 9., 4.])
+    span, imputed = sampled_episode_durations([17.], 0, 0)
+    assert span == 0. and np.isnan(imputed)
+    for first, last in ((-1, 0), (1, 0), (0, 4), (.5, 1)):
+        with pytest.raises(ValueError, match="indices"):
+            sampled_episode_durations([0., 3., 7., 12.], first, last)
+
+
+def test_corrected_enrichment_figures_and_inventory(tmp_path):
+    from mdscope.reporting.sdc4_figures import plot_sdc4_mechanisms
+    from mdscope.reporting.figure_inventory import figure_inventory
+    dest = tmp_path / "carb/rep1/extensions/sdc4_mechanisms"
+    dest.mkdir(parents=True)
+    pd.DataFrame({
+        "region": ["TM_A", "TM_A"], "species": ["GM1a", "GM1a"],
+        "leaflet": ["upper", "upper"], "moiety": ["any", "any"],
+        "contact_fraction": [.1, .2], "local_composition_enrichment": [2., 4.],
+        "matched_local_contact_fraction": [.25, .5],
+        "matched_local_composition_enrichment": [1., np.nan],
+    }).to_parquet(dest / "lipid_region_specificity.parquet")
+    paths = {"carb": [tmp_path / "carb/rep1"]}
+    plot_sdc4_mechanisms({"analyses": {"sdc4_mechanisms": {"enabled": True}}}, tmp_path, paths)
+    summary = pd.read_csv(dest / "lipid_region_replicate_summary.csv")
+    assert summary.mean_matched_local_enrichment.item() == 1.
+    assert summary.mean_local_enrichment.item() == 3.
+    assert summary.n_matched_enrichment_frames.item() == 1
+    inventory = figure_inventory(tmp_path, paths).set_index("figure")
+    prefix = "carb/rep1/extensions/sdc4_mechanisms/lipid_region_"
+    assert inventory.loc[prefix + "mean_matched_local_enrichment.png", "kind"] == "primary"
+    assert inventory.loc[prefix + "mean_local_enrichment.png", "kind"] == "supplement"

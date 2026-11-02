@@ -275,6 +275,35 @@ def run():
         assert {"locally_available_molecules", "min_contact_distance_A",
                 "local_composition_enrichment"}.issubset(specificity.columns)
         assert (specificity["locally_available_molecules"] >= 0).all()
+        assert {"locally_contacted_molecules",
+                "matched_local_contact_fraction",
+                "matched_local_composition_enrichment"}.issubset(specificity.columns)
+        assert (specificity.loc[:, "locally_contacted_molecules"]
+                <= specificity.loc[:, "locally_available_molecules"]).all()
+        assert (specificity.loc[:, "locally_contacted_molecules"]
+                <= specificity.loc[:, "contacted_molecules"]).all()
+        local_absent = specificity["locally_available_molecules"].eq(0)
+        assert specificity.loc[local_absent, "matched_local_contact_fraction"].isna().all()
+        assert specificity.loc[local_absent, "matched_local_composition_enrichment"].isna().all()
+        # Numerical impact on *any*-moiety species/region/frame rows;
+        # moiety subclasses must not be counted as independent populations.
+        any_rows = specificity.loc[specificity.moiety.eq("any")]
+        delta = (any_rows.matched_local_composition_enrichment
+                 - any_rows.local_composition_enrichment)
+        impact = {
+            "any_moiety_rows": len(any_rows),
+            "legacy_finite": int(delta.index.size - any_rows.local_composition_enrichment.isna().sum()),
+            "matched_finite": int(any_rows.matched_local_composition_enrichment.notna().sum()),
+            "contacted_outside_local_population": int(
+                (any_rows.contacted_molecules > any_rows.locally_contacted_molecules).sum()),
+            "finite_enrichment_rows_changed": int((delta.abs() > 1e-12).sum()),
+            "max_absolute_enrichment_change": float(delta.abs().max()),
+            "max_absolute_contact_fraction_change": float(
+                (any_rows.matched_local_contact_fraction - any_rows.contact_fraction).abs().max()),
+        }
+        (out / "extensions/sdc4_mechanisms/matched_local_impact.json").write_text(json.dumps(impact, indent=2))
+        print(f"REAL MATCHED CONTACT AUDIT {system}: {impact}", flush=True)
+
         assert {"local_accessible_area_nm2",
                 "local_number_density_per_nm2"}.issubset(specificity)
         assert (specificity["min_contact_distance_A"].dropna() <= 5.0 + 1e-5).all()
@@ -354,3 +383,4 @@ def run():
 
 if __name__ == "__main__":
     run()
+
