@@ -708,7 +708,7 @@ class SDC4Mechanisms:
                     moieties = (("any", "glycan", "ceramide")
                                if species in ("GM1a", "BGAL") else
                                ("any", "ceramide") if species == "CER160" else ("any",))
-                    moieties += tuple(self.lipid_moiety_membership)
+                    moieties = tuple(dict.fromkeys((*moieties, *self.lipid_moiety_membership)))
                     for moiety in moieties:
                         count = len(observed.get((species, leaflet, moiety), ()))
                         self.rows["lipid_specificity"].append({
