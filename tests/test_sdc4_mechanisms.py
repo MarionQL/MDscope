@@ -343,6 +343,7 @@ def test_shared_states_exports_replica_conditioned_nxip(tmp_path):
                 "sdc4_motif_NxIP_PROB_1_steric_occlusion_fraction":
                     np.r_[np.full(10, .8), np.full(10, .2)],
                 "sdc4_motif_NxIP_PROB_1_hs_PROB_S309_contact_state": np.r_[np.ones(10), np.zeros(10)],
+                "sdc4_ectodomain_B_membrane_contact_state": np.r_[np.ones(10), np.zeros(10)],
                 "sdc4_hs_A1_membrane_contact_state": np.zeros(20, dtype=int),
                 "sdc4_hs_A1_hydration_water_per_heavy_atom": np.ones(20),
             }).to_parquet(dest / "timeseries.parquet", index=False)
@@ -370,6 +371,18 @@ def test_shared_states_exports_replica_conditioned_nxip(tmp_path):
     hs = pd.read_parquet(output / "nxip_hs_contact_conditioning.parquet")
     assert len(hs) == 4
     assert set(hs["hs_chain"]) == {"PROB_S309"}
+    membrane = pd.read_parquet(
+        output / "nxip_membrane_contact_conditioning.parquet"
+    )
+    assert len(membrane) == 8
+    subset = membrane[membrane.chain.eq("B")]
+    assert (subset.frames == 10).all()
+    expected = {0: .2, 1: .8}
+    for row in subset.itertuples():
+        assert row.mean_nxip_occlusion == pytest.approx(
+            expected[row.membrane_contact_state]
+        )
+
     assert (hs["frames_contact"] == 10).all()
     assert (hs["frames_no_contact"] == 10).all()
     np.testing.assert_allclose(hs["occlusion_contact_mean"], .8)
