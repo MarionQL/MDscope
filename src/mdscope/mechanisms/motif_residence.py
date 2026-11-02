@@ -58,7 +58,7 @@ def summarize_lipid_residence(events: pd.DataFrame, frame_times, gap_frames=0):
                 "n_frames": int(end - begin),
                 "left_censored": bool(left == 0),
                 "right_censored": bool(right == len(times)-1),
-                "occupancy_fraction": float((end - begin) / len(times)),
+                "occupancy_fraction": float(len(frames) / len(times)),
             })
     return pd.DataFrame(rows, columns=COLUMNS)
 
