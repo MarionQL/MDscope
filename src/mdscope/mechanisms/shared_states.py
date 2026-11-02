@@ -150,6 +150,7 @@ def fit_shared_states(cfg, root, system_repouts):
     atomic_parquet(out / "state_centroids.parquet", centroids)
     assignments, populations, diagnostics, conditioned = [], [], [], []
     rep_fraction = defaultdict(list)
+    lipid_state_rows = []
     nxip_conditioned = []
     for (system, replicate), df in replicates.items():
         x = df[features].to_numpy(float)
@@ -219,6 +220,40 @@ def fit_shared_states(cfg, root, system_repouts):
                         "within_replicate_difference": (
                             float(values[mask].mean() - values[other].mean())
                             if mask.any() and other.any() else np.nan
+                        ),
+                    })
+        # A frame-aligned downstream outcome; lipid contacts do not enter
+        # geometric state training or assignments.
+        lipid_path = Path(root) / system / replicate / "extensions/sdc4_mechanisms/lipid_region_specificity.parquet"
+        if not lipid_path.is_file():
+            # Paths may be outside root, so use the actual replica directory.
+            lipid_path = next(
+                (p / "extensions/sdc4_mechanisms/lipid_region_specificity.parquet"
+                 for p in system_repouts[system] if Path(p).name == replicate),
+                lipid_path,
+            )
+        if lipid_path.is_file():
+            lipid_data = pd.read_parquet(lipid_path)
+            if not lipid_data.empty:
+                merged = lipid_data.merge(
+                    pd.DataFrame({"time_ps": times, "state": labels}),
+                    on="time_ps", how="inner", validate="many_to_one",
+                )
+                for keys, subgroup in merged.groupby(
+                    ["region", "species", "leaflet", "moiety", "state"],
+                    sort=True,
+                ):
+                    valid = subgroup[subgroup["available_molecules"] > 0]
+                    lipid_state_rows.append({
+                        "system": system, "replicate": replicate,
+                        "region": keys[0], "species": keys[1],
+                        "leaflet": keys[2], "moiety": keys[3],
+                        "state": int(keys[4]),
+                        "frames_in_state": int(len(subgroup)),
+                        "frames_with_species": int(len(valid)),
+                        "mean_contact_fraction": (
+                            float(valid["contact_fraction"].mean())
+                            if len(valid) else np.nan
                         ),
                     })
         hs_names = sorted({
@@ -296,6 +331,14 @@ def fit_shared_states(cfg, root, system_repouts):
                        "replicate_bootstrap_ci_low", "replicate_bootstrap_ci_high",
                        "inference",
                    ]))
+    atomic_parquet(
+        out / "state_conditioned_lipid_specificity.parquet",
+        pd.DataFrame(lipid_state_rows, columns=[
+            "system", "replicate", "region", "species", "leaflet", "moiety",
+            "state", "frames_in_state", "frames_with_species",
+            "mean_contact_fraction",
+        ]),
+    )
     atomic_parquet(out / "frame_assignments.parquet", pd.concat(assignments, ignore_index=True))
     atomic_parquet(out / "replicate_populations.parquet", pd.DataFrame(populations))
     atomic_parquet(out / "sampling_diagnostics.parquet", pd.DataFrame(diagnostics))
