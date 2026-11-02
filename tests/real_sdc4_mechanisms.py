@@ -191,6 +191,14 @@ def run():
         events_path = out / "extensions/sdc4_mechanisms/motif_lipid_contact_events.parquet"
         residence_path = out / "extensions/sdc4_mechanisms/motif_lipid_residence.parquet"
         assert events_path.exists() and residence_path.exists()
+        intermittent_path = (
+            out / "extensions/sdc4_mechanisms/motif_lipid_residence_intermittent.parquet"
+        )
+        assert intermittent_path.exists()
+        intermittent = pd.read_parquet(intermittent_path)
+        assert set(COLUMNS).issubset(intermittent.columns)
+        assert (intermittent["n_frames"] > 0).all()
+
         assert set(COLUMNS).issubset(pd.read_parquet(residence_path).columns)
         residence_audit = json.loads(
             (out / "extensions/sdc4_mechanisms/selection_audit.json").read_text()
