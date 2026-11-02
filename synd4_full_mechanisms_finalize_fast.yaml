@@ -259,7 +259,7 @@ analyses:
     # hydrocarbon carbons. Do not classify all CER160 atoms as tails.
     lipid_moiety_selections:
       glycan: "chainID GM1a BGAL and not resname CER160 and not name H*"
-      ceramide_head: "chainID GM1a BGAL CER160 and resname CER160 and name C1S C2S C3S NF O3 C1F OF"
+      ceramide_head: "chainID GM1a BGAL CER160 and resname CER160 and name C1S C2S C3S NF O3 O1 C1F OF"
       ceramide_tail: "chainID GM1a BGAL CER160 and resname CER160 and name C4S C5S C6S C7S C8S C9S C10S C11S C12S C13S C14S C15S C16S C17S C18S C2F C3F C4F C5F C6F C7F C8F C9F C10F C11F C12F C13F C14F C15F C16F"
     contact_cutoff_A: 5.0
     hydration_cutoff_A: 3.5
