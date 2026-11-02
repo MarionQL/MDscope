@@ -66,6 +66,30 @@ def _angle(a, b):
     ) else np.nan
 
 
+def _composition_enrichment(table, availability_column):
+    """Species contact share divided by availability share, within each
+    frame/region/leaflet. Undefined fractions remain NaN."""
+    result = np.full(len(table), np.nan)
+    if table.empty:
+        return result
+    any_contact = table["moiety"].eq("any").to_numpy()
+    subset = table.loc[any_contact]
+    totals = subset.groupby(
+        ["time_ps", "region", "leaflet"], sort=False
+    )[["contacted_molecules", availability_column]].transform("sum")
+    contacts = subset["contacted_molecules"].to_numpy(float)
+    available = subset[availability_column].to_numpy(float)
+    contact_totals = totals["contacted_molecules"].to_numpy(float)
+    available_totals = totals[availability_column].to_numpy(float)
+    valid = ((contacts >= 0) & (available > 0) &
+             (contact_totals > 0) & (available_totals > 0))
+    ratio = np.full(len(subset), np.nan)
+    ratio[valid] = ((contacts[valid] / contact_totals[valid]) /
+                    (available[valid] / available_totals[valid]))
+    result[any_contact] = ratio
+    return result
+
+
 def _contacts(a, b, cutoff, box):
     if not len(a) or not len(b):
         return np.empty((0, 2), dtype=int)
@@ -807,56 +831,12 @@ class SDC4Mechanisms:
             specificity = pd.concat(
                 (pd.read_parquet(p) for p in pieces), ignore_index=True
             ) if pieces else pd.DataFrame()
-            if not specificity.empty:
-                any_mask = specificity["moiety"].eq("any")
-                local_pool = specificity.loc[any_mask].groupby(
-                    ["time_ps", "region", "leaflet"], sort=False
-                )[["contacted_molecules", "locally_available_molecules"]].transform("sum")
-                shares = np.divide(
-                    specificity.loc[any_mask, "contacted_molecules"].to_numpy(float),
-                    local_pool["contacted_molecules"].to_numpy(float),
-                    out=np.full(int(any_mask.sum()), np.nan),
-                    where=local_pool["contacted_molecules"].to_numpy(float) > 0,
-                )
-                local_shares = np.divide(
-                    specificity.loc[any_mask, "locally_available_molecules"].to_numpy(float),
-                    local_pool["locally_available_molecules"].to_numpy(float),
-                    out=np.full(int(any_mask.sum()), np.nan),
-                    where=local_pool["locally_available_molecules"].to_numpy(float) > 0,
-                )
-                specificity["local_composition_enrichment"] = np.nan
-                specificity.loc[any_mask, "local_composition_enrichment"] = np.divide(
-                    shares, local_shares,
-                    out=np.full(len(shares), np.nan),
-                    where=np.isfinite(local_shares) & (local_shares > 0),
-                )
-            else:
-                specificity["local_composition_enrichment"] = pd.Series(dtype=float)
-            if not specificity.empty:
-                any_contact = specificity["moiety"].eq("any")
-                pools = specificity.loc[any_contact].groupby(
-                    ["time_ps", "region", "leaflet"], sort=False
-                )[["contacted_molecules", "available_molecules"]].transform("sum")
-                contact_share = np.divide(
-                    specificity.loc[any_contact, "contacted_molecules"].to_numpy(float),
-                    pools["contacted_molecules"].to_numpy(float),
-                    out=np.full(any_contact.sum(), np.nan),
-                    where=pools["contacted_molecules"].to_numpy(float) > 0,
-                )
-                availability_share = np.divide(
-                    specificity.loc[any_contact, "available_molecules"].to_numpy(float),
-                    pools["available_molecules"].to_numpy(float),
-                    out=np.full(any_contact.sum(), np.nan),
-                    where=pools["available_molecules"].to_numpy(float) > 0,
-                )
-                specificity["composition_enrichment"] = np.nan
-                specificity.loc[any_contact, "composition_enrichment"] = np.divide(
-                    contact_share, availability_share,
-                    out=np.full(len(contact_share), np.nan),
-                    where=np.isfinite(availability_share) & (availability_share > 0),
-                )
-            else:
-                specificity["composition_enrichment"] = pd.Series(dtype=float)
+            specificity["local_composition_enrichment"] = _composition_enrichment(
+                specificity, "locally_available_molecules"
+            )
+            specificity["composition_enrichment"] = _composition_enrichment(
+                specificity, "available_molecules"
+            )
             atomic_parquet(out / "lipid_region_specificity.parquet", specificity)
 
         # Contact-conditioned hydration is a *within-replicate* descriptive
