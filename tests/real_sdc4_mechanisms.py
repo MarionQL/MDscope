@@ -192,6 +192,11 @@ def run():
         residence_path = out / "extensions/sdc4_mechanisms/motif_lipid_residence.parquet"
         assert events_path.exists() and residence_path.exists()
         assert set(COLUMNS).issubset(pd.read_parquet(residence_path).columns)
+        residence_audit = json.loads(
+            (out / "extensions/sdc4_mechanisms/selection_audit.json").read_text()
+        )
+        assert residence_audit["motif_lipid_residence_unmapped_fragments"] >= 0
+
         assert any(col.endswith("_P4_phi_deg") for col in df.columns)
         assert any(col.endswith("_P7_psi_deg") for col in df.columns)
 
