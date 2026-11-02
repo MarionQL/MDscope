@@ -198,7 +198,7 @@ analyses:
     exclude_same_molecule: true
     update_selections: false
 
-  # Eight SDC4 mechanism endpoints. These PROA/PROB ranges were verified
+  # Eight SDC4 mechanism endpoints. Confirm both chain ranges with release TPR audits.
   # on the two published old-build TPRs, NOT on future rebuilt systems.
   sdc4_mechanisms:
     enabled: true
@@ -206,10 +206,10 @@ analyses:
     protein_selection: "protein"
     tm_chains:
       A: "protein and chainID PROA and resid 146:170 and name CA"
-      B: "protein and chainID PROB and resid 344:368 and name CA"
+      B: "protein and chainID PROB and resid 415:439 and name CA"
     ectodomains:
       A: "protein and chainID PROA and resid 1:145 and name CA"
-      B: "protein and chainID PROB and resid 270:343 and name CA"
+      B: "protein and chainID PROB and resid 270:414 and name CA"
 
     # Real TPR bond audit verified exactly six covalently attached HS
     # chains: PROA S39/S61/S63 and PROB S309/S331/S333.
@@ -250,9 +250,8 @@ analyses:
       NxIP: "N.IP"
       acidic_patch: "DDEDVVGPGQESDDFELSGSGDLDDLED"
     require_motifs: true
-    # Real TPR audit found a GXXXG match in PROA, but none in the
-    # selected PROB TM sequence. Report this rather than inventing one.
-    require_gxxxg: false
+    # Require validated GGIVG on both TM chains; invalid mapping is fatal.
+    require_gxxxg: true
     contact_cutoff_A: 5.0
     hydration_cutoff_A: 3.5
     ion_cutoff_A: 4.0
