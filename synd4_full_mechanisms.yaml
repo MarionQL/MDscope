@@ -249,6 +249,7 @@ analyses:
     motif_selection: "protein and name CA"
     motifs:
       NxIP: "N.IP"
+      proline_hydrophobic: "VVHPLVPL"
       acidic_patch: "DDEDVVGPGQESDDFELSGSGDLDDLED"
     require_motifs: true
     # Require validated GGIVG on both TM chains; invalid mapping is fatal.
