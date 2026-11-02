@@ -16,6 +16,7 @@ AA3 = dict(zip(
     "ALA ARG ASN ASP CYS GLN GLU GLY HIS ILE LEU LYS MET PHE PRO SER THR TRP TYR VAL".split(),
     "ARNDCQEGHILKMFPSTWYV",
 ))
+AA3.update({name: "H" for name in ("HSD", "HSE", "HSP", "HID", "HIE", "HIP")})
 
 
 def selected(universe, selection, *, required=False):

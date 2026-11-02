@@ -108,6 +108,23 @@ def run():
                     f"{system}/{chain}: TM sequence {tm_seq!r} does not match "
                     "the user-verified domain boundary LIVGGIVGILFAVFLILLLMY"
                 )
+        from mdscope.mechanisms.mechanistic_common import sequence_matches
+        for chain in ("A", "B"):
+            ca = u.select_atoms(f"protein and chainID PRO{chain} and name CA")
+            pro_hits = sequence_matches(ca, {"proline_hydrophobic": "VVHPLVPL"})
+            nxip_hits = sequence_matches(ca, {"NxIP": "N.IP"})
+            assert len(pro_hits) == 1, (
+                system, chain, "VVHPLVPL mapping", list(pro_hits)
+            )
+            assert len(nxip_hits) >= 1, (
+                system, chain, "NxIP mapping", list(nxip_hits)
+            )
+            print(
+                f"REAL EXTRACELLULAR MOTIFS {system}/{chain}: "
+                f"VVHPLVPL={list(pro_hits.values())[0].tolist()} "
+                f"NxIP={[v.tolist() for v in nxip_hits.values()]}",
+                flush=True,
+            )
         spec = {
             "enabled": True, "axis": "z",
             "tm_chains": tm, "ectodomains": ecto,
@@ -125,7 +142,7 @@ def run():
             # membrane-contact definition.
             "lipid_contact_selection": "(resname POPC POPE POPI POPS DOPC DPPC PSM CHL1) or (chainID GM1a BGAL CER160)",
             "motif_selection": "protein and name CA",
-            "motifs": {"NxIP": "N.IP"},
+            "motifs": {"NxIP": "N.IP", "proline_hydrophobic": "VVHPLVPL"},
             "require_motifs": False, "require_gxxxg": True,
             "map_extent_A": 40., "map_bin_A": 4.,
             "local_radius_A": 25., "local_min_lipids": 8,
@@ -175,6 +192,13 @@ def run():
         np.testing.assert_array_equal(actual_motif, np.asarray(reference)[:, 1])
         print(f"REAL TM GEOMETRY {system}: TM pairs={actual_tm.tolist()} "
               f"GGIVG pairs={actual_motif.tolist()}", flush=True)
+        assert "sdc4_motif_proline_hydrophobic_PROA_1_steric_occlusion_fraction" in df
+        assert "sdc4_motif_proline_hydrophobic_PROB_1_steric_occlusion_fraction" in df
+        # Issue #101: chain-resolved NxIP and ectodomain signals must be
+        # present in the same frame-indexed table for conditional analyses.
+        assert "sdc4_ectodomain_B_height_A" in df
+        assert "sdc4_motif_NxIP_PROB_1_steric_occlusion_fraction" in df
+        assert df["time_ps"].is_unique
         assert "sdc4_hs_PROA_S39_hydration_water_count" in df
         assert "sdc4_hs_PROB_S333_lipid_contact_lipids" in df
         with np.load(out / "extensions/sdc4_mechanisms/lipid_density_maps.npz") as maps:

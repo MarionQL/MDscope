@@ -49,6 +49,44 @@ def plot_sdc4_mechanisms(cfg, root, system_repouts):
                 fig.savefig(path.parent / f"lipid_{field}_maps.png", dpi=180)
                 plt.close(fig)
 
+    # Exploratory within-replica NxIP coupling diagnostic. Avoid pooled
+    # frame-level correlations: trajectories, not frames, are replicates.
+    for system, paths in system_repouts.items():
+        for repout in paths:
+            folder = Path(repout) / "extensions/sdc4_mechanisms"
+            series_path = folder / "timeseries.parquet"
+            if not series_path.exists():
+                continue
+            table = pd.read_parquet(series_path)
+            fig, axes = plt.subplots(1, 2, figsize=(9, 3.6),
+                                     constrained_layout=True)
+            n_panels = 0
+            for ax, chain in zip(axes, ("A", "B")):
+                xkey = f"sdc4_ectodomain_{chain}_height_A"
+                occlusion = [
+                    c for c in table.columns
+                    if c.startswith(f"sdc4_motif_NxIP_PRO{chain}_")
+                    and c.endswith("_steric_occlusion_fraction")
+                ]
+                ax.set_xlabel(f"Chain {chain} ectodomain height (Å)")
+                ax.set_ylabel("NxIP steric occlusion fraction")
+                if xkey not in table or len(occlusion) != 1:
+                    ax.text(.5, .5, "NxIP mapping unavailable",
+                            ha="center", va="center", transform=ax.transAxes)
+                    continue
+                x = table[xkey].to_numpy(float)
+                y = table[occlusion[0]].to_numpy(float)
+                valid = np.isfinite(x) & np.isfinite(y)
+                if not valid.any():
+                    continue
+                ax.scatter(x[valid], y[valid], s=6, alpha=.18, rasterized=True)
+                ax.set_ylim(-.03, 1.03)
+                n_panels += 1
+            if n_panels:
+                fig.suptitle(f"{system}/{Path(repout).name}: exploratory NxIP–conformation coupling")
+                fig.savefig(folder / "nxip_height_occlusion_joint.png", dpi=190)
+            plt.close(fig)
+
     state_dir = Path(root) / "project_summary/shared_states"
     pop_path = state_dir / "replicate_populations.parquet"
     if not pop_path.exists():
