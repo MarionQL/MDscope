@@ -60,7 +60,7 @@ def solvation_rdf_figure(root, system_repouts, *, max_panels=6):
             ax.fill_between(x,y-sd,y+sd,alpha=.18)
         ax.axhline(1,color="gray",ls=":",lw=.8)
         ax.set_title(" / ".join(map(str,key)),fontsize=9)
-        ax.set_ylabel("g(r)")
+        ax.set_ylabel("g(r), full-cell density reference")
         ax.legend(fontsize=7,frameon=False)
     axes[-1,0].set_xlabel("Distance (Å)")
     fig.tight_layout()
@@ -167,3 +167,4 @@ def solvation_survival_figure(system_repouts, *, max_curves=8):
     plt.close(fig)
     buf.seek(0)
     return buf,len(curves)
+

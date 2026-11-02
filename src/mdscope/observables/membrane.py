@@ -38,21 +38,6 @@ class MembraneState:
     msd_displacements: np.ndarray | None = None
 
 
-def _residue_centers(residue_atoms) -> np.ndarray:
-    # Residue centers are calculated once per lipid/residue instead of
-    # tracking every atom for membrane MSD.
-    centers = []
-    for atoms in residue_atoms:
-        try:
-            center = atoms.center_of_mass()
-        except (AttributeError, ValueError, TypeError):
-            center = atoms.center_of_geometry()
-        if not np.all(np.isfinite(center)):
-            center = atoms.center_of_geometry()
-        centers.append(np.asarray(center, float))
-    return np.asarray(centers, float)
-
-
 def initialize_membrane(universe, cfg: dict) -> MembraneState:
     spec = cfg.get("analyses", {}).get("membrane", {})
     state = MembraneState(enabled=bool(spec.get("enabled", False)))
@@ -116,3 +101,4 @@ def membrane_metrics(universe, state: MembraneState, msd_universe=None) -> dict[
     if state.msd:
         out.update(msd_metrics(msd_universe if msd_universe is not None else universe, state))
     return out
+

@@ -28,6 +28,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[test]" build twine
+      - name: Install real FreeSASA for analytic geometry references
+        if: matrix.python-version == '3.11'
+        run: python -m pip install freesasa
       - name: Build and validate distribution metadata
         run: |
           python -m build
@@ -52,3 +55,4 @@ jobs:
       - name: Profile representative numerical kernels
         run: |
           pytest -q -s tests/test_performance_benchmarks.py
+

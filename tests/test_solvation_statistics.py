@@ -104,3 +104,18 @@ def test_rdf_across_replicates_is_descriptive(tmp_path):
     np.testing.assert_allclose(result.mean_g_bulk,[2.,3.,4.])
     np.testing.assert_allclose(result.sd_g_bulk,[1.,1.,1.])
     assert result.complete_replica_coverage.all()
+
+
+
+def test_rdf_coverage_counts_entirely_missing_replica(tmp_path):
+    source = tmp_path / "system/rep1/extensions/solvation/rdf.parquet"
+    source.parent.mkdir(parents=True)
+    pd.DataFrame({"solvent": ["water"], "target_class": ["protein"],
+                  "site_class": ["acidic"], "r_inner_A": [0.],
+                  "r_outer_A": [1.], "g_bulk": [2.]}).to_parquet(source)
+    analyze_solvation_rdfs({}, tmp_path,
+                          {"system": [tmp_path/"system/rep1", tmp_path/"system/rep2"]})
+    data = pd.read_parquet(tmp_path/"project_summary/statistics/solvation/system_rdf.parquet")
+    assert data.n_replicates.item() == 1
+    assert data.expected_replicates.item() == 2
+    assert not data.complete_replica_coverage.item()

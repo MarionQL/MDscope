@@ -275,3 +275,57 @@ def test_corrected_enrichment_figures_and_inventory(tmp_path):
     prefix = "carb/rep1/extensions/sdc4_mechanisms/lipid_region_"
     assert inventory.loc[prefix + "mean_matched_local_enrichment.png", "kind"] == "primary"
     assert inventory.loc[prefix + "mean_local_enrichment.png", "kind"] == "supplement"
+
+
+def test_rdf_excluded_volume_and_cell_density_reference_oracle():
+    from mdscope.observables.solvation import rdf_from_counts
+    # A hemisphere inaccessible to solvent halves pair counts even when
+    # solvent in the accessible half has exactly the reference density.
+    # If aqueous volume is half the cell, full-cell density is also half
+    # the aqueous density: the two effects cancel, falsely suggesting g=1.
+    shells = np.array([4*np.pi/3, 28*np.pi/3])
+    rho_aqueous = .04
+    hemisphere_counts = .5 * shells * rho_aqueous
+    np.testing.assert_allclose(rdf_from_counts(hemisphere_counts, [0, 1, 2], rho_aqueous), .5)
+    np.testing.assert_allclose(rdf_from_counts(hemisphere_counts, [0, 1, 2], rho_aqueous/2), 1.)
+
+
+def test_diffusion_unit_conversion_independent_linear_curve():
+    from mdscope.observables.multi_origin_msd import fit_multi_origin_curve
+    # D=.5 nm²/ns = .05 Å²/ps; 2D lateral MSD = 4Dt = .2t Å².
+    lag_ps = np.arange(21)*10.
+    fit = fit_multi_origin_curve(lag_ps, .2*lag_ps)
+    assert fit["diffusion_nm2_ns"] == pytest.approx(.5)
+    assert fit["slope_A2_ps"] == pytest.approx(.2)
+
+
+def test_real_freesasa_sphere_area_and_spherical_cap_occlusion():
+    pytest.importorskip("freesasa")
+    from mdscope.observables.sasa import sasa_instances, sasa_residue_rows
+    u = mda.Universe.empty(2, n_residues=2, atom_resindex=[0, 1], trajectory=True)
+    u.add_TopologyAttr("names", ["CA", "CA"])
+    u.add_TopologyAttr("elements", ["C", "C"])
+    u.add_TopologyAttr("resnames", ["ALA", "ALA"])
+    u.add_TopologyAttr("resids", [1, 2])
+    u.atoms.positions = [[0., 0., 0.], [30., 0., 0.]]
+    cfg = {"selections": {"protein": "all"}, "analyses": {"sasa": {
+        "enabled": True, "target_selection": "index 0", "occluder_selection": "all",
+        "algorithm": "shrake_rupley", "n_points": 10000, "probe_radius_A": 1.4,
+    }}}
+    state = sasa_instances(u, cfg)["default"]
+    sphere_nm2 = 4*np.pi*(1.7+1.4)**2/100.
+    assert sasa_residue_rows(state, 0.)[0][-1] == pytest.approx(sphere_nm2, rel=.01)
+    u.atoms[1].position = [3.1, 0., 0.]
+    # Equal inflated spheres at separation R: cap height R/2; exposed area
+    # of the target = 4pi R² - 2pi R(R/2) = 3pi R².
+    assert sasa_residue_rows(state, 0.)[0][-1] == pytest.approx(.75*sphere_nm2, rel=.02)
+    # Also exercise the native-crash case of isolated + connected components.
+    v = mda.Universe.empty(3, n_residues=3, atom_resindex=[0, 1, 2], trajectory=True)
+    for key, values in (("names", ["CA"]*3), ("elements", ["C"]*3),
+                        ("resnames", ["ALA"]*3), ("resids", [1, 2, 3])):
+        v.add_TopologyAttr(key, values)
+    v.atoms.positions = [[0., 0., 0.], [3.1, 0., 0.], [30., 0., 0.]]
+    cfg["analyses"]["sasa"]["target_selection"] = "all"
+    mixed = sasa_instances(v, cfg)["default"]
+    np.testing.assert_allclose([row[-1] for row in sasa_residue_rows(mixed, 0.)],
+                               [.75*sphere_nm2, .75*sphere_nm2, sphere_nm2], rtol=.02)
