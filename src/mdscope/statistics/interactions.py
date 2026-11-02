@@ -6,13 +6,14 @@ comparison statistics.
 from __future__ import annotations
 
 import math
+from time import perf_counter
 from itertools import combinations
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from ..config import atomic_parquet, ensure_dir
+from ..config import statistics_family_config, atomic_parquet, ensure_dir
 from ..interactions import interaction_key_columns, interaction_tables, sample_dt
 from ..observables.membrane_order import temporal_membrane_order_profiles
 from ..observables.density_1d import temporal_density_profiles
@@ -111,6 +112,9 @@ def _interaction_bootstrap(
 
 
 def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]) -> None:
+    cfg = statistics_family_config(cfg, "interactions")
+    if cfg is None:
+        return
     if not cfg.get("statistics", {}).get("enabled", True):
         return
     stats = cfg["statistics"]
@@ -126,6 +130,8 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                 repout,
                 exclude_kinds=excluded_kinds,
                 table_names=("presence", "lifetimes"),
+                include_kinds=(set(stats["interaction_include_kinds"])
+                               if stats.get("interaction_include_kinds") is not None else None),
             )
             path = repout / "summary" / "timeseries.parquet"
             times = (
@@ -169,7 +175,11 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                 if not life.empty else {}
             )
             prepared[key] = (times, presence_groups, life_groups)
-        for interaction in sorted(interactions):
+        kind_started = perf_counter()
+        log_every = int(stats.get("interaction_progress_every", 1000))
+        for completed, interaction in enumerate(sorted(interactions), 1):
+            if cfg.get("progress", {}).get("enabled", False) and (completed == 1 or completed % log_every == 0):
+                print(f"Interaction statistics {kind}: {completed}/{len(interactions)} identities; elapsed {perf_counter()-kind_started:.1f} s", flush=True)
             repdata = {}
             for system, reps in system_repouts.items():
                 for repout in reps:
@@ -336,5 +346,6 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
             ["system_1", "system_2", "interaction_type", "metric"]
         )
         atomic_parquet(outdir / "system_interaction_comparisons.parquet", comp)
+
 
 

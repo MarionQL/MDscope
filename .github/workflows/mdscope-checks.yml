@@ -54,5 +54,5 @@ jobs:
           pytest -q tests
       - name: Profile representative numerical kernels
         run: |
-          pytest -q -s tests/test_performance_benchmarks.py
+          pytest -q -s -m benchmark tests/test_performance_benchmarks.py
 

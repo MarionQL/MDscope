@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ..config import atomic_parquet, ensure_dir
+from ..config import statistics_family_config, atomic_parquet, ensure_dir
 from ..interactions import interaction_key_columns, interaction_tables, sample_dt
 from ..observables.membrane_order import temporal_membrane_order_profiles
 from ..observables.density_1d import temporal_density_profiles
@@ -165,6 +165,9 @@ def analyze_profiles(
     root: Path,
     system_repouts: dict[str, list[Path]],
 ) -> None:
+    cfg = statistics_family_config(cfg, "profiles")
+    if cfg is None:
+        return
     if not cfg.get("statistics", {}).get("enabled", True):
         return
     stats = cfg["statistics"]
@@ -409,4 +412,5 @@ def analyze_profiles(
                 ["system_1", "system_2", "profile"],
             )
         atomic_parquet(outdir / "system_comparisons.parquet", comp)
+
 

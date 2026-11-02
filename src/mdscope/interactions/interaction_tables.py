@@ -363,6 +363,7 @@ def interaction_tables(
     repout: Path,
     exclude_kinds: set[str] | None = None,
     table_names: tuple[str, ...] = ("presence", "occupancy", "lifetimes", "summary"),
+    include_kinds: set[str] | None = None,
 ) -> dict[str, dict[str, pd.DataFrame]]:
     out = {}
     excluded = exclude_kinds or set()
@@ -370,7 +371,7 @@ def interaction_tables(
     if not base.exists():
         return out
     for kind_dir in sorted(path for path in base.iterdir() if path.is_dir()):
-        if kind_dir.name in excluded:
+        if kind_dir.name in excluded or (include_kinds is not None and kind_dir.name not in include_kinds):
             continue
         tables = {}
         for name in table_names:
@@ -380,3 +381,4 @@ def interaction_tables(
         if tables:
             out[kind_dir.name] = tables
     return out
+
