@@ -98,6 +98,7 @@ def fit_shared_states(cfg, root, system_repouts):
         raise ValueError("shared_states requires n_states>=2, bootstrap_draws>=20 and training_frames_per_replicate>=n_states")
     rng = np.random.default_rng(seed)
     replicates = {}
+    repout_paths = {}
     training = []
     for system, paths in system_repouts.items():
         for repout in paths:
@@ -120,6 +121,7 @@ def fit_shared_states(cfg, root, system_repouts):
             clean = data.loc[good].reset_index(drop=True)
             key = (system, Path(repout).name)
             replicates[key] = clean
+            repout_paths[key] = Path(repout)
             x = X[good]
             # Evenly spaced, equal-count training points per replicate.
             indices = np.linspace(0, len(x)-1, min(len(x), train_n)).astype(int)
@@ -224,14 +226,7 @@ def fit_shared_states(cfg, root, system_repouts):
                     })
         # A frame-aligned downstream outcome; lipid contacts do not enter
         # geometric state training or assignments.
-        lipid_path = Path(root) / system / replicate / "extensions/sdc4_mechanisms/lipid_region_specificity.parquet"
-        if not lipid_path.is_file():
-            # Paths may be outside root, so use the actual replica directory.
-            lipid_path = next(
-                (p / "extensions/sdc4_mechanisms/lipid_region_specificity.parquet"
-                 for p in system_repouts[system] if Path(p).name == replicate),
-                lipid_path,
-            )
+        lipid_path = repout_paths[(system, replicate)] / "extensions/sdc4_mechanisms/lipid_region_specificity.parquet"
         if lipid_path.is_file():
             lipid_data = pd.read_parquet(lipid_path)
             if not lipid_data.empty:
