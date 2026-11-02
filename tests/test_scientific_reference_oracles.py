@@ -62,7 +62,7 @@ def test_local_population_mismatch_reference_is_detectable():
     })
     result = _composition_enrichment(table, "locally_available_molecules")
     assert np.isnan(result[0])
-    assert result[1] == pytest.approx(1.)
+    assert result[1] == pytest.approx(.5)  # contact share 1/2, local share 3/3
     assert table.loc[0, "contacted_molecules"] > table.loc[0, "locally_available_molecules"]
     # The oracle exposes a population mismatch; it does not silently
     # claim local enrichment for the unavailable GM1a.
