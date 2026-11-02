@@ -595,7 +595,7 @@ class SDC4Mechanisms:
 
     def prune_from(self, part):
         for path in self.cache.glob("*"):
-            match = re.match(r"(?:part|map)-(\d+)\.(?:parquet|npz)$", path.name)
+            match = re.match(r"(?:part|map|residence)-(\d+)\.(?:parquet|npz)$", path.name)
             if match and int(match.group(1)) >= part:
                 path.unlink()
 
