@@ -19,7 +19,7 @@ import time
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-from MDAnalysis.lib.distances import capped_distance, minimize_vectors
+from MDAnalysis.lib.distances import capped_distance, minimize_vectors, calc_dihedrals
 
 from ..config import DEFAULTS, atomic_json, atomic_parquet, ensure_dir, time_ps
 from ..core.lipid_geometry import anchor_groups, aligned_leaflets, periodic_center
@@ -226,6 +226,30 @@ class SDC4Mechanisms:
             atoms = heavy(universe.atoms[np.isin(universe.atoms.resindices, resindices)])
             if len(atoms):
                 self.motifs[_id(key)] = {"atoms": atoms, "resindices": resindices}
+        # Prepare backbone torsions for the two prolines in each mapped
+        # VVHPLVPL motif. Actual residue indices come from the topology, and
+        # missing backbone atoms remain NaN rather than being invented.
+        self.proline_torsions = {}
+        for name, info in self.motifs.items():
+            if not name.startswith("proline_hydrophobic_"):
+                continue
+            ids = [int(x) for x in info["resindices"]]
+            for j in (3, 6):  # positions 4 and 7 of VVHPLVPL
+                if len(ids) != 8 or self.u.residues[ids[j]].resname != "PRO":
+                    raise ValueError(f"Unexpected proline mapping for {name}")
+                before, current, after = (
+                    self.u.residues[ids[j-1]], self.u.residues[ids[j]],
+                    self.u.residues[ids[j+1]],
+                )
+                def atom(residue, label):
+                    matches = residue.atoms.select_atoms(f"name {label}")
+                    return matches[0] if len(matches) == 1 else None
+                self.proline_torsions[f"{name}_P{j+1}"] = (
+                    (atom(before, "C"), atom(current, "N"),
+                     atom(current, "CA"), atom(current, "C")),
+                    (atom(current, "N"), atom(current, "CA"),
+                     atom(current, "C"), atom(after, "N")),
+                )
         # Fail explicitly if the functional endpoint was requested but the
         # topology's actual sequence does not contain the motif.
         if s.get("require_motifs", True) and not self.motifs:
@@ -428,6 +452,15 @@ class SDC4Mechanisms:
                 g1.resindices[ghits[:, 0]], g2.resindices[ghits[:, 1]]
             )), axis=0)) if len(ghits) else 0
         )
+        for label, (phi_atoms, psi_atoms) in self.proline_torsions.items():
+            for suffix, atom_group in (("phi_deg", phi_atoms), ("psi_deg", psi_atoms)):
+                value = np.nan
+                if all(atom is not None for atom in atom_group):
+                    points = [atom.position for atom in atom_group]
+                    value = float(np.degrees(calc_dihedrals(
+                        points[0], points[1], points[2], points[3], box=box
+                    )))
+                row[f"sdc4_proline_{label}_{suffix}"] = value
         for name, info in self.motifs.items():
             ag = info["atoms"]
             own = info["resindices"]
