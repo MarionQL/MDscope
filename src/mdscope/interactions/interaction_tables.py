@@ -359,14 +359,21 @@ def postprocess_interactions(
     return counts
 
 
-def interaction_tables(repout: Path) -> dict[str, dict[str, pd.DataFrame]]:
+def interaction_tables(
+    repout: Path,
+    exclude_kinds: set[str] | None = None,
+    table_names: tuple[str, ...] = ("presence", "occupancy", "lifetimes", "summary"),
+) -> dict[str, dict[str, pd.DataFrame]]:
     out = {}
+    excluded = exclude_kinds or set()
     base = Path(repout) / "interactions"
     if not base.exists():
         return out
     for kind_dir in sorted(path for path in base.iterdir() if path.is_dir()):
+        if kind_dir.name in excluded:
+            continue
         tables = {}
-        for name in ("presence", "occupancy", "lifetimes", "summary"):
+        for name in table_names:
             path = kind_dir / f"{name}.parquet"
             if path.exists():
                 tables[name] = pd.read_parquet(path)
