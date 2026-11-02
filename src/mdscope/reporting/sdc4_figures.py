@@ -87,6 +87,32 @@ def plot_sdc4_mechanisms(cfg, root, system_repouts):
                 fig.savefig(folder / "nxip_height_occlusion_joint.png", dpi=190)
             plt.close(fig)
 
+            # Per-proline Ramachandran distributions, not averages of wrapped
+            # angles. Keep individual replicas separate.
+            proline_prefixes = sorted({
+                name[:-len("_phi_deg")] for name in table.columns
+                if name.startswith("sdc4_proline_") and name.endswith("_phi_deg")
+                and name[:-len("_phi_deg")] + "_psi_deg" in table.columns
+            })
+            if proline_prefixes:
+                fig, axs = plt.subplots(
+                    1, len(proline_prefixes), squeeze=False,
+                    figsize=(3.2 * len(proline_prefixes), 3.6),
+                    constrained_layout=True,
+                )
+                for ax, label in zip(axs[0], proline_prefixes):
+                    phi = table[label + "_phi_deg"].to_numpy(float)
+                    psi = table[label + "_psi_deg"].to_numpy(float)
+                    keep = np.isfinite(phi) & np.isfinite(psi)
+                    ax.scatter(phi[keep], psi[keep], s=5, alpha=.15,
+                               rasterized=True)
+                    ax.set(xlim=(-180, 180), ylim=(-180, 180),
+                           xlabel="φ (degrees)", ylabel="ψ (degrees)",
+                           title=label.removeprefix("sdc4_proline_"))
+                    ax.set_aspect("equal", adjustable="box")
+                fig.savefig(folder / "vvhplvpl_proline_ramachandran.png", dpi=180)
+                plt.close(fig)
+
     state_dir = Path(root) / "project_summary/shared_states"
     pop_path = state_dir / "replicate_populations.parquet"
     if not pop_path.exists():
