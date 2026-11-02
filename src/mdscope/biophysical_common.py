@@ -7,6 +7,7 @@ from .core.atom_selection import select_heavy_atoms
 
 AA = {"ALA":"A","ARG":"R","ASN":"N","ASP":"D","CYS":"C","GLU":"E",
 "GLN":"Q","GLY":"G","HIS":"H","ILE":"I","LEU":"L","LYS":"K","MET":"M",
+"HSD":"H","HSE":"H","HSP":"H","HID":"H","HIE":"H","HIP":"H",
 "PHE":"F","PRO":"P","SER":"S","THR":"T","TRP":"W","TYR":"Y","VAL":"V"}
 
 def box_of(u):
