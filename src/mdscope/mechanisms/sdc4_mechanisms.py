@@ -19,7 +19,7 @@ import time
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-from MDAnalysis.lib.distances import capped_distance, minimize_vectors, calc_dihedrals
+from MDAnalysis.lib.distances import capped_distance, minimize_vectors, calc_dihedrals, distance_array
 
 from ..config import DEFAULTS, atomic_json, atomic_parquet, ensure_dir, time_ps
 from ..core.lipid_geometry import anchor_groups, aligned_leaflets, periodic_center
@@ -252,6 +252,15 @@ class SDC4Mechanisms:
                     self.lipid_molecule_by_atom[int(index)] = identifier
             if not self.lipid_molecule_by_atom:
                 raise ValueError("No lipid molecules identified for motif residence")
+        # Chemically defined moieties are explicit MDAnalysis selections.
+        # Atom names alone do not reliably distinguish ceramide polar heads
+        # and hydrocarbon tails across different force fields.
+        self.lipid_moiety_membership = {}
+        for label, selection in (s.get("lipid_moiety_selections") or {}).items():
+            if label not in ("glycan", "ceramide_head", "ceramide_tail"):
+                raise ValueError(f"Unknown lipid moiety {label}")
+            atoms = selected(universe, selection, required=True)
+            self.lipid_moiety_membership[label] = set(map(int, atoms.indices))
         self.lipid_anchor_index_by_molecule = {}
         if self.motif_lipid_residence_enabled:
             anchor_index_by_residue = {
@@ -588,12 +597,14 @@ class SDC4Mechanisms:
                     species = self.lipid_molecule_species[molecule]
                     leaflet = "upper" if leaf[anchor] else "lower"
                     observed.setdefault((species, leaflet, "any"), set()).add(molecule)
-                    if species in ("GM1a", "BGAL"):
-                        # Glycan versus whole ceramide residue. 'Ceramide'
-                        # includes its polar atoms: it is NOT a tail-only call.
-                        moiety = ("ceramide" if lipid_atom.resname == "CER160"
-                                  else "glycan")
-                        observed.setdefault((species, leaflet, moiety), set()).add(molecule)
+                    if species in ("GM1a", "BGAL", "CER160"):
+                        if species in ("GM1a", "BGAL") and lipid_atom.resname != "CER160":
+                            observed.setdefault((species, leaflet, "glycan"), set()).add(molecule)
+                        elif lipid_atom.resname == "CER160":
+                            observed.setdefault((species, leaflet, "ceramide"), set()).add(molecule)
+                        for label, member_indices in self.lipid_moiety_membership.items():
+                            if int(lipid_atom.index) in member_indices:
+                                observed.setdefault((species, leaflet, label), set()).add(molecule)
                 # Reuse the existing censored-episode reducer for TM/motif
                 # molecule contacts, without building dense per-lipid arrays.
                 residence_molecules = set().union(*(
@@ -607,9 +618,10 @@ class SDC4Mechanisms:
                         "species": self.lipid_molecule_species[molecule],
                     })
                 for (species, leaflet), denominator in availability.items():
-                    moieties = ("any", "glycan", "ceramide") if species in (
-                        "GM1a", "BGAL"
-                    ) else ("any",)
+                    moieties = (("any", "glycan", "ceramide")
+                               if species in ("GM1a", "BGAL") else
+                               ("any", "ceramide") if species == "CER160" else ("any",))
+                    moieties += tuple(self.lipid_moiety_membership)
                     for moiety in moieties:
                         count = len(observed.get((species, leaflet, moiety), ()))
                         self.rows["lipid_specificity"].append({
