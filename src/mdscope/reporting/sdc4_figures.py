@@ -17,6 +17,50 @@ def plot_sdc4_mechanisms(cfg, root, system_repouts):
 
     for system, paths in system_repouts.items():
         for repout in paths:
+            specificity_file = (Path(repout) / "extensions/sdc4_mechanisms"
+                                / "lipid_region_specificity.parquet")
+            if specificity_file.exists():
+                contacts = pd.read_parquet(specificity_file)
+                contacts = contacts.loc[contacts.moiety.eq("any")]
+                if not contacts.empty:
+                    summary = contacts.groupby(
+                        ["region", "species", "leaflet"], as_index=False
+                    ).agg(
+                        mean_contact_fraction=("contact_fraction", "mean"),
+                        mean_local_enrichment=("local_composition_enrichment", "mean"),
+                        n_frames_with_species=("contact_fraction", "count"),
+                    )
+                    summary.to_csv(
+                        specificity_file.with_name("lipid_region_replicate_summary.csv"),
+                        index=False,
+                    )
+                    for metric, ylabel in (
+                        ("mean_contact_fraction", "Fraction of available molecules contacting"),
+                        ("mean_local_enrichment", "Contact share / local composition share"),
+                    ):
+                        fig, ax = plt.subplots(figsize=(max(7, len(summary.region.unique()) * 1.3), 4))
+                        for i, (species, leaflet) in enumerate(
+                            summary[["species", "leaflet"]].drop_duplicates().itertuples(index=False, name=None)
+                        ):
+                            group = summary.loc[
+                                summary.species.eq(species) & summary.leaflet.eq(leaflet)
+                            ]
+                            ax.scatter(
+                                group.region, group[metric],
+                                marker=["o", "s", "^", "D", "v"][i % 5],
+                                label=f"{species} ({leaflet})", s=25,
+                            )
+                        if metric == "mean_local_enrichment":
+                            ax.axhline(1., linestyle="--", color="black", alpha=.4)
+                        ax.set_ylabel(ylabel)
+                        ax.tick_params(axis="x", rotation=65)
+                        ax.legend(fontsize="x-small", ncol=2)
+                        fig.tight_layout()
+                        fig.savefig(
+                            specificity_file.with_name(f"lipid_region_{metric}.png"),
+                            dpi=180,
+                        )
+                        plt.close(fig)
             path = Path(repout) / "extensions/sdc4_mechanisms/lipid_density_maps.npz"
             if not path.exists():
                 continue

@@ -345,6 +345,17 @@ def test_shared_states_exports_replica_conditioned_nxip(tmp_path):
                 "sdc4_hs_A1_membrane_contact_state": np.zeros(20, dtype=int),
                 "sdc4_hs_A1_hydration_water_per_heavy_atom": np.ones(20),
             }).to_parquet(dest / "timeseries.parquet", index=False)
+            pd.DataFrame({
+                "time_ps": np.arange(20) * 10.,
+                "region": ["TM_A"] * 20,
+                "species": ["GM1a" if sys == "with" else "CER160"] * 20,
+                "leaflet": ["upper"] * 20,
+                "moiety": ["any"] * 20,
+                "contact_fraction": np.full(20, 0.25 * r),
+                "composition_enrichment": np.full(20, 1.5 * r),
+                "local_composition_enrichment": np.full(20, float(r)),
+                "available_molecules": np.full(20, 4),
+            }).to_parquet(dest / "lipid_region_specificity.parquet", index=False)
             paths[sys].append(folder)
     output = fit_shared_states(cfg, tmp_path, paths)
     cond = pd.read_parquet(output / "state_conditioned_nxip.parquet")
@@ -355,3 +366,81 @@ def test_shared_states_exports_replica_conditioned_nxip(tmp_path):
     assert len(comp) == 2
     assert (comp["n_replicates_0"] == 2).all()
     assert set(comp["inference"]) == {"exploratory; no multiplicity-adjusted test"}
+    lipid_rep = pd.read_parquet(output / "lipid_specificity_replicate_statistics.parquet")
+    assert len(lipid_rep) == 4
+    assert set(lipid_rep.species) == {"GM1a", "CER160"}
+    sys_stats = pd.read_parquet(output / "lipid_specificity_system_statistics.parquet")
+    row = sys_stats.loc[
+        sys_stats.system.eq("with")
+        & sys_stats.species.eq("GM1a")
+        & sys_stats.measure.eq("mean_contact_fraction")
+    ].iloc[0]
+    assert row.n_replicates == 2
+    assert row.replicate_mean == pytest.approx(.375)
+    assert row.replicate_bootstrap_ci_low >= .25
+    assert row.replicate_bootstrap_ci_high <= .5
+
+
+
+def test_intermittent_lipid_residence_gap_and_censoring():
+    from mdscope.mechanisms.motif_residence import (
+        summarize_lipid_residence, summarize_intermittent_residence
+    )
+    times = np.array([0., 10., 20., 30., 40., 50.])
+    events = pd.DataFrame({
+        "time_ps": [0., 10., 30., 40., 50.],
+        "motif": ["region_TM_A"] * 5,
+        "molecule_id": [42] * 5,
+        "species": ["GM1a"] * 5,
+    })
+    continuous = summarize_lipid_residence(events, times)
+    intermittent = summarize_intermittent_residence(events, times)
+    assert continuous.duration_ps.tolist() == [20., 30.]
+    assert intermittent.duration_ps.tolist() == [60.]
+    assert intermittent.n_frames.tolist() == [5]
+    assert intermittent.left_censored.tolist() == [True]
+    assert intermittent.right_censored.tolist() == [True]
+    assert intermittent.occupancy_fraction.iloc[0] == pytest.approx(5 / 6)
+    assert len(summarize_intermittent_residence(events, times, gap_frames=0)) == 2
+    with pytest.raises(ValueError, match="gap_frames"):
+        summarize_intermittent_residence(events, times, gap_frames=-1)
+
+
+def test_intermittent_residence_no_assumed_uniform_sampling():
+    from mdscope.mechanisms.motif_residence import summarize_intermittent_residence
+    times = np.array([0., 4., 10., 25., 30.])
+    events = pd.DataFrame({
+        "time_ps": [0., 10., 25.],
+        "motif": ["region_TM_B"] * 3,
+        "molecule_id": [17] * 3,
+        "species": ["BGAL"] * 3,
+    })
+    result = summarize_intermittent_residence(events, times)
+    assert result.n_frames.tolist() == [3]
+    assert result.duration_ps.tolist() == [30.]
+    assert result.right_censored.tolist() == [False]
+
+
+def test_lipid_composition_enrichment_independent_toy_denominators():
+    from mdscope.mechanisms.sdc4_mechanisms import _composition_enrichment
+    # 1 GM1 out of 2 contacts, against 1 GM1 in 10 available lipids:
+    # 0.5 / 0.1 == 5.0 enrichment. Other lipid: 0.5 / 0.9.
+    table = pd.DataFrame({
+        "time_ps": [0., 0., 0., 10., 10.],
+        "region": ["TM_A"] * 5,
+        "leaflet": ["upper"] * 5,
+        "species": ["GM1a", "POPC", "GM1a", "GM1a", "POPC"],
+        "moiety": ["any", "any", "glycan", "any", "any"],
+        "contacted_molecules": [1, 1, 1, 0, 0],
+        "available_molecules": [1, 9, 1, 0, 10],
+        "locally_available_molecules": [1, 3, 1, 0, 4],
+    })
+    global_result = _composition_enrichment(table, "available_molecules")
+    local_result = _composition_enrichment(table, "locally_available_molecules")
+    assert global_result[0] == pytest.approx(5.0)
+    assert global_result[1] == pytest.approx(5 / 9)
+    assert np.isnan(global_result[2])
+    assert local_result[0] == pytest.approx(2.)
+    assert local_result[1] == pytest.approx(2 / 3)
+    assert np.isnan(global_result[3]) and np.isnan(global_result[4])
+    assert np.isnan(local_result[3]) and np.isnan(local_result[4])

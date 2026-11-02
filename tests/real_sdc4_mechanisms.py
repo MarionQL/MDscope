@@ -156,6 +156,16 @@ def run():
             "time": {"dt_ps": None, "origin_ps": 0.},
         }
         out = ROOT / "sdc4_mechanisms_smoke" / system
+        # Inspect force-field-specific CER160 chemistry before choosing
+        # tail versus polar-head selections; avoid name-prefix guesses.
+        ceramide = u.select_atoms("resname CER160")
+        if len(ceramide):
+            first_ceramide = ceramide.residues[0]
+            print(
+                f"REAL CER160 ATOM NAMES {system}: "
+                f"{first_ceramide.atoms.names.tolist()}",
+                flush=True,
+            )
         observer = SDC4Mechanisms(u, cfg, out)
         observer.prune_from(0)
         def independent_residue_pairs(left, right, cutoff=5.0):
@@ -191,6 +201,14 @@ def run():
         events_path = out / "extensions/sdc4_mechanisms/motif_lipid_contact_events.parquet"
         residence_path = out / "extensions/sdc4_mechanisms/motif_lipid_residence.parquet"
         assert events_path.exists() and residence_path.exists()
+        intermittent_path = (
+            out / "extensions/sdc4_mechanisms/motif_lipid_residence_intermittent.parquet"
+        )
+        assert intermittent_path.exists()
+        intermittent = pd.read_parquet(intermittent_path)
+        assert set(COLUMNS).issubset(intermittent.columns)
+        assert (intermittent["n_frames"] > 0).all()
+
         assert set(COLUMNS).issubset(pd.read_parquet(residence_path).columns)
         residence_audit = json.loads(
             (out / "extensions/sdc4_mechanisms/selection_audit.json").read_text()
@@ -205,6 +223,36 @@ def run():
         contact_events = pd.read_parquet(events_path)
         assert set(contact_events["species"]).issubset(molecule_counts)
 
+
+        specificity = pd.read_parquet(
+            out / "extensions/sdc4_mechanisms/lipid_region_specificity.parquet"
+        )
+        assert not specificity.empty
+        assert {"GM1a", "BGAL"}.issubset(
+            set(specificity.species)
+        ) if system == "carb_sdc4" else "CER160" in set(specificity.species)
+        assert (specificity.contacted_molecules <=
+                specificity.available_molecules).all()
+        available = specificity.available_molecules > 0
+        assert specificity.loc[~available, "contact_fraction"].isna().all()
+        assert specificity.loc[available, "contact_fraction"].between(0, 1).all()
+        assert len(specificity.time_ps.unique()) == 4
+        assert {"locally_available_molecules", "min_contact_distance_A",
+                "local_composition_enrichment"}.issubset(specificity.columns)
+        assert (specificity["locally_available_molecules"] >= 0).all()
+        assert (specificity["min_contact_distance_A"].dropna() <= 5.0 + 1e-5).all()
+        zero_local = specificity.loc[
+            specificity["moiety"].eq("any")
+            & specificity["locally_available_molecules"].eq(0)
+        ]
+        assert zero_local["local_composition_enrichment"].isna().all()
+        assert "composition_enrichment" in specificity
+        absent = specificity.available_molecules.eq(0)
+        assert specificity.loc[absent, "composition_enrichment"].isna().all()
+        assert (specificity["moiety"] == "any").any()
+        assert set(specificity.loc[specificity.species.eq("GM1a"), "moiety"]) == (
+            {"any", "glycan", "ceramide"} if system == "carb_sdc4" else set()
+        )
 
         assert any(col.endswith("_P4_phi_deg") for col in df.columns)
         assert any(col.endswith("_P7_psi_deg") for col in df.columns)

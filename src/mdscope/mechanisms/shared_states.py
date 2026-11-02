@@ -98,6 +98,7 @@ def fit_shared_states(cfg, root, system_repouts):
         raise ValueError("shared_states requires n_states>=2, bootstrap_draws>=20 and training_frames_per_replicate>=n_states")
     rng = np.random.default_rng(seed)
     replicates = {}
+    repout_paths = {}
     training = []
     for system, paths in system_repouts.items():
         for repout in paths:
@@ -120,6 +121,7 @@ def fit_shared_states(cfg, root, system_repouts):
             clean = data.loc[good].reset_index(drop=True)
             key = (system, Path(repout).name)
             replicates[key] = clean
+            repout_paths[key] = Path(repout)
             x = X[good]
             # Evenly spaced, equal-count training points per replicate.
             indices = np.linspace(0, len(x)-1, min(len(x), train_n)).astype(int)
@@ -150,6 +152,8 @@ def fit_shared_states(cfg, root, system_repouts):
     atomic_parquet(out / "state_centroids.parquet", centroids)
     assignments, populations, diagnostics, conditioned = [], [], [], []
     rep_fraction = defaultdict(list)
+    lipid_state_rows = []
+    lipid_replica_rows = []
     nxip_conditioned = []
     for (system, replicate), df in replicates.items():
         x = df[features].to_numpy(float)
@@ -219,6 +223,45 @@ def fit_shared_states(cfg, root, system_repouts):
                         "within_replicate_difference": (
                             float(values[mask].mean() - values[other].mean())
                             if mask.any() and other.any() else np.nan
+                        ),
+                    })
+        # A frame-aligned downstream outcome; lipid contacts do not enter
+        # geometric state training or assignments.
+        lipid_path = repout_paths[(system, replicate)] / "extensions/sdc4_mechanisms/lipid_region_specificity.parquet"
+        if lipid_path.is_file():
+            lipid_data = pd.read_parquet(lipid_path)
+            if not lipid_data.empty:
+                merged = lipid_data.merge(
+                    pd.DataFrame({"time_ps": times, "state": labels}),
+                    on="time_ps", how="inner", validate="many_to_one",
+                )
+                summary = lipid_data.loc[lipid_data.moiety.eq("any")].groupby(
+                    ["region", "species", "leaflet"], sort=True
+                )
+                for (region, species, leaflet), item in summary:
+                    lipid_replica_rows.append({
+                        "system": system, "replicate": replicate,
+                        "region": region, "species": species, "leaflet": leaflet,
+                        "frames_available": int(item.contact_fraction.notna().sum()),
+                        "mean_contact_fraction": float(item.contact_fraction.mean()),
+                        "mean_composition_enrichment": float(item.composition_enrichment.mean()),
+                        "mean_local_enrichment": float(item.local_composition_enrichment.mean()),
+                    })
+                for keys, subgroup in merged.groupby(
+                    ["region", "species", "leaflet", "moiety", "state"],
+                    sort=True,
+                ):
+                    valid = subgroup[subgroup["available_molecules"] > 0]
+                    lipid_state_rows.append({
+                        "system": system, "replicate": replicate,
+                        "region": keys[0], "species": keys[1],
+                        "leaflet": keys[2], "moiety": keys[3],
+                        "state": int(keys[4]),
+                        "frames_in_state": int(len(subgroup)),
+                        "frames_with_species": int(len(valid)),
+                        "mean_contact_fraction": (
+                            float(valid["contact_fraction"].mean())
+                            if len(valid) else np.nan
                         ),
                     })
         hs_names = sorted({
@@ -295,6 +338,50 @@ def fit_shared_states(cfg, root, system_repouts):
                        "difference_system1_minus_system0",
                        "replicate_bootstrap_ci_low", "replicate_bootstrap_ci_high",
                        "inference",
+                   ]))
+    atomic_parquet(
+        out / "state_conditioned_lipid_specificity.parquet",
+        pd.DataFrame(lipid_state_rows, columns=[
+            "system", "replicate", "region", "species", "leaflet", "moiety",
+            "state", "frames_in_state", "frames_with_species",
+            "mean_contact_fraction",
+        ]),
+    )
+    lipid_replica_df = pd.DataFrame(lipid_replica_rows, columns=[
+        "system", "replicate", "region", "species", "leaflet",
+        "frames_available", "mean_contact_fraction",
+        "mean_composition_enrichment", "mean_local_enrichment",
+    ])
+    atomic_parquet(out / "lipid_specificity_replicate_statistics.parquet",
+                   lipid_replica_df)
+    # Equally weight independent trajectories, never individual frames.
+    aggregate = []
+    for (system, region, species, leaflet), subset in lipid_replica_df.groupby(
+        ["system", "region", "species", "leaflet"], sort=True
+    ):
+        for measure in ("mean_contact_fraction", "mean_composition_enrichment",
+                        "mean_local_enrichment"):
+            vals = subset[measure].dropna().to_numpy(float)
+            if not len(vals):
+                continue
+            lo, hi = (np.nan, np.nan)
+            if len(vals) >= 2:
+                sample = rng.integers(0, len(vals), size=(draws, len(vals)))
+                lo, hi = np.quantile(vals[sample].mean(axis=1), [.025, .975])
+            aggregate.append({
+                "system": system, "region": region, "species": species,
+                "leaflet": leaflet, "measure": measure,
+                "n_replicates": len(vals),
+                "replicate_mean": float(vals.mean()),
+                "replicate_sd": float(vals.std(ddof=1)) if len(vals) > 1 else np.nan,
+                "replicate_bootstrap_ci_low": float(lo),
+                "replicate_bootstrap_ci_high": float(hi),
+            })
+    atomic_parquet(out / "lipid_specificity_system_statistics.parquet",
+                   pd.DataFrame(aggregate, columns=[
+                       "system", "region", "species", "leaflet", "measure",
+                       "n_replicates", "replicate_mean", "replicate_sd",
+                       "replicate_bootstrap_ci_low", "replicate_bootstrap_ci_high",
                    ]))
     atomic_parquet(out / "frame_assignments.parquet", pd.concat(assignments, ignore_index=True))
     atomic_parquet(out / "replicate_populations.parquet", pd.DataFrame(populations))
