@@ -576,31 +576,39 @@ class SDC4Mechanisms:
                     ))
             for region, atoms in regions.items():
                 hits = _contacts(atoms, self.lipid_contact, self.contact_A, box)
-                contacted = set()
-                for j in hits[:, 1]:
-                    molecule = self.lipid_molecule_by_atom.get(
-                        int(self.lipid_contact.indices[j])
-                    )
-                    if molecule is not None:
-                        contacted.add(molecule)
                 observed = {}
-                for molecule in contacted:
+                for j in hits[:, 1]:
+                    lipid_atom = self.lipid_contact[int(j)]
+                    molecule = self.lipid_molecule_by_atom.get(int(lipid_atom.index))
+                    if molecule is None:
+                        continue
                     anchor = self.lipid_anchor_index_by_molecule.get(molecule)
                     if anchor is None:
                         continue
-                    key = (self.lipid_molecule_species[molecule],
-                           "upper" if leaf[anchor] else "lower")
-                    observed[key] = observed.get(key, 0) + 1
+                    species = self.lipid_molecule_species[molecule]
+                    leaflet = "upper" if leaf[anchor] else "lower"
+                    observed.setdefault((species, leaflet, "any"), set()).add(molecule)
+                    if species in ("GM1a", "BGAL"):
+                        # Glycan versus whole ceramide residue. 'Ceramide'
+                        # includes its polar atoms: it is NOT a tail-only call.
+                        moiety = ("ceramide" if lipid_atom.resname == "CER160"
+                                  else "glycan")
+                        observed.setdefault((species, leaflet, moiety), set()).add(molecule)
                 for (species, leaflet), denominator in availability.items():
-                    count = observed.get((species, leaflet), 0)
-                    self.rows["lipid_specificity"].append({
-                        "time_ps": t, "region": region, "species": species,
-                        "leaflet": leaflet, "contacted_molecules": count,
-                        "available_molecules": denominator,
-                        "contact_fraction": (
-                            count / denominator if denominator else np.nan
-                        ),
-                    })
+                    moieties = ("any", "glycan", "ceramide") if species in (
+                        "GM1a", "BGAL"
+                    ) else ("any",)
+                    for moiety in moieties:
+                        count = len(observed.get((species, leaflet, moiety), ()))
+                        self.rows["lipid_specificity"].append({
+                            "time_ps": t, "region": region, "species": species,
+                            "leaflet": leaflet, "moiety": moiety,
+                            "contacted_molecules": count,
+                            "available_molecules": denominator,
+                            "contact_fraction": (
+                                count / denominator if denominator else np.nan
+                            ),
+                        })
         for name, ag in self.hs.items():
             attachment = _center(self.attach[name], box)
             distal = _center(self.hs_distal[name], box)
@@ -649,7 +657,7 @@ class SDC4Mechanisms:
             atomic_parquet(
                 self.cache / f"specificity-{part:06d}.parquet",
                 pd.DataFrame(self.rows["lipid_specificity"], columns=[
-                    "time_ps", "region", "species", "leaflet",
+                    "time_ps", "region", "species", "leaflet", "moiety",
                     "contacted_molecules", "available_molecules",
                     "contact_fraction",
                 ]),
