@@ -287,8 +287,18 @@ def run():
         absent = specificity.available_molecules.eq(0)
         assert specificity.loc[absent, "composition_enrichment"].isna().all()
         assert (specificity["moiety"] == "any").any()
+        chemistry = {"ceramide_head", "ceramide_tail"}
         assert set(specificity.loc[specificity.species.eq("GM1a"), "moiety"]) == (
-            {"any", "glycan", "ceramide"} if system == "carb_sdc4" else set()
+            {"any", "glycan", "ceramide"} | chemistry
+            if system == "carb_sdc4" else set()
+        )
+        assert set(specificity.loc[specificity.species.eq("BGAL"), "moiety"]) == (
+            {"any", "glycan", "ceramide"} | chemistry
+            if system == "carb_sdc4" else set()
+        )
+        assert set(specificity.loc[specificity.species.eq("CER160"), "moiety"]) == (
+            {"any", "ceramide"} | chemistry
+            if system == "nocarb_sdc4" else set()
         )
 
         assert any(col.endswith("_P4_phi_deg") for col in df.columns)
