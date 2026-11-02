@@ -47,11 +47,11 @@ def run():
         assert len(species) >= 3, species
         tm = {
             "A": "protein and chainID PROA and resid 146:170 and name CA",
-            "B": "protein and chainID PROB and resid 344:368 and name CA",
+            "B": "protein and chainID PROB and resid 415:439 and name CA",
         }
         ecto = {
             "A": "protein and chainID PROA and resid 1:145 and name CA",
-            "B": "protein and chainID PROB and resid 270:343 and name CA",
+            "B": "protein and chainID PROB and resid 270:414 and name CA",
         }
         for selection in list(tm.values()) + list(ecto.values()):
             assert len(u.select_atoms(selection)) >= 4, (
