@@ -227,6 +227,15 @@ def run():
         assert specificity.loc[~available, "contact_fraction"].isna().all()
         assert specificity.loc[available, "contact_fraction"].between(0, 1).all()
         assert len(specificity.time_ps.unique()) == 4
+        assert {"locally_available_molecules", "min_contact_distance_A",
+                "local_composition_enrichment"}.issubset(specificity.columns)
+        assert (specificity["locally_available_molecules"] >= 0).all()
+        assert (specificity["min_contact_distance_A"].dropna() <= 5.0 + 1e-5).all()
+        zero_local = specificity.loc[
+            specificity["moiety"].eq("any")
+            & specificity["locally_available_molecules"].eq(0)
+        ]
+        assert zero_local["local_composition_enrichment"].isna().all()
         assert "composition_enrichment" in specificity
         absent = specificity.available_molecules.eq(0)
         assert specificity.loc[absent, "composition_enrichment"].isna().all()
