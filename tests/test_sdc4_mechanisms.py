@@ -392,6 +392,12 @@ def test_shared_states_exports_replica_conditioned_nxip(tmp_path):
         output / "nxip_state_exposure_threshold_sensitivity.parquet"
     )
     assert set(exposure.threshold) == {.25, .5, .75}
+    null = pd.read_parquet(output / "nxip_state_circular_shift_null.parquet")
+    assert len(null) == 8
+    assert (null.n_shifts == 19).all()
+    assert null.observed_difference.notna().all()
+    assert (null.shift_null_ci_low <= null.shift_null_ci_high).all()
+
     assert exposure["exposed_fraction_given_state"].between(0, 1).all()
     mid = exposure[exposure.threshold.eq(.5)]
     assert set(mid["exposed_fraction_given_state"]) == {0., 1.}
