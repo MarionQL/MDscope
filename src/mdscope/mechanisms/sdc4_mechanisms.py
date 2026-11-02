@@ -19,7 +19,7 @@ import time
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-from MDAnalysis.lib.distances import capped_distance, minimize_vectors, calc_dihedrals, distance_array
+from MDAnalysis.lib.distances import capped_distance, minimize_vectors, calc_dihedrals
 
 from ..config import DEFAULTS, atomic_json, atomic_parquet, ensure_dir, time_ps
 from ..core.lipid_geometry import anchor_groups, aligned_leaflets, periodic_center
@@ -807,6 +807,31 @@ class SDC4Mechanisms:
             specificity = pd.concat(
                 (pd.read_parquet(p) for p in pieces), ignore_index=True
             ) if pieces else pd.DataFrame()
+            if not specificity.empty:
+                any_mask = specificity["moiety"].eq("any")
+                local_pool = specificity.loc[any_mask].groupby(
+                    ["time_ps", "region", "leaflet"], sort=False
+                )[["contacted_molecules", "locally_available_molecules"]].transform("sum")
+                shares = np.divide(
+                    specificity.loc[any_mask, "contacted_molecules"].to_numpy(float),
+                    local_pool["contacted_molecules"].to_numpy(float),
+                    out=np.full(int(any_mask.sum()), np.nan),
+                    where=local_pool["contacted_molecules"].to_numpy(float) > 0,
+                )
+                local_shares = np.divide(
+                    specificity.loc[any_mask, "locally_available_molecules"].to_numpy(float),
+                    local_pool["locally_available_molecules"].to_numpy(float),
+                    out=np.full(int(any_mask.sum()), np.nan),
+                    where=local_pool["locally_available_molecules"].to_numpy(float) > 0,
+                )
+                specificity["local_composition_enrichment"] = np.nan
+                specificity.loc[any_mask, "local_composition_enrichment"] = np.divide(
+                    shares, local_shares,
+                    out=np.full(len(shares), np.nan),
+                    where=np.isfinite(local_shares) & (local_shares > 0),
+                )
+            else:
+                specificity["local_composition_enrichment"] = pd.Series(dtype=float)
             if not specificity.empty:
                 any_contact = specificity["moiety"].eq("any")
                 pools = specificity.loc[any_contact].groupby(
