@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ..config import atomic_parquet, ensure_dir
+from ..config import statistics_family_config, atomic_parquet, ensure_dir
 from ..interactions import interaction_key_columns, interaction_tables, sample_dt
 from ..observables.membrane_order import temporal_membrane_order_profiles
 from ..observables.density_1d import temporal_density_profiles
@@ -72,6 +72,9 @@ def collect_time_series(repout: Path) -> dict[tuple[str | None, str], pd.DataFra
 
 
 def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]) -> None:
+    cfg = statistics_family_config(cfg, "time_series")
+    if cfg is None:
+        return
     if not cfg.get("statistics", {}).get("enabled", True):
         return
     stats = cfg["statistics"]
@@ -87,6 +90,10 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
                 values = pd.to_numeric(table["value"], errors="coerce").to_numpy(float)
                 times = pd.to_numeric(table["time_ps"], errors="coerce").to_numpy(float)
                 valid = np.isfinite(values) & np.isfinite(times)
+                intervals = np.diff(times)
+                temporal_valid = bool(valid.all() and len(intervals) > 0
+                    and np.all(intervals > 0)
+                    and np.allclose(intervals, intervals[0], rtol=1e-5, atol=1e-8))
                 values = values[valid]
                 times = times[valid]
                 if not len(values):
@@ -98,19 +105,23 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
                     draws,
                     rng,
                     "mean"
-                )
+                ) if temporal_valid else np.full(draws, np.nan)
                 med_boot = _block_bootstrap(
                     values,
                     meta["block_length_frames"],
                     draws,
                     rng,
                     "median"
-                )
+                ) if temporal_valid else np.full(draws, np.nan)
+                if not temporal_valid:
+                    meta.update(acf=np.array([]), tau_int_frames=np.nan,
+                                tau_int_ps=np.nan, effective_n=np.nan)
                 mlo, mhi = _ci(mean_boot, level)
                 dlo, dhi = _ci(med_boot, level)
                 row = {
                     "system": system,
                     "replicate": repout.name,
+                    "temporal_sampling_status": "regular_complete" if temporal_valid else "unavailable_gapped_or_irregular",
                     "group": group,
                     "metric": metric,
                     **_describe(values),
@@ -127,7 +138,8 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
                 local_rows.append(row)
                 cache[(system, repout.name, group, metric)] = {
                     "mean": mean_boot,
-                    "median": med_boot
+                    "median": med_boot,
+                    "temporal_valid": temporal_valid
                 }
                 for lag, value in enumerate(meta["acf"]):
                     a = {
@@ -162,15 +174,17 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
         gid = None if pd.isna(group) else str(group)
         rows = sub.to_dict("records")
         keys = [(system, r["replicate"], gid, metric) for r in rows]
-        mean_boot = _hierarchical([cache[k]["mean"] for k in keys], draws, rng, "mean", resample)
+        temporal_valid = all(cache[k]["temporal_valid"] for k in keys)
+        mean_boot = (_hierarchical([cache[k]["mean"] for k in keys], draws, rng, "mean", resample)
+                     if temporal_valid else np.full(draws, np.nan))
         med_boot = _hierarchical(
             [cache[k]["median"] for k in keys],
             draws,
             rng,
             "median",
             resample
-        )
-        sys_boot[(system, gid, metric)] = {"mean": mean_boot, "median": med_boot}
+        ) if temporal_valid else np.full(draws, np.nan)
+        sys_boot[(system, gid, metric)] = {"mean": mean_boot, "median": med_boot, "temporal_valid": temporal_valid}
         mlo, mhi = _ci(mean_boot, level)
         dlo, dhi = _ci(med_boot, level)
         sys_rows.append({
@@ -178,6 +192,7 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
             "group": gid,
             "metric": metric,
             "n_replicates": len(sub),
+            "temporal_sampling_status": "regular_complete" if temporal_valid else "unavailable_gapped_or_irregular",
             "mean": float(sub["mean"].mean()),
                          "median": float(sub["median"].median()), "mean_ci_low": mlo,
                          "mean_ci_high": mhi,
@@ -218,7 +233,14 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
                 stats.get("hypothesis_tests", {}).get("design", "independent")
                 == "paired"
             )
-            if paired:
+            regular = (sys_boot[(s1, gid, metric)]["temporal_valid"]
+                       and sys_boot[(s2, gid, metric)]["temporal_valid"])
+            if not regular:
+                # A paired nan-reducer would silently omit invalid replicas.
+                # Neither design supports temporal intervals after that loss.
+                dmean = np.full(draws, np.nan)
+                dmed = np.full(draws, np.nan)
+            elif paired:
                 mean_draws_a = {
                     rep_id: cache[(s1, rep_id, gid, metric)]["mean"]
                     for rep_id in amap
@@ -264,13 +286,22 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
             dlo, dhi = _ci(dmed, level)
             pgt, plt = _direction(dmean)
             dpgt, dplt = _direction(dmed)
+            if regular:
+                mean_difference, median_difference = float(np.mean(dmean)), float(np.median(dmed))
+            elif paired:
+                labels = sorted(set(amap) & set(bmap))
+                mean_difference = float(np.mean([bmap[k]-amap[k] for k in labels]))
+                median_difference = float(np.median([bmed[k]-amed[k] for k in labels]))
+            else:
+                mean_difference = float(np.mean(list(bmap.values())) - np.mean(list(amap.values())))
+                median_difference = float(np.median(list(bmed.values())) - np.median(list(amed.values())))
             comps.append({"system_1": s1, "system_2": s2, "group": gid, "metric": metric,
-                          "mean_difference_system2_minus_system1": float(np.mean(dmean)),
+                          "mean_difference_system2_minus_system1": mean_difference,
                           "mean_difference_ci_low": mlo, "mean_difference_ci_high": mhi,
                           "mean_probability_difference_gt_0": pgt,
                           "mean_probability_difference_lt_0": plt,
                           "mean_p_value": _permutation(amap, bmap, cfg, rng),
-                          "median_difference_system2_minus_system1": float(np.median(dmed)),
+                          "median_difference_system2_minus_system1": median_difference,
                           "median_difference_ci_low": dlo, "median_difference_ci_high": dhi,
                           "median_probability_difference_gt_0": dpgt,
                           "median_probability_difference_lt_0": dplt,
@@ -278,9 +309,14 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
                           "bootstrap_draws": draws, "ci_level": level})
     comp = pd.DataFrame(comps)
     if not comp.empty:
+        family_columns = ["system_1", "system_2"]
+        if stats.get("hypothesis_families"):
+            membership = {metric: name for name, metrics in stats["hypothesis_families"].items() for metric in metrics}
+            comp["hypothesis_family"] = comp.metric.map(membership).fillna("exploratory")
+            family_columns.append("hypothesis_family")
         if stats.get("hypothesis_tests", {}).get("multiple_testing", "fdr_bh") == "fdr_bh":
-            comp = _fdr(comp, "mean_p_value", "mean_q_value", ["system_1", "system_2"])
-            comp = _fdr(comp, "median_p_value", "median_q_value", ["system_1", "system_2"])
+            comp = _fdr(comp, "mean_p_value", "mean_q_value", family_columns)
+            comp = _fdr(comp, "median_p_value", "median_q_value", family_columns)
         atomic_parquet(outdir / "system_comparisons.parquet", comp)
 
 

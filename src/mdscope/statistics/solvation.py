@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ..config import atomic_parquet, ensure_dir
+from ..config import statistics_family_config, atomic_parquet, ensure_dir
 
 
 RDF_KEYS = ["solvent", "target_class", "site_class", "r_inner_A", "r_outer_A"]
@@ -20,6 +20,9 @@ def analyze_solvation_rdfs(cfg, root, system_repouts):
     independent-bin p-value. Solvation scalar block bootstrapping is handled
     by the pre-existing analyze_time_series workflow.
     """
+    cfg = statistics_family_config(cfg, "solvation_rdfs")
+    if cfg is None:
+        return
     if not cfg.get("statistics", {}).get("enabled", True):
         return
     frames = []

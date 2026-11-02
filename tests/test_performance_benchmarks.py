@@ -1,4 +1,7 @@
 """Numerically checked microbenchmarks; timings are reported, not flaky pass gates."""
+import pytest
+pytestmark = pytest.mark.benchmark
+
 from time import perf_counter
 
 import MDAnalysis as mda
@@ -61,3 +64,4 @@ def test_local_normals_large_sparse_neighbor_smoke():
         f"BENCHMARK local_normals n={n} radius=15A time={seconds:.6f}s",
         flush=True,
     )
+
