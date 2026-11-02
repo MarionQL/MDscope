@@ -584,9 +584,27 @@ class SDC4Mechanisms:
                         (self.species == species) & mask
                     ))
             for region, atoms in regions.items():
-                hits = _contacts(atoms, self.lipid_contact, self.contact_A, box)
+                hits, hit_distances = capped_distance(
+                    atoms.positions, self.lipid_contact.positions,
+                    max_cutoff=self.contact_A, box=box, return_distances=True
+                )
                 observed = {}
-                for j in hits[:, 1]:
+                minima = {}
+                # Local composition is measured using available anchor molecules
+                # in a fixed xy disk, rather than the whole membrane leaflet.
+                # This is NOT an accessible-area correction.
+                local_xy = minimize_vectors(
+                    anchors - _center(atoms, box), box
+                )[:, :2]
+                inside = np.einsum("ij,ij->i", local_xy, local_xy) <= self.local_A**2
+                local_availability = {
+                    (species, leaflet): int(np.count_nonzero(
+                        (self.species == species) & inside
+                        & (leaf if leaflet == "upper" else ~leaf)
+                    ))
+                    for species, leaflet in availability
+                }
+                for (i, j), distance in zip(hits, hit_distances):
                     lipid_atom = self.lipid_contact[int(j)]
                     molecule = self.lipid_molecule_by_atom.get(int(lipid_atom.index))
                     if molecule is None:
@@ -597,6 +615,8 @@ class SDC4Mechanisms:
                     species = self.lipid_molecule_species[molecule]
                     leaflet = "upper" if leaf[anchor] else "lower"
                     observed.setdefault((species, leaflet, "any"), set()).add(molecule)
+                    key = (species, leaflet)
+                    minima[key] = min(minima.get(key, np.inf), float(distance))
                     if species in ("GM1a", "BGAL", "CER160"):
                         if species in ("GM1a", "BGAL") and lipid_atom.resname != "CER160":
                             observed.setdefault((species, leaflet, "glycan"), set()).add(molecule)
@@ -629,6 +649,8 @@ class SDC4Mechanisms:
                             "leaflet": leaflet, "moiety": moiety,
                             "contacted_molecules": count,
                             "available_molecules": denominator,
+                            "locally_available_molecules": local_availability[(species, leaflet)],
+                            "min_contact_distance_A": minima.get((species, leaflet), np.nan),
                             "contact_fraction": (
                                 count / denominator if denominator else np.nan
                             ),
@@ -683,6 +705,7 @@ class SDC4Mechanisms:
                 pd.DataFrame(self.rows["lipid_specificity"], columns=[
                     "time_ps", "region", "species", "leaflet", "moiety",
                     "contacted_molecules", "available_molecules",
+                    "locally_available_molecules", "min_contact_distance_A",
                     "contact_fraction",
                 ]),
             )
