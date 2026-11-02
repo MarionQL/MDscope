@@ -394,3 +394,28 @@ def test_intermittent_residence_no_assumed_uniform_sampling():
     assert result.n_frames.tolist() == [3]
     assert result.duration_ps.tolist() == [30.]
     assert result.right_censored.tolist() == [False]
+
+
+def test_lipid_composition_enrichment_independent_toy_denominators():
+    from mdscope.mechanisms.sdc4_mechanisms import _composition_enrichment
+    # 1 GM1 out of 2 contacts, against 1 GM1 in 10 available lipids:
+    # 0.5 / 0.1 == 5.0 enrichment. Other lipid: 0.5 / 0.9.
+    table = pd.DataFrame({
+        "time_ps": [0., 0., 0., 10., 10.],
+        "region": ["TM_A"] * 5,
+        "leaflet": ["upper"] * 5,
+        "species": ["GM1a", "POPC", "GM1a", "GM1a", "POPC"],
+        "moiety": ["any", "any", "glycan", "any", "any"],
+        "contacted_molecules": [1, 1, 1, 0, 0],
+        "available_molecules": [1, 9, 1, 0, 10],
+        "locally_available_molecules": [1, 3, 1, 0, 4],
+    })
+    global_result = _composition_enrichment(table, "available_molecules")
+    local_result = _composition_enrichment(table, "locally_available_molecules")
+    assert global_result[0] == pytest.approx(5.0)
+    assert global_result[1] == pytest.approx(5 / 9)
+    assert np.isnan(global_result[2])
+    assert local_result[0] == pytest.approx(2.)
+    assert local_result[1] == pytest.approx(2 / 3)
+    assert np.isnan(global_result[3]) and np.isnan(global_result[4])
+    assert np.isnan(local_result[3]) and np.isnan(local_result[4])
