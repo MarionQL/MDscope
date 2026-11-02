@@ -6,6 +6,8 @@ comparison statistics.
 from __future__ import annotations
 
 import math
+import os
+from concurrent.futures import ThreadPoolExecutor
 from itertools import combinations
 from pathlib import Path
 
@@ -88,6 +90,18 @@ def _block_indices(n: int, block: int, draws: int, rng: np.random.Generator) -> 
     return (starts[..., None] + np.arange(block, dtype=np.int32)).reshape(draws, -1)[:, :n]
 
 
+def _bootstrap_workers() -> int:
+    """Respect the CPU allocation rather than the physical node size."""
+    affinity = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)
+    requested = os.environ.get("MDSCOPE_STATS_WORKERS") or os.environ.get("SLURM_CPUS_PER_TASK")
+    return max(1, min(affinity, int(requested))) if requested else max(1, affinity if "SLURM_JOB_ID" in os.environ else 1)
+
+
+def _reduce_bootstrap_batch(values, indices, reducer):
+    reduce = np.nanmedian if reducer == "median" else np.nanmean
+    return reduce(values[indices], axis=1)
+
+
 def _block_bootstrap(
     values,
     block: int,
@@ -98,16 +112,33 @@ def _block_bootstrap(
     values = np.asarray(values, float)
     shape = (draws,) + values.shape[1:]
     out = np.empty(shape, float)
-    reduce = np.nanmedian if reducer == "median" else np.nanmean
-    # Generate draws in small batches so profile bootstraps do not
-    # materialize drawsxframesxfeatures all at once.
     batch = 32
-    for start in range(0, draws, batch):
-        size = min(batch, draws - start)
-        out[start:start + size] = reduce(
-            values[_block_indices(len(values), block, size, rng)],
-            axis=1
-        )
+    workers = min(_bootstrap_workers(), max(1, math.ceil(draws / batch)))
+    # Generate indices on the calling thread, in exactly the same order as
+    # the serial implementation. Workers only perform deterministic reductions.
+    if workers == 1:
+        for start in range(0, draws, batch):
+            size = min(batch, draws - start)
+            out[start:start + size] = _reduce_bootstrap_batch(
+                values, _block_indices(len(values), block, size, rng), reducer
+            )
+        return out
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        pending = []
+        for start in range(0, draws, batch):
+            size = min(batch, draws - start)
+            indices = _block_indices(len(values), block, size, rng)
+            pending.append((start, size, pool.submit(
+                _reduce_bootstrap_batch, values, indices, reducer
+            )))
+            # Bound outstanding batches to avoid holding the entire bootstrap
+            # index tensor in memory.
+            if len(pending) >= workers:
+                first, count, future = pending.pop(0)
+                out[first:first + count] = future.result()
+        for first, count, future in pending:
+            out[first:first + count] = future.result()
     return out
 
 
