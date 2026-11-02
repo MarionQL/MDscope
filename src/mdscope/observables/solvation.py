@@ -37,20 +37,28 @@ def rdf_from_counts(counts, edges, density_exposure):
 
 
 def contact_episodes(events, observed_frames):
-    """Continuous *sampled-frame* contact runs, preserving boundary censoring.
+    """Continuous sampled-frame runs with both observed and imputed durations.
 
-    observed_frames is the ordered (frame, time_ps) sequence. Missing contact
-    records represent absent contacts, not unknown observations.
+    Legacy duration_ps remains the observed first-to-last span. The added
+    sampled_duration_ps follows the lipid-residence sampled interval rule.
     """
+    from ..mechanisms.motif_residence import sampled_episode_durations
     columns = ["solvent", "target_id", "solvent_id", "start_frame", "end_frame",
-               "duration_ps", "left_censored", "right_censored"]
+               "duration_ps", "left_censored", "right_censored",
+               "sampled_duration_ps", "duration_convention"]
     if not observed_frames:
         return pd.DataFrame(columns=columns)
     frames = [int(f) for f, _ in observed_frames]
-    times = {int(f): float(t) for f, t in observed_frames}
+    frame_times = np.asarray([float(t) for _, t in observed_frames])
+    if len(set(frames)) != len(frames):
+        raise ValueError("Duplicate observation frames")
+    if len(frame_times) > 1 and np.any(np.diff(frame_times) <= 0):
+        raise ValueError("Episode observation times must increase")
     order = {f: i for i, f in enumerate(frames)}
     pairs = defaultdict(set)
     for f, solvent, target, molecule in events:
+        if int(f) not in order:
+            raise ValueError("Contact event outside observation frames")
         pairs[(solvent, target, molecule)].add(int(f))
     rows = []
     for (solvent, target, molecule), active in pairs.items():
@@ -61,13 +69,19 @@ def contact_episodes(events, observed_frames):
             elif order[frame] == order[previous] + 1:
                 previous = frame
             else:
+                span, imputed = sampled_episode_durations(
+                    frame_times, order[start], order[previous]
+                )
                 rows.append((solvent, target, molecule, start, previous,
-                             times[previous] - times[start], start == frames[0],
-                             previous == frames[-1]))
+                             span, start == frames[0], previous == frames[-1],
+                             imputed, "next_sample_interval_or_terminal_median"))
                 start = previous = frame
+        span, imputed = sampled_episode_durations(
+            frame_times, order[start], order[previous]
+        )
         rows.append((solvent, target, molecule, start, previous,
-                     times[previous] - times[start], start == frames[0],
-                     previous == frames[-1]))
+                     span, start == frames[0], previous == frames[-1],
+                     imputed, "next_sample_interval_or_terminal_median"))
     return pd.DataFrame(rows, columns=columns)
 
 
