@@ -19,7 +19,7 @@ import time
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-from MDAnalysis.lib.distances import capped_distance, minimize_vectors
+from MDAnalysis.lib.distances import capped_distance, minimize_vectors, calc_dihedrals
 
 from ..config import DEFAULTS, atomic_json, atomic_parquet, ensure_dir, time_ps
 from ..core.lipid_geometry import anchor_groups, aligned_leaflets, periodic_center
@@ -210,6 +210,48 @@ class SDC4Mechanisms:
         self.lipid_contact = heavy(selected(
             universe, s.get("lipid_contact_selection"), required=True
         ))
+        self.motif_lipid_residence_enabled = bool(s.get("motif_lipid_residence", False))
+        self.lipid_molecule_by_atom = {}
+        self.lipid_molecule_species = {}
+        self.unmapped_lipid_fragment_count = 0
+        if self.motif_lipid_residence_enabled:
+            # Bonded fragments are stable physical molecules in a TPR. Unlike
+            # residue numbers they correctly group GM1/BGAL ceramide + sugars.
+            try:
+                fragments = self.lipid_contact.fragments
+            except Exception as exc:
+                raise ValueError(
+                    "Motif lipid residence requires lipid bond connectivity "
+                    "to identify complete molecules"
+                ) from exc
+            anchor_by_residue = dict(zip(
+                map(int, self.resindices), map(str, self.species)
+            ))
+            for fragment in fragments:
+                # For glycolipids, chainID is the molecule species label;
+                # the CER160 residue is only their ceramide anchor. Without
+                # glycans, chainID CER160 denotes a distinct comparison group.
+                chain_labels = set(map(str, fragment.chainIDs))
+                glyco_labels = chain_labels & {"GM1a", "BGAL", "CER160"}
+                if len(glyco_labels) > 1:
+                    raise ValueError("A lipid molecule spans conflicting glyco chainIDs")
+                anchors = {anchor_by_residue[int(ix)]
+                           for ix in fragment.resindices
+                           if int(ix) in anchor_by_residue}
+                species = set(glyco_labels) if glyco_labels else anchors
+                if glyco_labels and anchors and anchors != species:
+                    raise ValueError("Glycolipid chainID conflicts with lipid anchor species")
+                if not species:
+                    self.unmapped_lipid_fragment_count += 1
+                    continue
+                if len(species) > 1:
+                    raise ValueError("Lipid fragment has conflicting species anchors")
+                identifier = int(np.min(fragment.indices))
+                self.lipid_molecule_species[identifier] = species.pop()
+                for index in fragment.indices:
+                    self.lipid_molecule_by_atom[int(index)] = identifier
+            if not self.lipid_molecule_by_atom:
+                raise ValueError("No lipid molecules identified for motif residence")
         self.protein = heavy(selected(
             universe, s.get("protein_selection") or cfg["selections"]["protein"],
             required=True,
@@ -226,6 +268,30 @@ class SDC4Mechanisms:
             atoms = heavy(universe.atoms[np.isin(universe.atoms.resindices, resindices)])
             if len(atoms):
                 self.motifs[_id(key)] = {"atoms": atoms, "resindices": resindices}
+        # Prepare backbone torsions for the two prolines in each mapped
+        # VVHPLVPL motif. Actual residue indices come from the topology, and
+        # missing backbone atoms remain NaN rather than being invented.
+        self.proline_torsions = {}
+        for name, info in self.motifs.items():
+            if not name.startswith("proline_hydrophobic_"):
+                continue
+            ids = [int(x) for x in info["resindices"]]
+            for j in (3, 6):  # positions 4 and 7 of VVHPLVPL
+                if len(ids) != 8 or self.u.residues[ids[j]].resname != "PRO":
+                    raise ValueError(f"Unexpected proline mapping for {name}")
+                before, current, after = (
+                    self.u.residues[ids[j-1]], self.u.residues[ids[j]],
+                    self.u.residues[ids[j+1]],
+                )
+                def atom(residue, label):
+                    matches = residue.atoms.select_atoms(f"name {label}")
+                    return matches[0] if len(matches) == 1 else None
+                self.proline_torsions[f"{name}_P{j+1}"] = (
+                    (atom(before, "C"), atom(current, "N"),
+                     atom(current, "CA"), atom(current, "C")),
+                    (atom(current, "N"), atom(current, "CA"),
+                     atom(current, "C"), atom(after, "N")),
+                )
         # Fail explicitly if the functional endpoint was requested but the
         # topology's actual sequence does not contain the motif.
         if s.get("require_motifs", True) and not self.motifs:
@@ -293,6 +359,11 @@ class SDC4Mechanisms:
             "gxxxg_resindices": {k: v.residues.ix.tolist()
                                  for k, v in self.gxxxg.items()},
             "gxxxg_tm_sequences": self.gxxxg_sequences,
+            "motif_lipid_residence_unmapped_fragments": self.unmapped_lipid_fragment_count,
+            "motif_lipid_residence_molecules_by_species": {
+                species: sum(v == species for v in self.lipid_molecule_species.values())
+                for species in sorted(set(self.lipid_molecule_species.values()))
+            },
             "surface_anchor_species": list(self.surface_species),
             "lipid_counts": {str(k): int(np.count_nonzero(self.species == k))
                              for k in sorted(set(self.species))},
@@ -428,6 +499,15 @@ class SDC4Mechanisms:
                 g1.resindices[ghits[:, 0]], g2.resindices[ghits[:, 1]]
             )), axis=0)) if len(ghits) else 0
         )
+        for label, (phi_atoms, psi_atoms) in self.proline_torsions.items():
+            for suffix, atom_group in (("phi_deg", phi_atoms), ("psi_deg", psi_atoms)):
+                value = np.nan
+                if all(atom is not None for atom in atom_group):
+                    points = [atom.position for atom in atom_group]
+                    value = float(np.degrees(calc_dihedrals(
+                        points[0], points[1], points[2], points[3], box=box
+                    )))
+                row[f"sdc4_proline_{label}_{suffix}"] = value
         for name, info in self.motifs.items():
             ag = info["atoms"]
             own = info["resindices"]
@@ -456,6 +536,18 @@ class SDC4Mechanisms:
             )
             row[prefix + "glycan_contacts"] = len(gly_hits)
             row[prefix + "lipid_contacts"] = len(lip_hits)
+            if self.motif_lipid_residence_enabled and len(lip_hits):
+                molecules = {
+                    self.lipid_molecule_by_atom[int(self.lipid_contact.indices[j])]
+                    for j in lip_hits[:, 1]
+                    if int(self.lipid_contact.indices[j]) in self.lipid_molecule_by_atom
+                }
+                for molecule in sorted(molecules):
+                    self.rows["lipid_residence"].append({
+                        "time_ps": t, "motif": name,
+                        "molecule_id": molecule,
+                        "species": self.lipid_molecule_species[molecule],
+                    })
         for name, ag in self.hs.items():
             attachment = _center(self.attach[name], box)
             distal = _center(self.hs_distal[name], box)
@@ -500,6 +592,14 @@ class SDC4Mechanisms:
                 pd.DataFrame(self.rows["timeseries"]),
             )
             self.rows["timeseries"].clear()
+        if self.motif_lipid_residence_enabled:
+            atomic_parquet(
+                self.cache / f"residence-{part:06d}.parquet",
+                pd.DataFrame(self.rows["lipid_residence"], columns=[
+                    "time_ps", "motif", "molecule_id", "species",
+                ]),
+            )
+            self.rows["lipid_residence"].clear()
         _atomic_npz(
             self.cache / f"map-{part:06d}.npz",
             counts=self.map_counts, baselines=self.map_baselines,
@@ -512,7 +612,7 @@ class SDC4Mechanisms:
 
     def prune_from(self, part):
         for path in self.cache.glob("*"):
-            match = re.match(r"(?:part|map)-(\d+)\.(?:parquet|npz)$", path.name)
+            match = re.match(r"(?:part|map|residence)-(\d+)\.(?:parquet|npz)$", path.name)
             if match and int(match.group(1)) >= part:
                 path.unlink()
 
@@ -569,6 +669,16 @@ class SDC4Mechanisms:
             nframes=np.asarray(nframes, int),
         )
         atomic_json(out / "selection_audit.json", self.audit)
+        if self.motif_lipid_residence_enabled:
+            from .motif_residence import summarize_lipid_residence
+            parts = sorted(self.cache.glob("residence-*.parquet"))
+            events = pd.concat((pd.read_parquet(p) for p in parts),
+                               ignore_index=True) if parts else pd.DataFrame()
+            atomic_parquet(out / "motif_lipid_contact_events.parquet", events)
+            residence = summarize_lipid_residence(
+                events, df["time_ps"].to_numpy(float)
+            )
+            atomic_parquet(out / "motif_lipid_residence.parquet", residence)
         # Contact-conditioned hydration is a *within-replicate* descriptive
         # comparison, not an independent-frame significance test.
         conditioned = []

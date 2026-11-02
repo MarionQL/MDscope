@@ -150,6 +150,7 @@ def fit_shared_states(cfg, root, system_repouts):
     atomic_parquet(out / "state_centroids.parquet", centroids)
     assignments, populations, diagnostics, conditioned = [], [], [], []
     rep_fraction = defaultdict(list)
+    nxip_conditioned = []
     for (system, replicate), df in replicates.items():
         x = df[features].to_numpy(float)
         labels = _assign((x - location) / scale, centers)
@@ -191,6 +192,35 @@ def fit_shared_states(cfg, root, system_repouts):
             "block_frames": block,
             "duration_ps": float(times[-1] - times[0]) if n > 1 else 0.,
         })
+        # Conditional NxIP outcomes: define states exclusively from the
+        # configured geometric features; do not include NxIP as a predictor.
+        # This table is descriptive within each independent replicate.
+        for chain in ("A", "B"):
+            prefix = f"sdc4_motif_NxIP_PRO{chain}_"
+            endpoints = [
+                col for col in df.columns if col.startswith(prefix)
+                and (col.endswith("_steric_occlusion_fraction")
+                     or col.endswith("_sasa_nm2")
+                     or col.endswith("_glycan_contacts")
+                     or col.endswith("_protein_neighbor_residues"))
+            ]
+            for endpoint in endpoints:
+                values = df[endpoint].to_numpy(float)
+                for state in range(k):
+                    mask = (labels == state) & np.isfinite(values)
+                    other = (labels != state) & np.isfinite(values)
+                    nxip_conditioned.append({
+                        "system": system, "replicate": replicate,
+                        "chain": chain, "state": state, "endpoint": endpoint,
+                        "frames_in_state": int(mask.sum()),
+                        "frames_outside_state": int(other.sum()),
+                        "mean_in_state": float(values[mask].mean()) if mask.any() else np.nan,
+                        "mean_outside_state": float(values[other].mean()) if other.any() else np.nan,
+                        "within_replicate_difference": (
+                            float(values[mask].mean() - values[other].mean())
+                            if mask.any() and other.any() else np.nan
+                        ),
+                    })
         hs_names = sorted({
             name[len("sdc4_hs_"):-len("_hydration_water_per_heavy_atom")]
             for name in df.columns if name.startswith("sdc4_hs_")
@@ -219,6 +249,53 @@ def fit_shared_states(cfg, root, system_repouts):
                         if col.startswith(prefix + "ion_") and col.endswith("_count"):
                             row[col[len(prefix):] + "_mean"] = float(df.loc[mask, col].mean())
                     conditioned.append(row)
+    nxip_df = pd.DataFrame(nxip_conditioned, columns=[
+        "system", "replicate", "chain", "state", "endpoint",
+        "frames_in_state", "frames_outside_state", "mean_in_state",
+        "mean_outside_state", "within_replicate_difference",
+    ])
+    atomic_parquet(out / "state_conditioned_nxip.parquet", nxip_df)
+    # A condition contrast is computed only from independent replicate-level
+    # contrasts. With three trajectories per condition these intervals are
+    # exploratory; no frame-based p-values or significance stars are emitted.
+    comparisons = []
+    if not nxip_df.empty:
+        systems_for_comparison = list(dict.fromkeys(nxip_df["system"]))
+        if len(systems_for_comparison) == 2:
+            for (chain, state, endpoint), group in nxip_df.groupby(
+                ["chain", "state", "endpoint"], sort=True
+            ):
+                arrays = [
+                    group.loc[group["system"] == system,
+                              "within_replicate_difference"].dropna().to_numpy(float)
+                    for system in systems_for_comparison
+                ]
+                if min(map(len, arrays)) < 2:
+                    continue
+                difference = float(np.mean(arrays[1]) - np.mean(arrays[0]))
+                indices0 = rng.integers(0, len(arrays[0]), (draws, len(arrays[0])))
+                indices1 = rng.integers(0, len(arrays[1]), (draws, len(arrays[1])))
+                boot = arrays[1][indices1].mean(axis=1) - arrays[0][indices0].mean(axis=1)
+                lo, hi = np.quantile(boot, [.025, .975])
+                comparisons.append({
+                    "chain": chain, "state": int(state), "endpoint": endpoint,
+                    "system_0": systems_for_comparison[0],
+                    "system_1": systems_for_comparison[1],
+                    "n_replicates_0": len(arrays[0]),
+                    "n_replicates_1": len(arrays[1]),
+                    "difference_system1_minus_system0": difference,
+                    "replicate_bootstrap_ci_low": float(lo),
+                    "replicate_bootstrap_ci_high": float(hi),
+                    "inference": "exploratory; no multiplicity-adjusted test",
+                })
+    atomic_parquet(out / "state_conditioned_nxip_comparisons.parquet",
+                   pd.DataFrame(comparisons, columns=[
+                       "chain", "state", "endpoint", "system_0", "system_1",
+                       "n_replicates_0", "n_replicates_1",
+                       "difference_system1_minus_system0",
+                       "replicate_bootstrap_ci_low", "replicate_bootstrap_ci_high",
+                       "inference",
+                   ]))
     atomic_parquet(out / "frame_assignments.parquet", pd.concat(assignments, ignore_index=True))
     atomic_parquet(out / "replicate_populations.parquet", pd.DataFrame(populations))
     atomic_parquet(out / "sampling_diagnostics.parquet", pd.DataFrame(diagnostics))

@@ -144,6 +144,7 @@ def run():
             "motif_selection": "protein and name CA",
             "motifs": {"NxIP": "N.IP", "proline_hydrophobic": "VVHPLVPL"},
             "require_motifs": False, "require_gxxxg": True,
+            "motif_lipid_residence": True,
             "map_extent_A": 40., "map_bin_A": 4.,
             "local_radius_A": 25., "local_min_lipids": 8,
             "local_order": {"enabled": False},
@@ -186,6 +187,28 @@ def run():
         assert np.all(np.isfinite(df["sdc4_tm_crossing_angle_deg"]))
         assert np.all(np.isfinite(df["sdc4_ectodomain_A_height_A"]))
         assert result["n_hs_chains"] == 6
+        from mdscope.mechanisms.motif_residence import COLUMNS
+        events_path = out / "extensions/sdc4_mechanisms/motif_lipid_contact_events.parquet"
+        residence_path = out / "extensions/sdc4_mechanisms/motif_lipid_residence.parquet"
+        assert events_path.exists() and residence_path.exists()
+        assert set(COLUMNS).issubset(pd.read_parquet(residence_path).columns)
+        residence_audit = json.loads(
+            (out / "extensions/sdc4_mechanisms/selection_audit.json").read_text()
+        )
+        assert residence_audit["motif_lipid_residence_unmapped_fragments"] >= 0
+        molecule_counts = residence_audit["motif_lipid_residence_molecules_by_species"]
+        if system == "carb_sdc4":
+            assert molecule_counts.get("GM1a", 0) > 0
+            assert molecule_counts.get("BGAL", 0) > 0
+        else:
+            assert molecule_counts.get("CER160", 0) > 0
+        contact_events = pd.read_parquet(events_path)
+        assert set(contact_events["species"]).issubset(molecule_counts)
+
+
+        assert any(col.endswith("_P4_phi_deg") for col in df.columns)
+        assert any(col.endswith("_P7_psi_deg") for col in df.columns)
+
         actual_tm = df["sdc4_tm_interface_residue_pairs"].to_numpy()
         actual_motif = df["sdc4_gxxxg_interface_residue_pairs"].to_numpy()
         np.testing.assert_array_equal(actual_tm, np.asarray(reference)[:, 0])
