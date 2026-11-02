@@ -366,6 +366,14 @@ def test_shared_states_exports_replica_conditioned_nxip(tmp_path):
     assert len(comp) == 2
     assert (comp["n_replicates_0"] == 2).all()
     assert set(comp["inference"]) == {"exploratory; no multiplicity-adjusted test"}
+    exposure = pd.read_parquet(
+        output / "nxip_state_exposure_threshold_sensitivity.parquet"
+    )
+    assert set(exposure.threshold) == {.25, .5, .75}
+    assert exposure["exposed_fraction_given_state"].between(0, 1).all()
+    mid = exposure[exposure.threshold.eq(.5)]
+    assert set(mid["exposed_fraction_given_state"]) == {0., 1.}
+
     lipid_rep = pd.read_parquet(output / "lipid_specificity_replicate_statistics.parquet")
     assert len(lipid_rep) == 4
     assert set(lipid_rep.species) == {"GM1a", "CER160"}
