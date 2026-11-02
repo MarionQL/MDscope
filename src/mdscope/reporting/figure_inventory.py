@@ -16,6 +16,8 @@ PRIMARY_SUFFIXES = (
     "distance_heatmap.png", "lipid_enrichment_heatmap.png",
     "state_populations.png", "state_sampling_diagnostics.png",
     "lipid_density_maps.png", "lipid_enrichment_maps.png",
+    "lipid_region_mean_contact_fraction.png",
+    "lipid_region_mean_local_enrichment.png",
 )
 SUPPLEMENT_SUFFIXES = (
     "__distribution.png", "__autocorrelation.png",
