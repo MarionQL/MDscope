@@ -246,3 +246,73 @@ observer interrupted-checkpoint restart comparison, profile-axis alignment
 and missing-observation reference cases, representative real-GROMACS numerical
 comparisons, benchmark resource budget, and final documented license/citation.
 Passing these unit tests does not certify the remaining requirements.
+
+
+## Matched local lipid populations and sampled residence (PR #117)
+
+For species s, region R and instantaneous leaflet L, let A_s be the number
+of molecular anchors within the configured xy disk and C_s the number of
+those *same molecules* making at least one atom contact with R. Then
+`matched_local_contact_fraction = C_s/A_s` and
+`matched_local_composition_enrichment = (C_s/sum C)/(A_s/sum A)`.
+Each molecule is counted once per species/region/frame; moiety subclasses
+are not added into composition totals. Absent species give NaN. If there
+are no contacts in any species, composition enrichment is undefined, while
+contact fraction remains zero for available species. Means of enrichment
+therefore condition on frames with contacts, and need their valid-frame
+counts for interpretation. The disk is defined by anchor position, not by
+headgroup reach or protein-excluded accessible area. Different molecular
+sizes can still affect contact probabilities; enrichment is not affinity.
+
+The whole-leaflet `contact_fraction` and `composition_enrichment` retain their
+original populations. `local_composition_enrichment` and its project summary
+`mean_local_enrichment` retain the legacy unmatched definition for comparison
+only. Corrected project summaries are `mean_matched_local_contact_fraction`
+and `mean_matched_local_enrichment`. Old persisted tables lacking corrected
+fields produce missing corrected summaries, never legacy substitutions.
+Figure inventory treats legacy local enrichment as supplementary. Corrected
+figures and replica-averaged numerical summaries enter the PDF and bundle.
+
+The shared numerical routine is `core/residence.py:sampled_episode_durations`.
+For observed contact bounds i,j, span = t_j - t_i. The interval-imputed
+estimate adds t_(j+1)-t_j, or the median observation interval at the final
+sample. A one-observation trajectory has zero observed span and undefined
+imputed duration. Lipid `duration_ps` retains its imputed convention;
+`observed_span_ps` is explicit. Solvation `duration_ps` retains observed span;
+`sampled_duration_ps` is explicit. The `duration_convention` column identifies
+the imputed convention; it does not redefine solvation's legacy duration.
+
+Lipid `occupancy_fraction` is the molecule's contact-frame fraction over the
+whole observed window, repeated for each episode. `episode_contact_fraction`
+is that episode's contact-frame count divided by the whole-window frame
+count; it is **not** contact fraction within episode bounds. Neither is a
+time-weighted occupancy under irregular sampling. Intermittent episodes
+bridge at most `gap_frames` absent observations; gap time is included in the
+span, but absent observations do not enter occupancy. Boundary censoring
+remains explicit. These are sampled-contact estimators, not observed physical
+on/off times. Existing solvation survival uses observed-span durations,
+excludes unknown left origins and handles right censoring; interval censoring
+between trajectory samples remains unresolved.
+
+Time validation and terminal-interval calculation run once per episode table,
+rather than once per event. Benchmark on Python 3.12, 2,000 samples and 200
+solvents with 500 singleton episodes each (100,000 episodes): solvation episode
+construction decreased from 4.714 s to 0.815 s (5.79x) with exact numerical
+agreement. Python allocation peak increased from 47.30 to 48.58 MiB;
+tracemalloc is not total process RSS. This is a synthetic postprocessing
+benchmark, not a trajectory throughput prediction.
+
+The passing release-backed artifact at commit `1110e89`, workflow
+`41497488356`, contains four mechanism frames per topology. For `moiety=any`,
+3/432 glycolipid-system rows and 4/384 control rows have finite enrichment
+changes; maximum absolute differences are 0.3047619 and 0.1805556. The changed
+anchor populations involve POPC and cholesterol respectively and alter other
+species' contact shares too. These four-frame samples do not establish
+production effect sizes, convergence or biological significance. The expanded
+real smoke test writes `matched_local_impact.json` alongside mechanism tables.
+
+Restart validation compares corrected specificity and both lipid residence
+tables after interruption and clean execution. Production run hashes include
+package source: do not resume pre-correction chunks under a different code
+hash or mix old/new schemas manually. Recompute into a fresh output directory
+when moving from historical production results to the corrected estimator.

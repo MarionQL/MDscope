@@ -451,6 +451,39 @@ def _build_pdf(path, cfg, root, system_repouts, options):
                 body(f"{len(conditional)-max_cond} additional conditioned rows "
                      "are included in the companion ZIP.")
 
+    lipid_stats = _read(state_dir / "lipid_specificity_system_statistics.parquet")
+    if not lipid_stats.empty:
+        matched = lipid_stats.loc[lipid_stats.measure.isin((
+            "mean_matched_local_contact_fraction", "mean_matched_local_enrichment"))]
+        if not matched.empty:
+            story.append(PageBreak())
+            header("Matched local lipid specificity")
+            body("Each system mean gives equal weight to independent replicas. "
+                 "Intervals resample replicas and are descriptive with small n. "
+                 "The fraction and enrichment condition on local anchor membership; "
+                 "they are not affinities. Full tables and per-replica valid-frame "
+                 "counts are included in the evidence bundle.")
+            limit = int(options.get("max_conditioned_rows", 80))
+            for metric, label in (
+                ("mean_matched_local_contact_fraction", "Local contact fraction"),
+                ("mean_matched_local_enrichment", "Local composition enrichment"),
+            ):
+                panel = matched.loc[matched.measure.eq(metric)]
+                if panel.empty:
+                    continue
+                sub(label)
+                rows = [["System", "Region", "Species / leaflet", "Mean", "Replicate CI", "n reps"]]
+                for item in panel.head(limit).itertuples():
+                    rows.append([item.system, item.region,
+                                 f"{item.species} / {item.leaflet}",
+                                 _fmt(item.replicate_mean),
+                                 f"{_fmt(item.replicate_bootstrap_ci_low)} to "
+                                 f"{_fmt(item.replicate_bootstrap_ci_high)}",
+                                 item.n_replicates])
+                table(rows, [90, 105, 105, 50, 100, 60])
+                if len(panel) > limit:
+                    body(f"{len(panel)-limit} additional rows are in the evidence bundle.")
+
     # Solvation results are reported explicitly, rather than hidden among
     # generic scalar metrics. Large per-target/event tables are indexed here
     # and included at full precision in the companion ZIP.
@@ -608,6 +641,17 @@ def _build_pdf(path, cfg, root, system_repouts, options):
          "HS hydration and ion coordination use distance cutoffs, not electrostatic "
          "free energies. Membrane curvature is a small-slope quadratic estimate; "
          "lipid density maps are not corrected for protein-excluded area.")
+    body("Local lipid specificity uses matched anchor-in-disk contact and availability "
+         "populations. Legacy unmatched local enrichment is retained only for "
+         "comparison. Species absent from a local population have undefined "
+         "contact fractions; frames with no local contacts have undefined "
+         "composition enrichment. Means exclude these frames; inspect the "
+         "reported valid-frame counts. Enrichment is not binding affinity.")
+    body("Residence durations are sampled-contact estimators. Lipid duration_ps "
+         "includes the next interval (terminal median at the right edge); "
+         "observed_span_ps excludes imputation. Solvation duration_ps retains "
+         "the observed span and sampled_duration_ps records the imputed value. "
+         "Censoring and trajectory stride limit kinetic interpretation.")
     body("Do not infer a membrane-recruitment mechanism from a difference in "
          "one observable alone. Compare replicate-level effects, state occupancy, "
          "orientation and contacts, and temporal sampling together.")
@@ -880,3 +924,4 @@ def generate_report(cfg, root, system_repouts=None, force=False):
     if options.get("bundle_enabled", True):
         bundle = _make_bundle(root, dest, system_repouts, options)
     return {"pdf": str(dest), "bundle": str(bundle) if bundle else None}
+

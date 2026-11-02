@@ -58,11 +58,22 @@ def plot_sdc4_mechanisms(cfg, root, system_repouts):
                     plt.close(fig)
                 contacts = all_contacts.loc[all_contacts.moiety.eq("any")]
                 if not contacts.empty:
+                    # Old artifacts lack matched counts: leave the corrected
+                    # metric missing; never substitute legacy enrichment.
+                    contacts = contacts.copy()
+                    for column in ("matched_local_contact_fraction",
+                                   "matched_local_composition_enrichment"):
+                        if column not in contacts:
+                            contacts[column] = np.nan
                     summary = contacts.groupby(
                         ["region", "species", "leaflet"], as_index=False
                     ).agg(
                         mean_contact_fraction=("contact_fraction", "mean"),
                         mean_local_enrichment=("local_composition_enrichment", "mean"),
+                        mean_matched_local_contact_fraction=("matched_local_contact_fraction", "mean"),
+                        mean_matched_local_enrichment=("matched_local_composition_enrichment", "mean"),
+                        n_matched_local_frames=("matched_local_contact_fraction", "count"),
+                        n_matched_enrichment_frames=("matched_local_composition_enrichment", "count"),
                         n_frames_with_species=("contact_fraction", "count"),
                     )
                     summary.to_csv(
@@ -71,8 +82,12 @@ def plot_sdc4_mechanisms(cfg, root, system_repouts):
                     )
                     for metric, ylabel in (
                         ("mean_contact_fraction", "Fraction of available molecules contacting"),
-                        ("mean_local_enrichment", "Contact share / local composition share"),
+                        ("mean_local_enrichment", "Legacy unmatched local enrichment (comparison only)"),
+                        ("mean_matched_local_contact_fraction", "Fraction contacting within the local anchor population"),
+                        ("mean_matched_local_enrichment", "Matched local contact share / local composition share"),
                     ):
+                        if summary[metric].notna().sum() == 0:
+                            continue
                         fig, ax = plt.subplots(figsize=(max(7, len(summary.region.unique()) * 1.3), 4))
                         for i, (species, leaflet) in enumerate(
                             summary[["species", "leaflet"]].drop_duplicates().itertuples(index=False, name=None)
@@ -85,7 +100,7 @@ def plot_sdc4_mechanisms(cfg, root, system_repouts):
                                 marker=["o", "s", "^", "D", "v"][i % 5],
                                 label=f"{species} ({leaflet})", s=25,
                             )
-                        if metric == "mean_local_enrichment":
+                        if metric.endswith("enrichment"):
                             ax.axhline(1., linestyle="--", color="black", alpha=.4)
                         ax.set_ylabel(ylabel)
                         ax.tick_params(axis="x", rotation=65)
@@ -231,3 +246,4 @@ def plot_sdc4_mechanisms(cfg, root, system_repouts):
     fig.tight_layout()
     fig.savefig(state_dir / "state_sampling_diagnostics.png", dpi=200)
     plt.close(fig)
+

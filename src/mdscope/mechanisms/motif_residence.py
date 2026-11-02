@@ -8,31 +8,14 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from ..core.residence import sampled_episode_durations
+
 
 COLUMNS = [
     "motif", "species", "molecule_id", "start_ps", "end_ps", "duration_ps",
     "n_frames", "left_censored", "right_censored", "occupancy_fraction",
     "episode_contact_fraction", "observed_span_ps", "duration_convention",
 ]
-
-
-def sampled_episode_durations(times, first_index, last_index):
-    """Observed first-to-last span and right-end imputed sampled duration.
-
-    The latter includes the following sampling interval, or the median
-    interval at the right edge. Both use the same time-axis convention.
-    """
-    times = np.asarray(times, dtype=float)
-    if not len(times) or not 0 <= first_index <= last_index < len(times):
-        raise ValueError("Invalid sampled episode time indices")
-    span = float(times[last_index] - times[first_index])
-    if len(times) < 2:
-        return span, np.nan
-    if np.any(np.diff(times) <= 0):
-        raise ValueError("Sampled times must increase")
-    following = (times[last_index + 1] - times[last_index]
-                 if last_index + 1 < len(times) else np.median(np.diff(times)))
-    return span, float(span + following)
 
 
 def summarize_lipid_residence(events: pd.DataFrame, frame_times, gap_frames=0):
@@ -60,7 +43,7 @@ def summarize_lipid_residence(events: pd.DataFrame, frame_times, gap_frames=0):
     if np.any(indices < 0):
         raise ValueError("Contact events do not align with trajectory times")
     tagged = events.assign(frame_idx=indices)
-    rows = []
+    rows, bounds = [], []
     for (motif, molecule), group in tagged.groupby(["motif", "molecule_id"], sort=True):
         if group.species.nunique() != 1:
             raise ValueError("Molecule changes species")
@@ -68,23 +51,29 @@ def summarize_lipid_residence(events: pd.DataFrame, frame_times, gap_frames=0):
         cuts = np.r_[0, np.flatnonzero(np.diff(frames) > gap_frames + 1) + 1, len(frames)]
         for begin, end in zip(cuts[:-1], cuts[1:]):
             left, right = frames[begin], frames[end - 1]
-            span, duration = sampled_episode_durations(times, left, right)
+            bounds.append((left, right))
             rows.append({
                 "motif": motif, "species": group.species.iloc[0],
                 "molecule_id": int(molecule),
                 "start_ps": float(times[left]), "end_ps": float(times[right]),
-                "duration_ps": duration,
+                "duration_ps": np.nan,
                 "n_frames": int(end - begin),
                 "left_censored": bool(left == 0),
                 "right_censored": bool(right == len(times)-1),
                 "occupancy_fraction": float(len(frames) / len(times)),
                 "episode_contact_fraction": float((end - begin) / len(times)),
-                "observed_span_ps": span,
+                "observed_span_ps": np.nan,
                 "duration_convention": "next_sample_interval_or_terminal_median",
             })
-    return pd.DataFrame(rows, columns=COLUMNS)
+    result = pd.DataFrame(rows, columns=COLUMNS)
+    first, last = np.asarray(bounds, dtype=int).T
+    result["observed_span_ps"], result["duration_ps"] = sampled_episode_durations(
+        times, first, last
+    )
+    return result
 
 
 def summarize_intermittent_residence(events: pd.DataFrame, frame_times, gap_frames=1):
     """Gap-tolerant residence episodes, reported separately from continuous ones."""
     return summarize_lipid_residence(events, frame_times, gap_frames=gap_frames)
+

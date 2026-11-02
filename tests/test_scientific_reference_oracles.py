@@ -226,3 +226,52 @@ def test_solvation_and_lipid_residence_share_explicit_duration_contract():
     assert water.duration_convention.tolist() == lipid.duration_convention.tolist()
     with pytest.raises(ValueError, match="outside observation"):
         contact_episodes([(99, "water", "patch", 91)], observed)
+
+
+
+@pytest.mark.parametrize("times", [[0., np.nan], [np.inf], [1., 1.], [2., 1.]])
+def test_episode_time_axis_rejects_unknown_or_nonincreasing_samples(times):
+    from mdscope.core.residence import sampled_episode_durations
+    from mdscope.observables.solvation import contact_episodes
+    with pytest.raises(ValueError, match="times"):
+        sampled_episode_durations(times, 0, 0)
+    with pytest.raises(ValueError, match="times"):
+        contact_episodes([], list(enumerate(times)))
+
+
+def test_batched_duration_oracle_and_single_observation():
+    from mdscope.core.residence import sampled_episode_durations
+    # Intervals: 3, 4, 5 ps; terminal median: 4 ps.
+    span, imputed = sampled_episode_durations(
+        [0., 3., 7., 12.], np.array([0, 1, 3]), np.array([1, 2, 3]))
+    np.testing.assert_allclose(span, [3., 4., 0.])
+    np.testing.assert_allclose(imputed, [7., 9., 4.])
+    span, imputed = sampled_episode_durations([17.], 0, 0)
+    assert span == 0. and np.isnan(imputed)
+    for first, last in ((-1, 0), (1, 0), (0, 4), (.5, 1)):
+        with pytest.raises(ValueError, match="indices"):
+            sampled_episode_durations([0., 3., 7., 12.], first, last)
+
+
+def test_corrected_enrichment_figures_and_inventory(tmp_path):
+    from mdscope.reporting.sdc4_figures import plot_sdc4_mechanisms
+    from mdscope.reporting.figure_inventory import figure_inventory
+    dest = tmp_path / "carb/rep1/extensions/sdc4_mechanisms"
+    dest.mkdir(parents=True)
+    pd.DataFrame({
+        "region": ["TM_A", "TM_A"], "species": ["GM1a", "GM1a"],
+        "leaflet": ["upper", "upper"], "moiety": ["any", "any"],
+        "contact_fraction": [.1, .2], "local_composition_enrichment": [2., 4.],
+        "matched_local_contact_fraction": [.25, .5],
+        "matched_local_composition_enrichment": [1., np.nan],
+    }).to_parquet(dest / "lipid_region_specificity.parquet")
+    paths = {"carb": [tmp_path / "carb/rep1"]}
+    plot_sdc4_mechanisms({"analyses": {"sdc4_mechanisms": {"enabled": True}}}, tmp_path, paths)
+    summary = pd.read_csv(dest / "lipid_region_replicate_summary.csv")
+    assert summary.mean_matched_local_enrichment.item() == 1.
+    assert summary.mean_local_enrichment.item() == 3.
+    assert summary.n_matched_enrichment_frames.item() == 1
+    inventory = figure_inventory(tmp_path, paths).set_index("figure")
+    prefix = "carb/rep1/extensions/sdc4_mechanisms/lipid_region_"
+    assert inventory.loc[prefix + "mean_matched_local_enrichment.png", "kind"] == "primary"
+    assert inventory.loc[prefix + "mean_local_enrichment.png", "kind"] == "supplement"

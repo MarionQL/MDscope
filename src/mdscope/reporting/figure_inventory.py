@@ -17,10 +17,12 @@ PRIMARY_SUFFIXES = (
     "state_populations.png", "state_sampling_diagnostics.png",
     "lipid_density_maps.png", "lipid_enrichment_maps.png",
     "lipid_region_mean_contact_fraction.png",
-    "lipid_region_mean_local_enrichment.png",
+    "lipid_region_mean_matched_local_enrichment.png",
+    "lipid_region_mean_matched_local_contact_fraction.png",
     "lipid_region_moiety_contact_fraction.png",
 )
 SUPPLEMENT_SUFFIXES = (
+    "lipid_region_mean_local_enrichment.png",
     "__distribution.png", "__autocorrelation.png",
     "__bootstrap_table.png", "__comparison_table.png",
 )
@@ -112,3 +114,4 @@ def metric_coverage(root):
                         "status":"covered" if (dest/(stem+"__timeseries.png")).exists()
                         else "missing_figure"})
     return pd.DataFrame(records,columns=cols)
+
