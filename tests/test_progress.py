@@ -71,3 +71,17 @@ def test_known_total_does_not_print_frame_interval_updates(monkeypatch):
     assert "(100/10000)" in lines[1]
     assert "(250/10000)" not in stderr.getvalue()
     assert "(10000/10000)" in lines[-1]
+
+
+
+def test_nondefault_percent_cadence_is_monotonic_bounded_and_finishes(monkeypatch):
+    import re
+    import math
+    stderr = _Stderr()
+    monkeypatch.setattr(mod.sys, 'stderr', stderr)
+    monkeypatch.setenv('MDSCOPE_PROGRESS_EVERY_PERCENT', '7')
+    list(mod.track(range(123), total=123, desc='rep'))
+    completed = [int(m.group(1)) for m in re.finditer(r'\((\d+)/123\)', stderr.getvalue())]
+    assert completed[0] == 0 and completed[-1] == 123
+    assert completed == sorted(set(completed))
+    assert len(completed) <= math.ceil(100/7)+2

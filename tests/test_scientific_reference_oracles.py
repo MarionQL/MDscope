@@ -329,3 +329,42 @@ def test_real_freesasa_sphere_area_and_spherical_cap_occlusion():
     mixed = sasa_instances(v, cfg)["default"]
     np.testing.assert_allclose([row[-1] for row in sasa_residue_rows(mixed, 0.)],
                                [.75*sphere_nm2, .75*sphere_nm2, sphere_nm2], rtol=.02)
+
+
+def test_real_sasa_periodic_occluder_and_target_only_reduction():
+    pytest.importorskip('freesasa')
+    from mdscope.observables.sasa import sasa_instances, sasa_residue_rows
+    u = mda.Universe.empty(2, n_residues=2, atom_resindex=[0,1], trajectory=True)
+    for key, values in [('names',['CA','C1']),('elements',['C','C']),('resnames',['ALA','LIP']),('resids',[7,99])]:
+        u.add_TopologyAttr(key, values)
+    u.dimensions = [20,20,20,90,90,90]
+    u.atoms.positions = [[1,0,0],[19,0,0]]
+    cfg = {'selections': {'protein':'index 0'}, 'analyses': {'sasa': {'enabled':True, 'target_selection':'index 0', 'occluder_selection':'all','periodic':True,'algorithm':'shrake_rupley','n_points':10000}}}
+    state = sasa_instances(u,cfg)['default']
+    rows = sasa_residue_rows(state,0.)
+    assert len(rows)==1 and rows[0][1]==0
+    radius=3.1
+    expected=4*np.pi*radius**2*(.5+2/(4*radius))/100
+    assert rows[0][-1]==pytest.approx(expected,rel=.02)
+    u.atoms[0].position += [20,0,0]
+    assert sasa_residue_rows(state,0.)[0][-1]==pytest.approx(expected,rel=.02)
+
+
+def test_sasa_burial_subtraction_and_exact_reference_identity(tmp_path):
+    from mdscope.observables.sasa import write_sasa_burial
+    root=tmp_path/'profiles/sasa';(root/'environment').mkdir(parents=True)
+    baseline=pd.DataFrame({'time_ps':[0.,10.],'topology_residue_index':[7,7],
+                           'residue':['ALA7','ALA7'],'sasa_nm2':[1.2,1.]})
+    environment=baseline.assign(sasa_nm2=[.3,.25])
+    baseline.to_parquet(root/'residue_sasa.parquet')
+    environment.to_parquet(root/'environment/residue_sasa.parquet')
+    write_sasa_burial(tmp_path,'environment','default')
+    result=pd.read_parquet(root/'environment/residue_burial.parquet')
+    np.testing.assert_allclose(result.buried_sasa_nm2,[.9,.75])
+    np.testing.assert_allclose(result.buried_fraction,[.75,.75])
+    environment.assign(time_ps=[0.,20.]).to_parquet(root/'environment/residue_sasa.parquet')
+    with pytest.raises(ValueError,match='frames/residues differ'):
+        write_sasa_burial(tmp_path,'environment','default')
+    environment.assign(residue=['ALA7','GLY7']).to_parquet(root/'environment/residue_sasa.parquet')
+    with pytest.raises(ValueError,match='identity mismatch'):
+        write_sasa_burial(tmp_path,'environment','default')

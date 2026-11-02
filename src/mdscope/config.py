@@ -455,6 +455,11 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
         raise ValueError("trajectory.stride must be >= 1")
     if int(cfg["trajectory"].get("chunk_frames", 1000)) < 1:
         raise ValueError("trajectory.chunk_frames must be >= 1")
+    start, stop = cfg['trajectory'].get('start'), cfg['trajectory'].get('stop')
+    # Preserve supported Python negative indexing, which needs trajectory
+    # length to resolve. Reject an obviously empty forward slice early.
+    if start is not None and stop is not None and int(start) >= 0 and int(stop) >= 0 and int(stop) <= int(start):
+        raise ValueError('trajectory.stop must exceed start for a forward frame window')
     time_spec = cfg.get("time", {}) or {}
     if time_spec.get("dt_ps") is not None:
         dt_ps = float(time_spec["dt_ps"])
@@ -753,6 +758,37 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
         raise ValueError("statistics.bootstrap_draws must be >= 100")
     if not 0 < float(stats.get("ci", 0.95)) < 1:
         raise ValueError("statistics.ci must be between 0 and 1")
+    for key in ("interaction_include_kinds", "interaction_exclude_kinds"):
+        value = stats.get(key)
+        if value is not None and (not isinstance(value, list) or any(not isinstance(x, str) for x in value)):
+            raise ValueError(f"statistics.{key} must be a list of kinds")
+    if int(stats.get("interaction_progress_every", 1000)) < 1:
+        raise ValueError("statistics.interaction_progress_every must be positive")
+    families = stats.get("families", {})
+    if not isinstance(families, dict) or set(families) - {"time_series", "profiles", "interactions", "solvation_rdfs"}:
+        raise ValueError("statistics.families has unknown families or is not a mapping")
+    for name, option in families.items():
+        if isinstance(option, bool):
+            continue
+        if not isinstance(option, dict) or set(option) - {"enabled", "bootstrap_draws", "ci", "hypothesis_tests"}:
+            raise ValueError(f"statistics.families.{name}: unsupported options")
+        for key in ("enabled", "hypothesis_tests"):
+            if key in option and not isinstance(option[key], bool):
+                raise ValueError(f"statistics.families.{name}.{key} must be boolean")
+        if "bootstrap_draws" in option and int(option["bootstrap_draws"]) < 100:
+            raise ValueError(f"statistics.families.{name}.bootstrap_draws must be >= 100")
+        if "ci" in option and not 0 < float(option["ci"]) < 1:
+            raise ValueError(f"statistics.families.{name}.ci must be between 0 and 1")
+    hypotheses = stats.get("hypothesis_families", {})
+    if not isinstance(hypotheses, dict):
+        raise ValueError("statistics.hypothesis_families must map names to metric lists")
+    seen = set()
+    for name, metrics in hypotheses.items():
+        if name == "exploratory" or not isinstance(metrics, list) or not metrics or any(not isinstance(x, str) for x in metrics):
+            raise ValueError("hypothesis families require named nonempty metric lists; exploratory is reserved")
+        if seen.intersection(metrics) or len(set(metrics)) != len(metrics):
+            raise ValueError("A metric cannot belong to multiple hypothesis families")
+        seen.update(metrics)
     block = stats.get("block", {}) or {}
     if str(block.get("method", "moving")) != "moving":
         raise ValueError("statistics.block.method currently supports only 'moving'")
@@ -802,3 +838,23 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
             )
         if str(tests.get("multiple_testing", "fdr_bh")) not in {"fdr_bh", "none"}:
             raise ValueError("statistics.hypothesis_tests.multiple_testing must be fdr_bh or none")
+
+
+
+def statistics_family_config(cfg, family):
+    """Resolve one statistics family's explicit overrides without mutating cfg."""
+    from copy import deepcopy
+    stats = cfg.get("statistics", {})
+    option = stats.get("families", {}).get(family, {})
+    option = {"enabled": option} if isinstance(option, bool) else option
+    if not stats.get("enabled", True) or not option.get("enabled", True):
+        return None
+    if not option:
+        return cfg
+    result = deepcopy(cfg)
+    for key in ("bootstrap_draws", "ci"):
+        if key in option:
+            result["statistics"][key] = option[key]
+    if "hypothesis_tests" in option:
+        result["statistics"].setdefault("hypothesis_tests", {})["enabled"] = option["hypothesis_tests"]
+    return result
