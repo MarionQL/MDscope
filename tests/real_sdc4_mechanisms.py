@@ -47,11 +47,11 @@ def run():
         assert len(species) >= 3, species
         tm = {
             "A": "protein and chainID PROA and resid 150:170 and name CA",
-            "B": "protein and chainID PROB and resid 419:439 and name CA",
+            "B": "protein and chainID PROB and resid 420:440 and name CA",
         }
         ecto = {
             "A": "protein and chainID PROA and resid 1:149 and name CA",
-            "B": "protein and chainID PROB and resid 270:418 and name CA",
+            "B": "protein and chainID PROB and resid 270:419 and name CA",
         }
         for selection in list(tm.values()) + list(ecto.values()):
             assert len(u.select_atoms(selection)) >= 4, (
@@ -69,7 +69,7 @@ def run():
         # precisely the configured ectodomain residues and no TM residues.
         rmd = u.select_atoms(
             "protein and name CA and ((chainID PROA and resid 1:149) "
-            "or (chainID PROB and resid 270:418))"
+            "or (chainID PROB and resid 270:419))"
         )
         ecto_ids = np.union1d(
             u.select_atoms(ecto["A"]).resindices,
