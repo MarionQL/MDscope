@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 from MDAnalysis.coordinates.memory import MemoryReader
 
-from mdscope.mechanisms.sdc4_mechanisms import SDC4Mechanisms, _local_surface, _normal_order_setup, _order_by_residue
+from mdscope.mechanisms.sdc4_mechanisms import SDC4Mechanisms, _contacts, _angle, _backbone_axis, _local_surface, _normal_order_setup, _order_by_residue
 from mdscope.mechanisms.shared_states import fit_shared_states
 
 
@@ -245,3 +245,51 @@ def test_local_lipid_order_matches_minus_sch_convention():
     )
     assert len(ids) == 2
     np.testing.assert_allclose(values, [-1.0, 0.5], atol=1e-8)
+
+
+def test_tm_contacts_independent_distance_oracle_and_periodic_boundary():
+    """Heavy-atom contact pair indices must match brute-force minimum image."""
+    u = mda.Universe.empty(6, n_residues=4,
+                           atom_resindex=[0, 0, 1, 2, 2, 3],
+                           trajectory=True)
+    u.add_TopologyAttr("names", ["CA", "CB", "CA", "CA", "CB", "CA"])
+    u.add_TopologyAttr("resnames", ["GLY", "ILE", "GLY", "VAL"])
+    u.add_TopologyAttr("resids", [1, 2, 10, 11])
+    u.atoms.positions = np.asarray([
+        [1.0, 1, 1], [1.2, 1, 1], [6, 1, 1],
+        [99, 1, 1], [98.5, 1, 1], [50, 1, 1],
+    ], dtype=np.float32)
+    box = np.array([100., 100., 100., 90., 90., 90.])
+    left, right = u.atoms[:3], u.atoms[3:]
+    observed = set(map(tuple, _contacts(left, right, 3., box)))
+    expected = set()
+    for i, a in enumerate(left.positions):
+        for j, b in enumerate(right.positions):
+            delta = a - b
+            delta -= np.rint(delta / box[:3]) * box[:3]
+            if np.linalg.norm(delta) <= 3.:
+                expected.add((i, j))
+    assert observed == expected == {(0, 0), (0, 1), (1, 0), (1, 1)}
+    residue_pairs = {(int(left.resindices[i]), int(right.resindices[j]))
+                     for i, j in observed}
+    assert len(residue_pairs) == 1
+    assert len(_contacts(left, right, 1.0, box)) == 0
+    right.positions += [0, 20, 0]
+    assert len(_contacts(left, right, 3., box)) == 0
+
+
+def test_tm_axis_orientation_and_crossing_angle_oracle():
+    u = mda.Universe.empty(6, n_residues=6, trajectory=True)
+    u.add_TopologyAttr("names", ["CA"] * 6)
+    u.add_TopologyAttr("resnames", ["GLY"] * 6)
+    u.add_TopologyAttr("resids", list(range(1, 7)))
+    u.atoms.positions = np.asarray([
+        [99, 0, 0], [0, 0, 0], [1, 0, 0],
+        [0, 0, 0], [0, 1, 0], [0, 2, 0],
+    ], dtype=np.float32)
+    box = np.array([100., 100., 100., 90., 90., 90.])
+    a = _backbone_axis(u.atoms[:3], box)
+    b = _backbone_axis(u.atoms[3:], box)
+    np.testing.assert_allclose(a, [1, 0, 0], atol=1e-6)
+    np.testing.assert_allclose(b, [0, 1, 0], atol=1e-6)
+    assert _angle(a, b) == pytest.approx(90., abs=1e-6)
