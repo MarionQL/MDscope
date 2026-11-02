@@ -144,6 +144,7 @@ def run():
             "motif_selection": "protein and name CA",
             "motifs": {"NxIP": "N.IP", "proline_hydrophobic": "VVHPLVPL"},
             "require_motifs": False, "require_gxxxg": True,
+            "motif_lipid_residence": True,
             "map_extent_A": 40., "map_bin_A": 4.,
             "local_radius_A": 25., "local_min_lipids": 8,
             "local_order": {"enabled": False},
@@ -186,6 +187,14 @@ def run():
         assert np.all(np.isfinite(df["sdc4_tm_crossing_angle_deg"]))
         assert np.all(np.isfinite(df["sdc4_ectodomain_A_height_A"]))
         assert result["n_hs_chains"] == 6
+        from mdscope.mechanisms.motif_residence import COLUMNS
+        events_path = out / "extensions/sdc4_mechanisms/motif_lipid_contact_events.parquet"
+        residence_path = out / "extensions/sdc4_mechanisms/motif_lipid_residence.parquet"
+        assert events_path.exists() and residence_path.exists()
+        assert set(COLUMNS).issubset(pd.read_parquet(residence_path).columns)
+        assert any(col.endswith("_P4_phi_deg") for col in df.columns)
+        assert any(col.endswith("_P7_psi_deg") for col in df.columns)
+
         actual_tm = df["sdc4_tm_interface_residue_pairs"].to_numpy()
         actual_motif = df["sdc4_gxxxg_interface_residue_pairs"].to_numpy()
         np.testing.assert_array_equal(actual_tm, np.asarray(reference)[:, 0])
