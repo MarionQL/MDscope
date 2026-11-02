@@ -7,11 +7,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from ..config import ensure_dir
+from ..config import ensure_dir, presentation_enabled
+from .figure_inventory import current_statistics
 
 def plot_lipid_enrichment_matrix(cfg,root):
+    if not current_statistics(cfg, root, 'time_series'):
+        return
     source=Path(root)/"project_summary"/"statistics"/"time_series"/"replicate_statistics.parquet"
-    if not source.exists() or not cfg.get("plots",{}).get("enabled",True):return
+    if not source.exists() or not presentation_enabled(cfg,"plots","lipid_enrichment"):return
     frame=pd.read_parquet(source)
     if not {"system","metric","mean"}.issubset(frame):return
     selected=frame[frame["metric"].str.startswith("lipid_enrichment_")

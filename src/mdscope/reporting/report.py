@@ -20,9 +20,9 @@ import zipfile
 import numpy as np
 import pandas as pd
 
-from ..config import ensure_dir
-from .report_inventory import _read, _sample_frame_table, _summary_inventory, _metric_groups
-from .figure_inventory import figure_inventory, report_coverage, metric_coverage
+from ..config import ensure_dir, presentation_enabled, config_hash, system_label
+from .report_inventory import inference_status, _read, _sample_frame_table, _summary_inventory, _metric_groups
+from .figure_inventory import figure_inventory, report_coverage, metric_coverage, figure_status, figure_family, current_statistics
 from .solvation_figures import (solvation_inventory, solvation_rdf_figure,
     solvation_timeseries_figure, solvation_survival_figure,
     solvation_stat_rows, solvation_comparison_rows)
@@ -56,9 +56,9 @@ def _fmt(value, digits=3):
     try:
         x = float(value)
     except (TypeError, ValueError):
-        return "-"
+        return "Unavailable"
     if not np.isfinite(x):
-        return "-"
+        return "Unavailable"
     if abs(x) >= 10000 or (0 < abs(x) < .001):
         return f"{x:.2g}"
     return f"{x:.{digits}f}"
@@ -182,19 +182,71 @@ def _build_pdf(path, cfg, root, system_repouts, options):
         author="MDscope",
     )
     story = []
+    verified_figures = set(figure_inventory(root,system_repouts,cfg).figure)
+    active_section = True
+    current_family = 'overview'
+    section_families = {
+        'Systems and analyzed sampling':'overview',
+        'Condition-level scalar results':'time_series',
+        'Replicate-level consistency: primary mechanistic metrics':'time_series',
+        'Shared conformational-state model':'shared_states',
+        'Matched local lipid specificity':'sdc4',
+        'Solvation, hydration and ion coordination':'solvation',
+        'Selection audits and methodological limitations':'methods',
+        'Protein-centered lipid enrichment':'lipid_enrichment',
+        'Scientific figure atlas and coverage audit':'atlas',
+        'Files to share for deeper analysis':'methods',
+    }
+    def read_table(path):
+        family = figure_family(path)
+        if not presentation_enabled(cfg,'report',family):
+            return pd.DataFrame()
+        if 'statistics' in Path(path).parts:
+            name = {'solvation':'solvation_rdfs'}.get(family,family)
+            selected = cfg.get('statistics',{}).get('families',{}).get(name,True)
+            if not cfg.get('statistics',{}).get('enabled',True) or selected is False or (isinstance(selected,dict) and not selected.get('enabled',True)):
+                return pd.DataFrame()
+            manifest = root/'project_summary/statistics/manifest.json'
+            if manifest.exists() and json.loads(manifest.read_text()).get('statistics_hash') != config_hash(cfg.get('statistics',{})):
+                return pd.DataFrame()
+        return _read(path)
+    def display_cell(value):
+        if isinstance(value,str):
+            names = {'target_id':'Target', 'mean_n_solvent':'Mean solvent count',
+                     'hydrated_fraction':'Hydrated fraction', 'right_censored':'Right censored',
+                     'left_censored':'Left censored', 'duration_ps':'Reported duration (ps)',
+                     'survival_probability':'Survival probability', 'g_bulk':'g(r), cell-density reference'}
+            if value in names:
+                return names[value]
+            from .plotting import _metric_meta, METRIC_LABELS
+            if value.startswith('sdc4_') or value in METRIC_LABELS:
+                label, units = _metric_meta(value)
+                return label + (f' ({units})' if units else '')
+            if value in cfg.get('systems',{}):
+                return system_label(cfg,value)
+        return value
     def para(text, style="ReportBody"):
         return Paragraph(_safe(text), styles[style])
     def header(text):
+        nonlocal active_section, current_family
+        current_family = section_families.get(text, 'lipid_enrichment' if text.endswith(' maps') else current_family)
+        active_section = presentation_enabled(cfg,'report',current_family)
+        if not active_section:
+            return
         story.append(Paragraph(_safe(text), styles["ReportHeading"]))
     def sub(text):
+        if not active_section:
+            return
         story.append(Paragraph(_safe(text), styles["ReportSub"]))
     def body(text):
+        if not active_section:
+            return
         story.append(para(text))
     def table(rows, widths=None):
-        if not rows:
+        if not rows or not active_section:
             return
         rendered = [
-            [Paragraph(_safe(cell), styles["ReportTable"]) for cell in row]
+            [Paragraph(_safe(display_cell(cell)), styles["ReportTable"]) for cell in row]
             for row in rows
         ]
         obj = Table(rendered, colWidths=widths, repeatRows=1, hAlign="LEFT")
@@ -211,10 +263,16 @@ def _build_pdf(path, cfg, root, system_repouts, options):
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ]))
         story.append(obj)
+        story.append(para(f"Source family: {current_family}; report configuration: {config_hash(cfg)}. "
+                          "Sampling and source-file provenance are recorded in report_provenance.json; raw identifiers are retained in the bundle.", "ReportSmall"))
         story.append(Spacer(1, 8))
     def figure(path_or_buffer, caption, max_width=7.05*inch, max_height=7.6*inch):
-        if path_or_buffer is None:
+        if path_or_buffer is None or not active_section:
             return
+        if isinstance(path_or_buffer, (str, Path)) and Path(path_or_buffer).exists():
+            if str(Path(path_or_buffer).relative_to(root)) not in verified_figures:
+                return
+        caption += f" Source family: {current_family}; report configuration {config_hash(cfg)}; sampling/source audit in companion manifest."
         try:
             from PIL import Image as PILImage
             if isinstance(path_or_buffer, (str, Path)):
@@ -286,15 +344,15 @@ def _build_pdf(path, cfg, root, system_repouts, options):
     story.append(PageBreak())
 
     stats_dir = root / "project_summary/statistics/time_series"
-    systems = _read(stats_dir / "system_statistics.parquet")
-    comparisons = _read(stats_dir / "system_comparisons.parquet")
-    reps = _read(stats_dir / "replicate_statistics.parquet")
+    systems = read_table(stats_dir / "system_statistics.parquet")
+    comparisons = read_table(stats_dir / "system_comparisons.parquet")
+    reps = read_table(stats_dir / "replicate_statistics.parquet")
     max_rows = int(options.get("max_metrics_per_section", 45))
     header("Condition-level scalar results")
     body("System mean and bootstrap confidence intervals are taken directly from "
          "MDscope's hierarchical statistics. Contrasts are system 2 minus system 1; "
          "q-values use the configured multiple-testing correction. "
-         "A dash denotes missing or non-finite data.")
+         "Unavailable denotes missing or non-finite data; a measured zero remains zero.")
     if systems.empty:
         body("System statistics not available. Enable statistics and complete finalization.")
     else:
@@ -311,7 +369,7 @@ def _build_pdf(path, cfg, root, system_repouts, options):
                 body(f"Showing {len(metrics)} of {total} metrics; the companion "
                      "review ZIP contains all full-precision statistics.")
             rows = [[
-                "Metric", first + " mean [CI]", second + " mean [CI]",
+                "Metric", system_label(cfg,first) + " mean [CI]", system_label(cfg,second) + " mean [CI]",
                 "Second minus first [CI]; p / q",
             ]]
             for metric in metrics:
@@ -328,7 +386,7 @@ def _build_pdf(path, cfg, root, system_repouts, options):
                             f"{_fmt(item.mean)} [{_fmt(item.mean_ci_low)}, "
                             f"{_fmt(item.mean_ci_high)}]"
                         )
-                    delta = "-"
+                    delta = "Unavailable"
                     if not comparisons.empty:
                         contrast = comparisons[
                             (comparisons["metric"] == metric)
@@ -346,10 +404,11 @@ def _build_pdf(path, cfg, root, system_repouts, options):
                                 f"[{_fmt(c['mean_difference_ci_low'])}, "
                                 f"{_fmt(c['mean_difference_ci_high'])}]; "
                                 f"p={_fmt(c.get('mean_p_value'))} / "
-                                f"q={_fmt(c.get('mean_q_value'))}"
+                                f"q={_fmt(c.get('mean_q_value'))}; "
+                                f"{inference_status(c.get('mean_q_value'),c.get('mean_p_value'))}"
                             )
                     rows.append([
-                        label, values.get(first, "-"), values.get(second, "-"),
+                        label, values.get(first, "Unavailable"), values.get(second, "Unavailable"),
                         delta,
                     ])
             table(rows, [180, 104, 104, 122])
@@ -398,7 +457,7 @@ def _build_pdf(path, cfg, root, system_repouts, options):
         body("One common scaler and clustering model are used across conditions. "
              "State labels are comparable between systems, but their populations "
              "are not direct free-energy estimates.")
-        centroids = _read(state_dir / "state_centroids.parquet")
+        centroids = read_table(state_dir / "state_centroids.parquet")
         if not centroids.empty:
             sub("State centroids (original feature units)")
             for row in centroids.itertuples(index=False):
@@ -408,7 +467,7 @@ def _build_pdf(path, cfg, root, system_repouts, options):
                     rows.append([feature, _fmt(getattr(row, feature))])
                 story.append(para(f"State {state}", "ReportSmall"))
                 table(rows, [330, 135])
-        population = _read(state_dir / "system_populations.parquet")
+        population = read_table(state_dir / "system_populations.parquet")
         if not population.empty:
             sub("Replicate-averaged state occupancy")
             rows = [["System", "State", "Mean fraction", "Replicate CI", "n reps"]]
@@ -420,7 +479,7 @@ def _build_pdf(path, cfg, root, system_repouts, options):
                     item.n_replicates,
                 ])
             table(rows, [120, 40, 80, 155, 65])
-        diagnostics = _read(state_dir / "sampling_diagnostics.parquet")
+        diagnostics = read_table(state_dir / "sampling_diagnostics.parquet")
         if not diagnostics.empty:
             sub("Sampling diagnostics")
             rows = [["System", "Replicate", "Half-vs-half JS", "Transitions", "Frames"]]
@@ -442,7 +501,7 @@ def _build_pdf(path, cfg, root, system_repouts, options):
                "Shared state occupancies; black points denote independent replicates.")
         figure(state_dir / "state_sampling_diagnostics.png",
                "First/second-half state-population divergence.")
-        conditional = _read(state_dir / "state_conditioned_hs_solvation.parquet")
+        conditional = read_table(state_dir / "state_conditioned_hs_solvation.parquet")
         if not conditional.empty:
             sub("State- and contact-conditioned HS solvation")
             max_cond = int(options.get("max_conditioned_rows", 80))
@@ -458,7 +517,7 @@ def _build_pdf(path, cfg, root, system_repouts, options):
                 body(f"{len(conditional)-max_cond} additional conditioned rows "
                      "are included in the companion ZIP.")
 
-    lipid_stats = _read(state_dir / "lipid_specificity_system_statistics.parquet")
+    lipid_stats = read_table(state_dir / "lipid_specificity_system_statistics.parquet")
     if not lipid_stats.empty:
         matched = lipid_stats.loc[lipid_stats.measure.isin((
             "mean_matched_local_contact_fraction", "mean_matched_local_enrichment"))]
@@ -494,7 +553,7 @@ def _build_pdf(path, cfg, root, system_repouts, options):
     # Solvation results are reported explicitly, rather than hidden among
     # generic scalar metrics. Large per-target/event tables are indexed here
     # and included at full precision in the companion ZIP.
-    sol_inventory = solvation_inventory(system_repouts)
+    sol_inventory = solvation_inventory(system_repouts) if presentation_enabled(cfg,'report','solvation') else pd.DataFrame()
     if not sol_inventory.empty:
         story.append(PageBreak())
         header("Solvation, hydration and ion coordination")
@@ -503,7 +562,7 @@ def _build_pdf(path, cfg, root, system_repouts, options):
              "solvent in the shell. RDF g(r) uses selected solvent count / full periodic cell volume "
              "without excluded-volume correction. Replicates, not frames or "
              "molecular sites, are independent sampling units.")
-        summary = solvation_stat_rows(root)
+        summary = solvation_stat_rows(root) if current_statistics(cfg,root,'time_series') else pd.DataFrame()
         if not summary.empty:
             sub("System-level hydration and coordination statistics")
             body("Moving-block and hierarchical bootstrap confidence intervals "
@@ -533,18 +592,18 @@ def _build_pdf(path, cfg, root, system_repouts, options):
             if len(comparisons_sol)>35:
                 body(f"Showing 35 of {len(comparisons_sol)} comparisons; "
                      "full results including p/q values are in the ZIP.")
-        rdf_figure=solvation_rdf_figure(root,system_repouts)
+        rdf_figure=solvation_rdf_figure(root,system_repouts) if current_statistics(cfg,root,'solvation_rdfs') and presentation_enabled(cfg,'plots','solvation') else None
         if rdf_figure:
             sub("Radial distribution functions")
             figure(rdf_figure[0],"Replicate-mean RDFs with ±1 replicate SD bands. "
                    f"Showing {rdf_figure[1]} of {rdf_figure[2]} chemical classes; "
                    "all numerical curves are in the review ZIP.")
-        series_figure=solvation_timeseries_figure(system_repouts)
+        series_figure=solvation_timeseries_figure(system_repouts) if presentation_enabled(cfg,'plots','solvation') else None
         if series_figure:
             sub("Coordination over simulation time")
             figure(series_figure[0],"Per-replicate coordination time series. "
                    f"Showing {series_figure[1]} of {series_figure[2]} chemical classes.")
-        survival_figure=solvation_survival_figure(system_repouts)
+        survival_figure=solvation_survival_figure(system_repouts) if presentation_enabled(cfg,'plots','solvation') else None
         if survival_figure:
             sub("Observed solvent-contact survival")
             figure(survival_figure[0],"Descriptive survival curves from sampled "
@@ -663,7 +722,7 @@ def _build_pdf(path, cfg, root, system_repouts, options):
          "one observable alone. Compare replicate-level effects, state occupancy, "
          "orientation and contacts, and temporal sampling together.")
 
-    if cfg.get("plots", {}).get("enabled", True):
+    if presentation_enabled(cfg,'plots','lipid_enrichment') and presentation_enabled(cfg,'report','lipid_enrichment'):
         fig = root / "project_summary/figures/membrane/lipid_enrichment_heatmap.png"
         if fig.exists():
             story.append(PageBreak())
@@ -702,19 +761,19 @@ def _build_pdf(path, cfg, root, system_repouts, options):
     # configurable bound on PDF pages; the ZIP always carries all figures.
     story.append(PageBreak())
     header("Scientific figure atlas and coverage audit")
-    coverage=report_coverage(root,system_repouts)
+    coverage=report_coverage(root,system_repouts,cfg)
     if not coverage.empty:
         rows=[["Analysis family","Data present","Visual present","Coverage"]]
         for item in coverage.itertuples():
             rows.append([item.analysis,"yes" if item.data_available else "no",
                          "yes" if item.figure_available else "no",item.status])
         table(rows,[162,93,93,162])
-        missing=coverage[coverage.status=="missing_figure"]
+        missing=coverage[coverage.status.isin(["missing_figure","invalid_figure","missing_data"])]
         if not missing.empty:
             body("WARNING: Analysis outputs without a generated figure: "+
                  ", ".join(missing.analysis.astype(str))+
                  ". Review the figure manifest and plot configuration.")
-    metric_audit=metric_coverage(root)
+    metric_audit=metric_coverage(root,cfg,system_repouts)
     if not metric_audit.empty:
         missing_metrics=metric_audit[metric_audit.status=="missing_figure"]
         body(f"Per-metric visual coverage: {len(metric_audit)-len(missing_metrics)} "
@@ -725,7 +784,7 @@ def _build_pdf(path, cfg, root, system_repouts, options):
                  ", ".join((missing_metrics.metric.astype(str)+
                             " ["+missing_metrics.group.astype(str)+"]").head(15))+
                  ". The complete list is in figure_metric_coverage.csv.")
-    figures=figure_inventory(root,system_repouts)
+    figures=figure_inventory(root,system_repouts,cfg)
     max_gallery=int(options.get("max_gallery_figures",100))
     if max_gallery<0:
         raise ValueError("report.max_gallery_figures must be >= 0")
@@ -761,10 +820,18 @@ def _build_pdf(path, cfg, root, system_repouts, options):
          "results, except for the timestamp and any plots whose rendering "
          "libraries differ. It does not generate LLM-written interpretations.")
 
-    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    # Disabled sections can leave separators; never emit blank separator pages.
+    cleaned = []
+    for item in story:
+        if isinstance(item,PageBreak) and (not cleaned or isinstance(cleaned[-1],PageBreak)):
+            continue
+        cleaned.append(item)
+    while cleaned and isinstance(cleaned[-1],PageBreak):
+        cleaned.pop()
+    doc.build(cleaned, onFirstPage=footer, onLaterPages=footer)
 
 
-def _make_bundle(root, pdf, system_repouts, options):
+def _make_bundle(root, pdf, system_repouts, options, cfg=None):
     """Pack sufficient machine-readable evidence without massive trajectories."""
     dest = pdf.parent / "MDscope_review_bundle.zip"
     max_frames = int(options.get("sample_frames_per_replicate", 250))
@@ -777,14 +844,14 @@ def _make_bundle(root, pdf, system_repouts, options):
                              compresslevel=6) as archive:
             archive.write(pdf, arcname=pdf.name)
             # Complete machine-readable figure manifest and coverage audit.
-            figures=figure_inventory(root,system_repouts)
+            figures=figure_inventory(root,system_repouts,cfg)
             coverage=report_coverage(root,system_repouts)
             archive.writestr("project_summary/report/figure_manifest.csv",
-                             figures.to_csv(index=False))
+                             figure_inventory(root,system_repouts,cfg,include_rejected=True).to_csv(index=False))
             archive.writestr("project_summary/report/figure_coverage.csv",
                              coverage.to_csv(index=False))
             archive.writestr("project_summary/report/figure_metric_coverage.csv",
-                             metric_coverage(root).to_csv(index=False))
+                             metric_coverage(root,cfg,system_repouts).to_csv(index=False))
             for item in figures.itertuples():
                 path_=root/item.figure
                 archive.write(path_,arcname=item.figure)
@@ -920,6 +987,16 @@ def generate_report(cfg, root, system_repouts=None, force=False):
             for system, spec in cfg["systems"].items()
         }
     out = ensure_dir(root / "project_summary" / "report")
+    from ..config import atomic_json
+    provenance = {
+        'report_config_hash': config_hash(cfg), 'sections': options.get('sections',{}),
+        'sampling': _summary_inventory(root,cfg,system_repouts).to_dict('records'),
+        'statistics_manifest': str(root/'project_summary/statistics/manifest.json'),
+        'source_analysis_config_status': 'see original run/checkpoint metadata; current rendering config does not prove original trajectory parameters',
+        'figure_source_policy': 'PNG content hash plus source path/size/mtime fingerprint; unchanged legacy PNGs are unverified',
+    }
+    atomic_json(out/'report_provenance.json',provenance)
+    figure_inventory(root,system_repouts,cfg,include_rejected=True).to_csv(out/'figure_manifest.csv',index=False)
     dest = out / "MDscope_evidence_report.pdf"
     with tempfile.NamedTemporaryFile(
         dir=out, prefix=".mdscope-report-", suffix=".pdf", delete=False
@@ -934,6 +1011,6 @@ def generate_report(cfg, root, system_repouts=None, force=False):
         tmp.unlink(missing_ok=True)
     bundle = None
     if options.get("bundle_enabled", True):
-        bundle = _make_bundle(root, dest, system_repouts, options)
+        bundle = _make_bundle(root, dest, system_repouts, options, cfg)
     return {"pdf": str(dest), "bundle": str(bundle) if bundle else None}
 

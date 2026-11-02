@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from ..core.geometry import minimum_image_displacements
 from MDAnalysis.exceptions import NoDataError
-from ..config import atomic_parquet
+from ..config import atomic_parquet, presentation_enabled
 
 def _residue_centers(atoms):
     """Vectorized center per selected residue, preserving MDAnalysis residue order.
@@ -140,7 +140,7 @@ def summarize_project_diffusion(root:Path,system_repouts:dict,cfg):
     atomic_parquet(out/"system_coefficients.parquet",grouped)
     # Coefficients are replicate-derived summaries, unlike framewise observables:
     # show independent replicate points; never violin-plot frames as replicas.
-    if cfg.get("plots",{}).get("enabled",True):
+    if presentation_enabled(cfg,"plots","diffusion"):
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
@@ -181,3 +181,4 @@ def summarize_project_multi_origin(root, system_repouts):
                .reset_index())
     grouped["interpretation"] = "replicate_level_descriptive_no_significance"
     atomic_parquet(target / "multi_origin_systems.parquet", grouped)
+

@@ -749,6 +749,15 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
     shared = cfg["analyses"].get("shared_states", {})
     if shared.get("enabled") and not mechanisms.get("enabled"):
         raise ValueError("shared_states requires sdc4_mechanisms.enabled")
+    allowed = {'time_series','profiles','interactions','solvation','sdc4','shared_states',
+               'diffusion','lipid_enrichment','lipid_contacts','coupling','other','overview','methods','atlas'}
+    for domain, key in (('plots','families'),('report','sections')):
+        controls = cfg.get(domain,{}).get(key,{})
+        if not isinstance(controls,dict) or set(controls)-allowed or any(not isinstance(v,bool) for v in controls.values()):
+            raise ValueError(f'{domain}.{key} must map known families to booleans')
+        excluded = cfg.get(domain,{}).get('interaction_exclude_kinds',[])
+        if not isinstance(excluded,list) or any(not isinstance(v,str) for v in excluded):
+            raise ValueError(f'{domain}.interaction_exclude_kinds must be a list')
     report = cfg.get("report", {})
     if report.get("enabled"):
         for key in ("max_metrics_per_section", "max_hs_key_metrics",
@@ -847,6 +856,11 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
 
 
 
+def presentation_enabled(cfg, domain, family):
+    """Independent plot-family/PDF-section switches; collection is unaffected."""
+    options = cfg.get(domain, {})
+    key = 'families' if domain == 'plots' else 'sections'
+    return (domain != 'plots' or options.get('enabled', True)) and options.get(key, {}).get(family, True) and (domain != 'plots' or options.get(family, True))
 def statistics_family_config(cfg, family):
     """Resolve one statistics family's explicit overrides without mutating cfg."""
     from copy import deepcopy

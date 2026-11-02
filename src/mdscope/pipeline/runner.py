@@ -484,6 +484,8 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
         return root
     if phase == "plotting" and not (project_summary / "statistics").is_dir():
         raise RuntimeError("Missing project_summary/statistics; run statistics phase first")
+    from ..reporting.figure_inventory import figure_snapshot, record_generated_figures
+    figure_before = figure_snapshot(root, system_repouts)
     timed("standard_plots", plot_all, cfg, root, system_repouts)
     timed("lipid_enrichment_plots", plot_lipid_enrichment_matrix, cfg, root)
     timed("shared_states", fit_shared_states, cfg, root, system_repouts)
@@ -493,6 +495,7 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
     timed("multi_origin_summary", summarize_project_multi_origin, root, system_repouts)
     if cfg.get('analyses',{}).get('coupling_screen',{}).get('enabled',False):
         timed("coupling_screen", screen_couplings, cfg, root, system_repouts)
+    record_generated_figures(cfg, root, system_repouts, figure_before)
     report_result = timed("pdf_and_bundle", generate_report, cfg, root, system_repouts)
     if report_result:
         print(f"REPORT PDF: {report_result['pdf']}", flush=True)
