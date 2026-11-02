@@ -228,19 +228,24 @@ class SDC4Mechanisms:
                 map(int, self.resindices), map(str, self.species)
             ))
             for fragment in fragments:
-                species = {anchor_by_residue[int(ix)]
+                # For glycolipids, chainID is the molecule species label;
+                # the CER160 residue is only their ceramide anchor. Without
+                # glycans, chainID CER160 denotes a distinct comparison group.
+                chain_labels = set(map(str, fragment.chainIDs))
+                glyco_labels = chain_labels & {"GM1a", "BGAL", "CER160"}
+                if len(glyco_labels) > 1:
+                    raise ValueError("A lipid molecule spans conflicting glyco chainIDs")
+                anchors = {anchor_by_residue[int(ix)]
                            for ix in fragment.resindices
                            if int(ix) in anchor_by_residue}
+                species = set(glyco_labels) if glyco_labels else anchors
+                if glyco_labels and anchors and anchors != species:
+                    raise ValueError("Glycolipid chainID conflicts with lipid anchor species")
                 if not species:
-                    # Broad contact selections can contain fragments without
-                    # a configured species anchor. Such atoms cannot be assigned
-                    # a defensible molecule/species identity for residence.
                     self.unmapped_lipid_fragment_count += 1
                     continue
                 if len(species) > 1:
-                    raise ValueError(
-                        "Lipid fragment contains conflicting species anchors"
-                    )
+                    raise ValueError("Lipid fragment has conflicting species anchors")
                 identifier = int(np.min(fragment.indices))
                 self.lipid_molecule_species[identifier] = species.pop()
                 for index in fragment.indices:
