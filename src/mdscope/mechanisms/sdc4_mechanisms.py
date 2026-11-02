@@ -617,11 +617,40 @@ class SDC4Mechanisms:
                 if len(water_hits) else 0
             )
             if name.startswith("proline_hydrophobic_"):
+                # Signed distance from the local leaflet surface. Positive
+                # means extracellular/aqueous; not a membrane insertion test.
+                motif_center = _center(ag, box)
+                dz = _vector(
+                    [midpoint[0], midpoint[1], mid_z], motif_center, box
+                )[2]
+                side = 1. if dz >= 0 else -1.
+                leaflet_z = upper_z if side > 0 else lower_z
+                row[prefix + "leaflet_relative_height_A"] = float(
+                    side * _vector(
+                        [midpoint[0], midpoint[1], leaflet_z], motif_center, box
+                    )[2]
+                )
+                ca_motif = ag.select_atoms("name CA")
+                if len(ca_motif) >= 2:
+                    direction = _vector(ca_motif[0].position, ca_motif[-1].position, box)
+                    row[prefix + "axis_normal_cos"] = float(
+                        np.dot(unit(direction), [0., 0., side])
+                    )
+                else:
+                    row[prefix + "axis_normal_cos"] = np.nan
                 chain = "A" if "_PROA_" in name else "B"
                 nxip = next((item["atoms"] for label, item in self.motifs.items()
                              if label.startswith(f"NxIP_PRO{chain}_")), None)
                 if nxip is not None:
                     row[prefix + "to_NxIP_min_distance_A"] = nearest(ag, nxip, box)
+                same_chain_hs = [
+                    group for label, group in self.hs.items()
+                    if label.startswith(f"PRO{chain}_")
+                ]
+                row[prefix + "to_HS_min_distance_A"] = (
+                    min(nearest(ag, group, box) for group in same_chain_hs)
+                    if same_chain_hs else np.nan
+                )
                 # Heavy-atom hydrophobic C/SASA is a separate endpoint; this
                 # frame-level water count remains proximity, not solvation energy.
 
