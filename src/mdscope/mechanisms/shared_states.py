@@ -153,6 +153,7 @@ def fit_shared_states(cfg, root, system_repouts):
     assignments, populations, diagnostics, conditioned = [], [], [], []
     rep_fraction = defaultdict(list)
     lipid_state_rows = []
+    lipid_replica_rows = []
     nxip_conditioned = []
     for (system, replicate), df in replicates.items():
         x = df[features].to_numpy(float)
@@ -234,6 +235,18 @@ def fit_shared_states(cfg, root, system_repouts):
                     pd.DataFrame({"time_ps": times, "state": labels}),
                     on="time_ps", how="inner", validate="many_to_one",
                 )
+                summary = lipid_data.loc[lipid_data.moiety.eq("any")].groupby(
+                    ["region", "species", "leaflet"], sort=True
+                )
+                for (region, species, leaflet), item in summary:
+                    lipid_replica_rows.append({
+                        "system": system, "replicate": replicate,
+                        "region": region, "species": species, "leaflet": leaflet,
+                        "frames_available": int(item.contact_fraction.notna().sum()),
+                        "mean_contact_fraction": float(item.contact_fraction.mean()),
+                        "mean_composition_enrichment": float(item.composition_enrichment.mean()),
+                        "mean_local_enrichment": float(item.local_composition_enrichment.mean()),
+                    })
                 for keys, subgroup in merged.groupby(
                     ["region", "species", "leaflet", "moiety", "state"],
                     sort=True,
@@ -334,6 +347,42 @@ def fit_shared_states(cfg, root, system_repouts):
             "mean_contact_fraction",
         ]),
     )
+    lipid_replica_df = pd.DataFrame(lipid_replica_rows, columns=[
+        "system", "replicate", "region", "species", "leaflet",
+        "frames_available", "mean_contact_fraction",
+        "mean_composition_enrichment", "mean_local_enrichment",
+    ])
+    atomic_parquet(out / "lipid_specificity_replicate_statistics.parquet",
+                   lipid_replica_df)
+    # Equally weight independent trajectories, never individual frames.
+    aggregate = []
+    for (system, region, species, leaflet), subset in lipid_replica_df.groupby(
+        ["system", "region", "species", "leaflet"], sort=True
+    ):
+        for measure in ("mean_contact_fraction", "mean_composition_enrichment",
+                        "mean_local_enrichment"):
+            vals = subset[measure].dropna().to_numpy(float)
+            if not len(vals):
+                continue
+            lo, hi = (np.nan, np.nan)
+            if len(vals) >= 2:
+                sample = rng.integers(0, len(vals), size=(draws, len(vals)))
+                lo, hi = np.quantile(vals[sample].mean(axis=1), [.025, .975])
+            aggregate.append({
+                "system": system, "region": region, "species": species,
+                "leaflet": leaflet, "measure": measure,
+                "n_replicates": len(vals),
+                "replicate_mean": float(vals.mean()),
+                "replicate_sd": float(vals.std(ddof=1)) if len(vals) > 1 else np.nan,
+                "replicate_bootstrap_ci_low": float(lo),
+                "replicate_bootstrap_ci_high": float(hi),
+            })
+    atomic_parquet(out / "lipid_specificity_system_statistics.parquet",
+                   pd.DataFrame(aggregate, columns=[
+                       "system", "region", "species", "leaflet", "measure",
+                       "n_replicates", "replicate_mean", "replicate_sd",
+                       "replicate_bootstrap_ci_low", "replicate_bootstrap_ci_high",
+                   ]))
     atomic_parquet(out / "frame_assignments.parquet", pd.concat(assignments, ignore_index=True))
     atomic_parquet(out / "replicate_populations.parquet", pd.DataFrame(populations))
     atomic_parquet(out / "sampling_diagnostics.parquet", pd.DataFrame(diagnostics))
