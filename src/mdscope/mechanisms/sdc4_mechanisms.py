@@ -210,6 +210,37 @@ class SDC4Mechanisms:
         self.lipid_contact = heavy(selected(
             universe, s.get("lipid_contact_selection"), required=True
         ))
+        self.motif_lipid_residence_enabled = bool(s.get("motif_lipid_residence", False))
+        self.lipid_molecule_by_atom = {}
+        self.lipid_molecule_species = {}
+        if self.motif_lipid_residence_enabled:
+            # Bonded fragments are stable physical molecules in a TPR. Unlike
+            # residue numbers they correctly group GM1/BGAL ceramide + sugars.
+            try:
+                fragments = self.lipid_contact.fragments
+            except Exception as exc:
+                raise ValueError(
+                    "Motif lipid residence requires lipid bond connectivity "
+                    "to identify complete molecules"
+                ) from exc
+            anchor_by_residue = dict(zip(
+                map(int, self.resindices), map(str, self.species)
+            ))
+            for fragment in fragments:
+                species = {anchor_by_residue[int(ix)]
+                           for ix in fragment.resindices
+                           if int(ix) in anchor_by_residue}
+                if len(species) != 1:
+                    raise ValueError(
+                        "Each lipid fragment must contain exactly one "
+                        "species-identifying lipid anchor"
+                    )
+                identifier = int(np.min(fragment.indices))
+                self.lipid_molecule_species[identifier] = species.pop()
+                for index in fragment.indices:
+                    self.lipid_molecule_by_atom[int(index)] = identifier
+            if not self.lipid_molecule_by_atom:
+                raise ValueError("No lipid molecules identified for motif residence")
         self.protein = heavy(selected(
             universe, s.get("protein_selection") or cfg["selections"]["protein"],
             required=True,
@@ -489,6 +520,17 @@ class SDC4Mechanisms:
             )
             row[prefix + "glycan_contacts"] = len(gly_hits)
             row[prefix + "lipid_contacts"] = len(lip_hits)
+            if self.motif_lipid_residence_enabled and len(lip_hits):
+                molecules = {
+                    self.lipid_molecule_by_atom[int(self.lipid_contact.indices[j])]
+                    for j in lip_hits[:, 1]
+                }
+                for molecule in sorted(molecules):
+                    self.rows["lipid_residence"].append({
+                        "time_ps": t, "motif": name,
+                        "molecule_id": molecule,
+                        "species": self.lipid_molecule_species[molecule],
+                    })
         for name, ag in self.hs.items():
             attachment = _center(self.attach[name], box)
             distal = _center(self.hs_distal[name], box)
@@ -533,6 +575,14 @@ class SDC4Mechanisms:
                 pd.DataFrame(self.rows["timeseries"]),
             )
             self.rows["timeseries"].clear()
+        if self.motif_lipid_residence_enabled:
+            atomic_parquet(
+                self.cache / f"residence-{part:06d}.parquet",
+                pd.DataFrame(self.rows["lipid_residence"], columns=[
+                    "time_ps", "motif", "molecule_id", "species",
+                ]),
+            )
+            self.rows["lipid_residence"].clear()
         _atomic_npz(
             self.cache / f"map-{part:06d}.npz",
             counts=self.map_counts, baselines=self.map_baselines,
@@ -602,6 +652,16 @@ class SDC4Mechanisms:
             nframes=np.asarray(nframes, int),
         )
         atomic_json(out / "selection_audit.json", self.audit)
+        if self.motif_lipid_residence_enabled:
+            from .motif_residence import summarize_lipid_residence
+            parts = sorted(self.cache.glob("residence-*.parquet"))
+            events = pd.concat((pd.read_parquet(p) for p in parts),
+                               ignore_index=True) if parts else pd.DataFrame()
+            atomic_parquet(out / "motif_lipid_contact_events.parquet", events)
+            residence = summarize_lipid_residence(
+                events, df["time_ps"].to_numpy(float)
+            )
+            atomic_parquet(out / "motif_lipid_residence.parquet", residence)
         # Contact-conditioned hydration is a *within-replicate* descriptive
         # comparison, not an independent-frame significance test.
         conditioned = []
