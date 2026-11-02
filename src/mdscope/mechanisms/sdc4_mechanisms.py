@@ -252,6 +252,19 @@ class SDC4Mechanisms:
                     self.lipid_molecule_by_atom[int(index)] = identifier
             if not self.lipid_molecule_by_atom:
                 raise ValueError("No lipid molecules identified for motif residence")
+        self.lipid_anchor_index_by_molecule = {}
+        if self.motif_lipid_residence_enabled:
+            anchor_index_by_residue = {
+                int(res): i for i, res in enumerate(self.resindices)
+            }
+            for atom_index, molecule in self.lipid_molecule_by_atom.items():
+                residue = int(universe.atoms[atom_index].resindex)
+                if residue in anchor_index_by_residue:
+                    anchor_index = anchor_index_by_residue[residue]
+                    previous = self.lipid_anchor_index_by_molecule.get(molecule)
+                    if previous is not None and previous != anchor_index:
+                        raise ValueError("Lipid molecule has multiple distinct leaflet anchors")
+                    self.lipid_anchor_index_by_molecule[molecule] = anchor_index
         self.protein = heavy(selected(
             universe, s.get("protein_selection") or cfg["selections"]["protein"],
             required=True,
@@ -548,6 +561,46 @@ class SDC4Mechanisms:
                         "molecule_id": molecule,
                         "species": self.lipid_molecule_species[molecule],
                     })
+        if self.motif_lipid_residence_enabled:
+            # Species-specific molecule occupancy, with leaflet denominator
+            # from the *same frame*. Absent species use NaN, never zero.
+            regions = {
+                **{f"TM_{chain}": atoms for chain, atoms in self.tm_heavy.items()},
+                **{f"motif_{name}": item["atoms"] for name, item in self.motifs.items()},
+            }
+            availability = {}
+            for species in sorted(set(self.lipid_molecule_species.values())):
+                for leaflet, mask in (("upper", leaf), ("lower", ~leaf)):
+                    availability[(species, leaflet)] = int(np.count_nonzero(
+                        (self.species == species) & mask
+                    ))
+            for region, atoms in regions.items():
+                hits = _contacts(atoms, self.lipid_contact, self.contact_A, box)
+                contacted = set()
+                for j in hits[:, 1]:
+                    molecule = self.lipid_molecule_by_atom.get(
+                        int(self.lipid_contact.indices[j])
+                    )
+                    if molecule is not None:
+                        contacted.add(molecule)
+                observed = {}
+                for molecule in contacted:
+                    anchor = self.lipid_anchor_index_by_molecule.get(molecule)
+                    if anchor is None:
+                        continue
+                    key = (self.lipid_molecule_species[molecule],
+                           "upper" if leaf[anchor] else "lower")
+                    observed[key] = observed.get(key, 0) + 1
+                for (species, leaflet), denominator in availability.items():
+                    count = observed.get((species, leaflet), 0)
+                    self.rows["lipid_specificity"].append({
+                        "time_ps": t, "region": region, "species": species,
+                        "leaflet": leaflet, "contacted_molecules": count,
+                        "available_molecules": denominator,
+                        "contact_fraction": (
+                            count / denominator if denominator else np.nan
+                        ),
+                    })
         for name, ag in self.hs.items():
             attachment = _center(self.attach[name], box)
             distal = _center(self.hs_distal[name], box)
@@ -594,6 +647,16 @@ class SDC4Mechanisms:
             self.rows["timeseries"].clear()
         if self.motif_lipid_residence_enabled:
             atomic_parquet(
+                self.cache / f"specificity-{part:06d}.parquet",
+                pd.DataFrame(self.rows["lipid_specificity"], columns=[
+                    "time_ps", "region", "species", "leaflet",
+                    "contacted_molecules", "available_molecules",
+                    "contact_fraction",
+                ]),
+            )
+            self.rows["lipid_specificity"].clear()
+        if self.motif_lipid_residence_enabled:
+            atomic_parquet(
                 self.cache / f"residence-{part:06d}.parquet",
                 pd.DataFrame(self.rows["lipid_residence"], columns=[
                     "time_ps", "motif", "molecule_id", "species",
@@ -612,7 +675,7 @@ class SDC4Mechanisms:
 
     def prune_from(self, part):
         for path in self.cache.glob("*"):
-            match = re.match(r"(?:part|map|residence)-(\d+)\.(?:parquet|npz)$", path.name)
+            match = re.match(r"(?:part|map|residence|specificity)-(\d+)\.(?:parquet|npz)$", path.name)
             if match and int(match.group(1)) >= part:
                 path.unlink()
 
@@ -679,6 +742,12 @@ class SDC4Mechanisms:
                 events, df["time_ps"].to_numpy(float)
             )
             atomic_parquet(out / "motif_lipid_residence.parquet", residence)
+            pieces = sorted(self.cache.glob("specificity-*.parquet"))
+            specificity = pd.concat(
+                (pd.read_parquet(p) for p in pieces), ignore_index=True
+            ) if pieces else pd.DataFrame()
+            atomic_parquet(out / "lipid_region_specificity.parquet", specificity)
+
         # Contact-conditioned hydration is a *within-replicate* descriptive
         # comparison, not an independent-frame significance test.
         conditioned = []
