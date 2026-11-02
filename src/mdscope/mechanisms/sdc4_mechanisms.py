@@ -686,6 +686,7 @@ class SDC4Mechanisms:
                 )
                 observed = {}
                 minima = {}
+                residue_contacts = set()
                 # Local composition is measured using available anchor molecules
                 # in a fixed xy disk, rather than the whole membrane leaflet.
                 # This is NOT an accessible-area correction.
@@ -713,6 +714,9 @@ class SDC4Mechanisms:
                     observed.setdefault((species, leaflet, "any"), set()).add(molecule)
                     key = (species, leaflet)
                     minima[key] = min(minima.get(key, np.inf), float(distance))
+                    residue_contacts.add((
+                        int(atoms.resindices[int(i)]), molecule, species, leaflet
+                    ))
                     if species in ("GM1a", "BGAL", "CER160"):
                         if species in ("GM1a", "BGAL") and lipid_atom.resname != "CER160":
                             observed.setdefault((species, leaflet, "glycan"), set()).add(molecule)
@@ -721,6 +725,13 @@ class SDC4Mechanisms:
                         for label, member_indices in self.lipid_moiety_membership.items():
                             if int(lipid_atom.index) in member_indices:
                                 observed.setdefault((species, leaflet, label), set()).add(molecule)
+                for residue_index, molecule, species, leaflet in sorted(residue_contacts):
+                    self.rows["lipid_residue_contacts"].append({
+                        "time_ps": t, "region": region,
+                        "topology_residue_index": residue_index,
+                        "lipid_molecule_id": molecule, "species": species,
+                        "leaflet": leaflet,
+                    })
                 # Reuse the existing censored-episode reducer for TM/motif
                 # molecule contacts, without building dense per-lipid arrays.
                 residence_molecules = set().union(*(
@@ -797,6 +808,15 @@ class SDC4Mechanisms:
             self.rows["timeseries"].clear()
         if self.motif_lipid_residence_enabled:
             atomic_parquet(
+                self.cache / f"residue-contacts-{part:06d}.parquet",
+                pd.DataFrame(self.rows["lipid_residue_contacts"], columns=[
+                    "time_ps", "region", "topology_residue_index",
+                    "lipid_molecule_id", "species", "leaflet",
+                ]),
+            )
+            self.rows["lipid_residue_contacts"].clear()
+        if self.motif_lipid_residence_enabled:
+            atomic_parquet(
                 self.cache / f"specificity-{part:06d}.parquet",
                 pd.DataFrame(self.rows["lipid_specificity"], columns=[
                     "time_ps", "region", "species", "leaflet", "moiety",
@@ -826,7 +846,7 @@ class SDC4Mechanisms:
 
     def prune_from(self, part):
         for path in self.cache.glob("*"):
-            match = re.match(r"(?:part|map|residence|specificity)-(\d+)\.(?:parquet|npz)$", path.name)
+            match = re.match(r"(?:part|map|residence|specificity|residue-contacts)-(\d+)\.(?:parquet|npz)$", path.name)
             if match and int(match.group(1)) >= part:
                 path.unlink()
 
@@ -910,6 +930,12 @@ class SDC4Mechanisms:
                 specificity, "available_molecules"
             )
             atomic_parquet(out / "lipid_region_specificity.parquet", specificity)
+            residue_parts = sorted(self.cache.glob("residue-contacts-*.parquet"))
+            residue_contacts = pd.concat(
+                (pd.read_parquet(part) for part in residue_parts),
+                ignore_index=True,
+            ) if residue_parts else pd.DataFrame()
+            atomic_parquet(out / "lipid_residue_contacts.parquet", residue_contacts)
 
         # Contact-conditioned hydration is a *within-replicate* descriptive
         # comparison, not an independent-frame significance test.
