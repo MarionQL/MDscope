@@ -309,6 +309,14 @@ def run():
                         assert df[col].between(0, 1).all(), (system, col)
             col = f"sdc4_motif_proline_hydrophobic_{chain}_1_to_NxIP_min_distance_A"
             assert col in df and (df[col] > 0).all(), (system, col)
+            for suffix in ("leaflet_relative_height_A", "axis_normal_cos",
+                           "to_HS_min_distance_A"):
+                prop = f"sdc4_motif_proline_hydrophobic_{chain}_1_" + suffix
+                assert prop in df, (system, prop)
+                assert np.isfinite(df[prop]).all(), (system, prop)
+            orient = df[f"sdc4_motif_proline_hydrophobic_{chain}_1_axis_normal_cos"]
+            assert orient.between(-1.00001, 1.00001).all()
+
         assert "sdc4_ectodomain_B_height_A" in df
         assert "sdc4_motif_NxIP_PROB_1_steric_occlusion_fraction" in df
         assert df["time_ps"].is_unique
