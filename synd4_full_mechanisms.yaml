@@ -198,18 +198,19 @@ analyses:
     exclude_same_molecule: true
     update_selections: false
 
-  # Eight SDC4 mechanism endpoints. These PROA/PROB ranges were verified
-  # on the two published old-build TPRs, NOT on future rebuilt systems.
+  # The supplied mature-sequence domain boundary is ...TEVLAA | LIVGGIVG... .
+  # Region selections remain topology-specific; verify against both released TPRs.
+  # Revalidate residue IDs whenever the production topology changes.
   sdc4_mechanisms:
     enabled: true
     axis: z
     protein_selection: "protein"
     tm_chains:
-      A: "protein and chainID PROA and resid 146:170 and name CA"
-      B: "protein and chainID PROB and resid 344:368 and name CA"
+      A: "protein and chainID PROA and resid 150:170 and name CA"
+      B: "protein and chainID PROB and resid 420:440 and name CA"
     ectodomains:
-      A: "protein and chainID PROA and resid 1:145 and name CA"
-      B: "protein and chainID PROB and resid 270:343 and name CA"
+      A: "protein and chainID PROA and resid 1:149 and name CA"
+      B: "protein and chainID PROB and resid 270:419 and name CA"
 
     # Real TPR bond audit verified exactly six covalently attached HS
     # chains: PROA S39/S61/S63 and PROB S309/S331/S333.
@@ -250,9 +251,8 @@ analyses:
       NxIP: "N.IP"
       acidic_patch: "DDEDVVGPGQESDDFELSGSGDLDDLED"
     require_motifs: true
-    # Real TPR audit found a GXXXG match in PROA, but none in the
-    # selected PROB TM sequence. Report this rather than inventing one.
-    require_gxxxg: false
+    # Require validated GGIVG on both TM chains; invalid mapping is fatal.
+    require_gxxxg: true
     contact_cutoff_A: 5.0
     hydration_cutoff_A: 3.5
     ion_cutoff_A: 4.0
@@ -307,7 +307,7 @@ analyses:
 
   residue_membrane_distance:
     enabled: true
-    selection: "protein and name CA and (resid 1-145 or resid 270-415)"
+    selection: "protein and name CA and ((chainID PROA and resid 1:149) or (chainID PROB and resid 270:419))"
     exclude_hydrogens: true
     # The CA selection chooses residues; all heavy atoms in those residues
     # are then used for the exact minimum-distance calculation.

@@ -26,7 +26,7 @@ def _synthetic():
             coords.append(xyz)
     for chain, x in (("PROA", 0.), ("PROB", 8.)):
         for i, aa in enumerate(("ASN", "ALA", "ILE", "PRO", "ALA",
-                                "GLY", "ALA", "ALA", "ALA", "GLY", "ALA", "ALA"), 1):
+                                "GLY", "GLY", "ILE", "VAL", "GLY", "ALA", "ALA"), 1):
             z = 39. - 4*i if i <= 5 else 12. - 4*(i-6)
             residue(aa, i, chain, [("CA", [x, 0., z])])
     # 20 single-residue lipid anchors, balanced between upper/lower.
@@ -150,13 +150,25 @@ def test_sdc4_observer_and_checkpoint_recovery(tmp_path):
             assert np.all(np.isfinite(maps["bulk_density_per_nm2"]))
         audit = json.loads((out / "selection_audit.json").read_text())
         assert len(audit["motif_resindices"]) == 2
-        assert all(audit["gxxxg_resindices"][chain] for chain in ("A", "B"))
+        assert all(len(audit["gxxxg_resindices"][chain]) == 5 for chain in ("A", "B"))
+        assert audit["gxxxg_tm_sequences"] == {"A": "GGIVGAA", "B": "GGIVGAA"}
     a = tmp_path / "clean/extensions/sdc4_mechanisms"
     b = tmp_path / "resume/extensions/sdc4_mechanisms"
     pd.testing.assert_frame_equal(pd.read_parquet(a / "timeseries.parquet"),
                                   pd.read_parquet(b / "timeseries.parquet"))
     with np.load(a / "lipid_density_maps.npz") as left, np.load(b / "lipid_density_maps.npz") as right:
         np.testing.assert_array_equal(left["counts"], right["counts"])
+
+
+def test_missing_ggivg_fails_with_tm_sequence(tmp_path):
+    u, cfg = _synthetic(), _cfg()
+    # Changing one residue in B must fail, even if a different GxxxG
+    # pattern is present elsewhere in the selected TM segment.
+    b = u.select_atoms("chainID PROB and resid 7 and name CA")
+    assert len(b) == 1
+    u.residues[b.resindices[0]].resname = "ALA"
+    with pytest.raises(ValueError, match="No GGIVG found in TM chain B.*sequence="):
+        SDC4Mechanisms(u, cfg, tmp_path)
 
 
 def test_local_surface_recovers_quadratic_curvature():
