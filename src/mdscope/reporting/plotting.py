@@ -14,9 +14,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from ..config import ensure_dir, replicate_label, replicate_specs, system_label
+from ..config import presentation_enabled, ensure_dir, replicate_label, replicate_specs, system_label
 from ..interactions import interaction_tables
 from ..statistics import collect_time_series, finite
+from .figure_inventory import current_statistics
 
 
 METRIC_LABELS = {
@@ -27,8 +28,8 @@ METRIC_LABELS = {
     "ligand_contact_residue_count": ("Ligand-contacting residues", "Count"),
     "membrane_thickness_A": ("Membrane thickness", "A"),
     "area_per_lipid_A2": ("Area per lipid", "A^2"),
-    "area_per_lipid_upper_A2": ("Upper-leaflet area per lipid", "A^2"),
-    "area_per_lipid_lower_A2": ("Lower-leaflet area per lipid", "A^2"),
+    "area_per_lipid_upper_A2": ("Box area / upper-leaflet lipid count", "Å²"),
+    "area_per_lipid_lower_A2": ("Box area / lower-leaflet lipid count", "Å²"),
     "membrane_msd_lateral_A2": ("Membrane lateral MSD", "A^2"),
     "total_sasa_nm2": ("Total SASA", "nm^2"),
     "helix_fraction": ("Helix fraction", "Fraction"),
@@ -86,6 +87,18 @@ def _metric_meta(metric: str):
         return METRIC_LABELS[metric]
     if metric == "lipid_order_mean":
         return "Mean lipid acyl-chain order", "-S_CH"
+    if metric.startswith('sdc4_'):
+        import re
+        label = metric.removeprefix('sdc4_')
+        unit = ''
+        for suffix, symbol in (('_nm2','nm²'),('_Ainv','1/Å'),('_A2','Å²'),('_A','Å'),('_deg','degrees'),('_fraction','fraction'),('_count','count')):
+            if label.endswith(suffix):
+                label, unit = label[:-len(suffix)], symbol
+                break
+        label = label.replace('proline_hydrophobic','VVHPLVPL').replace('acidic_patch','acidic patch')
+        label = re.sub(r'PRO([AB])_\d+', r'chain \1', label)
+        label = label.replace('steric_occlusion','contact occlusion proxy').replace('_',' ')
+        return label[:1].upper()+label[1:], unit
     if metric.startswith("lipid_order_") and metric.endswith("_mean"):
         label = metric[len("lipid_order_"):-len("_mean")].replace("_", " ")
         return f"Mean lipid order: {label}", "-S_CH"
@@ -142,8 +155,11 @@ def _table_figure(title: str, dataframe: pd.DataFrame, path: Path, cfg: dict, ma
 
 
 def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
+    if not presentation_enabled(cfg, 'plots', 'time_series'):
+        return
     if not cfg.get("plots", {}).get("enabled", True):
         return
+    stats_allowed = current_statistics(cfg, root, 'time_series')
     out = ensure_dir(root / "project_summary" / "figures" / "time_series")
     systems = list(system_repouts)
     keys = set()
@@ -158,12 +174,12 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
     sys_stats_path = (
         root / "project_summary" / "statistics" / "time_series" / "system_statistics.parquet"
     )
-    rep_stats = pd.read_parquet(rep_stats_path) if rep_stats_path.exists() else pd.DataFrame()
-    sys_stats = pd.read_parquet(sys_stats_path) if sys_stats_path.exists() else pd.DataFrame()
+    rep_stats = pd.read_parquet(rep_stats_path) if rep_stats_path.exists() and stats_allowed else pd.DataFrame()
+    sys_stats = pd.read_parquet(sys_stats_path) if sys_stats_path.exists() and stats_allowed else pd.DataFrame()
     comp_stats_path = (
         root / "project_summary" / "statistics" / "time_series" / "system_comparisons.parquet"
     )
-    comp_stats = pd.read_parquet(comp_stats_path) if comp_stats_path.exists() else pd.DataFrame()
+    comp_stats = pd.read_parquet(comp_stats_path) if comp_stats_path.exists() and stats_allowed else pd.DataFrame()
 
     for group_id, metric in sorted(keys, key=lambda x: (str(x[0]), x[1])):
         title, ylabel = _metric_meta(metric)
@@ -247,7 +263,7 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
             acf_path = (
                 root / "project_summary" / "statistics" / "time_series" / "autocorrelation.parquet"
             )
-            if acf_path.exists():
+            if acf_path.exists() and stats_allowed:
                 acf = pd.read_parquet(acf_path)
                 mask = (acf.metric == metric) & (acf.group.fillna("") == (group_id or ""))
                 subset = acf[mask]
@@ -361,6 +377,11 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
 
 
 def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
+    if not presentation_enabled(cfg, 'plots', 'profiles'):
+        return
+    stats_allowed = current_statistics(cfg, root, 'profiles')
+    if not stats_allowed:
+        return
     out = ensure_dir(root / "project_summary" / "figures" / "profiles")
     stats_dir = root / "project_summary" / "statistics" / "profiles"
     replicate_path, system_path = (
@@ -619,12 +640,16 @@ def _interaction_key(data: pd.DataFrame) -> pd.Series:
 
 
 def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
+    if not presentation_enabled(cfg, 'plots', 'interactions'):
+        return
+    stats_allowed = current_statistics(cfg, root, 'interactions')
     out = ensure_dir(root / "project_summary" / "figures" / "interactions")
     kinds = set()
     tables = {}
     for system, reps in system_repouts.items():
         for repout in reps:
-            tables[(system, repout.name)] = interaction_tables(repout)
+            tables[(system, repout.name)] = interaction_tables(repout,
+                exclude_kinds=set(cfg.get('plots',{}).get('interaction_exclude_kinds',[])))
             kinds.update(tables[(system, repout.name)])
     stats_path = (
         root
@@ -633,7 +658,7 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
         / "interactions"
         / "system_interaction_metrics.parquet"
     )
-    stats = pd.read_parquet(stats_path) if stats_path.exists() else pd.DataFrame()
+    stats = pd.read_parquet(stats_path) if stats_path.exists() and stats_allowed else pd.DataFrame()
     comp_path = (
         root
         / "project_summary"
@@ -641,7 +666,7 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
         / "interactions"
         / "system_interaction_comparisons.parquet"
     )
-    comp_stats = pd.read_parquet(comp_path) if comp_path.exists() else pd.DataFrame()
+    comp_stats = pd.read_parquet(comp_path) if comp_path.exists() and stats_allowed else pd.DataFrame()
 
     for kind in sorted(kinds):
         kind_out = ensure_dir(out / _safe(kind))
@@ -804,10 +829,11 @@ def plot_all(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
     if not cfg.get("plots", {}).get("enabled", True):
         return
     configure_plot_style(cfg)
-    if cfg.get("plots", {}).get("time_series", True):
+    if presentation_enabled(cfg, "plots", "time_series"):
         plot_time_series(cfg, root, system_repouts)
-    if cfg.get("plots", {}).get("profiles", True):
+    if presentation_enabled(cfg, "plots", "profiles"):
         plot_profiles(cfg, root, system_repouts)
         _plot_residue_distance_heatmaps(cfg, root, system_repouts)
-    if cfg.get("plots", {}).get("interactions", True):
+    if presentation_enabled(cfg, "plots", "interactions"):
         plot_interactions(cfg, root, system_repouts)
+

@@ -111,6 +111,7 @@ def test_report_pdf_and_review_bundle(tmp_path):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    cfg['plots']['enabled'] = True
     figdir=summary/"figures"/"time_series"
     figdir.mkdir(parents=True)
     fig,ax=plt.subplots(figsize=(4,2))
@@ -118,6 +119,8 @@ def test_report_pdf_and_review_bundle(tmp_path):
     ax.set_xlabel("Time (ns)")
     fig.savefig(figdir/"rmsd_A__timeseries.png")
     plt.close(fig)
+    from mdscope.reporting.figure_inventory import record_generated_figures
+    record_generated_figures(cfg, root, system_paths, {})
     output = generate_report(cfg, root, system_paths)
     pdf = summary / "report/MDscope_evidence_report.pdf"
     bundle = summary / "report/MDscope_review_bundle.zip"

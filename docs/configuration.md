@@ -104,3 +104,68 @@ search to omit atoms too far from any target SASA sphere to contribute to the
 result. The single trajectory pass is preserved; this is not a second frame
 reader. Always benchmark and compare with a full-occluder reference frame
 before using a new topology/radius convention in production.
+
+
+### Plot families, PDF sections and figure freshness
+
+Plot generation and PDF inclusion are independent from raw collection and
+statistics. Omitted controls retain enabled behavior:
+
+```yaml
+plots:
+  enabled: true
+  families:
+    time_series: true
+    profiles: false
+    interactions: true
+    sdc4: true
+    shared_states: true
+    lipid_enrichment: true
+    diffusion: true
+  interaction_exclude_kinds: [lipid_hydrogen_bonds]
+report:
+  enabled: true
+  sections:
+    overview: true
+    time_series: true
+    shared_states: true
+    solvation: true
+    sdc4: true
+    lipid_enrichment: true
+    methods: true
+    atlas: true
+  interaction_exclude_kinds: [lipid_hydrogen_bonds]
+```
+
+A false plot family prevents its plot entry point from reading inputs;
+interaction kinds are excluded before raw identity tables are read. Existing
+broad `plots.time_series`, `profiles`, `interactions`, and `enabled` switches
+remain honored. Diffusion summaries still compute persisted coefficients when
+only their *plot* is disabled. Shared-state numerical modeling remains governed
+by its analysis setting, independently of SDC4/shared-state plot switches.
+
+The plotting finalization phase stamps **only newly written PNGs** in
+`project_summary/report/figure_provenance.json`. Offline PDF and ZIP generation
+reject unverified legacy PNGs, disabled families/kinds, mismatched render
+configurations, changed source tables, missing sources and modified images.
+The complete figure manifest retains rejection reasons, source metric/units,
+generation configuration hash, timestamp, family-level source paths and actual
+replica frame/time coverage. PNGs have SHA256 content hashes; source freshness
+uses path/size/mtime fingerprints, explicitly not content hashes. This keeps
+validation cheap without scanning multi-million-row interaction tables.
+
+Migration: regenerate the plotting phase to obtain verified figures before
+exporting an old result directory. Files are not deleted. Changing PDF section
+selection alone does not invalidate figures; changing source code or plot/analysis/statistical
+settings requires rerendering. Do not stamp an old directory by hand to bypass
+source verification. Original trajectory-parameter provenance remains in the
+original checkpoints/run records; the current rendering configuration does not
+prove the original analysis configuration. This limitation is explicit in
+`report_provenance.json`, rather than inventing provenance for legacy tables.
+
+PDF tables use readable SDC4 labels and units while the bundle preserves raw
+identifiers. `Unavailable` denotes missing/nonfinite data; physical zeros stay
+zero. Scalar comparison labels use adjusted q-values for support, never the
+sign of a bootstrap interval. Disabled PDF sections do not leave separator-only
+pages. `report_provenance.json` and `figure_manifest.csv` support offline review;
+no trajectory is reopened to regenerate the report.

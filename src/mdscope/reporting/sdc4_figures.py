@@ -4,9 +4,10 @@ from __future__ import annotations
 from pathlib import Path
 import numpy as np
 import pandas as pd
+from ..config import presentation_enabled
 
 
-def plot_sdc4_mechanisms(cfg, root, system_repouts):
+def _plot_sdc4_replica_figures(cfg, root, system_repouts):
     if not cfg.get("plots", {}).get("enabled", True):
         return
     if not cfg.get("analyses", {}).get("sdc4_mechanisms", {}).get("enabled", False):
@@ -207,6 +208,12 @@ def plot_sdc4_mechanisms(cfg, root, system_repouts):
                 fig.savefig(folder / "vvhplvpl_proline_ramachandran.png", dpi=180)
                 plt.close(fig)
 
+
+
+def _plot_shared_state_figures(cfg, root):
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
     state_dir = Path(root) / "project_summary/shared_states"
     pop_path = state_dir / "replicate_populations.parquet"
     if not pop_path.exists():
@@ -247,3 +254,12 @@ def plot_sdc4_mechanisms(cfg, root, system_repouts):
     fig.savefig(state_dir / "state_sampling_diagnostics.png", dpi=200)
     plt.close(fig)
 
+
+
+def plot_sdc4_mechanisms(cfg, root, system_repouts):
+    if not cfg.get('plots',{}).get('enabled',True) or not cfg.get('analyses',{}).get('sdc4_mechanisms',{}).get('enabled',False):
+        return
+    if presentation_enabled(cfg,'plots','sdc4'):
+        _plot_sdc4_replica_figures(cfg,root,system_repouts)
+    if presentation_enabled(cfg,'plots','shared_states'):
+        _plot_shared_state_figures(cfg,root)

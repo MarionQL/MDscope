@@ -20,7 +20,7 @@ dependencies = [
 [project.optional-dependencies]
 report = ["reportlab", "pillow"]
 sasa = ["freesasa"]
-test = ["pytest", "reportlab", "pillow"]
+test = ["pytest", "reportlab", "pillow", "pypdf"]
 dev = ["pytest", "reportlab", "pillow", "build", "twine"]
 
 [project.scripts]
@@ -37,3 +37,4 @@ namespaces = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+

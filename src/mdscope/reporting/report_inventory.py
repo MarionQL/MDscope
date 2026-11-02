@@ -72,3 +72,14 @@ def _metric_groups(table):
     return result
 
 
+
+
+
+def inference_status(q_value, p_value=None):
+    """Adjusted support is determined by q, never by bootstrap interval signs."""
+    try:
+        if np.isfinite(float(q_value)):
+            return 'Adjusted support' if float(q_value) <= .05 else 'Exploratory'
+    except (TypeError, ValueError):
+        pass
+    return 'Descriptive / unadjusted'
