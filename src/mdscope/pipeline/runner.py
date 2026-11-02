@@ -416,16 +416,27 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None):
     if root is None or state is None:
         root, state = initialize(config_path, cfg)
     replicates = list(iter_replicates(cfg, config_path))
-    incomplete = [
-        f"{rep.system}/{rep.label}"
-        for rep in replicates
-        if not state.complete(_replicate_state_prefix(rep) + "-summary")
-    ]
-    if incomplete:
+    # Finalization consumes persisted replica products, not the trajectory.
+    # A changed reporting configuration or source revision must not force
+    # expensive completed trajectories to be rerun. Validate the actual
+    # required input instead of matching the current run-state hash.
+    missing = []
+    for rep in replicates:
+        repout = root / rep.system / rep.label
+        timeseries = repout / "summary" / "timeseries.parquet"
+        if not timeseries.is_file():
+            missing.append(f"{rep.system}/{rep.label}: missing summary/timeseries.parquet")
+            continue
+        try:
+            times = pd.read_parquet(timeseries, columns=["time_ps"])["time_ps"]
+            if times.empty or times.isna().any():
+                missing.append(f"{rep.system}/{rep.label}: invalid time_ps")
+        except (OSError, ValueError, KeyError, ImportError) as exc:
+            missing.append(f"{rep.system}/{rep.label}: unreadable time_ps ({exc})")
+    if missing:
         raise RuntimeError(
-            "Cannot finalize before all replicates finish the current "
-            "configuration/code version. Incomplete: "
-            + ", ".join(incomplete)
+            "Cannot finalize: required persisted replicate data are missing or invalid. "
+            + "; ".join(missing)
         )
     project_summary = root / "project_summary"
     if project_summary.exists():
