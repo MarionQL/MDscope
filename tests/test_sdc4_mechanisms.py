@@ -355,3 +355,42 @@ def test_shared_states_exports_replica_conditioned_nxip(tmp_path):
     assert len(comp) == 2
     assert (comp["n_replicates_0"] == 2).all()
     assert set(comp["inference"]) == {"exploratory; no multiplicity-adjusted test"}
+
+
+def test_intermittent_lipid_residence_gap_and_censoring():
+    from mdscope.mechanisms.motif_residence import (
+        summarize_lipid_residence, summarize_intermittent_residence
+    )
+    times = np.array([0., 10., 20., 30., 40., 50.])
+    events = pd.DataFrame({
+        "time_ps": [0., 10., 30., 40., 50.],
+        "motif": ["region_TM_A"] * 5,
+        "molecule_id": [42] * 5,
+        "species": ["GM1a"] * 5,
+    })
+    continuous = summarize_lipid_residence(events, times)
+    intermittent = summarize_intermittent_residence(events, times)
+    assert continuous.duration_ps.tolist() == [20., 30.]
+    assert intermittent.duration_ps.tolist() == [60.]
+    assert intermittent.n_frames.tolist() == [5]
+    assert intermittent.left_censored.tolist() == [True]
+    assert intermittent.right_censored.tolist() == [True]
+    assert intermittent.occupancy_fraction.iloc[0] == pytest.approx(5 / 6)
+    assert len(summarize_intermittent_residence(events, times, gap_frames=0)) == 2
+    with pytest.raises(ValueError, match="gap_frames"):
+        summarize_intermittent_residence(events, times, gap_frames=-1)
+
+
+def test_intermittent_residence_no_assumed_uniform_sampling():
+    from mdscope.mechanisms.motif_residence import summarize_intermittent_residence
+    times = np.array([0., 4., 10., 25., 30.])
+    events = pd.DataFrame({
+        "time_ps": [0., 10., 25.],
+        "motif": ["region_TM_B"] * 3,
+        "molecule_id": [17] * 3,
+        "species": ["BGAL"] * 3,
+    })
+    result = summarize_intermittent_residence(events, times)
+    assert result.n_frames.tolist() == [3]
+    assert result.duration_ps.tolist() == [30.]
+    assert result.right_censored.tolist() == [False]
