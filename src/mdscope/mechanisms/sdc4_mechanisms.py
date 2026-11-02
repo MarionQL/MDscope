@@ -213,6 +213,7 @@ class SDC4Mechanisms:
         self.motif_lipid_residence_enabled = bool(s.get("motif_lipid_residence", False))
         self.lipid_molecule_by_atom = {}
         self.lipid_molecule_species = {}
+        self.unmapped_lipid_fragment_count = 0
         if self.motif_lipid_residence_enabled:
             # Bonded fragments are stable physical molecules in a TPR. Unlike
             # residue numbers they correctly group GM1/BGAL ceramide + sugars.
@@ -230,10 +231,15 @@ class SDC4Mechanisms:
                 species = {anchor_by_residue[int(ix)]
                            for ix in fragment.resindices
                            if int(ix) in anchor_by_residue}
-                if len(species) != 1:
+                if not species:
+                    # Broad contact selections can contain fragments without
+                    # a configured species anchor. Such atoms cannot be assigned
+                    # a defensible molecule/species identity for residence.
+                    self.unmapped_lipid_fragment_count += 1
+                    continue
+                if len(species) > 1:
                     raise ValueError(
-                        "Each lipid fragment must contain exactly one "
-                        "species-identifying lipid anchor"
+                        "Lipid fragment contains conflicting species anchors"
                     )
                 identifier = int(np.min(fragment.indices))
                 self.lipid_molecule_species[identifier] = species.pop()
@@ -348,6 +354,7 @@ class SDC4Mechanisms:
             "gxxxg_resindices": {k: v.residues.ix.tolist()
                                  for k, v in self.gxxxg.items()},
             "gxxxg_tm_sequences": self.gxxxg_sequences,
+            "motif_lipid_residence_unmapped_fragments": self.unmapped_lipid_fragment_count,
             "surface_anchor_species": list(self.surface_species),
             "lipid_counts": {str(k): int(np.count_nonzero(self.species == k))
                              for k in sorted(set(self.species))},
@@ -524,6 +531,7 @@ class SDC4Mechanisms:
                 molecules = {
                     self.lipid_molecule_by_atom[int(self.lipid_contact.indices[j])]
                     for j in lip_hits[:, 1]
+                    if int(self.lipid_contact.indices[j]) in self.lipid_molecule_by_atom
                 }
                 for molecule in sorted(molecules):
                     self.rows["lipid_residence"].append({
