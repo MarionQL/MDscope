@@ -32,7 +32,7 @@ from ..core.lipid_geometry import classify_leaflets
 from .progress import track
 
 
-FUSED_ANALYSES = ("membrane_order", "bilayer_normal", "lipid_enrichment")
+FUSED_ANALYSES = ("membrane_order", "bilayer_normal", "lipid_enrichment", "lipid_contacts")
 
 
 def enabled_names(cfg):
@@ -89,6 +89,10 @@ class FusedMembrane:
         self.anchor_states = {}
         self.geometry = {}
         self.order = None
+        self.lipid_contacts = None
+        if 'lipid_contacts' in self.names:
+            from ..observables.lipid_contacts import LipidContacts
+            self.lipid_contacts = LipidContacts(universe, cfg['analyses']['lipid_contacts'], repout)
         if "bilayer_normal" in self.names:
             self.geometry["bilayer_normal"] = self._geometry_setup("bilayer_normal")
         if "lipid_enrichment" in self.names:
@@ -171,6 +175,8 @@ class FusedMembrane:
             return
         t = time_ps(ts, frame_index, self.cfg)
         box = self.u.dimensions
+        if self.lipid_contacts is not None:
+            self.lipid_contacts.update(ts, frame_index, t)
         shared = {}
         for name in ("bilayer_normal", "lipid_enrichment"):
             if name not in self.geometry:
@@ -282,6 +288,8 @@ class FusedMembrane:
         if not self.names:
             return
         start = time.perf_counter()
+        if self.lipid_contacts is not None:
+            self.lipid_contacts.flush(part)
         for name in ("bilayer_normal", "lipid_enrichment", "membrane_order"):
             if self.rows[name]:
                 atomic_parquet(
@@ -313,6 +321,8 @@ class FusedMembrane:
 
     def prune_from(self, next_part):
         """Drop uncommitted part files left by an interrupted frame chunk."""
+        if self.lipid_contacts is not None:
+            self.lipid_contacts.prune_from(next_part)
         for path in self.cache.rglob("part-*"):
             match = re.search(r"part-(\d+)", path.name)
             if match and int(match.group(1)) >= next_part and path.is_file():
@@ -324,6 +334,8 @@ class FusedMembrane:
             return {}
         start = time.perf_counter()
         result = {}
+        if self.lipid_contacts is not None:
+            result['lipid_contacts'] = self.lipid_contacts.finalize()
         if "bilayer_normal" in self.names:
             state = self.geometry["bilayer_normal"]["state"]
             out = ensure_dir(self.repout / "extensions" / "bilayer_normal")
@@ -454,3 +466,4 @@ def run_fused_membrane(rep, cfg, repout):
     if observer.frame_count % chunk:
         observer.flush(observer.frame_count // chunk)
     return observer.finalize()
+

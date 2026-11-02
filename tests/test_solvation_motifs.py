@@ -40,3 +40,13 @@ def test_motif_invalid_regex_or_overlap_fails():
     with pytest.raises(ValueError,match="overlaps"):
         _targets(u,{"targets":{"motif":{"first":{"sequence":"DE"},
                                           "second":{"sequence":"DE"}}}})
+
+
+
+def test_sequence_mapping_supports_explicit_chemical_site_subset():
+    u=_protein()
+    sites=_targets(u,{'targets':{'motif':{'acidic':{'sequence':'DE','atom_selection':'name CB'}}}})
+    assert len(sites)==2
+    assert all(len(group)==2 and set(group.names)=={'CB'} for _,_,_,group in sites)
+    with pytest.raises(ValueError,match='no heavy atoms'):
+        _targets(u,{'targets':{'motif':{'acidic':{'sequence':'DE','atom_selection':'name O*'}}}})

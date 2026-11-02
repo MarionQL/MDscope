@@ -83,7 +83,9 @@ jobs:
             real_test_results/*/*/rep1/summary/*.parquet
             real_test_results/sdc4_mechanisms_smoke/*/extensions/sdc4_mechanisms/*.parquet
             real_test_results/sdc4_mechanisms_smoke/*/extensions/sdc4_mechanisms/*.json
+            real_test_results/sdc4_mechanisms_smoke/*/extensions/lipid_contacts/*
             real_test_results/*/*/rep1/extensions/*/timeseries.parquet
             real_test_results/*/*/rep1/interactions/lipid_hydrogen_bonds/count_timeseries.parquet
           if-no-files-found: warn
           retention-days: 7
+

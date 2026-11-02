@@ -556,3 +556,13 @@ def test_shared_states_do_not_resample_across_unknown_temporal_gaps(tmp_path, mi
     pop = pd.read_parquet(result / "replicate_populations.parquet")
     assert pop.within_replicate_block_ci_low.isna().all()
     assert pd.read_parquet(result / "nxip_state_circular_shift_null.parquet").empty
+
+
+def test_hs_shape_has_independent_linear_chain_reference(tmp_path):
+    _run(tmp_path)
+    data=pd.read_parquet(tmp_path/'extensions/sdc4_mechanisms/timeseries.parquet')
+    # HS_A has two equal-weight sites at z=26 and z=31 Å: Rg=2.5 Å,
+    # a perfectly linear shape, and a 5 Å vertical span.
+    np.testing.assert_allclose(data.sdc4_hs_A1_radius_of_gyration_A,2.5)
+    np.testing.assert_allclose(data.sdc4_hs_A1_shape_anisotropy,1.)
+    np.testing.assert_allclose(data.sdc4_hs_A1_vertical_span_A,5.)

@@ -194,6 +194,13 @@ def run():
             )
         observer = SDC4Mechanisms(u, cfg, out)
         observer.prune_from(0)
+        from mdscope.observables.lipid_contacts import LipidContacts
+        lipid_contacts = LipidContacts(u, {
+            'selection': 'same fragment as (' + ' or '.join(f'({query})' for query in spec['lipid_anchors'].values()) + ')',
+            'species_selections': spec['lipid_anchors'],
+            'allow_absent_species': True, 'batch_atoms': 4096,
+        }, out)
+        lipid_contacts.prune_from(0)
         def independent_residue_pairs(left, right, cutoff=5.0):
             # Independent brute-force orthorhombic minimum-image oracle for
             # the real released TPR; not the production neighbor search.
@@ -215,9 +222,17 @@ def run():
                 independent_residue_pairs(observer.gxxxg["A"], observer.gxxxg["B"]),
             ))
             observer.update(u.trajectory[i], i)
+            lipid_contacts.update(u.trajectory[i], i, float(u.trajectory.ts.time))
             if i % 2 == 1:
                 observer.flush(i // 2)
+                lipid_contacts.flush(i // 2)
         result = observer.finalize()
+        lipid_contacts.finalize()
+        matrix = pd.read_parquet(out/'extensions/lipid_contacts/matrix.parquet')
+        assert matrix.time_ps.nunique() == 4
+        assert (matrix.pair_count_undirected <= matrix.possible_pairs).all()
+        assert matrix.loc[matrix.molecules_a.eq(0), 'neighbors_per_molecule'].isna().all()
+        print(f'REAL LIPID CONTACT MATRIX {system}: rows={len(matrix)}, molecule_pairs_validated=True', flush=True)
         df = pd.read_parquet(out / "extensions/sdc4_mechanisms/timeseries.parquet")
         assert len(df) == 4
         assert np.all(np.isfinite(df["sdc4_tm_crossing_angle_deg"]))
