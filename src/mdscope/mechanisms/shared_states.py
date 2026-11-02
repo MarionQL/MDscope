@@ -153,6 +153,7 @@ def fit_shared_states(cfg, root, system_repouts):
     assignments, populations, diagnostics, conditioned = [], [], [], []
     rep_fraction = defaultdict(list)
     lipid_state_rows = []
+    nxip_lipid_rows = []
     lipid_replica_rows = []
     nxip_conditioned = []
     for (system, replicate), df in replicates.items():
@@ -246,6 +247,45 @@ def fit_shared_states(cfg, root, system_repouts):
                         "mean_contact_fraction": float(item.contact_fraction.mean()),
                         "mean_composition_enrichment": float(item.composition_enrichment.mean()),
                         "mean_local_enrichment": float(item.local_composition_enrichment.mean()),
+                    })
+                # Issue #101: contact-conditioned NxIP exposure, computed
+                # within replica and matched exactly by time. Species absent
+                # in a frame are excluded, not mislabelled noncontact.
+                lip = lipid_data.loc[
+                    lipid_data.moiety.eq("any")
+                    & lipid_data.region.str.startswith("motif_NxIP_")
+                ].copy()
+                for (region, species, leaflet), group in lip.groupby(
+                    ["region", "species", "leaflet"], sort=True
+                ):
+                    chain = "A" if "_PROA_" in region else "B" if "_PROB_" in region else None
+                    if chain is None:
+                        continue
+                    endpoint = f"sdc4_motif_NxIP_PRO{chain}_1_steric_occlusion_fraction"
+                    if endpoint not in df:
+                        continue
+                    outcome = df[["time_ps", endpoint]].merge(
+                        group[["time_ps", "contacted_molecules", "available_molecules"]],
+                        on="time_ps", how="inner", validate="one_to_one",
+                    )
+                    outcome = outcome.loc[
+                        outcome.available_molecules.gt(0)
+                        & outcome[endpoint].notna()
+                    ]
+                    contact = outcome.contacted_molecules.gt(0)
+                    nxip_lipid_rows.append({
+                        "system": system, "replicate": replicate,
+                        "chain": chain, "species": species, "leaflet": leaflet,
+                        "frames_contact": int(contact.sum()),
+                        "frames_no_contact": int((~contact).sum()),
+                        "occlusion_contact_mean": (
+                            float(outcome.loc[contact, endpoint].mean())
+                            if contact.any() else np.nan
+                        ),
+                        "occlusion_no_contact_mean": (
+                            float(outcome.loc[~contact, endpoint].mean())
+                            if (~contact).any() else np.nan
+                        ),
                     })
                 for keys, subgroup in merged.groupby(
                     ["region", "species", "leaflet", "moiety", "state"],
@@ -383,6 +423,14 @@ def fit_shared_states(cfg, root, system_repouts):
                        "n_replicates", "replicate_mean", "replicate_sd",
                        "replicate_bootstrap_ci_low", "replicate_bootstrap_ci_high",
                    ]))
+    atomic_parquet(
+        out / "nxip_lipid_contact_conditioning.parquet",
+        pd.DataFrame(nxip_lipid_rows, columns=[
+            "system", "replicate", "chain", "species", "leaflet",
+            "frames_contact", "frames_no_contact",
+            "occlusion_contact_mean", "occlusion_no_contact_mean",
+        ]),
+    )
     atomic_parquet(out / "frame_assignments.parquet", pd.concat(assignments, ignore_index=True))
     atomic_parquet(out / "replicate_populations.parquet", pd.DataFrame(populations))
     atomic_parquet(out / "sampling_diagnostics.parquet", pd.DataFrame(diagnostics))
