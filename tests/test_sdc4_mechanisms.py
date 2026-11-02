@@ -342,6 +342,7 @@ def test_shared_states_exports_replica_conditioned_nxip(tmp_path):
                 "sdc4_ectodomain_B_height_A": height * 1.5,
                 "sdc4_motif_NxIP_PROB_1_steric_occlusion_fraction":
                     np.r_[np.full(10, .8), np.full(10, .2)],
+                "sdc4_motif_NxIP_PROB_1_hs_PROB_S309_contact_state": np.r_[np.ones(10), np.zeros(10)],
                 "sdc4_hs_A1_membrane_contact_state": np.zeros(20, dtype=int),
                 "sdc4_hs_A1_hydration_water_per_heavy_atom": np.ones(20),
             }).to_parquet(dest / "timeseries.parquet", index=False)
@@ -366,6 +367,14 @@ def test_shared_states_exports_replica_conditioned_nxip(tmp_path):
     assert len(comp) == 2
     assert (comp["n_replicates_0"] == 2).all()
     assert set(comp["inference"]) == {"exploratory; no multiplicity-adjusted test"}
+    hs = pd.read_parquet(output / "nxip_hs_contact_conditioning.parquet")
+    assert len(hs) == 4
+    assert set(hs["hs_chain"]) == {"PROB_S309"}
+    assert (hs["frames_contact"] == 10).all()
+    assert (hs["frames_no_contact"] == 10).all()
+    np.testing.assert_allclose(hs["occlusion_contact_mean"], .8)
+    np.testing.assert_allclose(hs["occlusion_no_contact_mean"], .2)
+
     exposure = pd.read_parquet(
         output / "nxip_state_exposure_threshold_sensitivity.parquet"
     )
