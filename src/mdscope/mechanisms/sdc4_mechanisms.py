@@ -23,7 +23,7 @@ from MDAnalysis.lib.distances import capped_distance, minimize_vectors
 
 from ..config import DEFAULTS, atomic_json, atomic_parquet, ensure_dir, time_ps
 from ..core.lipid_geometry import anchor_groups, aligned_leaflets, periodic_center
-from .mechanistic_common import heavy, nearest, selected, sequence_matches, unit
+from .mechanistic_common import AA3, heavy, nearest, selected, sequence_matches, unit
 from ..observables.membrane_order import _candidate_sites, _fixed_ch_pairs, _atomic_npz
 from ..pipeline.progress import track
 from .hs_topology import discover_covalent_hs
@@ -231,14 +231,24 @@ class SDC4Mechanisms:
         if s.get("require_motifs", True) and not self.motifs:
             raise ValueError("No NxIP motif matched; verify the mature SDC4 sequence/chain selections")
         self.gxxxg = {}
+        self.gxxxg_sequences = {}
         for chain, tm in self.tm.items():
             ca_tm = tm.select_atoms("name CA")
             if not len(ca_tm):
                 raise ValueError(f"TM selection for {chain} must contain CA atoms")
-            matches = sequence_matches(ca_tm, {"GXXXG": "G...G"})
+            # Match the known SDC4 GGIVG sequence; generic G...G matches can
+            # select an unrelated glycine pair and mask a wrong TM selection.
+            matches = sequence_matches(ca_tm, {"GGIVG": "GGIVG"})
             indices = np.unique(np.concatenate(list(matches.values()))) if matches else np.empty(0, int)
+            sequence = "".join(
+                AA3.get(atom.resname.upper(), "X") for atom in ca_tm
+            )
+            self.gxxxg_sequences[chain] = sequence
             if not len(indices) and s.get("require_gxxxg", False):
-                raise ValueError(f"No GXXXG motif found in TM chain {chain}")
+                raise ValueError(
+                    f"No GGIVG found in TM chain {chain} (sequence={sequence!r}); "
+                    "verify topology chain IDs and TM residue range"
+                )
             self.gxxxg[chain] = heavy(universe.atoms[np.isin(universe.atoms.resindices, indices)])
         self.local_order = _normal_order_setup(universe, s.get("local_order") or {})
         self.extent = float(s.get("map_extent_A", 40.))
@@ -282,6 +292,7 @@ class SDC4Mechanisms:
                                  for k, v in self.motifs.items()},
             "gxxxg_resindices": {k: v.residues.ix.tolist()
                                  for k, v in self.gxxxg.items()},
+            "gxxxg_tm_sequences": self.gxxxg_sequences,
             "surface_anchor_species": list(self.surface_species),
             "lipid_counts": {str(k): int(np.count_nonzero(self.species == k))
                              for k in sorted(set(self.species))},
