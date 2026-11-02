@@ -13,6 +13,7 @@ from pathlib import Path
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
+import yaml
 
 from mdscope.mechanisms.sdc4_mechanisms import SDC4Mechanisms
 
@@ -149,6 +150,26 @@ def run():
             "local_radius_A": 25., "local_min_lipids": 8,
             "local_order": {"enabled": False},
         }
+        production = yaml.safe_load(
+            Path("synd4_full_mechanisms.yaml").read_text()
+        )["analyses"]["sdc4_mechanisms"]
+        spec["lipid_moiety_selections"] = production["lipid_moiety_selections"]
+        chemical = {
+            label: u.select_atoms(selection)
+            for label, selection in spec["lipid_moiety_selections"].items()
+        }
+        assert all(len(group) for group in chemical.values()), (
+            system, {k: len(v) for k, v in chemical.items()}
+        )
+        for left, left_group in chemical.items():
+            for right, right_group in chemical.items():
+                if left < right:
+                    assert not np.intersect1d(
+                        left_group.indices, right_group.indices
+                    ).size, (system, left, right)
+        assert set(chemical["ceramide_tail"].resnames) == {"CER160"}
+        assert set(chemical["ceramide_head"].resnames) == {"CER160"}
+        assert not (set(chemical["glycan"].resnames) & {"CER160"})
         cfg = {
             "analyses": {"sdc4_mechanisms": spec},
             "selections": {"protein": "protein"},
