@@ -766,6 +766,31 @@ class SDC4Mechanisms:
             specificity = pd.concat(
                 (pd.read_parquet(p) for p in pieces), ignore_index=True
             ) if pieces else pd.DataFrame()
+            if not specificity.empty:
+                any_contact = specificity["moiety"].eq("any")
+                pools = specificity.loc[any_contact].groupby(
+                    ["time_ps", "region", "leaflet"], sort=False
+                )[["contacted_molecules", "available_molecules"]].transform("sum")
+                contact_share = np.divide(
+                    specificity.loc[any_contact, "contacted_molecules"].to_numpy(float),
+                    pools["contacted_molecules"].to_numpy(float),
+                    out=np.full(any_contact.sum(), np.nan),
+                    where=pools["contacted_molecules"].to_numpy(float) > 0,
+                )
+                availability_share = np.divide(
+                    specificity.loc[any_contact, "available_molecules"].to_numpy(float),
+                    pools["available_molecules"].to_numpy(float),
+                    out=np.full(any_contact.sum(), np.nan),
+                    where=pools["available_molecules"].to_numpy(float) > 0,
+                )
+                specificity["composition_enrichment"] = np.nan
+                specificity.loc[any_contact, "composition_enrichment"] = np.divide(
+                    contact_share, availability_share,
+                    out=np.full(len(contact_share), np.nan),
+                    where=np.isfinite(availability_share) & (availability_share > 0),
+                )
+            else:
+                specificity["composition_enrichment"] = pd.Series(dtype=float)
             atomic_parquet(out / "lipid_region_specificity.parquet", specificity)
 
         # Contact-conditioned hydration is a *within-replicate* descriptive
