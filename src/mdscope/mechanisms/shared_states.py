@@ -154,6 +154,7 @@ def fit_shared_states(cfg, root, system_repouts):
     rep_fraction = defaultdict(list)
     lipid_state_rows = []
     nxip_lipid_rows = []
+    nxip_hs_rows = []
     lipid_replica_rows = []
     nxip_conditioned = []
     nxip_joint = []
@@ -249,6 +250,30 @@ def fit_shared_states(cfg, root, system_repouts):
                             float((mask & exposed).sum() / n) if n else np.nan
                         ),
                     })
+        # HS-conditioned NxIP occlusion uses molecule-resolved HS contacts
+        # already computed during the same trajectory pass.
+        for chain in ("A", "B"):
+            endpoint = f"sdc4_motif_NxIP_PRO{chain}_1_steric_occlusion_fraction"
+            hs_prefix = f"sdc4_motif_NxIP_PRO{chain}_1_hs_"
+            if endpoint not in df:
+                continue
+            for hs_col in (col for col in df.columns
+                           if col.startswith(hs_prefix)
+                           and col.endswith("_contact_state")):
+                occlusion = df[endpoint].to_numpy(float)
+                contact = df[hs_col].to_numpy(float)
+                valid = np.isfinite(occlusion) & np.isfinite(contact)
+                yes = valid & (contact > 0)
+                no = valid & (contact == 0)
+                nxip_hs_rows.append({
+                    "system": system, "replicate": replicate,
+                    "chain": chain,
+                    "hs_chain": hs_col[len(hs_prefix):-len("_contact_state")],
+                    "frames_contact": int(yes.sum()),
+                    "frames_no_contact": int(no.sum()),
+                    "occlusion_contact_mean": float(occlusion[yes].mean()) if yes.any() else np.nan,
+                    "occlusion_no_contact_mean": float(occlusion[no].mean()) if no.any() else np.nan,
+                })
         # A frame-aligned downstream outcome; lipid contacts do not enter
         # geometric state training or assignments.
         lipid_path = repout_paths[(system, replicate)] / "extensions/sdc4_mechanisms/lipid_region_specificity.parquet"
@@ -454,6 +479,14 @@ def fit_shared_states(cfg, root, system_repouts):
                        "n_replicates", "replicate_mean", "replicate_sd",
                        "replicate_bootstrap_ci_low", "replicate_bootstrap_ci_high",
                    ]))
+    atomic_parquet(
+        out / "nxip_hs_contact_conditioning.parquet",
+        pd.DataFrame(nxip_hs_rows, columns=[
+            "system", "replicate", "chain", "hs_chain",
+            "frames_contact", "frames_no_contact",
+            "occlusion_contact_mean", "occlusion_no_contact_mean",
+        ]),
+    )
     atomic_parquet(
         out / "nxip_lipid_contact_conditioning.parquet",
         pd.DataFrame(nxip_lipid_rows, columns=[
