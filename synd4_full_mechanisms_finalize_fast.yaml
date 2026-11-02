@@ -207,10 +207,10 @@ analyses:
     protein_selection: "protein"
     tm_chains:
       A: "protein and chainID PROA and resid 150:170 and name CA"
-      B: "protein and chainID PROB and resid 419:439 and name CA"
+      B: "protein and chainID PROB and resid 420:440 and name CA"
     ectodomains:
       A: "protein and chainID PROA and resid 1:149 and name CA"
-      B: "protein and chainID PROB and resid 270:418 and name CA"
+      B: "protein and chainID PROB and resid 270:419 and name CA"
 
     # Real TPR bond audit verified exactly six covalently attached HS
     # chains: PROA S39/S61/S63 and PROB S309/S331/S333.
@@ -307,7 +307,7 @@ analyses:
 
   residue_membrane_distance:
     enabled: true
-    selection: "protein and name CA and ((chainID PROA and resid 1:149) or (chainID PROB and resid 270:418))"
+    selection: "protein and name CA and ((chainID PROA and resid 1:149) or (chainID PROB and resid 270:419))"
     exclude_hydrogens: true
     # The CA selection chooses residues; all heavy atoms in those residues
     # are then used for the exact minimum-distance calculation.
