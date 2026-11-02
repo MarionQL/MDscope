@@ -61,11 +61,16 @@ def additional_time_series(repout:Path,cfg):
         path = Path(repout) / "extensions/sdc4_mechanisms/timeseries.parquet"
         if path.exists():
             output.append(pd.read_parquet(path))
+    if cfg.get('analyses', {}).get('lipid_contacts', {}).get('enabled', False):
+        path = Path(repout)/'extensions/lipid_contacts/timeseries.parquet'
+        if path.exists():
+            output.append(pd.read_parquet(path))
     return output
 
 
 # Persisted output paths are independent of scheduling and checkpoint naming.
 FUSED_OUTPUTS = {
+    "lipid_contacts": "extensions/lipid_contacts/timeseries.parquet",
     "membrane_order": "profiles/membrane_order/timeseries.parquet",
     "bilayer_normal": "extensions/bilayer_normal/timeseries.parquet",
     "lipid_enrichment": "extensions/lipid_enrichment/timeseries.parquet",
@@ -132,3 +137,4 @@ def fused_output_plan(cfg: dict, repout: Path) -> tuple[FusedOutput, ...]:
     if sdc4_enabled(cfg):
         entries.append(fused_output(repout, "sdc4_mechanisms"))
     return tuple(entries)
+

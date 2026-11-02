@@ -40,7 +40,7 @@ def figure_inventory(root, system_repouts, cfg=None, include_rejected=False):
     rows=[]
     for path in sorted(set(paths)):
         name=path.name
-        kind=("primary" if name.endswith(PRIMARY_SUFFIXES) else
+        kind=("primary" if name.startswith("lipid_contact_matrix_") or name.endswith(PRIMARY_SUFFIXES) else
               "supplement" if name.endswith(SUPPLEMENT_SUFFIXES) else "other")
         status = figure_status(path,cfg,root,system_repouts,records=records,fingerprints=fingerprints,signature=signature) if cfg is not None else 'unverified'
         if cfg is not None and status != 'valid' and not include_rejected:

@@ -874,6 +874,20 @@ class SDC4Mechanisms:
             prefix = f"sdc4_hs_{name}_"
             row[prefix + "orientation_cos"] = float(np.dot(unit(vec), [0., 0., sign]))
             row[prefix + "extension_A"] = float(np.linalg.norm(vec))
+            row[prefix + "vertical_extension_A"] = float(abs(vec[2]))
+            # Shape in a common periodic image around the covalent attachment;
+            # do not mistake arithmetic wrapped coordinates for chain bending.
+            relative = minimize_vectors(ag.positions - attachment, box)
+            centered = relative - relative.mean(axis=0)
+            eigen = np.linalg.eigvalsh(centered.T @ centered / len(ag))
+            total = float(eigen.sum())
+            row[prefix + "radius_of_gyration_A"] = float(np.sqrt(max(0., total)))
+            row[prefix + "shape_anisotropy"] = (
+                float(1.5*np.sum((eigen-eigen.mean())**2)/total**2) if total > 0 else np.nan)
+            row[prefix + "vertical_span_A"] = float(np.ptp(relative[:, 2]))
+            for axis_i, label in enumerate('xyz'):
+                row[prefix + f"attachment_relative_tm_{label}_A"] = float(
+                    _vector(midpoint, attachment, box)[axis_i])
             row[prefix + "lateral_extension_A"] = float(np.linalg.norm(vec[:2]))
             row[prefix + "lipid_contact_atom_pairs"] = len(lip_hits)
             row[prefix + "lipid_contact_lipids"] = (

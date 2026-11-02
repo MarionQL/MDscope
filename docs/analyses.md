@@ -970,3 +970,69 @@ floating-point rounding between native distance backends. This is a
 histogram numerical-convention issue, not a distinct PBC convention;
 ordinary nonboundary backend parity is tested separately.
 
+
+## Molecular lipid neighbor matrices and bridge episodes
+
+Optional `analyses.lipid_contacts` shares the raw fused membrane pass. Configure
+`enabled: true`, `selection` (all heavy atoms of the desired complete molecules),
+`species_selections` (one anchor residue per molecule, as for lipid enrichment),
+`cutoff_A` (default 5), `axis` (default z), and `batch_atoms` (default 4096).
+Bond connectivity is required. Every selected molecule must have exactly one
+anchor; the mapping is validated rather than guessing glycolipid residue IDs.
+This planar leaflet policy explicitly requires an orthorhombic box.
+
+Each distinct bonded molecule pair is counted once irrespective of atom count,
+with self pairs removed and same-species pairs retained. AB and BA rows repeat
+the same undirected pair count. Neighbors per A molecule are C_AB/N_A for A!=B
+and 2C_AA/N_A for A==B. Possible pairs are N_A*N_B or N_A*(N_A-1)/2. Enrichment
+is observed contact share divided by possible-pair share among all distinct
+molecules in that instantaneous leaflet. This finite-size random-mixing null
+has enrichment 1 for a complete contact graph; it does not correct for lipid
+size, steric packing or accessible membrane area and is not an affinity.
+Absent populations and undefined reference populations produce NaN, while
+an available pair class with zero contacts produces zero enrichment when the
+leaflet has other contacts. Cross-leaflet pairs are counted separately in the
+scalar output and excluded from within-leaflet normalization.
+
+Outputs are `extensions/lipid_contacts/matrix.parquet`, `timeseries.parquet`
+and `selection_audit.json`. Searches batch reference atoms and retain only
+unique encoded molecule pairs between batches, not atom event tables. Chunk
+and checkpoint numbers follow the existing fused observer. Matrix group time
+series use the existing temporal/hierarchical statistics and standard plots;
+additional condition/leaflet heatmaps average replicas equally and are
+explicitly descriptive. Raw matrices and audits enter the evidence bundle.
+The optional module is off by default; enabling it adds a necessary neighbor
+query, not a second trajectory pass.
+
+Solvation sequence-defined targets now accept `atom_selection` within the
+mapped motif. For the acidic sequence, `atom_selection: "name OD1 OD2 OE1 OE2"`
+restricts sites to explicitly named carboxylate atoms after topology mapping.
+HS carboxylate/sulfate selections must likewise be explicit and validated for
+the force field. Do not substitute whole-motif proximity for ion coordination.
+
+When sparse `bridges.parquet` records exist, offline derivatives add
+`bridge_residence.parquet` and `bridge_residence_intermittent.parquet` without
+rereading trajectories. A bridge requires the **same** solvent entity to
+coordinate both named targets simultaneously. Duplicate records are removed;
+continuous/intermittent episodes share the validated sampled-duration kernel,
+retain ion identities and both censor flags, and report observed spans as
+well as interval-imputed durations. The intermittent gap is one sampled frame,
+not a fixed physical duration. Only observed target pairs enter these outputs;
+an absent pair is not automatically a measured zero. These geometric episodes
+do not establish cooperative binding, contact-ion versus solvent-separated
+mechanisms, or free energies. Null controls and replica-level production
+comparisons for issue #103 remain required.
+
+HS outputs additionally report equal-heavy-atom Rg, shape anisotropy (0 for
+isotropic, 1 for linear), vertical span/extension and attachment position
+relative to the TM center. Coordinates are reconstructed by minimum image
+around the attachment, assuming the chain fits in that periodic image. These
+reuse current coordinates and do not fit additional conformational states.
+State robustness, matched windows and survival comparisons remain research
+validation requirements for #104.
+
+Batched-search benchmark (`python scripts/benchmark_lipid_contacts.py` in fresh
+processes): 1,024 molecules / 12,288 atoms / three frames, batch 256 took
+0.750 s at 170.5 MiB peak RSS; batch 4096 took 0.619 s at 174.7 MiB. Matrix
+digests were identical. This demonstrates a memory/runtime tradeoff and
+batch invariance, not a production trajectory speedup prediction.
