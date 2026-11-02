@@ -254,6 +254,15 @@ def run():
             out / "extensions/sdc4_mechanisms/lipid_region_specificity.parquet"
         )
         assert not specificity.empty
+        residue_map = pd.read_parquet(
+            out / "extensions/sdc4_mechanisms/lipid_residue_contacts.parquet"
+        )
+        assert {"time_ps", "region", "topology_residue_index",
+                "lipid_molecule_id", "species", "leaflet"}.issubset(residue_map)
+        assert not residue_map.duplicated(
+            ["time_ps", "region", "topology_residue_index", "lipid_molecule_id"]
+        ).any()
+
         assert {"GM1a", "BGAL"}.issubset(
             set(specificity.species)
         ) if system == "carb_sdc4" else "CER160" in set(specificity.species)
