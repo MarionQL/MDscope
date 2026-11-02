@@ -348,6 +348,8 @@ analyses:
     selection: "protein"
     # Preserve side-chain carbon areas from the existing FreeSASA pass.
     atom_sasa_selection: "protein and name C* and not name C CA"
+    atom_sasa_sequences: ["VVHPLVPL"]
+    atom_sasa_expected_matches: 2
 
   salt_bridges:
     enabled: true

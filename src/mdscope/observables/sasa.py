@@ -60,6 +60,26 @@ def sasa_instances(universe, cfg):
         if atom_selection and (not len(atom_positions) or
                                len(atom_positions) != len(requested)):
             raise ValueError("atom_sasa_selection must be a nonempty subset of SASA target atoms")
+        motif_sequences = spec.get("atom_sasa_sequences") or []
+        if motif_sequences:
+            from ..mechanisms.mechanistic_common import sequence_matches
+            matched = sequence_matches(
+                target.select_atoms("name CA"),
+                {f"atom_sasa_{i}": sequence for i, sequence in
+                 enumerate(motif_sequences)},
+            )
+            expected = spec.get("atom_sasa_expected_matches")
+            if not matched or (expected is not None and len(matched) != int(expected)):
+                raise ValueError(
+                    f"atom_sasa_sequences mapped {len(matched)} occurrences; "
+                    f"expected {expected}"
+                )
+            motif_resindices = np.unique(np.concatenate(list(matched.values())))
+            atom_positions = atom_positions[np.isin(
+                target.resindices[atom_positions], motif_resindices
+            )]
+            if not len(atom_positions):
+                raise ValueError("No selected SASA sidechain atoms in mapped motifs")
         residues = list(target.residues)
         residue_ids = np.asarray([r.ix for r in residues], dtype=int)
         mapping = np.searchsorted(residue_ids, target.resindices)
