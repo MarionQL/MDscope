@@ -342,6 +342,8 @@ def test_shared_states_exports_replica_conditioned_nxip(tmp_path):
                 "sdc4_ectodomain_B_height_A": height * 1.5,
                 "sdc4_motif_NxIP_PROB_1_steric_occlusion_fraction":
                     np.r_[np.full(10, .8), np.full(10, .2)],
+                "sdc4_hs_A1_membrane_contact_state": np.zeros(20, dtype=int),
+                "sdc4_hs_A1_hydration_water_per_heavy_atom": np.ones(20),
             }).to_parquet(dest / "timeseries.parquet", index=False)
             paths[sys].append(folder)
     output = fit_shared_states(cfg, tmp_path, paths)
