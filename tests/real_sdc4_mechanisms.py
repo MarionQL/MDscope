@@ -156,6 +156,16 @@ def run():
             "time": {"dt_ps": None, "origin_ps": 0.},
         }
         out = ROOT / "sdc4_mechanisms_smoke" / system
+        # Inspect force-field-specific CER160 chemistry before choosing
+        # tail versus polar-head selections; avoid name-prefix guesses.
+        ceramide = u.select_atoms("resname CER160")
+        if len(ceramide):
+            first_ceramide = ceramide.residues[0]
+            print(
+                f"REAL CER160 ATOM NAMES {system}: "
+                f"{first_ceramide.atoms.names.tolist()}",
+                flush=True,
+            )
         observer = SDC4Mechanisms(u, cfg, out)
         observer.prune_from(0)
         def independent_residue_pairs(left, right, cutoff=5.0):
