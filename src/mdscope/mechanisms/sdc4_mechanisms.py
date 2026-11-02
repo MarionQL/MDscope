@@ -599,6 +599,13 @@ class SDC4Mechanisms:
                 len(np.unique(protein_other.resindices[contacts[:, 1]])) if len(contacts) else 0
             )
             row[prefix + "glycan_contacts"] = len(gly_hits)
+            contacted_hs_atoms = set(
+                map(int, glycan_all.indices[gly_hits[:, 1]])
+            ) if len(gly_hits) else set()
+            for hs_name, hs_atoms in self.hs.items():
+                n_hs = len(contacted_hs_atoms.intersection(map(int, hs_atoms.indices)))
+                row[prefix + f"hs_{hs_name}_contact_state"] = int(n_hs > 0)
+
             row[prefix + "lipid_contacts"] = len(lip_hits)
             # Separate distinct physical occluders so NxIP exposure
             # cannot be attributed entirely to protein self-packing.
