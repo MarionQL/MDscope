@@ -12,6 +12,7 @@ import pandas as pd
 COLUMNS = [
     "motif", "species", "molecule_id", "start_ps", "end_ps", "duration_ps",
     "n_frames", "left_censored", "right_censored", "occupancy_fraction",
+    "episode_contact_fraction", "observed_span_ps", "duration_convention",
 ]
 
 
@@ -59,6 +60,9 @@ def summarize_lipid_residence(events: pd.DataFrame, frame_times, gap_frames=0):
                 "left_censored": bool(left == 0),
                 "right_censored": bool(right == len(times)-1),
                 "occupancy_fraction": float(len(frames) / len(times)),
+                "episode_contact_fraction": float((end - begin) / len(times)),
+                "observed_span_ps": float(times[right] - times[left]),
+                "duration_convention": "next_sample_interval_or_terminal_median",
             })
     return pd.DataFrame(rows, columns=COLUMNS)
 
