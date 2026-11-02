@@ -158,9 +158,14 @@ def run():
             label: u.select_atoms(selection)
             for label, selection in spec["lipid_moiety_selections"].items()
         }
-        assert all(len(group) for group in chemical.values()), (
+        required_groups = ("ceramide_head", "ceramide_tail") + (
+            ("glycan",) if system == "carb_sdc4" else ()
+        )
+        assert all(len(chemical[key]) for key in required_groups), (
             system, {k: len(v) for k, v in chemical.items()}
         )
+        if system == "nocarb_sdc4":
+            assert len(chemical["glycan"]) == 0
         for left, left_group in chemical.items():
             for right, right_group in chemical.items():
                 if left < right:
