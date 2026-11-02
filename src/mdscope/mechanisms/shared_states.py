@@ -156,6 +156,7 @@ def fit_shared_states(cfg, root, system_repouts):
     nxip_lipid_rows = []
     lipid_replica_rows = []
     nxip_conditioned = []
+    nxip_joint = []
     for (system, replicate), df in replicates.items():
         x = df[features].to_numpy(float)
         labels = _assign((x - location) / scale, centers)
@@ -224,6 +225,28 @@ def fit_shared_states(cfg, root, system_repouts):
                         "within_replicate_difference": (
                             float(values[mask].mean() - values[other].mean())
                             if mask.any() and other.any() else np.nan
+                        ),
+                    })
+        # Threshold sensitivity, not a data-fitted "binding state".
+        # 0.25/0.50/0.75 are prespecified occluded-heavy-atom fractions.
+        for chain in ("A", "B"):
+            endpoint = f"sdc4_motif_NxIP_PRO{chain}_1_steric_occlusion_fraction"
+            if endpoint not in df:
+                continue
+            values = df[endpoint].to_numpy(float)
+            finite = np.isfinite(values)
+            for threshold in (.25, .50, .75):
+                exposed = values <= threshold
+                for state in range(k):
+                    mask = finite & (labels == state)
+                    n = int(mask.sum())
+                    nxip_joint.append({
+                        "system": system, "replicate": replicate,
+                        "chain": chain, "state": state, "threshold": threshold,
+                        "frames_in_state": n,
+                        "frames_exposed_in_state": int((mask & exposed).sum()),
+                        "exposed_fraction_given_state": (
+                            float((mask & exposed).sum() / n) if n else np.nan
                         ),
                     })
         # A frame-aligned downstream outcome; lipid contacts do not enter
@@ -338,6 +361,14 @@ def fit_shared_states(cfg, root, system_repouts):
         "mean_outside_state", "within_replicate_difference",
     ])
     atomic_parquet(out / "state_conditioned_nxip.parquet", nxip_df)
+    atomic_parquet(
+        out / "nxip_state_exposure_threshold_sensitivity.parquet",
+        pd.DataFrame(nxip_joint, columns=[
+            "system", "replicate", "chain", "state", "threshold",
+            "frames_in_state", "frames_exposed_in_state",
+            "exposed_fraction_given_state",
+        ]),
+    )
     # A condition contrast is computed only from independent replicate-level
     # contrasts. With three trajectories per condition these intervals are
     # exploratory; no frame-based p-values or significance stars are emitted.
