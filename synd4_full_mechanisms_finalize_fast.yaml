@@ -290,7 +290,9 @@ analyses:
       water: 3.5
       ions: 4.0
 
-  # Fit one state model across all six replicates and both conditions.
+  # Fit one ectodomain-only state model across all six replicates.
+  # NxIP accessibility, TM crossing and local bilayer thickness are outcomes,
+  # not predictors, to avoid circular conditional conclusions.
   shared_states:
     enabled: true
     n_states: 3
@@ -304,8 +306,6 @@ analyses:
       - sdc4_ectodomain_B_height_A
       - sdc4_ectodomain_A_tilt_deg
       - sdc4_ectodomain_B_tilt_deg
-      - sdc4_tm_crossing_angle_deg
-      - sdc4_local_thickness_A
 
   residue_membrane_distance:
     enabled: true
