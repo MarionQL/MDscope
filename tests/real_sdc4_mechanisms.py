@@ -57,6 +57,28 @@ def run():
             assert len(u.select_atoms(selection)) >= 4, (
                 f"{system}: missing real SDC4 selection {selection}"
             )
+        # Release-data diagnostic: report the complete SDC4 chain sequence and
+        # selected TM segment independently, so a missing GGIVG cannot be
+        # confused with zero physical interhelical contacts.
+        for chain, sel in tm.items():
+            ca_tm = u.select_atoms(sel)
+            ca_full = u.select_atoms(
+                f"protein and chainID PRO{chain} and name CA"
+            )
+            from mdscope.mechanisms.mechanistic_common import AA3
+            tm_seq = "".join(AA3.get(a.resname.upper(), "X") for a in ca_tm)
+            full_seq = "".join(AA3.get(a.resname.upper(), "X") for a in ca_full)
+            print(
+                f"REAL GGIVG {system}/{chain}: TM={tm_seq!r} "
+                f"TM_resids={ca_tm.resids.tolist()} "
+                f"full_GGIVG_offsets={[i for i in range(len(full_seq)-4) if full_seq[i:i+5] == 'GGIVG']}",
+                flush=True,
+            )
+            if "GGIVG" not in tm_seq:
+                raise AssertionError(
+                    f"{system}/{chain}: selected TM lacks GGIVG; inspect "
+                    "sequence and residue-range diagnostics above"
+                )
         spec = {
             "enabled": True, "axis": "z",
             "tm_chains": tm, "ectodomains": ecto,
@@ -75,7 +97,7 @@ def run():
             "lipid_contact_selection": "(resname POPC POPE POPI POPS DOPC DPPC PSM CHL1) or (chainID GM1a BGAL CER160)",
             "motif_selection": "protein and name CA",
             "motifs": {"NxIP": "N.IP"},
-            "require_motifs": False, "require_gxxxg": False,
+            "require_motifs": False, "require_gxxxg": True,
             "map_extent_A": 40., "map_bin_A": 4.,
             "local_radius_A": 25., "local_min_lipids": 8,
             "local_order": {"enabled": False},
