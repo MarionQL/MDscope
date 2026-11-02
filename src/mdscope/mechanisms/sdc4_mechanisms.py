@@ -594,6 +594,18 @@ class SDC4Mechanisms:
                         moiety = ("ceramide" if lipid_atom.resname == "CER160"
                                   else "glycan")
                         observed.setdefault((species, leaflet, moiety), set()).add(molecule)
+                # Reuse the existing censored-episode reducer for TM/motif
+                # molecule contacts, without building dense per-lipid arrays.
+                residence_molecules = set().union(*(
+                    values for (sp, lf, moiety), values in observed.items()
+                    if moiety == "any"
+                )) if observed else set()
+                for molecule in sorted(residence_molecules):
+                    self.rows["lipid_residence"].append({
+                        "time_ps": t, "motif": f"region_{region}",
+                        "molecule_id": molecule,
+                        "species": self.lipid_molecule_species[molecule],
+                    })
                 for (species, leaflet), denominator in availability.items():
                     moieties = ("any", "glycan", "ceramide") if species in (
                         "GM1a", "BGAL"
