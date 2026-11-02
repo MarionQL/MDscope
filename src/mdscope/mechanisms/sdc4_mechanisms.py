@@ -87,6 +87,19 @@ def _accessible_area_grid(center_xy, surface_z, protein_xyz, box,
     return float(np.count_nonzero(distances > exclusion_A) * spacing_A ** 2)
 
 
+def _proline_rama_region(phi, psi):
+    """Operational single-residue Ramachandran region; not DSSP or beta-turn."""
+    if not np.isfinite(phi) or not np.isfinite(psi):
+        return "missing"
+    if -105. <= phi <= -50. and 100. <= psi <= 180.:
+        return "PPII_like"
+    if -180. <= phi < -105. and 90. <= psi <= 180.:
+        return "beta_extended_like"
+    if -100. <= phi <= -30. and -80. <= psi <= 10.:
+        return "alphaR_like"
+    return "other"
+
+
 def _composition_enrichment(table, availability_column):
     """Species contact share divided by availability share, within each
     frame/region/leaflet. Undefined fractions remain NaN."""
@@ -611,6 +624,11 @@ class SDC4Mechanisms:
                         points[0], points[1], points[2], points[3], box=box
                     )))
                 row[f"sdc4_proline_{label}_{suffix}"] = value
+        for label in self.proline_torsions:
+            row[f"sdc4_proline_{label}_rama_region"] = _proline_rama_region(
+                row[f"sdc4_proline_{label}_phi_deg"],
+                row[f"sdc4_proline_{label}_psi_deg"],
+            )
         for name, info in self.motifs.items():
             ag = info["atoms"]
             own = info["resindices"]

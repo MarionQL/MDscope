@@ -498,3 +498,13 @@ def test_accessible_area_grid_pbc_and_excluded_protein_reference():
     assert _accessible_area_grid(
         [0., 0.], 0., [[99.8, 0., 10.]], box, grid, 1., .5, 1.
     ) == pytest.approx(full)
+
+
+def test_proline_ramachandran_region_reference_and_boundaries():
+    from mdscope.mechanisms.sdc4_mechanisms import _proline_rama_region
+    assert _proline_rama_region(-75., 150.) == "PPII_like"
+    assert _proline_rama_region(-130., 130.) == "beta_extended_like"
+    assert _proline_rama_region(-65., -30.) == "alphaR_like"
+    assert _proline_rama_region(-75., 50.) == "other"
+    assert _proline_rama_region(np.nan, 150.) == "missing"
+    assert _proline_rama_region(-105., 100.) == "PPII_like"
