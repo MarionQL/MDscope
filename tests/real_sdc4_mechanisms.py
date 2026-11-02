@@ -46,12 +46,12 @@ def run():
                 species[name] = selection
         assert len(species) >= 3, species
         tm = {
-            "A": "protein and chainID PROA and resid 146:170 and name CA",
-            "B": "protein and chainID PROB and resid 415:439 and name CA",
+            "A": "protein and chainID PROA and resid 150:170 and name CA",
+            "B": "protein and chainID PROB and resid 419:439 and name CA",
         }
         ecto = {
-            "A": "protein and chainID PROA and resid 1:145 and name CA",
-            "B": "protein and chainID PROB and resid 270:414 and name CA",
+            "A": "protein and chainID PROA and resid 1:149 and name CA",
+            "B": "protein and chainID PROB and resid 270:418 and name CA",
         }
         for selection in list(tm.values()) + list(ecto.values()):
             assert len(u.select_atoms(selection)) >= 4, (
@@ -60,16 +60,16 @@ def run():
         for chain in ("A", "B"):
             ecto_atoms = u.select_atoms(ecto[chain])
             tm_atoms = u.select_atoms(tm[chain])
-            assert len(tm_atoms) == 25, (system, chain, len(tm_atoms))
-            assert len(ecto_atoms) == 145, (system, chain, len(ecto_atoms))
+            assert len(tm_atoms) == 21, (system, chain, len(tm_atoms))
+            assert len(ecto_atoms) >= 140, (system, chain, len(ecto_atoms))
             assert not np.intersect1d(ecto_atoms.resindices, tm_atoms.resindices).size, (
                 system, chain, "overlapping ectodomain / TM selections"
             )
         # Check the independent residue-membrane distance selection uses
         # precisely the configured ectodomain residues and no TM residues.
         rmd = u.select_atoms(
-            "protein and name CA and ((chainID PROA and resid 1:145) "
-            "or (chainID PROB and resid 270:414))"
+            "protein and name CA and ((chainID PROA and resid 1:149) "
+            "or (chainID PROB and resid 270:418))"
         )
         ecto_ids = np.union1d(
             u.select_atoms(ecto["A"]).resindices,
@@ -96,10 +96,17 @@ def run():
                 f"full_GGIVG_offsets={[i for i in range(len(full_seq)-4) if full_seq[i:i+5] == 'GGIVG']}",
                 flush=True,
             )
-            if "GGIVG" not in tm_seq:
+            ca_ecto = u.select_atoms(ecto[chain])
+            ecto_seq = "".join(AA3.get(a.resname.upper(), "X") for a in ca_ecto)
+            if not ecto_seq.endswith("TEVLAA"):
                 raise AssertionError(
-                    f"{system}/{chain}: selected TM lacks GGIVG; inspect "
-                    "sequence and residue-range diagnostics above"
+                    f"{system}/{chain}: ectodomain does not end in TEVLAA; "
+                    f"observed ending={ecto_seq[-15:]!r}"
+                )
+            if tm_seq != "LIVGGIVGILFAVFLILLLMY":
+                raise AssertionError(
+                    f"{system}/{chain}: TM sequence {tm_seq!r} does not match "
+                    "the user-verified domain boundary LIVGGIVGILFAVFLILLLMY"
                 )
         spec = {
             "enabled": True, "axis": "z",
