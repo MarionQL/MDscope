@@ -293,6 +293,22 @@ def run():
         assert "sdc4_motif_proline_hydrophobic_PROB_1_steric_occlusion_fraction" in df
         # Issue #101: chain-resolved NxIP and ectodomain signals must be
         # present in the same frame-indexed table for conditional analyses.
+        for chain in ("PROA", "PROB"):
+            for motif in ("NxIP", "proline_hydrophobic"):
+                prefix = f"sdc4_motif_{motif}_{chain}_1_"
+                for endpoint in (
+                    "protein_occluded_atom_fraction",
+                    "glycan_occluded_atom_fraction",
+                    "lipid_occluded_atom_fraction",
+                    "hydration_water_count",
+                ):
+                    col = prefix + endpoint
+                    assert col in df, (system, col)
+                    assert df[col].notna().all(), (system, col)
+                    if endpoint.endswith("fraction"):
+                        assert df[col].between(0, 1).all(), (system, col)
+            col = f"sdc4_motif_proline_hydrophobic_{chain}_1_to_NxIP_min_distance_A"
+            assert col in df and (df[col] > 0).all(), (system, col)
         assert "sdc4_ectodomain_B_height_A" in df
         assert "sdc4_motif_NxIP_PROB_1_steric_occlusion_fraction" in df
         assert df["time_ps"].is_unique
