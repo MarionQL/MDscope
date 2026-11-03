@@ -29,6 +29,12 @@ def image_minimum(a, b, box, *, nonzero=True, z_image_only=False):
         raise ValueError('Missing coordinates or invalid box')
     if not (np.isfinite(a).all() and np.isfinite(b).all() and np.isfinite(box).all()):
         raise ValueError('Nonfinite coordinates')
+    # Build the KD tree over the larger set and query the smaller one.
+    # This avoids repeatedly querying ~100k membrane atoms against a small
+    # protein tree for every periodic translation.
+    swapped = len(a) < len(b)
+    if swapped:
+        a, b = b, a
     center = np.rint((a.mean(axis=0)-b.mean(axis=0))/box).astype(int)
     # Include enough translations to cover the full spread, not just centers.
     extent = np.ceil((np.ptp(a, axis=0)+np.ptp(b, axis=0))/box).astype(int)+1
@@ -56,6 +62,8 @@ def image_minimum(a, b, box, *, nonzero=True, z_image_only=False):
             best, chosen = dist, list(shift)
     if chosen is None:
         raise ValueError('No periodic images selected')
+    if swapped:
+        chosen = [-int(x) for x in chosen]
     return {'distance_nm':best, 'shift':chosen}
 
 
