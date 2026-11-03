@@ -35,7 +35,7 @@ jobs:
           mkdir -p release
           gh release download test-data-v1 --repo "$GITHUB_REPOSITORY" --pattern "${CONDITION}-sdc4-rep1_test.xtc" --dir release
           gh release download test-data-v1 --repo "$GITHUB_REPOSITORY" --pattern "${CONDITION}-sdc4-step7_production.tpr" --dir release
-      - name: Sweep candidate lateral and z image distances
+      - name: Sweep bounded candidate lattice with AABB-pruned image search
         env:
           CONDITION: ${{ matrix.condition }}
           FRAMES: ${{ inputs.frames_per_condition || '40' }}
