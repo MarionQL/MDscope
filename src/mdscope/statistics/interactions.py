@@ -22,7 +22,7 @@ from ..observables.structure_profiles import temporal_structure_profiles
 from ..observables.rmsf import temporal_rmsf_profiles
 
 
-from .common import _temporal, _block_weights, _hierarchical, _hierarchical_difference, _ci, _direction, _permutation, _fdr, _range_meta
+from .common import _temporal, _block_weights, _hierarchical, _hierarchical_difference, _ci, _direction, _permutation, _fdr, _range_meta, _point_difference
 
 def _interaction_bootstrap(
     times,
@@ -53,7 +53,7 @@ def _interaction_bootstrap(
     if key not in cache:
         if len(cache) >= 8:
             cache.pop(next(iter(cache)))
-        cache[key] = _block_weights(n, key[2], draws, rng)
+        cache[key] = _block_weights(n, key[2], draws, rng) if draws else np.empty((0, n), np.uint16)
     weights = cache[key]
     duration_ns = n * dt / 1000 if dt else np.nan
     occupancy = weights.dot(presence) / max(1, n)
@@ -119,6 +119,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
         return
     stats = cfg["statistics"]
     draws, level = int(stats.get("bootstrap_draws", 2000)), float(stats.get("ci", 0.95))
+    system_draws = draws if stats.get("hierarchy", {}).get("enabled", True) else 0
     rng = np.random.default_rng(int(stats.get("seed", 2026)) + 2)
     resample = stats.get("hierarchy", {}).get("resample_replicates", True)
     outdir = ensure_dir(root / "project_summary" / "statistics" / "interactions")
@@ -245,7 +246,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                     combine = "median" if metric == "median_lifetime_ps" else "mean"
                     boot = _hierarchical(
                         [x[1][0][metric] for x in valid],
-                        draws,
+                        system_draws,
                         rng,
                         combine,
                         resample
@@ -264,7 +265,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                                      "median": float(np.median(points)),
                                      "mean_ci_low": lo, "mean_ci_high": hi, **_range_meta(
                                          [x[1][1] for x in valid]
-                                     ), "bootstrap_draws": draws, "ci_level": level})
+                                     ), "bootstrap_draws": system_draws, "ci_level": level})
             available = [s for s in system_repouts if s in sys_boot]
             for s1, s2 in combinations(available, 2):
                 for metric in sorted(set(sys_boot[s1]) & set(sys_boot[s2])):
@@ -294,15 +295,13 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                         delta = _hierarchical_difference(
                             rep_draws_1,
                             rep_draws_2,
-                            draws,
+                            system_draws,
                             rng,
                             reducer,
                             resample,
                         )
                     else:
                         delta = sys_boot[s2][metric] - sys_boot[s1][metric]
-                    if not len(delta):
-                        continue
                     lo, hi = _ci(delta, level)
                     pgt, plt = _direction(delta)
                     amap = {
@@ -319,12 +318,14 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                         "interaction_type": kind,
                         "interaction": interaction,
                         "metric": metric,
-                                  "difference_system2_minus_system1": float(np.nanmean(delta)),
+                                  "difference_system2_minus_system1": (float(np.nanmean(delta)) if system_draws
+                                      else _point_difference(amap, bmap, paired,
+                                            "median" if metric == "median_lifetime_ps" else "mean")),
                                   "difference_ci_low": lo, "difference_ci_high": hi,
                                   "probability_difference_gt_0": pgt,
                                   "probability_difference_lt_0": plt,
                                   "p_value": _permutation(amap, bmap, cfg, rng),
-                                  "bootstrap_draws": draws, "ci_level": level})
+                                  "bootstrap_draws": system_draws, "ci_level": level})
     for name, rows in(
         ("replicate_interaction_metrics.parquet", rep_rows),
         ("system_interaction_metrics.parquet", sys_rows)

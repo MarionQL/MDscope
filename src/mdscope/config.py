@@ -408,6 +408,11 @@ def time_ps(ts, frame_index: int, cfg: dict) -> float:
 def load_config(path: str | Path) -> dict[str, Any]:
     with open(path) as handle:
         raw = yaml.safe_load(handle) or {}
+    if not isinstance(raw, dict):
+        raise ValueError("Configuration YAML must be a mapping")
+    for section in ("project", "trajectory", "time", "selections", "analyses", "statistics", "plots", "report"):
+        if section in raw and not isinstance(raw[section], dict):
+            raise ValueError(f"{section} must be a mapping")
     cfg = merge(DEFAULTS, raw)
     raw_stats = raw.get("statistics", {}) or {}
     if "block_scale" in raw_stats and not (isinstance(
@@ -426,6 +431,8 @@ def load_config(path: str | Path) -> dict[str, Any]:
     for name, value in list(cfg.get("analyses", {}).items()):
         if isinstance(value, bool):
             cfg["analyses"][name] = merge(DEFAULTS["analyses"].get(name, {}), {"enabled": value})
+        elif not isinstance(value, dict):
+            raise ValueError(f"analyses.{name} must be a mapping or boolean")
     # Removed in 0.8: prose report and the parallel
     # distribution-statistics framework.
     # Preserve the useful part of the old autocorrelation block as a
@@ -457,9 +464,13 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
     systems = cfg.get("systems")
     if not systems:
         raise ValueError("Config must define at least one system under systems:")
-    if int(cfg["trajectory"]["stride"]) < 1:
+    for field in ("stride", "chunk_frames", "start", "stop"):
+        value = cfg["trajectory"].get(field)
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
+            raise ValueError(f"trajectory.{field} must be an integer")
+    if cfg["trajectory"].get("stride", 1) < 1:
         raise ValueError("trajectory.stride must be >= 1")
-    if int(cfg["trajectory"].get("chunk_frames", 1000)) < 1:
+    if cfg["trajectory"].get("chunk_frames", 1000) < 1:
         raise ValueError("trajectory.chunk_frames must be >= 1")
     start, stop = cfg['trajectory'].get('start'), cfg['trajectory'].get('stop')
     # Preserve supported Python negative indexing, which needs trajectory
@@ -486,7 +497,7 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
             )
         top = Path(spec["topology"])
         top = top if top.is_absolute() else (base / top).resolve()
-        if not top.exists():
+        if not top.is_file():
             raise FileNotFoundError(top)
         labels = []
         for index, rep in enumerate(spec["replicates"], 1):
@@ -507,7 +518,7 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
             labels.append(label)
             traj = Path(trajectory_value)
             traj = traj if traj.is_absolute() else (base / traj).resolve()
-            if not traj.exists():
+            if not traj.is_file():
                 raise FileNotFoundError(traj)
             if isinstance(rep, dict) and rep.get("msd_trajectory"):
                 msd_path = Path(rep["msd_trajectory"])
@@ -533,6 +544,29 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
     for group_id, spec in analysis_groups(cfg).items():
         if not spec.get("selection"):
             raise ValueError(f"selections.groups.{group_id} is missing selection")
+    for name in cfg.get("analyses", {}):
+        analysis_runs(cfg, name)
+    for metric in ("rmsd", "radius_of_gyration"):
+        groups = cfg.get("analyses", {}).get(metric, {}).get("groups")
+        if groups is not None and (not isinstance(groups, list) or any(not isinstance(x, str) for x in groups)
+                                   or set(groups) - set(analysis_groups(cfg))):
+            raise ValueError(f"analyses.{metric}.groups must list configured group IDs")
+    for run in analysis_runs(cfg, "sasa"):
+        spec = run.spec
+        if str(spec.get("algorithm", "shrake_rupley")).lower() not in {"shrake_rupley", "shrake-rupley", "sr", "lee_richards", "lee-richards", "lr"}:
+            raise ValueError(f"sasa[{run.run_id}].algorithm is unsupported")
+        for field in ("n_points", "n_slices", "n_threads"):
+            value = spec.get(field)
+            if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 1):
+                raise ValueError(f"sasa[{run.run_id}].{field} must be a positive integer")
+        radius_options = spec.get("element_radii_A") or {}
+        if not isinstance(radius_options, dict):
+            raise ValueError(f"sasa[{run.run_id}].element_radii_A must be a mapping")
+        radii = list(radius_options.values())
+        if spec.get("probe_radius_A") is not None:
+            radii.append(spec["probe_radius_A"])
+        if any(not np.isfinite(float(x)) or float(x) <= 0 for x in radii):
+            raise ValueError(f"sasa[{run.run_id}] radii must be finite and positive")
 
     for run in analysis_runs(cfg, "density_1d"):
         if str(run.spec.get("axis", "z")).lower() not in {"x", "y", "z"}:
@@ -769,6 +803,9 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
                                     or any(not isinstance(x, str) for x in species)):
             raise ValueError("report.map_species must be a list of names")
     stats = cfg.get("statistics", {})
+    for field in ("block", "hypothesis_tests"):
+        if stats.get(field) is not None and not isinstance(stats[field], dict):
+            raise ValueError(f"statistics.{field} must be a mapping")
     if int(stats.get("bootstrap_draws", 2000)) < 100:
         raise ValueError("statistics.bootstrap_draws must be >= 100")
     if not 0 < float(stats.get("ci", 0.95)) < 1:
@@ -785,21 +822,31 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
     for name, option in families.items():
         if isinstance(option, bool):
             continue
-        if not isinstance(option, dict) or set(option) - {"enabled", "bootstrap_draws", "ci", "hypothesis_tests"}:
+        if not isinstance(option, dict) or set(option) - {"enabled", "bootstrap", "bootstrap_draws", "ci", "hypothesis_tests", "hierarchy"}:
             raise ValueError(f"statistics.families.{name}: unsupported options")
-        for key in ("enabled", "hypothesis_tests"):
+        for key in ("enabled", "bootstrap", "hypothesis_tests"):
             if key in option and not isinstance(option[key], bool):
                 raise ValueError(f"statistics.families.{name}.{key} must be boolean")
         if "bootstrap_draws" in option and int(option["bootstrap_draws"]) < 100:
             raise ValueError(f"statistics.families.{name}.bootstrap_draws must be >= 100")
         if "ci" in option and not 0 < float(option["ci"]) < 1:
             raise ValueError(f"statistics.families.{name}.ci must be between 0 and 1")
+        hierarchy = option.get("hierarchy", {})
+        if (not isinstance(hierarchy, dict) or set(hierarchy) - {"enabled", "block_within_replicate", "resample_replicates"}
+                or any(not isinstance(v, bool) for v in hierarchy.values())):
+            raise ValueError(f"statistics.families.{name}.hierarchy must contain boolean controls")
+    if not isinstance(stats.get("bootstrap", True), bool):
+        raise ValueError("statistics.bootstrap must be boolean")
+    hierarchy = stats.get("hierarchy", {})
+    if (not isinstance(hierarchy, dict) or set(hierarchy) - {"enabled", "block_within_replicate", "resample_replicates"}
+            or any(not isinstance(v, bool) for v in hierarchy.values())):
+        raise ValueError("statistics.hierarchy must contain boolean controls")
     hypotheses = stats.get("hypothesis_families", {})
     if not isinstance(hypotheses, dict):
         raise ValueError("statistics.hypothesis_families must map names to metric lists")
     seen = set()
     for name, metrics in hypotheses.items():
-        if name == "exploratory" or not isinstance(metrics, list) or not metrics or any(not isinstance(x, str) for x in metrics):
+        if not isinstance(name, str) or not name.strip() or name == "exploratory" or not isinstance(metrics, list) or not metrics or any(not isinstance(x, str) for x in metrics):
             raise ValueError("hypothesis families require named nonempty metric lists; exploratory is reserved")
         if seen.intersection(metrics) or len(set(metrics)) != len(metrics):
             raise ValueError("A metric cannot belong to multiple hypothesis families")
@@ -816,7 +863,10 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
     if max_acf_lag is not None and int(max_acf_lag) < 1:
         raise ValueError("statistics.block.max_acf_lag must be null or >= 1")
     tests = stats.get("hypothesis_tests", {}) or {}
-    if tests.get("enabled", True):
+    tests_active = tests.get("enabled", True) or any(
+        isinstance(option, dict) and option.get("enabled", True) and option.get("hypothesis_tests", False)
+        for option in families.values())
+    if tests_active:
         design = str(tests.get("design", "independent"))
         if design not in {"independent", "paired"}:
             raise ValueError(
@@ -869,12 +919,16 @@ def statistics_family_config(cfg, family):
     option = {"enabled": option} if isinstance(option, bool) else option
     if not stats.get("enabled", True) or not option.get("enabled", True):
         return None
-    if not option:
+    if not option and stats.get("bootstrap", True):
         return cfg
     result = deepcopy(cfg)
-    for key in ("bootstrap_draws", "ci"):
+    for key in ("bootstrap", "bootstrap_draws", "ci"):
         if key in option:
             result["statistics"][key] = option[key]
     if "hypothesis_tests" in option:
         result["statistics"].setdefault("hypothesis_tests", {})["enabled"] = option["hypothesis_tests"]
+    if "hierarchy" in option:
+        result["statistics"].setdefault("hierarchy", {}).update(option["hierarchy"])
+    if not result["statistics"].get("bootstrap", True):
+        result["statistics"]["bootstrap_draws"] = 0
     return result

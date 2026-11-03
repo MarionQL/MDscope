@@ -21,7 +21,7 @@ from ..observables.structure_profiles import temporal_structure_profiles
 from ..observables.rmsf import temporal_rmsf_profiles
 
 
-from .common import finite, _temporal, _block_bootstrap, _hierarchical, _hierarchical_difference, _ci, _describe, _direction, _permutation, _fdr, _range_meta
+from .common import finite, _temporal, _block_bootstrap, _hierarchical, _hierarchical_difference, _ci, _describe, _direction, _permutation, _fdr, _range_meta, _regular_times, _point_difference
 
 def collect_time_series(repout: Path) -> dict[tuple[str | None, str], pd.DataFrame]:
     out = {}
@@ -79,6 +79,7 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
         return
     stats = cfg["statistics"]
     draws, level = int(stats.get("bootstrap_draws", 2000)), float(stats.get("ci", 0.95))
+    system_draws = draws if stats.get("hierarchy", {}).get("enabled", True) else 0
     rng = np.random.default_rng(int(stats.get("seed", 2026)))
     resample = stats.get("hierarchy", {}).get("resample_replicates", True)
     outdir = ensure_dir(root / "project_summary" / "statistics" / "time_series")
@@ -90,10 +91,7 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
                 values = pd.to_numeric(table["value"], errors="coerce").to_numpy(float)
                 times = pd.to_numeric(table["time_ps"], errors="coerce").to_numpy(float)
                 valid = np.isfinite(values) & np.isfinite(times)
-                intervals = np.diff(times)
-                temporal_valid = bool(valid.all() and len(intervals) > 0
-                    and np.all(intervals > 0)
-                    and np.allclose(intervals, intervals[0], rtol=1e-5, atol=1e-8))
+                temporal_valid = bool(valid.all() and _regular_times(times))
                 values = values[valid]
                 times = times[valid]
                 if not len(values):
@@ -105,14 +103,14 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
                     draws,
                     rng,
                     "mean"
-                ) if temporal_valid else np.full(draws, np.nan)
+                ) if temporal_valid and draws else np.full(draws, np.nan)
                 med_boot = _block_bootstrap(
                     values,
                     meta["block_length_frames"],
                     draws,
                     rng,
                     "median"
-                ) if temporal_valid else np.full(draws, np.nan)
+                ) if temporal_valid and draws else np.full(draws, np.nan)
                 if not temporal_valid:
                     meta.update(acf=np.array([]), tau_int_frames=np.nan,
                                 tau_int_ps=np.nan, effective_n=np.nan)
@@ -175,15 +173,15 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
         rows = sub.to_dict("records")
         keys = [(system, r["replicate"], gid, metric) for r in rows]
         temporal_valid = all(cache[k]["temporal_valid"] for k in keys)
-        mean_boot = (_hierarchical([cache[k]["mean"] for k in keys], draws, rng, "mean", resample)
-                     if temporal_valid else np.full(draws, np.nan))
+        mean_boot = (_hierarchical([cache[k]["mean"] for k in keys], system_draws, rng, "mean", resample)
+                     if temporal_valid else np.full(system_draws, np.nan))
         med_boot = _hierarchical(
             [cache[k]["median"] for k in keys],
-            draws,
+            system_draws,
             rng,
             "median",
             resample
-        ) if temporal_valid else np.full(draws, np.nan)
+        ) if temporal_valid else np.full(system_draws, np.nan)
         sys_boot[(system, gid, metric)] = {"mean": mean_boot, "median": med_boot, "temporal_valid": temporal_valid}
         mlo, mhi = _ci(mean_boot, level)
         dlo, dhi = _ci(med_boot, level)
@@ -198,7 +196,7 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
                          "mean_ci_high": mhi,
                          "median_ci_low": dlo, "median_ci_high": dhi, **_range_meta(
                              rows
-                         ), "bootstrap_draws": draws, "ci_level": level})
+                         ), "bootstrap_draws": system_draws, "ci_level": level})
     sys = pd.DataFrame(sys_rows)
     atomic_parquet(outdir / "system_statistics.parquet", sys)
     comps = []
@@ -238,8 +236,8 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
             if not regular:
                 # A paired nan-reducer would silently omit invalid replicas.
                 # Neither design supports temporal intervals after that loss.
-                dmean = np.full(draws, np.nan)
-                dmed = np.full(draws, np.nan)
+                dmean = np.full(system_draws, np.nan)
+                dmed = np.full(system_draws, np.nan)
             elif paired:
                 mean_draws_a = {
                     rep_id: cache[(s1, rep_id, gid, metric)]["mean"]
@@ -260,7 +258,7 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
                 dmean = _hierarchical_difference(
                     mean_draws_a,
                     mean_draws_b,
-                    draws,
+                    system_draws,
                     rng,
                     "mean",
                     resample,
@@ -268,7 +266,7 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
                 dmed = _hierarchical_difference(
                     median_draws_a,
                     median_draws_b,
-                    draws,
+                    system_draws,
                     rng,
                     "median",
                     resample,
@@ -286,15 +284,11 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
             dlo, dhi = _ci(dmed, level)
             pgt, plt = _direction(dmean)
             dpgt, dplt = _direction(dmed)
-            if regular:
+            if regular and system_draws:
                 mean_difference, median_difference = float(np.mean(dmean)), float(np.median(dmed))
-            elif paired:
-                labels = sorted(set(amap) & set(bmap))
-                mean_difference = float(np.mean([bmap[k]-amap[k] for k in labels]))
-                median_difference = float(np.median([bmed[k]-amed[k] for k in labels]))
             else:
-                mean_difference = float(np.mean(list(bmap.values())) - np.mean(list(amap.values())))
-                median_difference = float(np.median(list(bmed.values())) - np.median(list(amed.values())))
+                mean_difference = _point_difference(amap,bmap,paired)
+                median_difference = _point_difference(amed,bmed,paired,"median")
             comps.append({"system_1": s1, "system_2": s2, "group": gid, "metric": metric,
                           "mean_difference_system2_minus_system1": mean_difference,
                           "mean_difference_ci_low": mlo, "mean_difference_ci_high": mhi,
@@ -306,7 +300,7 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
                           "median_probability_difference_gt_0": dpgt,
                           "median_probability_difference_lt_0": dplt,
                           "median_p_value": _permutation(amed, bmed, cfg, rng),
-                          "bootstrap_draws": draws, "ci_level": level})
+                          "bootstrap_draws": system_draws, "ci_level": level})
     comp = pd.DataFrame(comps)
     if not comp.empty:
         family_columns = ["system_1", "system_2"]

@@ -30,6 +30,24 @@ One water oxygen is at z=29 Å. All HS/water x,y coordinates are zero.
 | HS / attachment lipid contacts | 0 | Nearest upper anchor is 10 / 8 Å away |
 | Complete NxIP SASA | 1+2+3+4 = 10 nm² | Exact synthetic persisted areas; missing/nonfinite residue makes total unavailable |
 
+Additional persisted references cover A ectodomain tilt 45 degrees at the same
+12 Å height and a B TM axis tilted 60 degrees in the yz plane. Relative to
+the downward A axis and +x interhelix separation, the crossing angle is
+60 degrees and handedness is −1 (angle tolerance 1e−5 degrees). Shifting the
+attachment and HS downward by 10 Å gives attachment z=14 and HS z=16/20 Å:
+one attachment–lipid pair, two HS–lipid atom pairs, one contacted lipid and a
+membrane-contact state of 1, with extension still 6 Å. The original fixture
+provides the corresponding no-contact boundary.
+
+Collapsed TM axes persist unavailable angle/handedness; a collapsed HS has
+measured zero extension but unavailable orientation/shape anisotropy. Missing
+optional HS mappings omit their columns and retain empty audit counts, while
+required empty mappings raise. Fewer than four ectodomain CA sites and
+triclinic height-field geometry fail explicitly. Together with sparse/rank-
+deficient surface tests, mapping ambiguity/missing-motif tests, and the
+composition/chemical-molecule references below, these provide positive and
+boundary/failure cases for every major observable named in #71.
+
 Every contact/height/shape reference is checked both in the observer's direct
 row and after Parquet finalization. The contact cutoff includes equality.
 Variants independently shift atoms by box vectors, translate the entire

@@ -161,6 +161,9 @@ def _hierarchical(
     reducer="mean",
     resample=True
 ) -> np.ndarray:
+    if draws == 0:
+        first = next(iter(rep_draws), np.array([]))
+        return np.empty((0,) + np.asarray(first).shape[1:])
     # Second bootstrap level: choose replicates, then choose one
     # temporal-bootstrap realization from each selected replicate.
     arrays = [np.asarray(x, float) for x in rep_draws if len(x)]
@@ -190,6 +193,8 @@ def _hierarchical_difference(
     labels = sorted(set(rep_draws_a) & set(rep_draws_b))
     if not labels:
         return np.array([])
+    if draws == 0:
+        return np.empty((0,) + np.asarray(rep_draws_a[labels[0]]).shape[1:])
     stack_a = np.stack([np.asarray(rep_draws_a[label], float) for label in labels])
     stack_b = np.stack([np.asarray(rep_draws_b[label], float) for label in labels])
     if stack_a.shape[2:] != stack_b.shape[2:]:
@@ -216,6 +221,24 @@ def _ci(draws, level: float) -> tuple[float, float]:
         return np.nan, np.nan
     alpha = (1 - level) / 2
     return tuple(map(float, np.quantile(x, [alpha, 1 - alpha])))
+
+
+def _point_difference(a, b, paired=False, reducer="mean"):
+    """Finite-observation descriptive contrast when temporal draws are unavailable."""
+    reduce = np.median if reducer == "median" else np.mean
+    if paired:
+        differences = finite([b[k] - a[k] for k in sorted(set(a) & set(b))])
+        return float(reduce(differences)) if len(differences) else np.nan
+    left, right = finite(list(a.values())), finite(list(b.values()))
+    return float(reduce(right) - reduce(left)) if len(left) and len(right) else np.nan
+
+
+def _regular_times(times):
+    times = np.asarray(times, float)
+    intervals = np.diff(times)
+    return bool(times.ndim == 1 and np.all(np.isfinite(times)) and len(intervals)
+                and np.all(intervals > 0)
+                and np.allclose(intervals, intervals[0], rtol=1e-5, atol=1e-8))
 
 
 def _describe(values) -> dict:

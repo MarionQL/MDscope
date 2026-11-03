@@ -152,3 +152,67 @@ def test_motif_sasa_requires_every_mapped_residue_at_each_time(tmp_path):
     values = data.sdc4_motif_NxIP_A_1_sasa_nm2.to_numpy()
     assert values[0] == 10.
     assert np.isnan(values[1:]).all()
+
+
+def test_nonzero_ectodomain_tilt_and_tm_crossing_reference(tmp_path):
+    u, cfg = _fixture(separation=8.)
+    # A ectodomain is tilted 45 degrees about its fixed z=28 Å center.
+    t = np.array([8.,4.,0.,-4.,-8.])
+    u.atoms[12:17].positions = np.column_stack([t/np.sqrt(2), np.zeros(5), 28+t/np.sqrt(2)])
+    # B TM points N->C down a 60-degree tilted axis in the yz plane.
+    t = np.array([12.,8.,4.,0.,-4.,-8.,-12.])
+    u.atoms[5:12].positions = np.column_stack([np.full(7,8.), t*np.sqrt(3)/2, t/2])
+    row, _ = _observe(u,cfg,tmp_path)
+    assert row.sdc4_ectodomain_A_height_A == pytest.approx(12.,abs=1e-5)
+    assert row.sdc4_ectodomain_A_tilt_deg == pytest.approx(45.,abs=1e-5)
+    assert row.sdc4_tm_crossing_angle_deg == pytest.approx(60.,abs=1e-5)
+    assert row.sdc4_tm_crossing_handedness == -1.
+
+
+def test_positive_hs_and_attachment_membrane_proximity_reference(tmp_path):
+    u, cfg = _fixture(separation=8.)
+    # Shift attachment and HS down 10 Å: attachment z=14, HS z=16/20.
+    u.atoms[15].position -= [0.,0.,10.]
+    u.select_atoms("chainID HS").positions -= [0.,0.,10.]
+    row, _ = _observe(u,cfg,tmp_path)
+    assert row.sdc4_hs_A1_attachment_lipid_contact_pairs == 1
+    assert row.sdc4_hs_A1_lipid_contact_atom_pairs == 2
+    assert row.sdc4_hs_A1_lipid_contact_lipids == 1
+    assert row.sdc4_hs_A1_membrane_contact_state == 1
+    assert row.sdc4_hs_A1_extension_A == pytest.approx(6.,abs=1e-5)
+
+
+def test_collapsed_axes_and_hs_have_typed_unavailable_orientation(tmp_path):
+    u, cfg = _fixture(separation=8.)
+    u.atoms[5:12].positions = [8.,0.,0.]
+    u.select_atoms("chainID HS").positions = [0.,0.,24.]
+    row, _ = _observe(u,cfg,tmp_path)
+    assert np.isnan(row.sdc4_tm_crossing_angle_deg)
+    assert np.isnan(row.sdc4_tm_crossing_handedness)
+    assert row.sdc4_hs_A1_extension_A == 0.
+    assert np.isnan(row.sdc4_hs_A1_orientation_cos)
+    assert np.isnan(row.sdc4_hs_A1_shape_anisotropy)
+
+
+def test_missing_hs_is_absent_and_required_empty_mapping_fails(tmp_path):
+    u, cfg = _fixture()
+    cfg["analyses"]["sdc4_mechanisms"].update(hs_chains={},hs_attachment_sites={})
+    row, obs = _observe(u,cfg,tmp_path/"absent")
+    assert not any(str(c).startswith("sdc4_hs_") for c in row.index)
+    assert obs.audit["hs_atom_counts"] == {}
+    cfg["analyses"]["sdc4_mechanisms"]["hs_chains"] = {"A1":"resname MISSING"}
+    cfg["analyses"]["sdc4_mechanisms"]["hs_attachment_sites"] = {"A1":"resindex 15"}
+    with pytest.raises(ValueError,match="no atoms"):
+        SDC4Mechanisms(u,cfg,tmp_path/"required")
+
+
+def test_unsupported_planar_geometry_and_short_ectodomain_fail_explicitly(tmp_path):
+    u, cfg = _fixture()
+    u.dimensions = [100.,100.,100.,90.,90.,75.]
+    with pytest.raises(ValueError,match="orthorhombic"):
+        SDC4Mechanisms(u,cfg,tmp_path/"triclinic")
+    u.dimensions = [100.,100.,100.,90.,90.,90.]
+    cfg["analyses"]["sdc4_mechanisms"]["ectodomains"]["A"] = "resindex 12:14"
+    obs = SDC4Mechanisms(u,cfg,tmp_path/"short")
+    with pytest.raises(ValueError,match="at least 4 CA"):
+        obs.update(u.trajectory.ts,0)

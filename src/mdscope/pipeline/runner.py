@@ -16,6 +16,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import yaml
+from ..core.persistence import archive_output as _archive_previous_output
+from ..core.validation import validate_selections
 
 from .. import __version__
 from ..config import (
@@ -216,18 +218,6 @@ def _replicate_state_prefix(rep) -> str:
         "replicate": rep.label,
     })
     return f"rep-{identity_hash}"
-
-
-def _archive_previous_output(source: Path, archive_root: Path, label: str) -> Path:
-    """Archive stale results rather than silently deleting expensive MD analyses."""
-    ensure_dir(archive_root)
-    candidate=archive_root / label
-    index=1
-    while candidate.exists():
-        candidate=archive_root / f"{label}-{index}"
-        index+=1
-    source.rename(candidate)
-    return candidate
 
 
 def _prepare_replicate_output(
@@ -525,14 +515,16 @@ def run_one(config_path: str | Path, index: int):
     replicates = list(iter_replicates(cfg, config_path))
     if index < 0 or index >= len(replicates):
         raise IndexError(f"replicate index {index} is out of range 0..{len(replicates) - 1}")
-    root, state = initialize(config_path, cfg)
     rep = replicates[index]
+    validate_selections(cfg, Path(config_path).resolve().parent, systems={rep.system})
+    root, state = initialize(config_path, cfg)
     run_replicate(rep, cfg, root, state)
     return root / rep.system / rep.label
 
 
 def run_all(config_path: str | Path):
     cfg = load_config(config_path)
+    validate_selections(cfg, Path(config_path).resolve().parent)
     root, state = initialize(config_path, cfg)
     for rep in iter_replicates(cfg, config_path):
         run_replicate(rep, cfg, root, state)

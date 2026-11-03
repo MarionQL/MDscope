@@ -33,13 +33,15 @@ ELEMENT_RADII_A = {"H": 1.20, "C": 1.70, "N": 1.55, "O": 1.52,
                    "BR": 1.85, "I": 1.98}
 
 
-def sasa_instances(universe, cfg):
+def sasa_instances(universe, cfg, *, validate_only=False):
     """Build independent target/occluder SASA selections from one Universe."""
     from ..config import analysis_runs
-    try:
-        import freesasa
-    except ImportError as exc:
-        raise RuntimeError("SASA requires freesasa") from exc
+    freesasa = None
+    if not validate_only:
+        try:
+            import freesasa
+        except ImportError as exc:
+            raise RuntimeError("SASA requires freesasa") from exc
     instances = {}
     for run in analysis_runs(cfg, "sasa"):
         spec = run.spec
@@ -111,21 +113,23 @@ def sasa_instances(universe, cfg):
         if missing:
             raise ValueError(f"SASA run {run.run_id}: no radii for elements {missing}")
         radii = [float(radii_model[e]) for e in symbols]
-        params = freesasa.Parameters()
+        params = freesasa.Parameters() if freesasa is not None else None
         algorithm = str(spec.get("algorithm", "shrake_rupley")).lower()
         if algorithm in {"shrake_rupley", "shrake-rupley", "sr"}:
-            params.setAlgorithm(freesasa.ShrakeRupley)
-            if spec.get("n_points") is not None:
+            if params is not None:
+                params.setAlgorithm(freesasa.ShrakeRupley)
+            if params is not None and spec.get("n_points") is not None:
                 params.setNPoints(int(spec["n_points"]))
         elif algorithm in {"lee_richards", "lee-richards", "lr"}:
-            params.setAlgorithm(freesasa.LeeRichards)
-            if spec.get("n_slices") is not None:
+            if params is not None:
+                params.setAlgorithm(freesasa.LeeRichards)
+            if params is not None and spec.get("n_slices") is not None:
                 params.setNSlices(int(spec["n_slices"]))
         else:
             raise ValueError("sasa.algorithm must be shrake_rupley or lee_richards")
-        if spec.get("probe_radius_A") is not None:
+        if params is not None and spec.get("probe_radius_A") is not None:
             params.setProbeRadius(float(spec["probe_radius_A"]))
-        if spec.get("n_threads") is not None:
+        if params is not None and spec.get("n_threads") is not None:
             params.setNThreads(int(spec["n_threads"]))
         instances[run.run_id] = {
             "occluders": occluders, "radii": radii, "target_idx": target_idx,

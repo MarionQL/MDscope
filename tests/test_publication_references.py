@@ -6,6 +6,7 @@ they do not call the corresponding production estimator to establish truth.
 from itertools import combinations, product
 import numpy as np
 import pandas as pd
+import pytest
 from mdscope.statistics.common import (
     autocorrelation, _temporal, _permutation, _fdr,
     _block_bootstrap, _hierarchical, _hierarchical_difference,
@@ -125,3 +126,50 @@ def test_multiorigin_msd_direct_origin_particle_oracle():
     np.testing.assert_array_equal(lags, np.arange(7))
     np.testing.assert_allclose(msd, expected, atol=1e-10)
     np.testing.assert_allclose(msd, 6.5*lags.astype(float)**2, atol=1e-10)
+
+
+def test_positive_autocorrelation_time_and_effective_sample_reference():
+    # Centered ramp [-2,-1,0,1,2] has unbiased ACF [1, .5, -1/6].
+    # The first nonpositive lag stops the sum: tau=.5+.5=1, Neff=5/2.
+    cfg = {"statistics": {"block": {"max_acf_lag": 2, "tau_multiplier": 2}}}
+    meta = _temporal([0.,1.,2.,3.,4.], np.arange(5)*7., cfg)
+    np.testing.assert_allclose(meta["acf"], [1., .5, -1/6], atol=1e-14)
+    assert meta["tau_int_frames"] == 1.
+    assert meta["tau_int_ps"] == 7.
+    assert meta["effective_n"] == 2.5 and meta["block_length_frames"] == 2
+
+
+@pytest.mark.parametrize("design", ["paired", "independent"])
+def test_permutation_missing_labels_nan_and_unequal_population_reference(design):
+    cfg = {"statistics": {"hypothesis_tests": {"design": design}}}
+    # Paired complete cases are x:+2 and y:+4; only two extreme sign flips
+    # of four -> p=.5. Unmatched labels are excluded only in paired mode.
+    a = {"x": 0., "y": 1., "missing": np.nan}
+    b = {"y": 5., "x": 2., "other": 9.}
+    if design == "paired":
+        expected = .5
+    else:
+        values = np.array([0.,1.,2.,5.,9.])
+        observed = abs(np.mean([2.,5.,9.]) - .5)
+        expected = sum(abs(np.mean(np.delete(values, c))-np.mean(values[list(c)])) >= observed-1e-15
+                       for c in combinations(range(5), 2))/10
+    assert _permutation(a, b, cfg, np.random.default_rng(42)) == pytest.approx(expected)
+    assert np.isnan(_permutation({"x": np.nan}, {"x": 1.}, cfg, np.random.default_rng(42)))
+
+
+def test_bh_ties_nan_families_and_nonconsecutive_indices():
+    table = pd.DataFrame({"family": ["a"]*4+["b"]*2,
+                          "p": [.01,.01,np.nan,.2,.04,.08]}, index=[9,2,40,5,7,3])
+    out = _fdr(table, "p", "q", ["family"])
+    np.testing.assert_allclose(out.q.iloc[[0,1,3,4,5]], [.015,.015,.2,.08,.08])
+    assert np.isnan(out.q.iloc[2])
+
+
+def test_moving_block_boundary_and_median_independent_enumeration():
+    class Enumeration:
+        def integers(self, low, high, size, dtype):
+            assert (low,high,size) == (0,2,(4,2))
+            return np.array([[0,0],[0,1],[1,0],[1,1]], dtype=dtype)
+    np.testing.assert_array_equal(_block_bootstrap([0.,2.,8.], 2, 4, Enumeration(), "median"), [0.,2.,2.,2.])
+    # A block longer than the trace is clipped and cannot randomly wrap.
+    np.testing.assert_array_equal(_block_bootstrap([0.,2.,8.], 99, 4, np.random.default_rng(9)), [10/3]*4)
