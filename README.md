@@ -1,5 +1,23 @@
 # MDscope
 
+## Syndecan–HS periodic-image clearance from release trajectories
+
+A read-only analysis of the existing private [`test-data-v1`](https://github.com/MarionQL/MDscope/releases/tag/test-data-v1) XTC/TPR pairs is implemented in `scripts/release_box_clearance.py`. It measures the minimum nonzero periodic-image separation between the complete PROA and PROB protein–HS assemblies, and between those assemblies and a neighboring z-translated membrane image. It uses the **actual box vectors and conformations in each sampled frame**, rather than an unrealistic maximum summed bond length.
+
+Run **Actions → Syndecan-HS periodic image clearance from released XTC → Run workflow** on the `feat/release-hs-box-clearance` branch (or `main` after merge). The workflow downloads the release through MDscope's own repository-scoped token; a token issued to the separate private AIM2 repository cannot access it. One job runs per membrane condition. The per-frame CSV and JSON summary are available as `release-box-clearance-carb` and `release-box-clearance-nocarb` artifacts.
+
+For local use, install NumPy, SciPy and MDAnalysis and supply the matching TPR/XTC:
+
+```bash
+python scripts/release_box_clearance.py \
+  --tpr carb-sdc4-step7_production.tpr \
+  --xtc carb-sdc4-rep1_test.xtc \
+  --max-frames 40 --out clearance-carb
+```
+
+**Interpretation:** Distances below the chosen 1.2 nm direct-space cutoff indicate a sampled periodic-image contact; within 1.5 nm are flagged as near contacts. A sample with no contacts **does not certify** box sufficiency: this release contains only a test trajectory from replicate 1 of each membrane condition, and may under-sample extended ectodomain/HS configurations. The AIM2 structures further differ through N-terminal signal removal/repatching, added amyloid, preparation and potentially box geometry. A different force field, HS chemistry or initial conformation would limit transferability. The AIM2 20.55790 × 20.55790 × 24.71667 nm box must be evaluated separately, ideally with an appropriately sampled solvated pilot and per-frame periodic-image monitoring. The workflow changes no molecular coordinates.
+
+
 MDscope is a compact MDAnalysis-based workflow for comparing replicated molecular-dynamics systems. It runs a shared streaming pass for inexpensive frame-wise observables, separate passes for analyses that require specialized algorithms, then applies the same replicate-aware statistical framework across time series, profiles, and interactions.
 
 ## Dependencies
