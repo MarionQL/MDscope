@@ -1,0 +1,70 @@
+name: Syndecan-HS periodic image clearance from released XTC
+on:
+  push:
+    branches: [feat/release-hs-box-clearance]
+    paths: [.github/workflows/release-hs-box-clearance.yml]
+  workflow_dispatch:
+    inputs:
+      max_frames_per_condition:
+        description: "Evenly sampled frames per condition"
+        required: true
+        default: '40'
+        type: string
+permissions:
+  contents: read
+jobs:
+  released-trajectory:
+    strategy:
+      fail-fast: false
+      matrix:
+        condition: [carb, nocarb]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install trajectory readers
+        run: python -m pip install 'MDAnalysis>=2.8,<3' numpy==2.3.5 scipy==1.17.0
+      - name: Download release XTC and matching TPR from this repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONDITION: ${{ matrix.condition }}
+        run: |
+          mkdir -p release
+          gh release download test-data-v1 --repo "${GITHUB_REPOSITORY}" --pattern "${CONDITION}-sdc4-rep1_test.xtc" --dir release
+          gh release download test-data-v1 --repo "${GITHUB_REPOSITORY}" --pattern "${CONDITION}-sdc4-step7_production.tpr" --dir release
+          ls -lh release
+      - name: Screen real ectodomain and HS motions against periodic images
+        env:
+          CONDITION: ${{ matrix.condition }}
+          FRAME_LIMIT: ${{ inputs.max_frames_per_condition || '40' }}
+        run: |
+          python scripts/release_box_clearance.py \
+            --tpr "release/${CONDITION}-sdc4-step7_production.tpr" \
+            --xtc "release/${CONDITION}-sdc4-rep1_test.xtc" \
+            --max-frames "$FRAME_LIMIT" --out "reports/${CONDITION}"
+      - name: Publish evidence and caveats
+        if: success()
+        env:
+          CONDITION: ${{ matrix.condition }}
+        run: |
+          python - <<'PY'
+          import os,json
+          c=os.environ['CONDITION']; r=json.load(open(f'reports/{c}/summary.json'))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write(f"## {c}: released Syndecan/HS trajectory\n\n")
+              f.write(f"Sampled {r['sampled_frames']} frames from {r['trajectory_frames']}; ")
+              f.write(f"times {r['first_time_ps']:.0f}–{r['last_time_ps']:.0f} ps.\n\n")
+              f.write(f"Min assembly periodic-image separation: {r['minimum_assembly_image_nm']:.3f} nm.\n\n")
+              f.write(f"Min z-membrane periodic-image separation: {r['minimum_membrane_z_image_nm']:.3f} nm.\n\n")
+              f.write(f"**{r['conclusion']}**. Reference trajectories are not AIM2 box approval.\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-box-clearance-${{ matrix.condition }}
+          path: reports/${{ matrix.condition }}
+          retention-days: 30
+          if-no-files-found: warn
