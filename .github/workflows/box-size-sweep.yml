@@ -35,15 +35,16 @@ jobs:
           mkdir -p release
           gh release download test-data-v1 --repo "$GITHUB_REPOSITORY" --pattern "${CONDITION}-sdc4-rep1_test.xtc" --dir release
           gh release download test-data-v1 --repo "$GITHUB_REPOSITORY" --pattern "${CONDITION}-sdc4-step7_production.tpr" --dir release
-      - name: Sweep bounded candidate lattice with AABB-pruned image search
+      - name: Confirm 26–30 nm lateral and 24.72–28 nm z clearance across full release
         env:
           CONDITION: ${{ matrix.condition }}
-          FRAMES: ${{ inputs.frames_per_condition || '40' }}
+          FRAMES: ${{ inputs.frames_per_condition || '200' }}
         run: |
           python scripts/box_size_sweep.py \
             --tpr "release/${CONDITION}-sdc4-step7_production.tpr" \
             --xtc "release/${CONDITION}-sdc4-rep1_test.xtc" \
-            --out "reports/${CONDITION}" --max-frames "$FRAMES"
+            --out "reports/${CONDITION}" --max-frames "$FRAMES" \
+            --lateral 26 28 30 --vertical 24.71667 28
       - name: Candidate sweep synopsis
         if: success()
         env:

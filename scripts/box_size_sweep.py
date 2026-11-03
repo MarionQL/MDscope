@@ -57,8 +57,12 @@ def evaluate_candidates(positions, membrane, lateral, vertical, cutoff=CLEARANCE
                 "pass_1p5nm_snapshot":min(limiting[2]["distance_nm"],pm["distance_nm"])>cutoff})
     return out
 
-def run(tpr,xtc,out,max_frames=40):
+def run(tpr,xtc,out,max_frames=40,lateral=None,vertical=None):
     import MDAnalysis as mda
+    lateral=LATERAL if lateral is None else tuple(map(float,lateral))
+    vertical=VERTICAL if vertical is None else tuple(map(float,vertical))
+    if not lateral or not vertical or max_frames<1:
+        raise ValueError("Nonempty candidate lists and positive frame count required")
     from MDAnalysis.transformations import unwrap
     u=mda.Universe(str(tpr),str(xtc))
     if not hasattr(u.atoms,"chainIDs"):raise ValueError("Missing release chainIDs")
@@ -91,7 +95,7 @@ def run(tpr,xtc,out,max_frames=40):
         # Both fragments are now in a consistent primary-native-cell image.
         positions=[p+d for p,d in zip(coords,moves)]
         membrane_pos=membrane.positions.astype(float)/10.
-        for v in evaluate_candidates(positions,membrane_pos,LATERAL,VERTICAL):
+        for v in evaluate_candidates(positions,membrane_pos,lateral,vertical):
             records.append({"frame":int(frame),"time_ps":float(ts.time),
                             "native_lateral_x_nm":float(native[0]),
                             "native_lateral_y_nm":float(native[1]),
@@ -102,7 +106,7 @@ def run(tpr,xtc,out,max_frames=40):
         writer=csv.DictWriter(stream,fieldnames=list(records[0]))
         writer.writeheader();writer.writerows(records)
     results=[]
-    for axis,sizes in (("lateral",LATERAL),("vertical",VERTICAL)):
+    for axis,sizes in (("lateral",lateral),("vertical",vertical)):
         for size in sizes:
             vals=[r for r in records if r["axis"]==axis and r["candidate_nm"]==size]
             results.append({"axis":axis,"candidate_nm":size,"frames":len(vals),
@@ -132,6 +136,8 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("--tpr",required=True);p.add_argument("--xtc",required=True)
     p.add_argument("--out",required=True);p.add_argument("--max-frames",type=int,default=40)
+    p.add_argument("--lateral",nargs="+",type=float)
+    p.add_argument("--vertical",nargs="+",type=float)
     a=p.parse_args()
-    run(a.tpr,a.xtc,a.out,a.max_frames)
+    run(a.tpr,a.xtc,a.out,a.max_frames,a.lateral,a.vertical)
 if __name__=="__main__":main()
