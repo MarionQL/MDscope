@@ -284,4 +284,7 @@ def current_statistics(cfg, root, family):
     if not stats.get('enabled',True) or option is False or (isinstance(option,dict) and not option.get('enabled',True)):
         return False
     manifest = Path(root)/'project_summary/statistics/manifest.json'
-    return not manifest.exists() or json.loads(manifest.read_text()).get('statistics_hash') == config_hash(stats)
+    if not manifest.exists():
+        return True
+    record = json.loads(manifest.read_text())
+    return record.get('statistics_hash') == config_hash(stats) and record.get('status', 'complete') == 'complete'

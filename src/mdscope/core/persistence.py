@@ -17,6 +17,18 @@ def ensure_dir(path: str | Path) -> Path:
     return path
 
 
+def archive_output(source: Path, archive_root: Path, label: str) -> Path:
+    """Move previous products aside without deleting scientific results."""
+    ensure_dir(archive_root)
+    candidate = archive_root / label
+    index = 1
+    while candidate.exists():
+        candidate = archive_root / f"{label}-{index}"
+        index += 1
+    source.rename(candidate)
+    return candidate
+
+
 def atomic_json(path: str | Path, obj: Any) -> None:
     # Write to a sibling temporary file first so an interrupted job
     # never leaves a half-written state file.

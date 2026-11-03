@@ -173,7 +173,8 @@ no trajectory is reopened to regenerate the report.
 
 `statistics.families` accepts `time_series`, `profiles`, `interactions`, and
 `solvation_rdfs`. Values may be booleans or mappings containing `enabled`,
-`bootstrap_draws` (>=100), `ci`, and `hypothesis_tests` (boolean). Omitted
+`bootstrap` (boolean), `bootstrap_draws` (>=100), `ci`, `hierarchy`, and
+`hypothesis_tests` (boolean). Omitted
 families retain the historical behavior. Overrides apply to one family and
 never mutate the trajectory configuration. Example:
 
@@ -182,7 +183,7 @@ statistics:
   families:
     time_series: {enabled: true, bootstrap_draws: 1000}
     profiles: false
-    interactions: {enabled: true, hypothesis_tests: false}
+    interactions: {enabled: true, bootstrap: false, hypothesis_tests: false}
     solvation_rdfs: true
   interaction_include_kinds: [salt_bridges, hydrogen_bonds]
   interaction_exclude_kinds: [lipid_hydrogen_bonds]
@@ -205,6 +206,56 @@ System temporal intervals are also unavailable when any constituent replica
 has an invalid time axis; an invalid replica is not silently dropped.
 `statistics/manifest.json` records methods and enabled/disabled families.
 This does not repair missing-not-at-random sampling or establish convergence.
+
+`statistics.bootstrap: false` retains point estimates and disables temporal
+bootstrap draws. A family may override it independently. `hypothesis_tests`
+remains independent: point estimates and permutation p/q values can be
+requested without computing bootstrap intervals. Uncomputed intervals and
+directional bootstrap probabilities are NaN, with `bootstrap_draws: 0` in
+their output rows; no point estimate is relabeled as a confidence interval.
+
+Each family's `hierarchy` mapping may override `enabled`,
+`block_within_replicate`, and `resample_replicates`. Setting `enabled: false`
+disables system/contrast bootstrap intervals while retaining replica-level
+intervals and descriptive equal-replica system estimates. Setting
+`block_within_replicate: false` selects block length 1, an explicit temporal
+independence assumption; replicas remain the independent units for tests.
+The RDF family is descriptive mean/SD only, so it does not acquire bootstrap
+intervals or per-bin hypothesis tests from these settings.
+
+Profiles use the same regular-time requirement as scalar series. Missing or
+nonfinite columns keep finite-observation descriptive points but cannot produce
+temporal intervals; a system/contrast interval is unavailable at a position if
+any requested replica is missing or invalid there. A paired contrast with no
+complete pairs is unavailable, rather than an empty-array failure. RMSF coordinates with missing
+samples likewise cannot provide a temporal interval. Labels align columns
+across replicas before aggregation; they are not silently truncated by width.
+Complete regular-data defaults retain their numerical results and RNG order.
+Fixed configurations are reproducible. Opting out of a calculation omits its
+random draws, so later Monte Carlo work within that family may use a different
+subsequence; other families retain their separately seeded streams.
+
+Statistical reruns archive older family tables and method manifests under
+`.archives/statistics`, including when a family is disabled or now has no data.
+The active manifest is marked `running` until every requested family finishes;
+offline reports reject incomplete statistical products. Raw replica outputs
+are retained. `report_provenance.json` embeds the active statistical methods.
+
+### Failure checks before trajectory analysis
+
+`validate`, `run`, and `replicate` share topology-only selection validation.
+It checks protein/features, alignment size, groups, missing/overlapping lipid
+anchors, density and distance selections, and SASA target/occluder/reference
+identity using the same SASA setup code without requiring FreeSASA for
+validation. `replicate` preflights only its selected system. Failed checks
+precede project initialization, output replacement and trajectory processing.
+Offline statistics/report regeneration does not invoke this topology preflight.
+
+Frame indices, stride and chunk size must be integers. YAML sections must be
+mappings; input paths must be files, named analysis IDs must be filesystem-safe,
+and paired condition designs require matching replica labels. Overlapping
+analysis groups remain valid distinct outputs (e.g. a protein and a domain);
+overlapping lipid species anchors are invalid molecule ownership.
 
 Run optional timing benchmarks with
 `pytest -q -s -m benchmark tests/test_performance_benchmarks.py`.

@@ -55,6 +55,17 @@ def test_family_overrides_do_not_mutate_or_change_default_config():
     assert cfg == before
 
 
+def test_global_bootstrap_disable_can_be_overridden_by_one_family():
+    cfg = {"statistics": {"bootstrap":False,"bootstrap_draws":100,
+                          "families":{"profiles":{"bootstrap":True,"hierarchy":{"enabled":False}}}}}
+    before = deepcopy(cfg)
+    assert statistics_family_config(cfg,"time_series")["statistics"]["bootstrap_draws"] == 0
+    selected = statistics_family_config(cfg,"profiles")["statistics"]
+    assert selected["bootstrap_draws"] == 100 and selected["bootstrap"]
+    assert selected["hierarchy"]["enabled"] is False
+    assert cfg == before
+
+
 @pytest.mark.parametrize('bad', [{'unknown': False}, {'profiles': {'enabled': 'no'}}, {'time_series': {'bootstrap_draws': 0}}, {'profiles': {'ci': 2}}, {'profiles': {'typo': 1}}])
 def test_invalid_statistics_controls_fail_before_processing(tmp_path, bad):
     cfg = deepcopy(DEFAULTS)

@@ -992,6 +992,7 @@ def generate_report(cfg, root, system_repouts=None, force=False):
         'report_config_hash': config_hash(cfg), 'sections': options.get('sections',{}),
         'sampling': _summary_inventory(root,cfg,system_repouts).to_dict('records'),
         'statistics_manifest': str(root/'project_summary/statistics/manifest.json'),
+        'statistics_methods': cfg.get('statistics', {}),
         'source_analysis_config_status': 'see original run/checkpoint metadata; current rendering config does not prove original trajectory parameters',
         'figure_source_policy': 'PNG content hash plus source path/size/mtime fingerprint; unchanged legacy PNGs are unverified',
     }
