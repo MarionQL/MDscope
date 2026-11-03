@@ -1,0 +1,71 @@
+name: Estimate hypothetical box clearance from MDscope XTC
+on:
+  push:
+    branches: [feat/release-hs-box-clearance]
+    paths: [.github/workflows/box-size-sweep.yml]
+  workflow_dispatch:
+    inputs:
+      frames_per_condition:
+        description: "Distributed reference frames to test per membrane condition"
+        type: string
+        required: true
+        default: '40'
+permissions:
+  contents: read
+jobs:
+  box-clearance:
+    strategy:
+      fail-fast: false
+      matrix:
+        condition: [carb, nocarb]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install MD trajectory reader
+        run: python -m pip install 'MDAnalysis>=2.8,<3' numpy==2.3.5 scipy==1.17.0
+      - name: Download matched private release files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONDITION: ${{ matrix.condition }}
+        run: |
+          mkdir -p release
+          gh release download test-data-v1 --repo "$GITHUB_REPOSITORY" --pattern "${CONDITION}-sdc4-rep1_test.xtc" --dir release
+          gh release download test-data-v1 --repo "$GITHUB_REPOSITORY" --pattern "${CONDITION}-sdc4-step7_production.tpr" --dir release
+      - name: Test full 2-us 26–32 nm lateral cells with z fixed at 28 nm
+        env:
+          CONDITION: ${{ matrix.condition }}
+          FRAMES: ${{ inputs.frames_per_condition || '200' }}
+        run: |
+          python scripts/box_size_sweep.py \
+            --tpr "release/${CONDITION}-sdc4-step7_production.tpr" \
+            --xtc "release/${CONDITION}-sdc4-rep1_test.xtc" \
+            --out "reports/${CONDITION}" --max-frames "$FRAMES" \
+            --lateral 26 28 30 32 --vertical 28
+      - name: Candidate sweep synopsis
+        if: success()
+        env:
+          CONDITION: ${{ matrix.condition }}
+        run: |
+          python - <<'PY'
+          import os,json
+          c=os.environ['CONDITION']; data=json.load(open(f'reports/{c}/candidate-summary.json'))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write(f"## {c}: hypothetical box lattice sensitivity\n\n")
+              f.write("| Axis | Candidate (nm) | Worst image distance (nm) | Frames ≤ 1.5 nm |\n")
+              f.write("|---|---:|---:|---:|\n")
+              for r in data['candidate_results']:
+                  closest=min(r['worst_assembly_image_nm'],r['worst_z_membrane_image_nm'])
+                  f.write(f"| {r['axis']} | {r['candidate_nm']:.2f} | {closest:.3f} | {r['frames_below_1p5nm']} |\n")
+              f.write("\n**Not an AIM2 box-size certification**: source conformers and bilayer not rebuilt.\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: box-size-sweep-${{ matrix.condition }}
+          path: reports/${{ matrix.condition }}
+          if-no-files-found: warn
+          retention-days: 30

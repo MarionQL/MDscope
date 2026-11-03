@@ -1,0 +1,132 @@
+{
+  "source_run": "https://github.com/MarionQL/MDscope/actions/runs/41698254120",
+  "source_release": "https://github.com/MarionQL/MDscope/releases/tag/test-data-v1",
+  "assumptions": {
+    "lateral_sweep_z_nm": 24.71667,
+    "vertical_sweep_xy_nm": 36,
+    "cutoff_nm": 1.5,
+    "sampled_frames_per_condition": 40,
+    "method": "physically sourced unwrapped-protein-HS conformers, hypothetical orthorhombic periodic vectors only"
+  },
+  "results": [
+    {
+      "condition": "carb",
+      "frames": 40,
+      "smallest_tested_lateral_clear_nm": 26,
+      "smallest_tested_lateral_min_image_nm": 1.804108501540572,
+      "native_lateral_min_nm": 18.414871215820312,
+      "near_frame_counts_by_xy_nm": {
+        "22": 5,
+        "24": 2,
+        "26": 0,
+        "28": 0,
+        "30": 0,
+        "32": 0,
+        "36": 0,
+        "20.5579": 6
+      },
+      "z_membrane_min_at_z24_71667_nm": 3.501953012306995,
+      "z_membrane_min_at_z28_nm": 6.693626878363149
+    },
+    {
+      "condition": "nocarb",
+      "frames": 40,
+      "smallest_tested_lateral_clear_nm": 24,
+      "smallest_tested_lateral_min_image_nm": 1.8220390591522715,
+      "native_lateral_min_nm": 18.404542541503908,
+      "near_frame_counts_by_xy_nm": {
+        "22": 1,
+        "24": 0,
+        "26": 0,
+        "28": 0,
+        "30": 0,
+        "32": 0,
+        "36": 0,
+        "20.5579": 2
+      },
+      "z_membrane_min_at_z24_71667_nm": 1.991,
+      "z_membrane_min_at_z28_nm": 4.785
+    }
+  ],
+  "provisional_aim2_starting_box_nm": [
+    32,
+    32,
+    28
+  ],
+  "initial_aim2_box_nm": [
+    20.5579,
+    20.5579,
+    24.71667
+  ],
+  "volume_multiplier": 2.744798896178859,
+  "interpretation": "Combined 200-frame reference lattice test supports equilibrated 28×28×28 nm as lowest tested passing candidate and provisional new AIM2 build at 32×32×28 nm; must repack membrane and validate with AIM2-specific solvated dynamics.",
+  "full_200_frame_combined_test": {
+    "run": "https://github.com/MarionQL/MDscope/actions/runs/41700447345",
+    "sampled_frames_per_condition": 200,
+    "screen_distance_nm": 1.5,
+    "candidate_sizes_nm": [
+      [
+        26,
+        26,
+        28
+      ],
+      [
+        28,
+        28,
+        28
+      ],
+      [
+        30,
+        30,
+        28
+      ],
+      [
+        32,
+        32,
+        28
+      ]
+    ],
+    "with_glycolipids": {
+      "flagged_frame_counts": [
+        4,
+        0,
+        0,
+        0
+      ],
+      "minimum_assembly_distances_nm": [
+        1.0745360622051747,
+        1.8632485162415717,
+        1.7816124729221188,
+        2.1901956769229645
+      ],
+      "minimum_z_membrane_image_nm": 3.8089580787911776
+    },
+    "without_glycolipids": {
+      "flagged_frame_counts": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "minimum_assembly_distances_nm": [
+        3.4871103311071843,
+        4.8127294013754165,
+        4.8127294013754165,
+        4.8127294013754165
+      ],
+      "minimum_z_membrane_image_nm": 4.784588084744577
+    },
+    "smallest_tested_joint_candidate_clearing_all_sampled_frames_nm": [
+      28,
+      28,
+      28
+    ],
+    "provisional_initial_build_nm": [
+      32,
+      32,
+      28
+    ],
+    "reason": "Allow possible NPT lateral shrinkage from initial membrane size, then validate actual new system.",
+    "limitation": "Neither sampling 200 correlated frames in existing smaller MDscope cells nor varying their lattice vectors determines a guaranteed new AIM2 box size."
+  }
+}
