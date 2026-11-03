@@ -1,43 +1,23 @@
-# My Software Engineering Standards
+# MDscope agent instructions
 
-When helping me develop software, act as a senior software engineer, scientific validation reviewer, and systems architect.
+Use the existing project documentation as the source of truth. Read the files relevant to the change **before** editing; do not duplicate their contents here.
 
-**Core principles**
-- Prioritize correctness, maintainability, simplicity, reproducibility, and performance.
-- Prefer established libraries and existing functionality over new abstractions.
-- Avoid unnecessary files, layers, dependencies, duplicated logic, and excessive testing.
-- Make substantial, coherent changes rather than many superficial patches.
-- Treat passing tests as evidence of specific behaviors, not proof of overall correctness.
+- [Contributing and engineering rules](docs/developer/contributing.md): ownership, minimal architecture, implementation and review expectations.
+- [Architecture](docs/developer/architecture.md): module boundaries, data flow and packaging.
+- [Scientific contracts](docs/developer/scientific-contracts.md): coordinate/PBC conventions, estimator semantics, units and reference expectations.
+- [Scientific methodology audit](docs/developer/scientific-audit.md): established limitations and unresolved scientific questions; do not turn caveats into validated claims.
+- [Validation effectiveness and gaps](docs/developer/validation-gaps.md): independent oracles, mutation evidence, known coverage and production-validation limits.
+- [Configuration](docs/configuration.md), [analyses](docs/analyses.md), and [workflows](docs/workflows.md): user-facing YAML, scientific options, execution, finalization and outputs.
+- [SDC4 reference fixtures](docs/developer/sdc4-fixtures.md): system-specific test contracts, when touching SDC4 mechanisms.
+- [Repository documentation index](docs/README.md): navigation to other maintained material.
 
-**Before implementing**
-- Inspect the existing architecture and relevant code.
-- Identify assumptions, data contracts, dependencies, state changes, and failure conditions.
-- Define success criteria and identify what could produce plausible but incorrect results.
+## Working agreement
 
-**During implementation**
-- Reuse existing infrastructure where appropriate.
-- Preserve compatibility unless a deliberate change is justified.
-- Make failures explicit rather than silently substituting values or suppressing errors.
-- Track state, provenance, and data transformations carefully.
-- Avoid fixing symptoms with compatibility wrappers when the underlying contract should be corrected.
+1. Inspect existing callers, contracts, tests and relevant docs; state the intended change and its acceptance criteria. Preserve the distinction between **numerically correct** and **physically interpretable**.
+2. Prefer the smallest coherent change to existing infrastructure. Do not add compatibility wrappers, duplicated helpers, frameworks or tests without a demonstrated need. Follow the public-versus-internal compatibility policy in contributing.md.
+3. Explicitly consider the six failure modes: wrong requirements/assumptions, scientific mathematics, state/data flow, integration contracts, inadequate verification, and failure/recovery handling.
+4. For meaningful bug fixes, reproduce the behavior and use a regression test that would fail on the original implementation. Prefer independent analytical or alternative-implementation oracles for numerical claims. Do not weaken a failing assertion merely to make CI pass.
+5. Check required output identity, completeness and provenance where the changed workflow relies on persisted files. A file's existence or a passing test is not sufficient evidence of correctness.
+6. Run the smallest relevant tests first, then the applicable repository CI or real-trajectory checks. Report what was **actually executed**, what was not, and any unresolved limitations. Do not claim full production validation from short fixtures or synthetic tests.
 
-**Verification**
-- Test observable behavior, not merely whether code runs.
-- Include meaningful edge cases and failure injection where relevant.
-- For bug fixes, demonstrate that a test detects the original problem before applying the correction.
-- Independently validate scientific and numerical algorithms against analytical references or alternative implementations.
-- Test integration boundaries and restart/recovery behavior when affected.
-- Do not allow implementation and tests to depend exclusively on the same unverified assumptions.
-
-**Completion**
-- Run relevant tests and inspect failures.
-- Verify that required outputs exist, are complete, and correspond to the correct inputs.
-- Report remaining limitations and unverified assumptions.
-- Do not claim correctness solely because CI passes.
-- Avoid adding tests or infrastructure that provide little additional confidence.
-
-**Scientific software**
-- Distinguish numerical correctness from physical validity.
-- Explicitly document units, coordinate conventions, sampling assumptions, normalization, and statistical estimators.
-- Preserve scientifically meaningful uncertainty and missing-data information.
-- Prioritize independent reference systems and physically interpretable validation over superficial assertions.
+For current module and scientific specifics, follow the linked documentation rather than expanding this file into a second policy manual.

@@ -108,3 +108,18 @@ were not replaced by zeros to obtain parity.
    without removing duplication, so they remain discoverable and intact.
    No suite was dropped on the basis of a coverage percentage. New tests are
    grouped by scientific controls/validation responsibility, not issue number.
+
+## Targeted AI-assisted failure-mode review (2026-11-03)
+
+Use this as a **review checklist**, not a declaration of defects or a new coverage score. In particular, distinguish numerical tests from scientific assumptions and negative tests from merely successful execution. Relevant mechanisms already exist; strengthen them only where a demonstrated gap affects a real contract.
+
+| Failure mode | Existing evidence and boundary | Useful adversarial check |
+| --- | --- | --- |
+| Incorrect assumptions | [Scientific audit](scientific-audit.md) records RDF reference-density, fit-window, leaflet and sampling limitations; explicit documentation does not resolve the underlying physical assumptions. | Compare an implementation to an independently specified toy system and challenge the physical interpretation, not just units or schema. |
+| Scientific/mathematical errors | `test_scientific_reference_oracles.py`, `test_publication_references.py` and numerical-contract tests cover selected estimators. | Deliberately change a critical sign/denominator/unit/coordinate convention in an isolated test run and show the relevant reference catches it. |
+| State and data flow | Streaming checkpoint identities, artifact inventory and fault-injection restart tests provide strong protection for committed chunks. `pipeline/runner.py:RunState.complete` checks matching config hash, but not the marker's explicit status field; completed-stage reuse is not uniformly content-validated. | After completion, inject a missing/corrupt required derived product or a matching-hash noncomplete marker and verify safe recomputation or explicit failure without loss of valid results. |
+| Integration | `_merge_timeseries` rejects conflicting metric columns and duplicate keys; mixed-observer restart parity tests exist. The outer time merge allows absent observations where legitimate. | Where sources promise identical sampling, remove one observation and require a coverage mismatch diagnostic; keep legitimate partial sampling distinct. |
+| Incomplete verification | Independent numerical references and selected hand-reviewed mutant detections are documented above. These do not establish a diffusive regime, adequate six-replica sampling, or correctness of every supported topology. | Verify that a newly added test fails under the target regression; add production-data sensitivity or external comparisons only when relevant and available. |
+| Failure handling | Input preflight, checkpoint preservation, and stale statistical/report rejection are tested. `finalize_project` checks persisted time axes and checkpoint counts, not completeness of every enabled observable. | Remove an enabled, required extension output while retaining a plausible base timeseries; assert missingness is detected and clearly reported, rather than silently presented as a complete result. |
+
+These are **source-inspection observations and candidate regressions**, not evidence that currently persisted production results are wrong. Re-check at the implementation commit before writing an issue or claiming a fix. Prefer correcting the existing stage/manifest contracts over adding another state or validation framework. Do not silently broaden required-artifact rules to optional/disabled analyses. Preserve production outputs while exercising failures on temporary fixtures.

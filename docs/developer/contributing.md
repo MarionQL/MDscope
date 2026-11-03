@@ -27,3 +27,13 @@ This document is the single source of truth for structural refactoring.
 - `src/mdscope/cli.py`, `src/mdscope/config.py`, `src/mdscope/registry.py`: minimal top-level entry points
 
 Move one coherent group at a time, migrate all imports, and confirm CI before proceeding. These are ownership boundaries, not a requirement to invent additional wrappers.
+
+## AI-assisted implementation and review
+
+AI-generated changes are reviewed against the **behavioral and scientific contract**, not judged by whether the code runs or the agent reports success. Before editing, identify the intended observable, units and populations, input/outputs and provenance, mutable/persisted state, failure outcomes, and affected call sites. Keep the review proportional to the change: a typo does not need an adversarial test suite; an estimator, restart, or reporting change does.
+
+For a substantive bug fix, first reproduce the failure with a small fixture or a previously failing case. Add a test that checks the required outcome **through the actual affected entry point**, not a tautology about the test fixture. Where practical, show that the test fails on the original behavior and passes with the correction (or use a targeted mutation/fault injection). Prefer analytical or independent reference calculations for scientific claims; comparing two paths that reuse the same implementation cannot establish their shared correctness. Avoid redundant tests that only duplicate implementation details.
+
+At integration boundaries, check identity, shape, units, coordinate frame/PBC, time sampling, absent-versus-zero semantics, and intended missing-data behavior. For persisted products, distinguish existence, integrity, freshness, scientific completeness, and provenance. Decide explicitly whether a missing or corrupted required product must be rebuilt or cause a clear, non-destructive failure. Do not classify optional or deliberately disabled analyses as failures.
+
+Before claiming completion, report the exact tests/checks executed, the behavior they establish, known assumptions and limitations, and any real-trajectory or production-scale validation that remains unperformed. A green CI run, matching hashes, successful PDF export, or a plausible plot is not an independent scientific validation. See [scientific contracts](scientific-contracts.md), [scientific audit](scientific-audit.md), and [validation effectiveness/gaps](validation-gaps.md) rather than restating their domain-specific caveats here.
