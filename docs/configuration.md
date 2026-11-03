@@ -272,3 +272,41 @@ series, omitted temporal draws intentionally change subsequent scalar RNG
 progression compared with the old compressed-time behavior. Complete regular
 data retains its draw ordering; the interaction grouping optimization and its
 RNG sequence are unaffected by this scientific correction.
+
+### Offline evidence export integrity and layout
+
+`mdscope report` retains the existing PDF/ZIP filenames and does not rerun
+trajectory analyses or statistics. Report orchestration, persisted-table
+inventory, PDF presentation and ZIP export now have separate modules. ReportLab
+is imported only when rendering a PDF; label formatting and bundle code do not
+import plotting or trajectory readers merely to load those modules.
+
+New statistics manifests record the finalization analysis-config hash and a
+path/size/mtime fingerprint of persisted replicate inputs. Changed/missing
+inputs, changed statistical or analysis settings, malformed manifests and
+unfinished statistics exclude those statistical tables from both the PDF and
+current bundle exports. This is a cheap freshness check, not a content digest
+or proof of the original trajectory parameters. Legacy tables without this
+lineage remain readable, explicitly marked `legacy_unverified` in
+`table_manifest.csv` and in the scalar-results section. Regenerate statistics
+to establish current lineage; do not edit manifests to bless old results.
+Copying inputs while changing their mtimes also requires regeneration.
+
+`table_manifest.csv` records numerical table eligibility;
+`report_content.json` records displayed file-backed figures and project tables.
+The figure manifest also identifies byte-identical duplicate PNGs. The PDF
+and ZIP use the same eligibility policy, and the ZIP contains this export's
+manifests, original eligible project Parquet tables and CSV exports (CSV
+materialization is skipped above 50 MB; the Parquet is still preserved).
+A PDF or bundle construction failure preserves the previous successful
+PDF/ZIP and report sidecars. Publication is staged locally; interruption during
+the final individual file replacements is not a multi-file transaction.
+
+Scalar tables separate scientific labels from units, keep raw identifiers in
+companion data, show the configured CI level, and place estimate, interval,
+p/q and inference status on separate lines. The font is 8 pt with controlled
+columns and no midword splitting. The contrast names the actual ordered
+systems; support still depends on adjusted q, never interval sign. Unequal
+replica windows/frame counts are flagged in the sampling section. Original
+six-replica production pages and all plot families still require human review;
+a synthetic layout check does not close that scientific QA requirement.

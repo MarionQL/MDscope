@@ -109,3 +109,34 @@ changes and check CI at the exact reviewed heads before owner merges.
 5. Finish production report/page review and finer source lineage; never bless
    unchanged legacy PNGs or replace unavailable values with zero.
 6. Complete broad failure-mode, mutation/coverage and mixed-observer validation.
+
+## Offline reporting completion — 2026-11-03
+
+The reporting batch completes the remaining #34 separation: PDF rendering,
+archive export, reusable table inventory/eligibility and lightweight labels
+are separate responsibilities; CLI/programmatic structural validation was
+completed in #124. Stable CLI commands, PDF/ZIP names, figure paths and prior
+bundle member names are retained. Original Parquet members and table/content
+manifests are additive. Unchanged numerical estimators and fused passes remain
+outside reporting.
+
+Validation: **423 local tests passed**, two optional benchmarks deselected;
+wheel/sdist, twine, compileall and adversarial offline export checks passed.
+A seven-page synthetic evidence PDF was rendered with system Poppler at
+150 dpi and visually inspected: sampling/warnings, dense scalar tables with
+long acidic-patch labels and separate units, configured 90% intervals,
+replicate tables, methods, atlas figures/captions and sharing instructions.
+This is a presentation fixture, not physiological evidence. Original report
+pages and the remaining unique scientific plot families still require review.
+No binary snapshots or production trajectories were added.
+
+#106/#107/#109 remain **partial**: larger table font, explicit estimate/interval/
+p/q lines, human labels and named contrast direction; common PDF/ZIP eligibility;
+new statistical input/config freshness lineage; incomplete-run exclusion;
+duplicate-image rejection and displayed-content audit. Export failures retain
+the previous PDF/ZIP/manifests; disabling bundling archives a previous ZIP.
+Legacy statistical inputs remain explicitly unverified rather than claiming
+original parameter provenance. Source fingerprints are metadata checks, not
+content hashes. The final individual file replacements are not an atomic
+multi-file transaction. Production-page QA, exact per-datapoint lineage,
+summary dashboard and broader plotting review remain open.

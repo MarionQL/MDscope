@@ -100,3 +100,23 @@ The package relocation did not change scientific kernels, YAML schemas, output
 paths, units, or trajectory passes. The supported imports are `mdscope.*`;
 `mdscope.analysis.*` is not an alias. HPC scripts use the installed lowercase
 package consistently.
+
+### Offline reporting responsibilities
+
+- `reporting/report_inventory.py`: persisted-table sampling/grouping and shared
+  table-eligibility audit; no renderer or trajectory reads.
+- `reporting/figure_inventory.py`: image/source freshness, duplicate detection
+  and coverage; uses core provenance hashing without importing the runner.
+- `reporting/labels.py`: display labels shared by plots and PDF, without
+  importing Matplotlib.
+- `reporting/pdf.py`: ReportLab layout and inline visual presentation.
+- `reporting/bundle.py`: bounded CSV previews, full eligible Parquet archives,
+  audits and images; no PDF layout.
+- `reporting/report.py`: staged export orchestration and established entry
+  points. Existing CLI, PDF/ZIP names and bundle member paths remain stable;
+  additional original Parquet members and table/content manifests are additive.
+
+Reusable CLI/programmatic topology validation resides in `core/validation.py`.
+Package source hashing belongs in `core/provenance.py`; the runner retains its
+imported name for existing callers. No estimator, observer, coordinate transform
+or trajectory pass is moved into reporting.

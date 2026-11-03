@@ -30,6 +30,7 @@ SUPPLEMENT_SUFFIXES = (
 
 def figure_inventory(root, system_repouts, cfg=None, include_rejected=False):
     """List every generated PNG with its origin and preferred presentation."""
+    from ..config import config_hash
     root=Path(root)
     paths = _figure_paths(root, system_repouts)
     fingerprints = {}
@@ -38,15 +39,23 @@ def figure_inventory(root, system_repouts, cfg=None, include_rejected=False):
     provenance = Path(root)/'project_summary/report/figure_provenance.json'
     records = json.loads(provenance.read_text()) if cfg is not None and provenance.exists() else {}
     rows=[]
+    seen_png = set()
     for path in sorted(set(paths)):
         name=path.name
         kind=("primary" if name.startswith("lipid_contact_matrix_") or name.endswith(PRIMARY_SUFFIXES) else
               "supplement" if name.endswith(SUPPLEMENT_SUFFIXES) else "other")
         status = figure_status(path,cfg,root,system_repouts,records=records,fingerprints=fingerprints,signature=signature) if cfg is not None else 'unverified'
+        if status == 'valid':
+            digest = records[str(path.relative_to(root))].get('png_sha256')
+            if digest in seen_png:
+                status = 'duplicate_figure'
+            seen_png.add(digest)
         if cfg is not None and status != 'valid' and not include_rejected:
             continue
         record = records.get(str(path.relative_to(root)),{})
-        rows.append({"source_metric":record.get('source_metric'),"units":record.get('units'),
+        rows.append({"figure_id":config_hash(str(path.relative_to(root))),
+                     "display_label":record.get('display_label', path.stem.replace('_',' ')),
+                     "source_metric":record.get('source_metric'),"units":record.get('units'),
                      "generation_config_hash":record.get('generation_config_hash'),
                      "generated_at":record.get('generated_at'),
                      "source_files":json.dumps(record.get('source_files',[])),
@@ -54,7 +63,7 @@ def figure_inventory(root, system_repouts, cfg=None, include_rejected=False):
                      "status":status,"family":figure_family(path),"figure":str(path.relative_to(root)),
                      "section":str(path.parent.relative_to(root)),
                      "kind":kind,"bytes":path.stat().st_size})
-    return pd.DataFrame(rows,columns=["figure","section","kind","bytes","family","status","source_metric","units","generation_config_hash","generated_at","source_files","sampling"])
+    return pd.DataFrame(rows,columns=["figure","figure_id","display_label","section","kind","bytes","family","status","source_metric","units","generation_config_hash","generated_at","source_files","sampling"])
 
 
 def report_coverage(root, system_repouts, cfg=None):
@@ -108,6 +117,8 @@ def report_coverage(root, system_repouts, cfg=None):
             result.loc[index,'expected'] = bool(enabled and (row.data_available or cfg.get('analyses',{}).get({'sdc4':'sdc4_mechanisms'}.get(family,family),{}).get('enabled',False)))
             if not enabled:
                 result.loc[index,'status'] = 'disabled'
+            elif family in {'time_series','profiles','interactions'} and row.data_available and not current_statistics(cfg,root,family):
+                result.loc[index,'status'] = 'invalid_data'
             elif row.data_available and not row.figure_available and not rejected.loc[rejected.family.eq(family)].empty:
                 result.loc[index,'status'] = 'invalid_figure'
             elif result.loc[index,'expected'] and not row.data_available:
@@ -139,7 +150,10 @@ def metric_coverage(root, cfg=None, system_repouts=None):
         records.append({"group":group,"metric":metric,"figure":relative,
                         "status":("covered" if relative in eligible else "missing_figure") if eligible is not None
                         else "covered" if (dest/(stem+"__timeseries.png")).exists() else "missing_figure"})
-    return pd.DataFrame(records,columns=cols)
+    result = pd.DataFrame(records,columns=cols)
+    if cfg is not None and not current_statistics(cfg,root,'time_series'):
+        result['status'] = 'excluded_statistics'
+    return result
 
 
 
@@ -171,7 +185,7 @@ def figure_snapshot(root, system_repouts):
 
 def _presentation_hash(cfg):
     from ..config import config_hash
-    from ..pipeline.runner import package_code_hash
+    from ..core.provenance import package_code_hash
     return config_hash({'config': {k: cfg.get(k) for k in ('plots','statistics','analyses','trajectory','time','selections','systems')},
                         'code_hash': package_code_hash()})
 
@@ -187,6 +201,7 @@ def _source_files(root, system_repouts, family):
             rep = Path(rep)
             if family == 'interactions':
                 paths += list((rep/'interactions').glob('*/occupancy.parquet'))
+                paths += list((rep/'interactions').glob('*/presence.parquet'))
                 paths += list((rep/'interactions').glob('*/lifetimes.parquet'))
             else:
                 folder = {'sdc4':'sdc4_mechanisms','lipid_contacts':'lipid_contacts',
@@ -194,6 +209,8 @@ def _source_files(root, system_repouts, family):
                 if folder:
                     paths += list((rep/'extensions'/folder).glob('*.parquet'))
                     paths += list((rep/'extensions'/folder).glob('*.npz'))
+                if family == 'profiles':
+                    paths += list((rep/'cache').glob('*.npz'))
                 if family in ('time_series','other'):
                     paths += list((rep/'summary').glob('*timeseries.parquet'))
     return sorted(set(paths))
@@ -229,7 +246,7 @@ def record_generated_figures(cfg, root, system_repouts, before):
             files = _source_files(root,system_repouts,family)
             sources[family] = (files,_source_fingerprint(files,root))
         files, fingerprint = sources[family]
-        from .plotting import _metric_meta
+        from .labels import _metric_meta
         metric = path.stem.split('__')[0]
         label, units = _metric_meta(metric)
         if units == metric:
@@ -260,6 +277,8 @@ def figure_status(path, cfg, root, system_repouts, records=None, fingerprints=No
     record = records.get(str(path.relative_to(root)))
     if record is None:
         return 'unverified'
+    if not all(key in record for key in ('generation_config_hash','source_fingerprint','png_sha256')):
+        return 'invalid_manifest'
     if record['generation_config_hash'] != (signature or _presentation_hash(cfg)):
         return 'stale_config'
     if fingerprints is None:
@@ -275,16 +294,36 @@ def figure_status(path, cfg, root, system_repouts, records=None, fingerprints=No
     return 'valid'
 
 
-def current_statistics(cfg, root, family):
-    """Do not ingest disabled or mismatched statistical products as current."""
+def statistics_status(cfg, root, family):
+    """Explain eligibility, preserving explicitly identified legacy exports."""
     import json
     from ..config import config_hash
-    stats = cfg.get('statistics',{})
-    option = stats.get('families',{}).get(family,True)
-    if not stats.get('enabled',True) or option is False or (isinstance(option,dict) and not option.get('enabled',True)):
-        return False
+    from ..statistics import analysis_config_hash, input_fingerprint
+    stats = cfg.get('statistics', {})
+    option = stats.get('families', {}).get(family, True)
+    if not stats.get('enabled', True) or option is False or (isinstance(option, dict) and not option.get('enabled', True)):
+        return 'disabled'
     manifest = Path(root)/'project_summary/statistics/manifest.json'
     if not manifest.exists():
-        return True
-    record = json.loads(manifest.read_text())
-    return record.get('statistics_hash') == config_hash(stats) and record.get('status', 'complete') == 'complete'
+        return 'legacy_unverified'
+    try:
+        record = json.loads(manifest.read_text())
+        if record.get('status', 'complete') != 'complete':
+            return 'incomplete'
+        if record.get('statistics_hash') != config_hash(stats):
+            return 'stale_config'
+        if 'analysis_config_hash' in record and record['analysis_config_hash'] != analysis_config_hash(cfg):
+            return 'stale_config'
+        if 'input_fingerprint' in record:
+            if record['input_fingerprint'] != input_fingerprint(root, record['replicate_paths']):
+                return 'stale_source'
+        else:
+            return 'legacy_unverified'
+    except (ValueError, TypeError, KeyError, AttributeError, OSError):
+        return 'invalid_manifest'
+    return 'valid'
+
+
+def current_statistics(cfg, root, family):
+    """Do not ingest disabled, incomplete, or mismatched statistical products."""
+    return statistics_status(cfg, root, family) in {'valid', 'legacy_unverified'}

@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import numpy as np
 import pandas as pd
+from pathlib import Path
 
 CATEGORIES = (
     ("SDC4 ectodomain orientation and membrane contacts", ("sdc4_ectodomain_",)),
@@ -83,3 +84,34 @@ def inference_status(q_value, p_value=None):
     except (TypeError, ValueError):
         pass
     return 'Descriptive / unadjusted'
+
+
+def report_table_status(path, cfg, root):
+    """One eligibility policy for PDF tables and current bundle exports."""
+    from ..config import presentation_enabled
+    from .figure_inventory import figure_family, statistics_status
+    path = Path(path)
+    family = figure_family(path)
+    if not presentation_enabled(cfg, 'report', family):
+        return 'disabled'
+    if 'statistics' in path.relative_to(root).parts:
+        return statistics_status(cfg, root, {'solvation': 'solvation_rdfs'}.get(family, family))
+    return 'persisted' if path.is_file() else 'missing_source'
+
+
+def read_report_table(path, cfg, root):
+    if report_table_status(path, cfg, root) not in {'valid', 'legacy_unverified', 'persisted'}:
+        return pd.DataFrame()
+    return _read(path)
+
+
+def report_table_inventory(root, cfg):
+    """Audit exported project tables, including rejected stale/partial products."""
+    import pyarrow.parquet as pq
+    root = Path(root)
+    rows = []
+    for path in sorted((root/'project_summary').rglob('*.parquet')):
+        rows.append({'table': str(path.relative_to(root)),
+                     'status': report_table_status(path, cfg, root),
+                     'rows': pq.ParquetFile(path).metadata.num_rows})
+    return pd.DataFrame(rows, columns=['table', 'status', 'rows'])

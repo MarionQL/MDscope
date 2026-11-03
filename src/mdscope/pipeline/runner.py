@@ -6,7 +6,6 @@ statistics and figures.
 from __future__ import annotations
 
 import glob
-import hashlib
 import json
 import shutil
 from zipfile import BadZipFile
@@ -16,6 +15,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import yaml
+from ..core.provenance import package_code_hash
 from ..core.persistence import archive_output as _archive_previous_output
 from ..core.validation import validate_selections
 
@@ -88,16 +88,6 @@ def project_root(cfg: dict, config_path: str | Path) -> Path:
         if path.is_absolute()
         else Path(config_path).resolve().parent / path
     )
-
-
-def package_code_hash() -> str:
-    """Hash package source so restart markers invalidate after code edits."""
-    digest = hashlib.sha256()
-    package_dir = Path(__file__).resolve().parent.parent
-    for path in sorted(package_dir.rglob("*.py")):
-        digest.update(path.relative_to(package_dir).as_posix().encode("utf-8"))
-        digest.update(path.read_bytes())
-    return digest.hexdigest()[:16]
 
 
 def initialize(config_path: str | Path, cfg: dict):
