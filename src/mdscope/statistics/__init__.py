@@ -6,11 +6,37 @@ from .interactions import analyze_interactions
 from .solvation import analyze_solvation_rdfs
 
 
+def analysis_config_hash(cfg):
+    from ..config import config_hash
+    return config_hash({k: cfg.get(k) for k in
+                        ('analyses', 'trajectory', 'time', 'selections', 'systems')})
+
+
+def input_fingerprint(root, replicate_paths):
+    """Metadata-only identity of persisted inputs; never reopen trajectories."""
+    from pathlib import Path
+    from ..config import config_hash
+    root = Path(root)
+    records = []
+    for relative in replicate_paths:
+        rep = root / relative
+        for folder in ('summary', 'extensions', 'interactions', 'cache'):
+            for path in sorted((rep / folder).rglob('*')):
+                if path.suffix not in {'.parquet', '.npz'} or not path.is_file():
+                    continue
+                if path.name in {'time_series_statistics.parquet', 'autocorrelation.parquet'}:
+                    continue  # statistics outputs, not inputs
+                stat = path.stat()
+                records.append((str(path.relative_to(root)) if path.is_relative_to(root) else str(path.resolve()), stat.st_size, stat.st_mtime_ns))
+    return config_hash(records)
+
+
 def analyze_project(cfg, root, system_repouts):
     from ..config import atomic_json, config_hash, statistics_family_config
     from ..core.persistence import archive_output
     from pathlib import Path
     import json
+    import os
     families = ("time_series", "profiles", "interactions", "solvation_rdfs")
     dest = Path(root) / "project_summary/statistics"
     previous_hash = "legacy"
@@ -27,7 +53,11 @@ def analyze_project(cfg, root, system_repouts):
                      for name in families},
         "methods": cfg.get("statistics", {}),
         "status": "running",
+        "analysis_config_hash": analysis_config_hash(cfg),
+        "replicate_paths": [os.path.relpath(rep, root)
+                            for reps in system_repouts.values() for rep in reps],
     }
+    manifest['input_fingerprint'] = input_fingerprint(root, manifest['replicate_paths'])
     atomic_json(dest / "manifest.json", manifest)
     for family, folder, analyze in (
         ("time_series", "time_series", analyze_time_series),
@@ -39,5 +69,7 @@ def analyze_project(cfg, root, system_repouts):
             archive_output(dest / folder, Path(root) / ".archives/statistics" / folder,
                            str(previous_hash))
         analyze(cfg, root, system_repouts)
+    if manifest['input_fingerprint'] != input_fingerprint(root, manifest['replicate_paths']):
+        raise RuntimeError('Persisted statistics inputs changed during finalization; retry on stable outputs')
     manifest["status"] = "complete"
     atomic_json(dest / "manifest.json", manifest)

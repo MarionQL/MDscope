@@ -19,7 +19,8 @@ def test_code_hash_includes_nested_modules(monkeypatch, tmp_path):
     nested.mkdir()
     module = nested / "msd.py"
     module.write_text("b = 1\n")
-    monkeypatch.setattr(runner, "__file__", str(main))
+    from mdscope.core import provenance
+    monkeypatch.setattr(provenance, "__file__", str(main))
     before = runner.package_code_hash()
     module.write_text("b = 2\n")
     assert runner.package_code_hash() != before

@@ -104,7 +104,7 @@ def test_pdf_section_controls_and_q_not_interval_sign(tmp_path):
 
 
 def test_disabled_inline_solvation_figures_are_not_constructed(tmp_path,monkeypatch):
-    import mdscope.reporting.report as report
+    import mdscope.reporting.pdf as report
     cfg,paths,fig=_fixture(tmp_path)
     cfg['plots']['families']={'solvation':False}
     folder=paths['condition'][0]/'extensions/solvation';folder.mkdir(parents=True)
