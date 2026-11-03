@@ -15,6 +15,31 @@ python scripts/release_box_clearance.py \
   --max-frames 40 --out clearance-carb
 ```
 
+### Hypothetical box-size screening (not a membrane rebuild)
+
+The manually rerunnable **Estimate hypothetical box clearance from MDscope XTC**
+workflow samples physically generated release conformations and tests alternative
+orthorhombic periodic lattice spacings without changing molecule coordinates.
+The lateral sweep uses 20.56, 22, 24, 26, 28, 30, 32, 36 nm with fixed z
+24.71667 nm; the separate vertical sweep uses 24.71667, 28, 32, 36, 40, 44 nm
+with fixed x/y=36 nm. Both report minimum image separations and numbers of
+frames within 1.5 nm, distinguishing same-assembly and different-assembly
+periodic-image distances. Bonded PROA/PROB fragments are unwrapped then
+whole-fragment translated to a common native unit cell by TM references,
+without distorting the ectodomain/HS conformation.
+
+The sweep answers which *hypothetical lattice spacings* clear the sampled
+reference conformations. It cannot determine a guaranteed AIM2 box size:
+reference trajectories already experienced small-box forces and their
+conformational sampling can be biased; the AIM2 termini, amyloid composition
+and starting membrane differ. An enlarged lateral membrane must be physically
+repacked and then equilibrated. The 1.5 nm threshold is a conservative
+diagnostic direct-space clearance cutoff, not a thermodynamic isolation rule.
+To estimate the required **build** x/y dimension from an equilibrated target,
+correct for the measured lateral NPT contraction; do not assume it is exactly
+the same in a new larger membrane. Repeat the analysis on AIM2-specific
+solvated pilot frames before final production approval.
+
 ### Completed 2 µs reference-trajectory screen
 
 The [full release run](https://github.com/MarionQL/MDscope/actions/runs/41694379483)
