@@ -21,7 +21,7 @@ MEMBRANE=("resname CHL1 POPC DPPC POPE POPI POPS PSM DOPC CER1 CER160 "
 # from the measured ~10.5% NPT lateral contraction in related reference runs.
 LATERAL=(20.5579,22.,24.,26.,28.,30.,32.,36.)
 VERTICAL=(24.71667,28.,32.,36.,40.,44.)
-TARGET_Z=24.71667
+TARGET_Z=28.
 CLEARANCE=1.5
 
 def placement_shift(tm_xyz, native_box):
