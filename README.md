@@ -15,6 +15,48 @@ python scripts/release_box_clearance.py \
   --max-frames 40 --out clearance-carb
 ```
 
+### Candidate box dimensions inferred from reference conformations
+
+The [optimized candidate sweep](https://github.com/MarionQL/MDscope/actions/runs/41698254120)
+passed for both membrane conditions (40 evenly spaced reference frames per
+condition). With reference coordinates fixed but periodic vectors varied,
+the smallest tested **equilibrated** lateral lattice with **zero observed
+approaches within 1.5 nm** was **26 nm with glycolipids** (worst
+protein–HS assembly image distance 1.804 nm) and **24 nm without
+glycolipids** (worst 1.822 nm). The legacy AIM2 lateral 20.5579 nm
+candidate registered 6/40 and 2/40 flagged frames, respectively.
+
+The z=24.71667 nm candidate passed the 40 sampled conformations when
+x/y=36 nm, but the minimum z-periodic membrane image distance without
+glycolipids was **1.991 nm**, close to the 1.5 nm warning screen.
+Increasing z to **28 nm** in the hypothetical lattice increased that
+minimum to **4.785 nm** (6.694 nm with glycolipids). These are
+geometry probes, not proof of extended-state isolation.
+
+**Provisional AIM2 starting box: 32 × 32 × 28 nm**, with a newly
+repacked/extended membrane containing enough lipids at realistic
+surface density, and more solvent added later on ARC. The reason to
+start x/y above the 26 nm *equilibrated* reference lower bound is
+potential NPT contraction and conformational variability. A shrinkage
+of ~10.5% would bring a 32 nm initial lateral cell to ~28.6 nm; this
+is a sensitivity illustration, not a prediction for a newly built
+AIM2 membrane. The starting-box volume is approximately **2.74x**
+the existing 20.5579 × 20.5579 × 24.71667 nm box. Atom count and
+run cost can scale differently.
+
+**Do not simply change the GRO box dimensions.** The lipid bilayer
+must be built/repacked at the larger periodic area; otherwise it has
+unphysical gaps, invalid density and membrane edge artifacts.
+Reference release systems differ from AIM2 in protein termini,
+amyloid occupancy and assembly history; old conformers also reflect
+forces from the old periodic cell. These checks neither determine
+an exact physical minimum nor guarantee safety for the full
+ectodomain/HS ensemble. Test the redesigned AIM2 bilayer with
+the same image-clearance checks during a restrained solvated pilot
+before generating all 17 systems.
+
+Numerical results and provenance: `docs/hs-box-sizing-reference.json`.
+
 ### Hypothetical box-size screening (not a membrane rebuild)
 
 The manually rerunnable **Estimate hypothetical box clearance from MDscope XTC**
