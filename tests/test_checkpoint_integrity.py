@@ -1,7 +1,8 @@
 """Resume safety: committed counters and orphan chunk pruning."""
 from pathlib import Path
 import pytest
-from mdscope.core.checkpoints import validate_progress, validate_committed_parts, prune_uncommitted_parts
+from mdscope.core.checkpoints import (validate_progress, validate_committed_parts, prune_uncommitted_parts,
+                                     chunk_artifacts, validate_artifact_inventory, prune_artifact_orphans)
 
 
 @pytest.mark.parametrize("frames,parts,chunk,total", [
@@ -64,3 +65,38 @@ def test_allow_uncommitted_chunk_after_complete_checkpoint(tmp_path):
     for i in (0, 1, 2):
         (tmp_path / f"timeseries-part-{i:06d}.parquet").write_bytes(b"chunk")
     validate_committed_parts(tmp_path, 2)
+
+
+def test_inventory_covers_owned_formats_without_reading_artifact_contents(tmp_path, monkeypatch):
+    paths = [
+        "raw/timeseries-part-000000.parquet",
+        "cache/aligned-part-000000.npz",
+        "cache/fused_membrane/bilayer_normal/part-000000.parquet",
+        "cache/fused_extensions/sasa__isolated/part-000000.parquet",
+        "cache/fused_distance/run1/part-000000.npz",
+        "cache/sdc4_mechanisms/map-000000.npz",
+        "cache/solvation/bridges-000000.parquet",
+        "cache/lipid_contacts/matrix-000000.parquet",
+        "profiles/density_1d/run1/frames/protein__part-000000.npz",
+        "profiles/density_1d/run1/frames/123456__part-000000.npz",
+    ]
+    unrelated = ["raw/unrelated-part-999999.parquet", "cache/unrelated-999999.npz",
+                 "profiles/density_1d/run1/123456.parquet"]
+    for name in paths + unrelated:
+        file = tmp_path/name
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_bytes(b"metadata only, not a valid data container")
+    def forbidden(*a, **k):
+        raise AssertionError("checkpoint inventory read scientific data contents")
+    monkeypatch.setattr(Path, "read_bytes", forbidden)
+    records = chunk_artifacts(tmp_path, 0)
+    assert set(records) == set(paths)
+    for name in paths:
+        (tmp_path/name.replace("000000", "000001")).write_bytes(b"orphan")
+    temporary = tmp_path/"cache/sdc4_mechanisms/map-000001.tmp.npz"
+    temporary.write_bytes(b"aborted writer")
+    validate_artifact_inventory(tmp_path, records, 1)
+    prune_artifact_orphans(tmp_path, 1)
+    assert not temporary.exists()
+    assert all((tmp_path/name).is_file() for name in paths + unrelated)
+    assert not any((tmp_path/name.replace("000000", "000001")).exists() for name in paths)

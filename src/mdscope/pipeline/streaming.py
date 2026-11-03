@@ -1,10 +1,13 @@
 """Single-pass trajectory coordinator: analysis-specific metrics live in separate modules.
 
-Compatibility: raw/summary output schema and checkpoint format retained.
+Compatibility: raw/summary output schema retained; atomic NPZ checkpoints
+include committed artifact fingerprints and replicate identity.
 """
 from __future__ import annotations
 from pathlib import Path
 from time import perf_counter
+import json
+from zipfile import BadZipFile
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
@@ -12,7 +15,9 @@ from ..config import analysis_groups, analysis_runs, atomic_parquet,ensure_dir,t
 from .progress import track
 from ..core.profiling import PhaseProfiler
 from ..core.trajectory_sources import open_msd_universe, paired_frames
-from ..core.checkpoints import (validate_progress, validate_committed_parts, prune_uncommitted_parts)
+from ..core.checkpoints import (validate_progress, validate_committed_parts,
+                                chunk_artifacts, validate_artifact_inventory,
+                                numbered_artifacts, prune_artifact_orphans)
 from ..core.coordinate_contracts import CoordinateSpace, require_coordinate_space, msd_source_space
 from ..observables.msd import initialize_msd
 from .fused_membrane import FusedMembrane, enabled_names as fused_enabled_names
@@ -26,11 +31,16 @@ from ..observables.radius_of_gyration import compute_rg
 from ..observables.density_1d import DensityProfileAccumulator
 from ..observables.membrane import initialize_membrane,membrane_metrics
 from ..interactions import chain_label,initialize_ligand_contacts,initialize_salt_bridges,ligand_contact_events,residue_label,salt_bridge_events
-def _checkpoint_payload(path, cfg_hash, processed, next_part, rmsf, groups, densities, membrane):
+def _checkpoint_payload(path, cfg_hash, processed, next_part, rmsf, groups, densities, membrane,
+                        rep, artifacts):
+    artifacts.update(chunk_artifacts(path.parent.parent, next_part - 1))
     payload = {
         "config_hash": np.asarray(cfg_hash), "processed": np.asarray(processed),
         "next_part": np.asarray(next_part),
         "w_n": np.asarray(rmsf.n), "w_mean": rmsf.mean, "w_M2": rmsf.M2,
+        "artifact_inventory_version": np.asarray(1),
+        "artifact_inventory": np.asarray(json.dumps(artifacts, sort_keys=True)),
+        "replicate_identity": np.asarray([rep.system, rep.label]),
     }
     for group_id, group in groups.items():
         safe = group_id.replace("/", "_")
@@ -51,28 +61,38 @@ def _checkpoint_payload(path, cfg_hash, processed, next_part, rmsf, groups, dens
 
 
 def _restore_checkpoint(checkpoint, cfg_hash, rmsf, groups, densities, membrane):
-    cp = np.load(checkpoint, allow_pickle=False)
-    if str(cp["config_hash"].item()) != cfg_hash or cp["w_mean"].shape != rmsf.mean.shape:
-        raise ValueError("checkpoint does not match current run")
-    rmsf.n, rmsf.mean, rmsf.M2 = (
-        int(cp["w_n"]), cp["w_mean"].astype(float), cp["w_M2"].astype(float)
-    )
-    for group_id, group in groups.items():
-        safe = group_id.replace("/", "_")
-        group["rmsf"].n = int(cp[f"g_{safe}_n"])
-        group["rmsf"].mean = cp[f"g_{safe}_mean"].astype(float)
-        group["rmsf"].M2 = cp[f"g_{safe}_M2"].astype(float)
-    for density in densities:
-        density.restore_checkpoint(cp)
-    if membrane.enabled and membrane.msd:
-        if not np.array_equal(
-            np.asarray(cp["membrane_msd_resindices"], int),
-            membrane.msd_resindices
-        ):
-            raise ValueError("membrane MSD checkpoint residue selection changed")
-        membrane.msd_last_positions = np.asarray(cp["membrane_msd_last_positions"], float)
-        membrane.msd_displacements = np.asarray(cp["membrane_msd_displacements"], float)
-    return int(cp["processed"]), int(cp["next_part"])
+    with np.load(checkpoint, allow_pickle=False) as cp:
+        if str(cp["config_hash"].item()) != cfg_hash or cp["w_mean"].shape != rmsf.mean.shape:
+            raise ValueError("checkpoint does not match current run")
+        counts = (["processed", "next_part", "w_n"]
+                  + [f"g_{key.replace('/', '_')}_n" for key in groups]
+                  + [key for key in cp.files if key.startswith("density_") and key.endswith("_frames")])
+        for key in counts:
+            value = cp[key]
+            if value.shape != () or value.dtype.kind not in "iu":
+                raise ValueError(f"Checkpoint counter {key} must be an integer scalar")
+        processed = int(cp["processed"])
+        if any(int(cp[key]) != processed for key in counts[2:]):
+            raise ValueError("Checkpoint accumulator counts disagree with processed frames")
+        rmsf.n, rmsf.mean, rmsf.M2 = (
+            int(cp["w_n"]), cp["w_mean"].astype(float), cp["w_M2"].astype(float)
+        )
+        for group_id, group in groups.items():
+            safe = group_id.replace("/", "_")
+            group["rmsf"].n = int(cp[f"g_{safe}_n"])
+            group["rmsf"].mean = cp[f"g_{safe}_mean"].astype(float)
+            group["rmsf"].M2 = cp[f"g_{safe}_M2"].astype(float)
+        for density in densities:
+            density.restore_checkpoint(cp)
+        if membrane.enabled and membrane.msd:
+            if not np.array_equal(
+                np.asarray(cp["membrane_msd_resindices"], int),
+                membrane.msd_resindices
+            ):
+                raise ValueError("membrane MSD checkpoint residue selection changed")
+            membrane.msd_last_positions = np.asarray(cp["membrane_msd_last_positions"], float)
+            membrane.msd_displacements = np.asarray(cp["membrane_msd_displacements"], float)
+        return processed, int(cp["next_part"])
 
 
 def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
@@ -83,6 +103,35 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
     repout = ensure_dir(outroot / rep.system / rep.label)
     raw, cache = ensure_dir(repout / "raw"), ensure_dir(repout / "cache")
     checkpoint = cache / "stream_checkpoint.npz"
+    artifacts = {}
+    # Validate persisted file identity before constructors, output writes or
+    # orphan pruning. Config hashes are project-wide, not replica identities.
+    if checkpoint.exists():
+        try:
+            with np.load(checkpoint, allow_pickle=False) as cp:
+                if str(cp["config_hash"].item()) != cfg_hash:
+                    raise ValueError("checkpoint does not match current run")
+                if "artifact_inventory_version" not in cp:
+                    raise ValueError("Legacy checkpoint has no committed artifact inventory; archive this replicate before rerunning")
+                if int(cp["artifact_inventory_version"].item()) != 1:
+                    raise ValueError("Unsupported committed artifact inventory version")
+                if not np.array_equal(cp["replicate_identity"], [rep.system, rep.label]):
+                    raise ValueError("Checkpoint replicate identity does not match requested system/label")
+                artifacts = json.loads(str(cp["artifact_inventory"].item()))
+                next_part = int(cp["next_part"])
+            if not isinstance(artifacts, dict) or not 0 < next_part <= len(artifacts):
+                raise ValueError("Invalid committed artifact counters")
+            validate_committed_parts(raw, next_part)
+            validate_artifact_inventory(repout, artifacts, next_part)
+        except (OSError, ValueError, KeyError, EOFError, TypeError, IndexError, BadZipFile) as exc:
+            raise RuntimeError(
+                f"Invalid streaming checkpoint {checkpoint}: {exc}. Existing output was preserved."
+            ) from exc
+    elif any(numbered_artifacts(repout)):
+        raise RuntimeError(
+            f"Unsafe streaming restart in {repout}: checkpoint is absent but numbered artifacts exist. "
+            "Existing output was preserved."
+        )
     profiler = PhaseProfiler.from_environment()
     setup_started = perf_counter() if profiler.enabled else None
     universe = mda.Universe(str(rep.topology), str(rep.trajectory))
@@ -131,10 +180,6 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
     )
     salt_state = initialize_salt_bridges(universe, cfg)
     ligand_state = initialize_ligand_contacts(universe, protein, ligand, cfg)
-    atomic_parquet(
-        raw / "protein_chains.parquet",
-        pd.DataFrame({"chain": sorted({chain_label(atom) for atom in protein})})
-    )
 
     rg_spec = cfg["analyses"].get("radius_of_gyration", {})
     rg_atoms = universe.select_atoms(str(rg_spec.get("selection") or selections["protein"]))
@@ -222,11 +267,11 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
                 rmsf_acc,
                 groups,
                 densities,
-                membrane
+                membrane,
             )
             total_frames = len(universe.trajectory[slice(start,stop,stride)])
             validate_progress(processed, part, chunk, total_frames)
-        except (OSError, ValueError, KeyError, EOFError, TypeError, IndexError) as exc:
+        except (OSError, ValueError, KeyError, EOFError, TypeError, IndexError, BadZipFile) as exc:
             # A corrupted checkpoint should not silently destroy committed data.
             # Operators can archive/remove the replicate to start a clean run.
             raise RuntimeError(
@@ -247,19 +292,11 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
 
     # Parts created after the last durable checkpoint are uncommitted.
     # Keep earlier parts intact so a resume never double-counts frames.
-    prune_uncommitted_parts(raw, part)
-    prune_uncommitted_parts(cache, part)
-
-    if extensions is not None:
-        extensions.prune_from(part)
-    if distances is not None:
-        distances.prune_from(part)
-    if sdc4 is not None:
-        sdc4.prune_from(part)
-    if fused is not None:
-        # Keep only chunks committed by the streaming checkpoint. An interrupted
-        # chunk may have been written just before a crash and must be replayed.
-        fused.prune_from(part)
+    prune_artifact_orphans(repout, part)
+    atomic_parquet(
+        raw / "protein_chains.parquet",
+        pd.DataFrame({"chain": sorted({chain_label(atom) for atom in protein})})
+    )
     first = (0 if start is None else int(start)) + processed * stride
     rows, group_rows, salt_rows, ligand_rows, coords, coord_times = [], [], [], [], [], []
     frames=universe.trajectory[slice(first,stop,stride)]
@@ -445,7 +482,9 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
                 rmsf_acc,
                 groups,
                 densities,
-                membrane
+                membrane,
+                rep,
+                artifacts,
             )
 
         if profiler.enabled:
@@ -485,7 +524,9 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
             rmsf_acc,
             groups,
             densities,
-            membrane
+            membrane,
+            rep,
+            artifacts,
         )
 
     fused_results = fused.finalize() if fused is not None else {}
