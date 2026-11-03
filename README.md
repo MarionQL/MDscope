@@ -15,6 +15,44 @@ python scripts/release_box_clearance.py \
   --max-frames 40 --out clearance-carb
 ```
 
+### Confirmed 200-frame combined-size screen
+
+The full 200-frame per-condition [combined box sweep](https://github.com/MarionQL/MDscope/actions/runs/41700447345)
+changed the conservative recommendation from the 40-frame lower bound.
+All figures below use **z=28 nm** and an independent hypothetical x/y
+lattice for each size, with whole covalent protein–HS assemblies.
+
+| Tested equilibrated x/y/z (nm) | Glycolipid frames within 1.5 nm | No-glycolipid frames within 1.5 nm | Minimum glycolipid assembly image distance (nm) |
+|---|---:|---:|---:|
+| 26 × 26 × 28 | 4/200 | 0/200 | 1.075 |
+| **28 × 28 × 28** | **0/200** | **0/200** | **1.863** |
+| 30 × 30 × 28 | 0/200 | 0/200 | 1.782 |
+| 32 × 32 × 28 | 0/200 | 0/200 | 2.190 |
+
+At z=28 nm the worst minimum vertical periodic-membrane distance
+across the 200 frames was **3.809 nm with glycolipids** and **4.785 nm
+without**. Earlier independent z=24.71667 nm screening registered
+an approach of **0.810 nm** in the glycolipid reference, even when
+x/y=36 nm. Thus the extra z clearance is material.
+
+**Result:** 28 × 28 × 28 nm was the smallest tested *equilibrated*
+candidate passing the 1.5 nm screen in these reference conformations.
+For a freshly built AIM2 membrane, recommend **32 × 32 × 28 nm
+initially** as a provisional design, providing lateral margin if the
+new lipid system contracts in NPT. A hypothetical 10.5% contraction
+from 32 nm yields 28.6 nm. The actual NPT contraction may differ,
+and z must also be monitored. A stronger safety margin or additional
+sampling could still warrant a larger membrane.
+
+The result is **not a physically equilibrated AIM2 simulation**:
+periodic lattice vectors were varied around already sampled MDscope
+coordinates, the reference conformers may have experienced PBC
+bias, and only one released replicate per condition was available.
+Passing these 200 frames is not a proof of absence of rare
+ectodomain/HS contacts. Repack the lipid bilayer at the new lateral
+dimensions, preserve realistic per-lipid area, and validate the
+new AIM2 box in a restrained solvated pilot before full production.
+
 ### Candidate box dimensions inferred from reference conformations
 
 The [optimized candidate sweep](https://github.com/MarionQL/MDscope/actions/runs/41698254120)
