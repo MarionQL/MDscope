@@ -42,21 +42,27 @@ def image_minimum(a, b, box, *, nonzero=True, z_image_only=False):
                               for c,e in zip(center,extent))))
     candidates.update(product((-1, 0, 1), repeat=3))
     tree = cKDTree(a)
-    mean_a, mean_b = a.mean(axis=0), b.mean(axis=0)
-    radii = (np.max(np.linalg.norm(a-mean_a, axis=1)) +
-             np.max(np.linalg.norm(b-mean_b, axis=1)))
+    amin,amax = a.min(axis=0),a.max(axis=0)
+    bmin,bmax = b.min(axis=0),b.max(axis=0)
+    # Axis-aligned bounding-box gaps are valid lower bounds on every
+    # atom-pair separation, and are tighter than whole-molecule spheres
+    # for broad planar membranes. Sort likely nearest images first.
+    def image_lower_bound(shift):
+        moved=np.asarray(shift)*box
+        gaps=np.maximum(0.,np.maximum(amin-(bmax+moved),(bmin+moved)-amax))
+        return float(np.linalg.norm(gaps))
+    ordered=sorted(candidates,key=lambda shift:(image_lower_bound(shift),shift))
     best = float('inf')
     chosen = None
     best_pair = None
-    for shift in sorted(candidates):
+    for shift in ordered:
         if nonzero and shift == (0, 0, 0):
             continue
         if z_image_only and shift[2] == 0:
             continue
-        # Lower bound on distance between bounding spheres permits skipping
-        # many distant images, without missing a closer pair.
-        center_distance = np.linalg.norm(mean_a-(mean_b+np.asarray(shift)*box))
-        if center_distance-radii >= best:
+        # This is a mathematically safe rejection: no atom pair in these
+        # translated AABBs can be closer than the lower bound.
+        if image_lower_bound(shift) >= best:
             continue
         ds, neighbors = tree.query(b+np.asarray(shift)*box, k=1)
         local = int(np.argmin(ds))
