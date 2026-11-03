@@ -97,6 +97,7 @@ def report_decision(rows, cutoff=1.2, margin=0.3):
 
 def assess(tpr, xtc, out, max_frames=50, cutoff=1.2, margin=.3):
     import MDAnalysis as mda
+    from MDAnalysis.transformations import unwrap
     if max_frames<1: raise ValueError("max_frames must be >=1")
     u=mda.Universe(str(tpr),str(xtc))
     atoms=u.atoms
@@ -116,6 +117,14 @@ def assess(tpr, xtc, out, max_frames=50, cutoff=1.2, margin=.3):
     membrane=membrane[membrane.masses>2.]
     if len(membrane)<1000:
         raise ValueError("Could not resolve intact membrane lipid selection")
+    # The released XTC can store covalently bonded atoms across PBC.
+    # Make each whole protein-HS molecule contiguous before asking whether
+    # its distinct periodic COPY is within direct-space interaction range.
+    proteins_hs=u.select_atoms("chainID PROA PROB")
+    fragment_count=len(proteins_hs.fragments)
+    if fragment_count!=2:
+        raise ValueError(f"Expected exactly two covalent protein-HS fragments; found {fragment_count}")
+    u.trajectory.add_transformations(unwrap(proteins_hs))
     n=len(u.trajectory)
     indices=np.unique(np.linspace(0,n-1,min(n,max_frames),dtype=int))
     rows=[]
@@ -148,7 +157,7 @@ def assess(tpr, xtc, out, max_frames=50, cutoff=1.2, margin=.3):
             "max_glycan_z_span_nm":max(float(np.ptp(g.positions[:,2])/10.) for _,_,g in groups)})
     summary=report_decision(rows,cutoff,margin)
     summary.update({"source_tpr":Path(tpr).name,"source_xtc":Path(xtc).name,
-        "trajectory_frames":n,"time_window_ps":[rows[0]["time_ps"],rows[-1]["time_ps"]],
+        "trajectory_frames":n,"covalent_protein_HS_fragments":fragment_count,"periodic_unwrap":"MDAnalysis bonded-fragment whole-molecule", "time_window_ps":[rows[0]["time_ps"],rows[-1]["time_ps"]],
         "glycan_residue_counts":{name:len(g.residues) for name,_,g in groups},
         "max_glycan_z_span_nm":max(r["max_glycan_z_span_nm"] for r in rows),
         "AIM2_target_box_nm":AIM2_BOX_NM.tolist(),
