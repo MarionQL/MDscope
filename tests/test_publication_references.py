@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from mdscope.statistics.common import (
     autocorrelation, _temporal, _permutation, _fdr,
-    _block_bootstrap, _hierarchical_difference,
+    _block_bootstrap, _hierarchical, _hierarchical_difference,
 )
 from mdscope.observables.multi_origin_msd import multi_origin_msd
 
@@ -77,6 +77,40 @@ def test_paired_hierarchical_bootstrap_constant_reference():
     b = {"rep1": np.ones(7)*7, "rep2": np.ones(7)*13}
     out = _hierarchical_difference(a, b, 101, np.random.default_rng(5))
     np.testing.assert_allclose(out, 5.)
+
+
+def test_nonconstant_hierarchy_exact_two_stage_distribution():
+    # Each selected replicate contributes ONE temporal draw, regardless of
+    # how many original trajectory frames that replicate represented.
+    choices = list(product(range(4), repeat=2))
+    class Enumeration:
+        def __init__(self):
+            self.calls = 0
+        def integers(self, low, high, size):
+            assert (low, high, size) == (0, 2, (16, 2))
+            self.calls += 1
+            return np.array(choices) // 2 if self.calls == 1 else np.array(choices) % 2
+    actual = _hierarchical([[0., 4.], [10., 14.]], 16, Enumeration())
+    # Independent enumeration of four equiprobable replicate/draw values.
+    expected = [(a+b)/2 for a, b in product([0., 4., 10., 14.], repeat=2)]
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_nonconstant_paired_hierarchy_preserves_labels_and_draws():
+    class Scripted:
+        def __init__(self):
+            self.script = iter([
+                [[0,1], [1,0], [1,1], [0,0]],  # selected pairs
+                [[0,1], [1,0], [0,1], [1,1]],  # temporal draws in A
+                [[1,0], [1,0], [1,0], [0,1]],  # temporal draws in B
+            ])
+        def integers(self, low, high, size):
+            assert (low, high, size) == (0, 2, (4, 2))
+            return np.array(next(self.script))
+    a = {"a": np.array([0.,2.]), "b": np.array([10.,14.])}
+    b = {"b": np.array([20.,26.]), "a": np.array([3.,7.])}
+    actual = _hierarchical_difference(a, b, 4, Scripted())
+    np.testing.assert_array_equal(actual, [6.5, 7.5, 11., 3.])
 
 def test_multiorigin_msd_direct_origin_particle_oracle():
     xyz = np.zeros((9, 2, 3))

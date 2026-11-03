@@ -431,7 +431,8 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
             continue
         try:
             times = pd.read_parquet(timeseries, columns=["time_ps"])["time_ps"]
-            if times.empty or times.isna().any():
+            if (times.empty or not np.isfinite(times.to_numpy(dtype=float)).all()
+                    or not times.is_monotonic_increasing or not times.is_unique):
                 missing.append(f"{rep.system}/{rep.label}: invalid time_ps")
         except (OSError, ValueError, KeyError, ImportError) as exc:
             missing.append(f"{rep.system}/{rep.label}: unreadable time_ps ({exc})")

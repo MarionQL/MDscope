@@ -114,3 +114,15 @@ def test_disabled_inline_solvation_figures_are_not_constructed(tmp_path,monkeypa
     for name in ('solvation_rdf_figure','solvation_timeseries_figure','solvation_survival_figure'):
         monkeypatch.setattr(report,name,forbidden)
     generate_report(cfg,tmp_path,paths)
+
+
+def test_bundle_coverage_uses_the_active_family_controls(tmp_path):
+    from mdscope.reporting.figure_inventory import report_coverage
+    cfg, paths, _ = _fixture(tmp_path)
+    cfg["plots"]["families"] = {"time_series": False}
+    expected = report_coverage(tmp_path, paths, cfg)
+    result = generate_report(cfg, tmp_path, paths)
+    with zipfile.ZipFile(result["bundle"]) as archive:
+        actual = pd.read_csv(archive.open("project_summary/report/figure_coverage.csv"))
+    pd.testing.assert_frame_equal(actual, expected, check_dtype=False)
+    assert actual.loc[actual.analysis.eq("Time series"), "status"].item() == "disabled"

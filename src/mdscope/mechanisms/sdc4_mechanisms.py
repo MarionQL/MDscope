@@ -156,10 +156,14 @@ def _local_surface(xy, z, minimum=8):
 def _backbone_axis(atoms, box):
     """PBC-unwrapped PCA axis, oriented along the selected residue sequence."""
     xyz = atoms.positions.astype(float)
-    if len(xyz) < 3:
+    if len(xyz) < 3 or not np.all(np.isfinite(xyz)):
         return np.full(3, np.nan)
     xyz = xyz[0] + minimize_vectors(xyz - xyz[0], box)
-    _, _, vt = np.linalg.svd(xyz - xyz.mean(axis=0), full_matrices=False)
+    _, singular, vt = np.linalg.svd(xyz - xyz.mean(axis=0), full_matrices=False)
+    # A collapsed segment or tied leading components have no unique axis.
+    # SVD still returns a basis, but its arbitrary direction is not geometry.
+    if singular[0] < 1e-8 or np.isclose(singular[0], singular[1], rtol=1e-7, atol=1e-8):
+        return np.full(3, np.nan)
     direction = vt[0]
     if np.dot(direction, xyz[-1] - xyz[0]) < 0:
         direction = -direction
@@ -400,6 +404,11 @@ class SDC4Mechanisms:
             # Match the known SDC4 GGIVG sequence; generic G...G matches can
             # select an unrelated glycine pair and mask a wrong TM selection.
             matches = sequence_matches(ca_tm, {"GGIVG": "GGIVG"})
+            if len(matches) > 1:
+                raise ValueError(
+                    f"TM chain {chain} has ambiguous GGIVG mapping ({len(matches)} matches); "
+                    "select one protein chain and one TM motif"
+                )
             indices = np.unique(np.concatenate(list(matches.values()))) if matches else np.empty(0, int)
             sequence = "".join(
                 AA3.get(atom.resname.upper(), "X") for atom in ca_tm
@@ -465,6 +474,10 @@ class SDC4Mechanisms:
             "gxxxg_resindices": {k: v.residues.ix.tolist()
                                  for k, v in self.gxxxg.items()},
             "gxxxg_tm_sequences": self.gxxxg_sequences,
+            "gxxxg_status": {
+                k: "valid" if len(v) else "unavailable_missing_motif"
+                for k, v in self.gxxxg.items()
+            },
             "motif_lipid_residence_unmapped_fragments": self.unmapped_lipid_fragment_count,
             "lipid_moiety_selection_atom_counts": {
                 label: len(indices) for label, indices in self.lipid_moiety_membership.items()
@@ -606,14 +619,14 @@ class SDC4Mechanisms:
                 len(np.unique(np.column_stack((
                     motif.resindices[motif_hits[:, 0]],
                     opposite.resindices[motif_hits[:, 1]],
-                )), axis=0)) if len(motif_hits) else 0
+                )), axis=0)) if len(motif_hits) else 0 if len(motif) else np.nan
             )
         ghits = _contacts(g1, g2, self.contact_A, box)
-        row["sdc4_gxxxg_interface_atom_contacts"] = len(ghits)
+        row["sdc4_gxxxg_interface_atom_contacts"] = len(ghits) if len(g1) and len(g2) else np.nan
         row["sdc4_gxxxg_interface_residue_pairs"] = (
             len(np.unique(np.column_stack((
                 g1.resindices[ghits[:, 0]], g2.resindices[ghits[:, 1]]
-            )), axis=0)) if len(ghits) else 0
+            )), axis=0)) if len(ghits) else 0 if len(g1) and len(g2) else np.nan
         )
         for label, (phi_atoms, psi_atoms) in self.proline_torsions.items():
             for suffix, atom_group in (("phi_deg", phi_atoms), ("psi_deg", psi_atoms)):
@@ -983,10 +996,14 @@ class SDC4Mechanisms:
                         info["resindices"]
                     )]
                     if not sub.empty:
+                        if sub.duplicated(["time_ps", "topology_residue_index"]).any():
+                            raise ValueError(f"Duplicate residue/time SASA records for motif {name}")
                         label = f"sdc4_motif_{name}_sasa_nm2"
+                        sub = sub.copy()
+                        sub["sasa_nm2"] = sub["sasa_nm2"].where(np.isfinite(sub["sasa_nm2"]))
                         values = sub.groupby("time_ps", as_index=False)[
                             "sasa_nm2"
-                        ].sum().rename(columns={"sasa_nm2": label})
+                        ].sum(min_count=len(info["resindices"])).rename(columns={"sasa_nm2": label})
                         df = df.merge(values, on="time_ps", how="left",
                                       validate="one_to_one")
         # Reuse per-atom FreeSASA areas: non-backbone carbon exposure,
