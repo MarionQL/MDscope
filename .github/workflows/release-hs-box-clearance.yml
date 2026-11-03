@@ -47,7 +47,7 @@ jobs:
           x=image_minimum(a,b,np.array([10.,10.,10.]))
           assert abs(x['distance_nm']-1.5)<1e-8 and x['shift']==[-1,0,0],x
           PY
-      - name: Screen real ectodomain and HS motions against periodic images
+      - name: Screen covalently unwrapped ectodomain-HS image clearance
         env:
           CONDITION: ${{ matrix.condition }}
           FRAME_LIMIT: ${{ inputs.max_frames_per_condition || '12' }}
