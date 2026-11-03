@@ -1,14 +1,11 @@
 name: Syndecan-HS periodic image clearance from released XTC
 on:
-  push:
-    branches: [feat/release-hs-box-clearance]
-    paths: [.github/workflows/release-hs-box-clearance.yml]
   workflow_dispatch:
     inputs:
       max_frames_per_condition:
         description: "Evenly sampled frames per condition"
         required: true
-        default: '40'
+        default: '200'
         type: string
 permissions:
   contents: read
