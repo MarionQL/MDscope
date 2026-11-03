@@ -47,10 +47,10 @@ jobs:
           x=image_minimum(a,b,np.array([10.,10.,10.]))
           assert abs(x['distance_nm']-1.5)<1e-8 and x['shift']==[-1,0,0],x
           PY
-      - name: Screen covalently unwrapped ectodomain-HS image clearance
+      - name: Screen full released trajectory with per-contact chemical identities
         env:
           CONDITION: ${{ matrix.condition }}
-          FRAME_LIMIT: ${{ inputs.max_frames_per_condition || '12' }}
+          FRAME_LIMIT: ${{ inputs.max_frames_per_condition || '200' }}
         run: |
           python scripts/release_box_clearance.py \
             --tpr "release/${CONDITION}-sdc4-step7_production.tpr" \
