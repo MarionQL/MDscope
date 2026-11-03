@@ -15,6 +15,28 @@ python scripts/release_box_clearance.py \
   --max-frames 40 --out clearance-carb
 ```
 
+### Completed 2 µs reference-trajectory screen
+
+The [full release run](https://github.com/MarionQL/MDscope/actions/runs/41694379483)
+completed successfully after correcting covalent protein/HS wrapping. Sampling
+200 frames per condition (200 or 201 frames present) found **36/200** frames
+with periodic-image proximity below 1.2 nm with glycolipids and **18/200**
+without. The closest different-assembly PROA–PROB image heavy-atom distances
+were **0.253 nm** and **0.258 nm**, respectively. Nearest z-translated membrane
+images were **5.26 nm** and **6.12 nm**. Lateral NPT box lengths reached
+approximately **18.38 nm** in both conditions, compared with the AIM2 proposed
+starting x/y of 20.56 nm. The largest sampled ectodomain CA reach relative
+to the TM reference region was **17.72/14.59 nm**, while HS reached
+**23.75/20.84 nm** (glycolipid/no-glycolipid). The limiting regions include
+protein–protein, protein–HS and HS–HS; no single HS-only bound suffices.
+
+These results support investigating a larger lateral membrane for AIM2, or
+conducting an AIM2-specific solvated pilot, **not** selecting a box size from
+the released test system alone. Full frame tables and limiting atom identities
+are in the linked run artifacts. The 1.2 nm flag marks a direct-space
+interaction, not necessarily an unphysical steric overlap or independent
+contact probability.
+
 **Interpretation:** Distances below the chosen 1.2 nm direct-space cutoff indicate a sampled periodic-image contact; within 1.5 nm are flagged as near contacts. A sample with no contacts **does not certify** box sufficiency: this release contains only a test trajectory from replicate 1 of each membrane condition, and may under-sample extended ectodomain/HS configurations. The AIM2 structures further differ through N-terminal signal removal/repatching, added amyloid, preparation and potentially box geometry. A different force field, HS chemistry or initial conformation would limit transferability. The AIM2 20.55790 × 20.55790 × 24.71667 nm box must be evaluated separately, ideally with an appropriately sampled solvated pilot and per-frame periodic-image monitoring. The workflow changes no molecular coordinates.
 
 
