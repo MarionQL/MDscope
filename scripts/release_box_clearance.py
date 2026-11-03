@@ -47,6 +47,7 @@ def image_minimum(a, b, box, *, nonzero=True, z_image_only=False):
              np.max(np.linalg.norm(b-mean_b, axis=1)))
     best = float('inf')
     chosen = None
+    best_pair = None
     for shift in sorted(candidates):
         if nonzero and shift == (0, 0, 0):
             continue
@@ -57,14 +58,17 @@ def image_minimum(a, b, box, *, nonzero=True, z_image_only=False):
         center_distance = np.linalg.norm(mean_a-(mean_b+np.asarray(shift)*box))
         if center_distance-radii >= best:
             continue
-        dist = float(np.min(tree.query(b+np.asarray(shift)*box, k=1)[0]))
+        ds, neighbors = tree.query(b+np.asarray(shift)*box, k=1)
+        local = int(np.argmin(ds))
+        dist = float(ds[local])
         if dist < best:
             best, chosen = dist, list(shift)
+            best_pair = [local, int(neighbors[local])] if swapped else [int(neighbors[local]),local]
     if chosen is None:
         raise ValueError('No periodic images selected')
     if swapped:
         chosen = [-int(x) for x in chosen]
-    return {'distance_nm':best, 'shift':chosen}
+    return {'distance_nm':best, 'shift':chosen, 'atom_indices':best_pair}
 
 
 
@@ -125,6 +129,14 @@ def assess(tpr, xtc, out, max_frames=50, cutoff=1.2, margin=.3):
     if fragment_count!=2:
         raise ValueError(f"Expected exactly two covalent protein-HS fragments; found {fragment_count}")
     u.trajectory.add_transformations(unwrap(proteins_hs))
+    # These native residue ranges come from MDscope's two-chain TPR selections.
+    tm_ca={}; ecto_ca={}
+    for chain,tm,ecto in (("PROA","150:170","1:149"),("PROB","420:440","270:419")):
+        tm_ca[chain]=u.select_atoms(f"protein and chainID {chain} and name CA and resid {tm}")
+        ecto_ca[chain]=u.select_atoms(f"protein and chainID {chain} and name CA and resid {ecto}")
+        if len(tm_ca[chain])<5 or len(ecto_ca[chain])<10:
+            raise ValueError(f"Missing verified TM/ectodomain CA ranges for {chain}")
+    glycan_set=set(GLYCANS.split())
     n=len(u.trajectory)
     indices=np.unique(np.linspace(0,n-1,min(n,max_frames),dtype=int))
     rows=[]
@@ -147,10 +159,28 @@ def assess(tpr, xtc, out, max_frames=50, cutoff=1.2, margin=.3):
                      for (name,_,_),pos in zip(groups,positions)]
         pa=min(pair_results,key=lambda x:x[2]["distance_nm"])
         pm=min(mem_results,key=lambda x:x[1]["distance_nm"])
+        # Record the limiting atom identities to distinguish HS contacts
+        # from protein contacts at each periodic image crossing.
+        a_atoms=next(group for name,group,_ in groups if name==pa[0])
+        b_atoms=next(group for name,group,_ in groups if name==pa[1])
+        aa=a_atoms[pa[2]["atom_indices"][0]]
+        bb=b_atoms[pa[2]["atom_indices"][1]]
+        def region(atom):
+            return "HS" if atom.resname in glycan_set else "protein"
+        categories=region(aa)+"-"+region(bb)
+        ecto_reach=max(float(np.max(np.linalg.norm(ecto_ca[name].positions-
+            tm_ca[name].positions.mean(axis=0),axis=1))/10.) for name,_,_ in groups)
+        glycan_reach=max(float(np.max(np.linalg.norm(g.positions-
+            tm_ca[name].positions.mean(axis=0),axis=1))/10.) for name,_,g in groups)
         rows.append({"frame":int(i),"time_ps":float(ts.time),
             "box_x_nm":float(box[0]),"box_y_nm":float(box[1]),"box_z_nm":float(box[2]),
             "assembly_image_nm":pa[2]["distance_nm"],
             "assembly_pair":pa[0]+"/"+pa[1],
+            "limiting_atom_a":f"{aa.resname}:{aa.resid}:{aa.name}",
+            "limiting_atom_b":f"{bb.resname}:{bb.resid}:{bb.name}",
+            "limiting_regions":categories,
+            "max_ectodomain_TM_distance_nm":ecto_reach,
+            "max_HS_TM_distance_nm":glycan_reach,
             "assembly_shift":str(pa[2]["shift"]),
             "membrane_z_image_nm":pm[1]["distance_nm"],
             "membrane_pair":pm[0]+"/membrane","membrane_shift":str(pm[1]["shift"]),
@@ -160,6 +190,11 @@ def assess(tpr, xtc, out, max_frames=50, cutoff=1.2, margin=.3):
         "trajectory_frames":n,"covalent_protein_HS_fragments":fragment_count,"periodic_unwrap":"MDAnalysis bonded-fragment whole-molecule", "time_window_ps":[rows[0]["time_ps"],rows[-1]["time_ps"]],
         "glycan_residue_counts":{name:len(g.residues) for name,_,g in groups},
         "max_glycan_z_span_nm":max(r["max_glycan_z_span_nm"] for r in rows),
+        "max_ectodomain_TM_distance_nm":max(r["max_ectodomain_TM_distance_nm"] for r in rows),
+        "max_HS_TM_distance_nm":max(r["max_HS_TM_distance_nm"] for r in rows),
+        "contact_region_counts":{region:sum(r["limiting_regions"]==region and
+            min(r["assembly_image_nm"],r["membrane_z_image_nm"])<=cutoff for r in rows)
+            for region in ("HS-HS","HS-protein","protein-HS","protein-protein")},
         "AIM2_target_box_nm":AIM2_BOX_NM.tolist(),
         "sampled_box_relative_difference_from_AIM2":(np.array(summary["minimum_box_nm"])/AIM2_BOX_NM-1).tolist(),
         "scope":"Actual release box only. Released system can differ in sequence, signal "
