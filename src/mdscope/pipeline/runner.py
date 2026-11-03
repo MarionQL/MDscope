@@ -9,6 +9,7 @@ import glob
 import hashlib
 import json
 import shutil
+from zipfile import BadZipFile
 from time import perf_counter
 from pathlib import Path
 
@@ -434,8 +435,18 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
             if (times.empty or not np.isfinite(times.to_numpy(dtype=float)).all()
                     or not times.is_monotonic_increasing or not times.is_unique):
                 missing.append(f"{rep.system}/{rep.label}: invalid time_ps")
-        except (OSError, ValueError, KeyError, ImportError) as exc:
-            missing.append(f"{rep.system}/{rep.label}: unreadable time_ps ({exc})")
+            checkpoint = repout / "cache" / "stream_checkpoint.npz"
+            if checkpoint.is_file():
+                with np.load(checkpoint, allow_pickle=False) as cp:
+                    if "replicate_identity" in cp and not np.array_equal(
+                            cp["replicate_identity"], [rep.system, rep.label]):
+                        raise ValueError("checkpoint replicate identity mismatch")
+                    if "processed" in cp:
+                        count = cp["processed"]
+                        if count.shape != () or count.dtype.kind not in "iu" or len(times) != int(count):
+                            raise ValueError("summary frame count disagrees with checkpoint")
+        except (OSError, ValueError, KeyError, ImportError, EOFError, TypeError, IndexError, BadZipFile) as exc:
+            missing.append(f"{rep.system}/{rep.label}: invalid persisted inputs ({exc})")
     if missing:
         raise RuntimeError(
             "Cannot finalize: required persisted replicate data are missing or invalid. "

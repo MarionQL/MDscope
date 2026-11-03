@@ -1,6 +1,9 @@
 """Mixed raw/fused/specialized observers survive a checkpoint interruption."""
 from copy import deepcopy
 from types import SimpleNamespace
+from dataclasses import replace
+import hashlib
+import shutil
 
 import MDAnalysis as mda
 import numpy as np
@@ -31,6 +34,7 @@ def _project(tmp_path, chunk):
         spec["enabled"] = False
     for name in ("alignment", "rmsd", "rmsf", "radius_of_gyration"):
         cfg["analyses"][name]["enabled"] = True
+    cfg["selections"]["groups"] = {c: {"selection": f"chainID {c} and name CA"} for c in ("A", "B")}
     cfg["analyses"]["sdc4_mechanisms"] = partial["analyses"]["sdc4_mechanisms"]
     cfg["analyses"]["sdc4_mechanisms"]["hs_chains"] = {"A1": "chainID H"}
     for name in ("bilayer_normal", "lipid_enrichment"):
@@ -40,6 +44,16 @@ def _project(tmp_path, chunk):
         "protein": {"selections": {"protein": "protein"}, "axis": "z", "bin_width_A": 5.},
         "lipid": {"selections": {"lipid": "resname POPC"}, "axis": "z", "bin_width_A": 5.},
     }}
+    cfg["analyses"]["residue_membrane_distance"] = {"enabled": True, "runs": {
+        c: {"selection": f"chainID {c} and name CA", "membrane_selection": "resname POPC"}
+        for c in ("A", "B")
+    }}
+    cfg["analyses"]["solvation"] = {
+        "enabled": True, "preset": "kinetics",
+        "targets": {"protein": {"backbone_CA": "protein and name CA"}},
+        "water_selection": "resname TIP3 and name OH2",
+        "search_radius_A": 6., "rdf_bin_width_A": 1.,
+    }
     cfg["trajectory"].update(start=0, stop=8, stride=2, chunk_frames=chunk)
     cfg["cache"]["aligned_coordinates"] = False
     cfg["statistics"].update(bootstrap_draws=100, families={"profiles": False, "interactions": False, "solvation_rdfs": False})
@@ -53,7 +67,7 @@ def _final_tables(root):
             if "cache" not in p.parts and "raw" not in p.parts}
 
 
-@pytest.mark.parametrize("chunk,failure", [(1, "during_frame"), (2, "after_write")])
+@pytest.mark.parametrize("chunk,failure", [(1, "during_frame"), (2, "after_write"), (2, "before_checkpoint")])
 def test_mixed_restart_and_offline_finalization(tmp_path, monkeypatch, chunk, failure):
     rep, cfg = _project(tmp_path, chunk)
     clean, resumed = tmp_path/"clean", tmp_path/"resumed"
@@ -61,7 +75,8 @@ def test_mixed_restart_and_offline_finalization(tmp_path, monkeypatch, chunk, fa
     reference_cfg["trajectory"]["chunk_frames"] = 3
     streaming.run_streaming_pass(rep, reference_cfg, clean, "reference")
     calls = 0
-    target = "compute_rg" if failure == "during_frame" else "_flush"
+    target = {"during_frame": "compute_rg", "after_write": "_flush",
+              "before_checkpoint": "_checkpoint_payload"}[failure]
     original = getattr(streaming, target)
     def interrupted(*a, **k):
         nonlocal calls
@@ -91,8 +106,19 @@ def test_mixed_restart_and_offline_finalization(tmp_path, monkeypatch, chunk, fa
     assert any("density_1d/protein" in path for path in actual)
     assert any("density_1d/lipid" in path for path in actual)
     assert any("sdc4_mechanisms" in path for path in actual)
+    assert any("solvation" in path for path in actual)
     for path in expected:
+        if path.endswith("extensions/solvation/shell_stability.parquet"):
+            # This diagnostic intentionally treats processing chunks as
+            # time windows, so its sample count changes with chunk_frames.
+            assert set(actual[path].columns) == set(expected[path].columns)
+            assert actual[path].chunks_total.eq((4+chunk-1)//chunk).all()
+            assert expected[path].chunks_total.eq(2).all()
+            continue
         pd.testing.assert_frame_equal(actual[path], expected[path], check_exact=False, rtol=1e-9, atol=1e-9)
+    for chain in ("A", "B"):
+        relative = f"test/rep1/profiles/residue_membrane_distance/{chain}/distance_matrix_A.npy"
+        np.testing.assert_array_equal(np.load(clean/relative), np.load(resumed/relative))
     table = actual["test/rep1/summary/timeseries.parquet"]
     assert len(table) == 4 and table.time_ps.is_unique and table.time_ps.is_monotonic_increasing
     np.testing.assert_allclose(table.time_ps, [0., 2., 4., 6.], rtol=1e-6, atol=1e-6)
@@ -119,3 +145,151 @@ def test_invalid_persisted_times_fail_before_archiving_existing_results(tmp_path
                                 state=SimpleNamespace(config_hash="bad"), phase="statistics")
     assert previous.read_text() == "existing valid results"
     assert not (tmp_path/".archives").exists()
+
+
+def _bytes_snapshot(root):
+    return {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in root.rglob("*") if p.is_file()}
+
+
+@pytest.mark.parametrize("relative,damage", [
+    ("cache/fused_membrane/lipid_enrichment/part-000000.parquet", "delete"),
+    ("cache/sdc4_mechanisms/part-000000.parquet", "drop_frame"),
+    ("cache/sdc4_mechanisms/part-000000.parquet", "duplicate_frame"),
+    ("cache/sdc4_mechanisms/map-000000.npz", "corrupt"),
+    ("profiles/density_1d/protein/frames/protein__part-000000.npz", "delete"),
+    ("cache/fused_distance/A/part-000000.npz", "delete"),
+    ("cache/solvation/counts-000000.parquet", "corrupt"),
+])
+def test_damaged_committed_observer_chunk_fails_before_rewriting_or_pruning(tmp_path, relative, damage):
+    rep, cfg = _project(tmp_path, 2)
+    root = tmp_path/"results"
+    streaming.run_streaming_pass(rep, cfg, root, "mixed-integrity")
+    repout = root/"test/rep1"
+    path = repout/relative
+    assert path.exists()
+    if damage == "delete":
+        path.unlink()
+    elif damage == "corrupt":
+        path.write_bytes(b"corrupt committed array")
+    else:
+        data = pd.read_parquet(path)
+        data = data.iloc[:1] if damage == "drop_frame" else pd.concat([data.iloc[:1]]*2)
+        data.to_parquet(path, index=False)
+    # This is uncommitted and must survive an unsafe restart for diagnosis.
+    orphan = repout/"cache/sdc4_mechanisms/part-999999.parquet"
+    orphan.write_bytes(b"uncommitted, preserve on failure")
+    before = _bytes_snapshot(repout)
+    with pytest.raises(RuntimeError, match="committed artifact"):
+        streaming.run_streaming_pass(rep, cfg, root, "mixed-integrity")
+    assert _bytes_snapshot(repout) == before
+
+
+def test_checkpoint_copied_to_other_replica_is_rejected(tmp_path):
+    rep, cfg = _project(tmp_path, 2)
+    root = tmp_path/"results"
+    streaming.run_streaming_pass(rep, cfg, root, "same-project-hash")
+    destination = root/"test/rep2"
+    shutil.copytree(root/"test/rep1", destination, copy_function=shutil.copy2)
+    before = _bytes_snapshot(destination)
+    with pytest.raises(RuntimeError, match="replicate identity"):
+        streaming.run_streaming_pass(replace(rep, label="rep2"), cfg, root, "same-project-hash")
+    assert _bytes_snapshot(destination) == before
+
+
+@pytest.mark.parametrize("damage", ["duplicate_chunk", "missing_checkpoint", "legacy", "counter_rollback",
+                                  "fractional_counter", "accumulator_count", "group_count", "density_count", "counter_range"])
+def test_checkpoint_integrity_fails_without_rewriting_existing_outputs(tmp_path, damage):
+    rep, cfg = _project(tmp_path, 2)
+    root = tmp_path/"results"
+    streaming.run_streaming_pass(rep, cfg, root, "integrity")
+    repout = root/"test/rep1"
+    checkpoint = repout/"cache/stream_checkpoint.npz"
+    if damage == "duplicate_chunk":
+        source = repout/"cache/sdc4_mechanisms/part-000000.parquet"
+        shutil.copy2(source, source.with_name("part-000000-copy.parquet"))
+    elif damage == "missing_checkpoint":
+        checkpoint.unlink()
+        # Specialized parts alone must not be pruned as a fresh run.
+        for p in (repout/"raw").glob("*part-*.parquet"):
+            p.unlink()
+    else:
+        with np.load(checkpoint, allow_pickle=False) as cp:
+            payload = {key: cp[key] for key in cp.files}
+        if damage == "legacy":
+            del payload["artifact_inventory_version"]
+        elif damage == "fractional_counter":
+            payload["processed"] = np.asarray(4.25)
+        elif damage == "accumulator_count":
+            payload["w_n"] = np.asarray(3)
+        elif damage == "group_count":
+            payload["g_A_n"] = np.asarray(3)
+        elif damage == "density_count":
+            payload["density_protein_0_frames"] = np.asarray(3)
+        elif damage == "counter_range":
+            payload["next_part"] = np.asarray(10**12)
+        else:
+            payload.update(processed=np.asarray(2), next_part=np.asarray(1))
+        np.savez_compressed(checkpoint, **payload)
+    before = _bytes_snapshot(repout)
+    with pytest.raises(RuntimeError, match="artifact|Legacy|counter|accumulator"):
+        streaming.run_streaming_pass(rep, cfg, root, "integrity")
+    assert _bytes_snapshot(repout) == before
+
+
+def test_offline_finalization_retains_unequal_replica_lengths_and_missing_values(tmp_path, monkeypatch):
+    cfg = deepcopy(DEFAULTS)
+    cfg["systems"] = {}
+    for system, lengths, means in (("a", [3, 5], [0., 4.]), ("b", [4, 6], [2., 10.])):
+        cfg["systems"][system] = {"topology": "unavailable.pdb", "replicates": []}
+        for i, (length, mean) in enumerate(zip(lengths, means), 1):
+            label = f"rep{i}"
+            cfg["systems"][system]["replicates"].append({"label": label, "trajectory": "unavailable.dcd"})
+            folder = tmp_path/system/label/"summary"
+            folder.mkdir(parents=True)
+            pd.DataFrame({
+                "time_ps": np.arange(length)*10.,
+                "value_A": np.arange(length)-(length-1)/2+mean,
+                "unavailable_species": np.nan,
+            }).to_parquet(folder/"timeseries.parquet")
+    cfg["statistics"].update(bootstrap_draws=100, families={"profiles": False, "interactions": False, "solvation_rdfs": False})
+    def forbidden(*a, **k):
+        raise AssertionError("offline finalization reopened a trajectory")
+    monkeypatch.setattr(mda, "Universe", forbidden)
+    runner.finalize_project(tmp_path/"unused.yaml", cfg=cfg, root=tmp_path,
+                            state=SimpleNamespace(config_hash="unequal"), phase="statistics")
+    folder = tmp_path/"project_summary/statistics/time_series"
+    rep = pd.read_parquet(folder/"replicate_statistics.parquet")
+    assert rep.set_index(["system", "replicate"]).n.to_dict() == {
+        ("a", "rep1"): 3, ("a", "rep2"): 5, ("b", "rep1"): 4, ("b", "rep2"): 6}
+    system = pd.read_parquet(folder/"system_statistics.parquet")
+    assert system.set_index("system")["mean"].to_dict() == {"a": 2., "b": 6.}
+    assert system.n_replicates.eq(2).all()
+    assert set(system.metric) == {"value_A"}  # missing values did not become physical zeros
+    for system in ("a", "b"):
+        for label in ("rep1", "rep2"):
+            assert pd.read_parquet(tmp_path/system/label/"summary/timeseries.parquet").unavailable_species.isna().all()
+
+
+@pytest.mark.parametrize("damage", ["replicate_swap", "dropped_summary_frame"])
+def test_finalization_rejects_checkpoint_summary_identity_or_frame_mismatch(tmp_path, damage):
+    rep, cfg = _project(tmp_path, 2)
+    root = tmp_path/"results"
+    streaming.run_streaming_pass(rep, cfg, root, "summary-integrity")
+    repout = root/"test/rep1"
+    runner.summarize_replicate(repout, cfg)
+    if damage == "replicate_swap":
+        shutil.copytree(repout, root/"test/rep2", copy_function=shutil.copy2)
+        cfg["systems"]["test"]["replicates"].append({"label": "rep2", "trajectory": str(rep.trajectory)})
+        diagnostic = "replicate identity"
+    else:
+        path = repout/"summary/timeseries.parquet"
+        pd.read_parquet(path).iloc[:-1].to_parquet(path, index=False)
+        diagnostic = "frame count"
+    previous = root/"project_summary/keep.txt"
+    previous.parent.mkdir(); previous.write_text("previous results")
+    before = _bytes_snapshot(root)
+    with pytest.raises(RuntimeError, match=diagnostic):
+        runner.finalize_project(tmp_path/"unused.yaml", cfg=cfg, root=root,
+                                state=SimpleNamespace(config_hash="summary-integrity"), phase="statistics")
+    assert _bytes_snapshot(root) == before

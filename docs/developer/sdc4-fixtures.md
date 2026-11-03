@@ -56,15 +56,62 @@ contracts from the single-site contact oracle here.
 
 `test_mixed_observer_restart.py` writes eight PDB/DCD frames, samples stride 2,
 and compares a clean chunk-size-3 run against chunk sizes 1 and 2 interrupted
-during a frame or after a raw chunk write. RMSD/RMSF/Rg, bilayer normals,
-lipid enrichment, two named density runs and SDC4 share the pass. All final
+during a frame, after a raw chunk write, or after every observer flush but
+before checkpoint replacement. RMSD/RMSF/Rg, chain-specific groups,
+bilayer normals, lipid enrichment, two named density runs, two named
+residue–membrane distance runs, solvation kinetics and SDC4 share the pass. Final
 Parquet tables, schemas and statistics agree within rtol=atol=1e−9; lipid map
-arrays agree exactly. DCD times agree with [0,2,4,6] ps within 1e−6 because
+and residue–membrane distance arrays agree exactly. The solvation
+`shell_stability.parquet` diagnostic is intentionally chunk-dependent: it
+estimates cutoff stability over processing windows. Its chunk count is checked
+against the configured chunk size; it is not asserted equal across window sizes.
+Underlying counts, RDFs, episodes and statistics retain the parity requirement.
+DCD times agree with [0,2,4,6] ps within 1e−6 because
 the format stores a floating-point time conversion. Replica IDs are asserted.
 Inputs are deleted and Universe construction forbidden before consolidation
 and project statistics finalization. Invalid saved time axes fail before any
-previous project summary is archived. This does not simulate every possible
-specialized-cache corruption or substitute for six-replica production QA.
+previous project summary is archived. Unequal replica lengths preserve equal
+replica weighting, and unavailable species stay NaN in persisted raw summaries.
+This does not substitute for six-replica production QA.
+
+### Committed-artifact and replica integrity
+
+The existing atomic `cache/stream_checkpoint.npz` now includes an inventory
+version, `(system, replicate label)` identity, and relative file paths with
+size/mtime-nanosecond fingerprints. Entries are added for the actual files
+written at each committed chunk, including sparse contact-event files,
+aligned coordinates, named density/distance runs, fused extensions, solvation,
+lipid matrices and SDC4 maps. The checkpoint and scientific output formats
+remain NPZ/Parquet; there is no additional sidecar or dependency.
+
+Resume validates identity and fingerprints before constructing observers or
+pruning uncommitted files. Missing/modified artifacts and inserted duplicate
+committed chunks raise an actionable error and preserve existing file bytes.
+An incomplete or legacy checkpoint without this inventory is rejected rather
+than silently claiming complete observer coverage. Integer counter types and
+agreement between processed frames and global/group/density accumulator
+counts are also checked before pruning. Once validation succeeds, all owned
+numbered uncommitted artifacts, including density frames and temporary map
+files, are discarded for replay; unrelated raw files are preserved.
+
+This is metadata freshness verification, **not a content checksum**. It cannot
+detect bit rot or edits preserving both file size and mtime. Recording and
+checking inventories enumerate filenames and read filesystem metadata, without
+scanning large scientific tables or rereading trajectories. Inventory size
+scales with the number of chunk files, not atom/event count. Serialized
+inventories are sorted; numerical estimators and RNG draws are unchanged.
+
+Migration: completed legacy results still support offline finalization and
+reporting. For an interrupted legacy run, preserve its directory and start
+fresh output with the current version; a checkpoint lacking the inventory
+cannot establish which specialized files were committed. Moving/copying a
+checkpoint to another replica label is rejected even with a shared project
+configuration hash. No existing ARC job or saved product is modified here.
+Offline finalization also checks checkpoint identity when available and checks
+that summary row count agrees with its processed-frame counter, before archiving
+an earlier project summary. Cached trajectories are never reopened. Legacy
+summaries without a checkpoint remain readable; this does not invent missing
+replica provenance for them.
 
 ## SASA and statistical references
 
