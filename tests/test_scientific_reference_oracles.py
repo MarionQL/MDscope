@@ -350,6 +350,37 @@ def test_real_sasa_periodic_occluder_and_target_only_reduction():
     assert sasa_residue_rows(state,0.)[0][-1]==pytest.approx(expected,rel=.02)
 
 
+@pytest.mark.parametrize("element,radius", [("O", 1.52), ("P", 1.80)])
+def test_real_sasa_heterogeneous_lipid_cap_and_invalid_periodic_box(element, radius):
+    pytest.importorskip("freesasa")
+    from mdscope.observables.sasa import sasa_instances, sasa_residue_rows
+    u = mda.Universe.empty(2, n_residues=2, atom_resindex=[0, 1], trajectory=True)
+    for key, values in (("names", ["CA", element]), ("elements", ["C", element]),
+                        ("resnames", ["ALA", "POPC"]), ("resids", [7, 99])):
+        u.add_TopologyAttr(key, values)
+    u.dimensions = [20., 20., 20., 90., 90., 90.]
+    u.atoms.positions = [[1., 0., 0.], [17., 0., 0.]]
+    cfg = {"selections": {"protein": "index 0"}, "analyses": {"sasa": {
+        "enabled": True, "target_selection": "index 0", "occluder_selection": "all",
+        "periodic": True, "algorithm": "shrake_rupley", "n_points": 20000,
+        "probe_radius_A": 1.4,
+    }}}
+    state = sasa_instances(u, cfg)["default"]
+    # Intersection plane of unequal probe-inflated spheres at d=4 Å.
+    # Accessible target area = sphere area minus cap area, in nm².
+    R, r, d = 3.1, radius+1.4, 4.
+    cap_height = R - (d*d + R*R - r*r)/(2*d)
+    expected = (4*np.pi*R*R - 2*np.pi*R*cap_height)/100.
+    rows = sasa_residue_rows(state, 0.)
+    assert len(rows) == 1 and rows[0][1] == 0
+    assert rows[0][-1] == pytest.approx(expected, abs=.006)
+    u.atoms[1].position += [20., -20., 20.]
+    assert sasa_residue_rows(state, 0.)[0][-1] == pytest.approx(expected, abs=.006)
+    u.dimensions = [0., 20., 20., 90., 90., 90.]
+    with pytest.raises(ValueError, match="valid box dimensions"):
+        sasa_residue_rows(state, 0.)
+
+
 def test_sasa_burial_subtraction_and_exact_reference_identity(tmp_path):
     from mdscope.observables.sasa import write_sasa_burial
     root=tmp_path/'profiles/sasa';(root/'environment').mkdir(parents=True)

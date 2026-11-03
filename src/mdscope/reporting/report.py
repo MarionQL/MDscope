@@ -845,7 +845,7 @@ def _make_bundle(root, pdf, system_repouts, options, cfg=None):
             archive.write(pdf, arcname=pdf.name)
             # Complete machine-readable figure manifest and coverage audit.
             figures=figure_inventory(root,system_repouts,cfg)
-            coverage=report_coverage(root,system_repouts)
+            coverage=report_coverage(root,system_repouts,cfg)
             archive.writestr("project_summary/report/figure_manifest.csv",
                              figure_inventory(root,system_repouts,cfg,include_rejected=True).to_csv(index=False))
             archive.writestr("project_summary/report/figure_coverage.csv",
