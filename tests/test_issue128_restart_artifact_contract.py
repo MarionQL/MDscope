@@ -7,8 +7,8 @@ import pandas as pd
 from mdscope.pipeline.runner import RunState
 
 
-def test_runstate_rejects_failed_or_foreign_marker(tmp_path):
-    state = RunState(tmp_path, "expected")
+def test_runstate_accepts_completed_legacy_marker_regardless_of_hash(tmp_path):
+    state = RunState(tmp_path)
     state.marker("stage").write_text(json.dumps({
         "config_hash": "expected", "status": "failed"
     }))
@@ -16,21 +16,21 @@ def test_runstate_rejects_failed_or_foreign_marker(tmp_path):
     state.marker("stage").write_text(json.dumps({
         "config_hash": "other", "status": "complete"
     }))
-    assert not state.complete("stage")
+    assert state.complete("stage")
     state.marker("stage").write_text("broken JSON")
     assert not state.complete("stage")
-    state.mark("stage", {"status": "failed", "config_hash": "other"})
+    state.mark("stage", {"status": "failed"})
     assert state.complete("stage")
 
 
 def test_summary_marker_requires_inventory_and_valid_parquet(tmp_path):
-    state = RunState(tmp_path, "expected")
+    state = RunState(tmp_path)
     path = tmp_path / "replica" / "summary" / "timeseries.parquet"
     path.parent.mkdir(parents=True)
     pd.DataFrame({"time_ps": [0.0, 10.0], "value": [1., 2.]}).to_parquet(path)
     state.mark("summary")
-    # Historical markers cannot establish which files were validated.
-    assert not state.complete("summary", required_artifacts=(path,))
+    # Historical markers can reuse readable expected products.
+    assert state.complete("summary", required_artifacts=(path,))
     state.mark("summary", {"artifacts": {str(path): path.stat().st_size}})
     assert state.complete("summary", required_artifacts=(path,))
 
@@ -47,7 +47,7 @@ def test_summary_marker_requires_inventory_and_valid_parquet(tmp_path):
 
 
 def test_summary_marker_rejects_missing_secondary_artifact(tmp_path):
-    state = RunState(tmp_path, "expected")
+    state = RunState(tmp_path)
     summary = tmp_path / "summary"
     summary.mkdir()
     whole = summary / "timeseries.parquet"

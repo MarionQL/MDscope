@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 from datetime import datetime, timezone
-from ..config import ensure_dir, config_hash
+from ..config import ensure_dir
 from .report_inventory import _summary_inventory, _sample_frame_table, _metric_groups, report_table_inventory
-from .figure_inventory import figure_inventory
+from .figure_inventory import figure_inventory, saved_statistics_methods
 from .pdf import _build_pdf, _maps_figure
 from .bundle import _make_bundle
 
@@ -30,12 +30,12 @@ def generate_report(cfg, root, system_repouts=None, force=False):
     out = ensure_dir(root / "project_summary" / "report")
     from ..config import atomic_json
     provenance = {
-        'report_config_hash': config_hash(cfg), 'sections': options.get('sections',{}),
+        'report_options': options, 'sections': options.get('sections',{}),
         'sampling': _summary_inventory(root,cfg,system_repouts).to_dict('records'),
         'statistics_manifest': str(root/'project_summary/statistics/manifest.json'),
-        'statistics_methods': cfg.get('statistics', {}),
+        'statistics_methods': saved_statistics_methods(root),
         'source_analysis_config_status': 'see original run/checkpoint metadata; current rendering config does not prove original trajectory parameters',
-        'figure_source_policy': 'PNG content hash plus source path/size/mtime fingerprint; unchanged legacy PNGs are unverified',
+        'figure_source_policy': 'Readable PNG with available recorded sources where known; older PNGs may have unverified provenance',
     }
     # Render everything in isolation. A failed PDF or bundle export must not
     # replace a previous successful PDF, ZIP, or its provenance sidecars.
@@ -59,7 +59,7 @@ def generate_report(cfg, root, system_repouts=None, force=False):
         if bundle is None and previous_bundle.exists():
             from ..core.persistence import archive_output
             archive_output(previous_bundle, root/'.archives/report/bundles',
-                           config_hash(cfg)+'.zip')
+                           'previous.zip')
         for path in stage.iterdir():
             path.replace(out/path.name)
     return {"pdf": str(out/pdf.name), "bundle": str(out/bundle.name) if bundle else None}

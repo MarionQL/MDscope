@@ -144,24 +144,13 @@ remain honored. Diffusion summaries still compute persisted coefficients when
 only their *plot* is disabled. Shared-state numerical modeling remains governed
 by its analysis setting, independently of SDC4/shared-state plot switches.
 
-The plotting finalization phase stamps **only newly written PNGs** in
-`project_summary/report/figure_provenance.json`. Offline PDF and ZIP generation
-reject unverified legacy PNGs, disabled families/kinds, mismatched render
-configurations, changed source tables, missing sources and modified images.
-The complete figure manifest retains rejection reasons, source metric/units,
-generation configuration hash, timestamp, family-level source paths and actual
-replica frame/time coverage. PNGs have SHA256 content hashes; source freshness
-uses path/size/mtime fingerprints, explicitly not content hashes. This keeps
-validation cheap without scanning multi-million-row interaction tables.
-
-Migration: regenerate the plotting phase to obtain verified figures before
-exporting an old result directory. Files are not deleted. Changing PDF section
-selection alone does not invalidate figures; changing source code or plot/analysis/statistical
-settings requires rerendering. Do not stamp an old directory by hand to bypass
-source verification. Original trajectory-parameter provenance remains in the
-original checkpoints/run records; the current rendering configuration does not
-prove the original analysis configuration. This limitation is explicit in
-`report_provenance.json`, rather than inventing provenance for legacy tables.
+Plotting records source paths, sampling, units and generation time for newly
+written PNGs in `project_summary/report/figure_provenance.json`. Offline PDF
+and ZIP export can use readable older PNGs and marks unknown provenance as
+`legacy_unverified`. It excludes disabled families, corrupt PNGs and figures
+whose recorded sources are missing. Changing code or render settings does
+not force regeneration. A readable figure and available sources do not prove
+that the figure was made from the current versions of those sources.
 
 PDF tables use readable SDC4 labels and units while the bundle preserves raw
 identifiers. `Unavailable` denotes missing/nonfinite data; physical zeros stay
@@ -281,16 +270,12 @@ inventory, PDF presentation and ZIP export now have separate modules. ReportLab
 is imported only when rendering a PDF; label formatting and bundle code do not
 import plotting or trajectory readers merely to load those modules.
 
-New statistics manifests record the finalization analysis-config hash and a
-path/size/mtime fingerprint of persisted replicate inputs. Changed/missing
-inputs, changed statistical or analysis settings, malformed manifests and
-unfinished statistics exclude those statistical tables from both the PDF and
-current bundle exports. This is a cheap freshness check, not a content digest
-or proof of the original trajectory parameters. Legacy tables without this
-lineage remain readable, explicitly marked `legacy_unverified` in
-`table_manifest.csv` and in the scalar-results section. Regenerate statistics
-to establish current lineage; do not edit manifests to bless old results.
-Copying inputs while changing their mtimes also requires regeneration.
+Statistics manifests record completion, enabled families and methods. Offline
+reports use readable persisted tables and the methods recorded with them.
+Missing method metadata is labeled unverified, and an unrecorded confidence
+level is left unspecified. Incomplete or malformed manifests are excluded.
+To apply new statistical settings, explicitly rerun statistics. A software
+upgrade or changed report configuration does not require that rerun.
 
 `table_manifest.csv` records numerical table eligibility;
 `report_content.json` records displayed file-backed figures and project tables.

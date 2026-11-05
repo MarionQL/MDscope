@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from PIL import Image
 from mdscope.reporting.figure_inventory import (
-    figure_snapshot,record_generated_figures,figure_inventory,figure_status)
+    record_generated_figures,figure_inventory,figure_status)
 from mdscope.reporting.plotting import plot_interactions, _metric_meta
 from mdscope.reporting.report import generate_report
 
@@ -22,32 +22,28 @@ def _fixture(tmp_path):
     return cfg,{'condition':[rep]},fig
 
 
-def test_unverified_stale_disabled_and_changed_figures_are_distinct(tmp_path):
-    cfg,paths,fig=_fixture(tmp_path)
-    assert figure_status(fig,cfg,tmp_path,paths)=='unverified'
-    record_generated_figures(cfg,tmp_path,paths,{})
-    assert figure_status(fig,cfg,tmp_path,paths)=='valid'
-    changed=deepcopy(cfg);changed['plots']['families']={'time_series':False}
-    assert figure_status(fig,changed,tmp_path,paths)=='disabled'
-    changed=deepcopy(cfg);changed['trajectory']={'stride':4}
-    assert figure_status(fig,changed,tmp_path,paths)=='stale_config'
-    for key, value in [('time', {'dt_ps': 20.}), ('selections', {'protein': 'segid B'})]:
-        changed = deepcopy(cfg); changed[key] = value
-        assert figure_status(fig,changed,tmp_path,paths)=='stale_config'
-    Image.new('RGB',(50,50),'red').save(fig)
-    assert figure_status(fig,cfg,tmp_path,paths)=='changed_figure'
-    before=figure_snapshot(tmp_path,paths)
-    record_generated_figures(cfg,tmp_path,paths,before)
-    assert figure_status(fig,cfg,tmp_path,paths)=='changed_figure' # unchanged PNG is not blessed
+def test_readable_older_figures_survive_render_settings_changes(tmp_path):
+    cfg, paths, fig = _fixture(tmp_path)
+    assert figure_status(fig, cfg, tmp_path, paths) == 'legacy_unverified'
+    record_generated_figures(cfg, tmp_path, paths, {})
+    assert figure_status(fig, cfg, tmp_path, paths) == 'valid'
+    changed = deepcopy(cfg)
+    changed['trajectory'] = {'stride': 4}
+    assert figure_status(fig, changed, tmp_path, paths) == 'valid'
+    changed['plots']['families'] = {'time_series': False}
+    assert figure_status(fig, changed, tmp_path, paths) == 'disabled'
+    fig.write_bytes(b'invalid PNG')
+    assert figure_status(fig, cfg, tmp_path, paths) == 'invalid_figure'
 
 
-def test_source_change_and_missing_source_invalidate_figure(tmp_path):
-    cfg,paths,fig=_fixture(tmp_path);record_generated_figures(cfg,tmp_path,paths,{})
-    source=paths['condition'][0]/'summary/timeseries.parquet'
-    pd.DataFrame({'time_ps':[0.,10.],'rmsd_A':[7.,9.]}).to_parquet(source)
-    assert figure_status(fig,cfg,tmp_path,paths)=='stale_source'
+def test_source_rewrite_keeps_figure_eligible_but_missing_source_does_not(tmp_path):
+    cfg, paths, fig = _fixture(tmp_path)
+    record_generated_figures(cfg, tmp_path, paths, {})
+    source = paths['condition'][0] / 'summary/timeseries.parquet'
+    pd.DataFrame({'time_ps': [0., 10.], 'rmsd_A': [7., 9.]}).to_parquet(source)
+    assert figure_status(fig, cfg, tmp_path, paths) == 'valid'
     source.unlink()
-    assert figure_status(fig,cfg,tmp_path,paths)=='missing_source'
+    assert figure_status(fig, cfg, tmp_path, paths) == 'missing_source'
 
 
 def test_disabled_interaction_family_never_reads_high_cardinality_data(tmp_path,monkeypatch):
@@ -67,13 +63,13 @@ def test_excluded_interaction_kind_is_filtered_before_read(tmp_path,monkeypatch)
     assert seen==[{'lipid_hydrogen_bonds'}]
 
 
-def test_pdf_bundle_excludes_unverified_png_and_preserves_auditable_rejection(tmp_path):
+def test_pdf_bundle_includes_readable_legacy_png_with_audit_status(tmp_path):
     cfg,paths,fig=_fixture(tmp_path)
     result=generate_report(cfg,tmp_path,paths)
     with zipfile.ZipFile(result['bundle']) as z:
-        assert str(fig.relative_to(tmp_path)) not in z.namelist()
+        assert str(fig.relative_to(tmp_path)) in z.namelist()
         manifest=pd.read_csv(z.open('project_summary/report/figure_manifest.csv'))
-        assert manifest.status.tolist()==['unverified']
+        assert manifest.status.tolist()==['legacy_unverified']
     record_generated_figures(cfg,tmp_path,paths,{})
     result=generate_report(cfg,tmp_path,paths)
     with zipfile.ZipFile(result['bundle']) as z:

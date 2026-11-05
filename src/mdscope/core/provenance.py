@@ -8,7 +8,6 @@ import subprocess
 import sys
 import time
 from typing import Any
-from pathlib import Path
 
 def config_hash(obj: Any) -> str:
     return hashlib.sha256(json.dumps(obj, sort_keys=True, default=str).encode()).hexdigest()[:16]
@@ -32,16 +31,3 @@ def environment_metadata() -> dict[str, Any]:
         "mdanalysis": mda.__version__,
         "git_commit": commit,
     }
-
-
-
-def package_code_hash() -> str:
-    """Hash package source so restart markers invalidate after code edits."""
-    digest = hashlib.sha256()
-    package_dir = Path(__file__).resolve().parent.parent
-    for path in sorted(package_dir.rglob("*.py")):
-        digest.update(path.relative_to(package_dir).as_posix().encode("utf-8"))
-        digest.update(path.read_bytes())
-    return digest.hexdigest()[:16]
-
-

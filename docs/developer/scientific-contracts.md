@@ -312,7 +312,6 @@ production effect sizes, convergence or biological significance. The expanded
 real smoke test writes `matched_local_impact.json` alongside mechanism tables.
 
 Restart validation compares corrected specificity and both lipid residence
-tables after interruption and clean execution. Production run hashes include
-package source: do not resume pre-correction chunks under a different code
-hash or mix old/new schemas manually. Recompute into a fresh output directory
-when moving from historical production results to the corrected estimator.
+tables after interruption and clean execution. Use a fresh output directory when
+recomputing historical results with the corrected estimator. An old output may
+remain structurally readable even when it predates a scientific correction.

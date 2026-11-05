@@ -6,16 +6,9 @@ from .interactions import analyze_interactions
 from .solvation import analyze_solvation_rdfs
 
 
-def analysis_config_hash(cfg):
-    from ..config import config_hash
-    return config_hash({k: cfg.get(k) for k in
-                        ('analyses', 'trajectory', 'time', 'selections', 'systems')})
-
-
-def input_fingerprint(root, replicate_paths):
-    """Metadata-only identity of persisted inputs; never reopen trajectories."""
+def _input_snapshot(root, replicate_paths):
+    """Detect concurrent edits during statistics without gating future reads."""
     from pathlib import Path
-    from ..config import config_hash
     root = Path(root)
     records = []
     for relative in replicate_paths:
@@ -28,36 +21,28 @@ def input_fingerprint(root, replicate_paths):
                     continue  # statistics outputs, not inputs
                 stat = path.stat()
                 records.append((str(path.relative_to(root)) if path.is_relative_to(root) else str(path.resolve()), stat.st_size, stat.st_mtime_ns))
-    return config_hash(records)
+    return records
 
 
 def analyze_project(cfg, root, system_repouts):
-    from ..config import atomic_json, config_hash, statistics_family_config
+    from ..config import atomic_json, statistics_family_config
     from ..core.persistence import archive_output
     from pathlib import Path
-    import json
     import os
     families = ("time_series", "profiles", "interactions", "solvation_rdfs")
     dest = Path(root) / "project_summary/statistics"
-    previous_hash = "legacy"
     if (dest / "manifest.json").exists():
-        try:
-            previous_hash = json.loads((dest / "manifest.json").read_text()).get("statistics_hash", "legacy")
-        except (ValueError, OSError):
-            previous_hash = "unreadable"
         archive_output(dest / "manifest.json", Path(root) / ".archives/statistics/manifests",
-                       str(previous_hash) + ".json")
+                       "previous.json")
     manifest = {
-        "statistics_hash": config_hash(cfg.get("statistics", {})),
         "families": {name: "enabled" if statistics_family_config(cfg, name) is not None else "disabled"
                      for name in families},
         "methods": cfg.get("statistics", {}),
         "status": "running",
-        "analysis_config_hash": analysis_config_hash(cfg),
         "replicate_paths": [os.path.relpath(rep, root)
                             for reps in system_repouts.values() for rep in reps],
     }
-    manifest['input_fingerprint'] = input_fingerprint(root, manifest['replicate_paths'])
+    inputs_before = _input_snapshot(root, manifest['replicate_paths'])
     atomic_json(dest / "manifest.json", manifest)
     for family, folder, analyze in (
         ("time_series", "time_series", analyze_time_series),
@@ -67,9 +52,9 @@ def analyze_project(cfg, root, system_repouts):
     ):
         if (dest / folder).exists():
             archive_output(dest / folder, Path(root) / ".archives/statistics" / folder,
-                           str(previous_hash))
+                           "previous")
         analyze(cfg, root, system_repouts)
-    if manifest['input_fingerprint'] != input_fingerprint(root, manifest['replicate_paths']):
+    if inputs_before != _input_snapshot(root, manifest['replicate_paths']):
         raise RuntimeError('Persisted statistics inputs changed during finalization; retry on stable outputs')
     manifest["status"] = "complete"
     atomic_json(dest / "manifest.json", manifest)

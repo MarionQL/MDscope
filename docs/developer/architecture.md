@@ -105,8 +105,7 @@ package consistently.
 
 - `reporting/report_inventory.py`: persisted-table sampling/grouping and shared
   table-eligibility audit; no renderer or trajectory reads.
-- `reporting/figure_inventory.py`: image/source freshness, duplicate detection
-  and coverage; uses core provenance hashing without importing the runner.
+- `reporting/figure_inventory.py`: readable figures, recorded source availability, duplicate detection and coverage.
 - `reporting/labels.py`: display labels shared by plots and PDF, without
   importing Matplotlib.
 - `reporting/pdf.py`: ReportLab layout and inline visual presentation.
@@ -117,6 +116,5 @@ package consistently.
   additional original Parquet members and table/content manifests are additive.
 
 Reusable CLI/programmatic topology validation resides in `core/validation.py`.
-Package source hashing belongs in `core/provenance.py`; the runner retains its
-imported name for existing callers. No estimator, observer, coordinate transform
+Reporting operates on persisted outputs. No estimator, observer, coordinate transform
 or trajectory pass is moved into reporting.

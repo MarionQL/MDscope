@@ -8,7 +8,6 @@ import zipfile
 import pandas as pd
 import pytest
 from pypdf import PdfReader
-from mdscope.config import config_hash
 from mdscope.reporting.report import generate_report
 from mdscope.reporting.figure_inventory import statistics_status
 from mdscope.statistics import analyze_project
@@ -23,34 +22,40 @@ def _statistical_fixture(root):
     return cfg, paths
 
 
-@pytest.mark.parametrize('damage,expected', [
-    ('running', 'incomplete'), ('settings', 'stale_config'),
-    ('analysis', 'stale_config'), ('source', 'stale_source'),
-    ('missing', 'stale_source'), ('malformed', 'invalid_manifest')])
-def test_stale_or_partial_statistics_never_enter_pdf_or_current_bundle(tmp_path, damage, expected):
+@pytest.mark.parametrize('damage,expected', [('running', 'incomplete'), ('malformed', 'invalid_manifest')])
+def test_partial_statistics_never_enter_pdf_or_current_bundle(tmp_path, damage, expected):
     cfg, paths = _statistical_fixture(tmp_path)
-    assert statistics_status(cfg,tmp_path,'time_series') == 'valid'
-    manifest = tmp_path/'project_summary/statistics/manifest.json'
+    manifest = tmp_path / 'project_summary/statistics/manifest.json'
     if damage == 'running':
-        data = json.loads(manifest.read_text()); data['status']='running'; manifest.write_text(json.dumps(data))
-    elif damage == 'settings': cfg['statistics']['ci']=.9
-    elif damage == 'analysis': cfg['trajectory']={'stride':7}
-    elif damage == 'malformed': manifest.write_text('broken json')
+        data = json.loads(manifest.read_text())
+        data['status'] = 'running'
+        manifest.write_text(json.dumps(data))
     else:
-        source = paths['condition'][0]/'summary/timeseries.parquet'
-        if damage == 'missing': source.unlink()
-        else: pd.DataFrame({'time_ps':[0.,10.], 'rmsd_A':[77.,88.]}).to_parquet(source)
-    assert statistics_status(cfg,tmp_path,'time_series') == expected
-    result = generate_report(cfg,tmp_path,paths)
+        manifest.write_text('broken json')
+    assert statistics_status(cfg, tmp_path, 'time_series') == expected
+    result = generate_report(cfg, tmp_path, paths)
     text = ' '.join(page.extract_text() for page in PdfReader(result['pdf']).pages)
-    assert 'Statistical inputs excluded: '+expected in text
+    assert 'Statistical inputs excluded: ' + expected in text
     with zipfile.ZipFile(result['bundle']) as archive:
         names = archive.namelist()
-        assert len(names)==len(set(names))
+        assert len(names) == len(set(names))
         assert not any('/time_series/system_statistics.' in name for name in names)
-        audit=pd.read_csv(archive.open('project_summary/report/table_manifest.csv'))
+        audit = pd.read_csv(archive.open('project_summary/report/table_manifest.csv'))
         assert expected in audit.status.tolist()
-        assert json.loads(archive.read('project_summary/report/report_provenance.json'))['report_config_hash']==config_hash(cfg)
+
+
+def test_old_statistics_use_recorded_methods_after_config_changes(tmp_path):
+    cfg, paths = _statistical_fixture(tmp_path)
+    manifest = tmp_path / 'project_summary/statistics/manifest.json'
+    data = json.loads(manifest.read_text())
+    data.update(statistics_hash='old', analysis_config_hash='old', input_fingerprint='old')
+    manifest.write_text(json.dumps(data))
+    cfg['statistics']['ci'] = .90
+    cfg['trajectory'] = {'stride': 7}
+    assert statistics_status(cfg, tmp_path, 'time_series') == 'valid'
+    result = generate_report(cfg, tmp_path, paths)
+    text = ' '.join(page.extract_text() for page in PdfReader(result['pdf']).pages)
+    assert '95% CI' in text and '90% CI' not in text
 
 
 @pytest.mark.parametrize('stage', ['pdf', 'bundle'])
@@ -77,7 +82,7 @@ def test_current_bundle_preserves_full_parquet_and_current_sidecars(tmp_path):
         original=tmp_path/'project_summary/statistics/time_series/system_statistics.parquet'
         assert archive.read(str(original.relative_to(tmp_path)))==original.read_bytes()
         actual=json.loads(archive.read('project_summary/report/report_provenance.json'))
-        assert actual['report_config_hash']==config_hash(cfg)
+        assert actual['report_options']==cfg['report']
         assert len(archive.namelist())==len(set(archive.namelist()))
     text=' '.join(page.extract_text() for page in PdfReader(result['pdf']).pages)
     assert 'legacy/unverified' not in text
