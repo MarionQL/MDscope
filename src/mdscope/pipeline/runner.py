@@ -65,13 +65,33 @@ class RunState:
     def marker(self, key: str) -> Path:
         return self.root / f"{key}.json"
 
-    def complete(self, key: str) -> bool:
+    def complete(self, key: str, required_artifacts: tuple[Path, ...] | None = None) -> bool:
         path = self.marker(key)
         if not path.exists():
             return False
         try:
-            return json.loads(path.read_text()).get("config_hash") == self.config_hash
-        except Exception:
+            marker = json.loads(path.read_text())
+            if (not isinstance(marker, dict)
+                    or marker.get("status") != "complete"
+                    or marker.get("config_hash") != self.config_hash):
+                return False
+            if required_artifacts is None:
+                return True
+            # Legacy markers without an artifact inventory must be rebuilt.
+            recorded = marker.get("artifacts")
+            if not isinstance(recorded, dict):
+                return False
+            for artifact in required_artifacts:
+                saved_size = recorded.get(str(artifact))
+                if (not isinstance(saved_size, int) or isinstance(saved_size, bool)
+                        or not artifact.is_file() or artifact.stat().st_size != saved_size):
+                    return False
+                # Reading the Parquet footer catches truncated/invalid outputs
+                # without loading long time series into memory.
+                if artifact.suffix == ".parquet":
+                    pd.read_parquet(artifact, columns=[])
+            return set(recorded) == {str(p) for p in required_artifacts}
+        except (OSError, ValueError, TypeError, ImportError, EOFError, BadZipFile):
             return False
 
     def mark(self, key: str, extra=None):
@@ -378,10 +398,25 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
             result = run_multi_origin_diffusion(rep, cfg, repout)
             state.mark(prefix + "-multi-origin-msd", result)
             stage_timings.append({"stage": "multi-origin-msd", "seconds": perf_counter() - t0})
-    if not state.complete(prefix + "-summary"):
+    summary_paths = tuple(
+        repout / "summary" / name
+        for name in ("timeseries.parquet", "group_timeseries.parquet")
+        if (repout / "summary" / name).is_file()
+    )
+    # A summary marker is reusable only when its recorded outputs still
+    # exist and have valid Parquet footers. Do not infer completion from
+    # the marker or from one plausible file alone.
+    if not state.complete(prefix + "-summary", required_artifacts=summary_paths):
         t0 = perf_counter()
         summarize_replicate(repout, cfg)
-        state.mark(prefix + "-summary")
+        summary_paths = tuple(
+            repout / "summary" / name
+            for name in ("timeseries.parquet", "group_timeseries.parquet")
+            if (repout / "summary" / name).is_file()
+        )
+        state.mark(prefix + "-summary", {
+            "artifacts": {str(p): p.stat().st_size for p in summary_paths}
+        })
         stage_timings.append({"stage": "summary", "seconds": perf_counter() - t0})
     if stage_timings:
         atomic_json(repout / "stage_timings.json", {
