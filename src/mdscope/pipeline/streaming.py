@@ -95,6 +95,35 @@ def _restore_checkpoint(checkpoint, cfg_hash, rmsf, groups, densities, membrane)
         return processed, int(cp["next_part"])
 
 
+def validate_stream_inventory(rep, repout: Path, cfg_hash: str) -> dict:
+    """Validate committed chunks without opening a topology or trajectory."""
+    checkpoint = repout / "cache" / "stream_checkpoint.npz"
+    try:
+        with np.load(checkpoint, allow_pickle=False) as cp:
+            if str(cp["config_hash"].item()) != cfg_hash:
+                raise ValueError("checkpoint does not match current run")
+            if "artifact_inventory_version" not in cp:
+                raise ValueError("Legacy checkpoint has no committed artifact inventory; archive this replicate before rerunning")
+            if int(cp["artifact_inventory_version"].item()) != 1:
+                raise ValueError("Unsupported committed artifact inventory version")
+            if not np.array_equal(cp["replicate_identity"], [rep.system, rep.label]):
+                raise ValueError("Checkpoint replicate identity does not match requested system/label")
+            artifacts = json.loads(str(cp["artifact_inventory"].item()))
+            counter = cp["next_part"]
+            if counter.shape != () or counter.dtype.kind not in "iu":
+                raise ValueError("Invalid checkpoint part counter")
+            next_part = int(counter)
+        if not isinstance(artifacts, dict) or not 0 < next_part <= len(artifacts):
+            raise ValueError("Invalid committed artifact counters")
+        validate_committed_parts(repout / "raw", next_part)
+        validate_artifact_inventory(repout, artifacts, next_part)
+    except (OSError, ValueError, KeyError, EOFError, TypeError, IndexError, BadZipFile) as exc:
+        raise RuntimeError(
+            f"Invalid streaming checkpoint {checkpoint}: {exc}. Existing output was preserved."
+        ) from exc
+    return artifacts
+
+
 def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
     # Protein, membrane, density, salt-bridge, and ligand-contact
     # calculations share one trajectory pass.
@@ -107,26 +136,7 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
     # Validate persisted file identity before constructors, output writes or
     # orphan pruning. Config hashes are project-wide, not replica identities.
     if checkpoint.exists():
-        try:
-            with np.load(checkpoint, allow_pickle=False) as cp:
-                if str(cp["config_hash"].item()) != cfg_hash:
-                    raise ValueError("checkpoint does not match current run")
-                if "artifact_inventory_version" not in cp:
-                    raise ValueError("Legacy checkpoint has no committed artifact inventory; archive this replicate before rerunning")
-                if int(cp["artifact_inventory_version"].item()) != 1:
-                    raise ValueError("Unsupported committed artifact inventory version")
-                if not np.array_equal(cp["replicate_identity"], [rep.system, rep.label]):
-                    raise ValueError("Checkpoint replicate identity does not match requested system/label")
-                artifacts = json.loads(str(cp["artifact_inventory"].item()))
-                next_part = int(cp["next_part"])
-            if not isinstance(artifacts, dict) or not 0 < next_part <= len(artifacts):
-                raise ValueError("Invalid committed artifact counters")
-            validate_committed_parts(raw, next_part)
-            validate_artifact_inventory(repout, artifacts, next_part)
-        except (OSError, ValueError, KeyError, EOFError, TypeError, IndexError, BadZipFile) as exc:
-            raise RuntimeError(
-                f"Invalid streaming checkpoint {checkpoint}: {exc}. Existing output was preserved."
-            ) from exc
+        artifacts = validate_stream_inventory(rep, repout, cfg_hash)
     elif any(numbered_artifacts(repout)):
         raise RuntimeError(
             f"Unsafe streaming restart in {repout}: checkpoint is absent but numbered artifacts exist. "

@@ -40,7 +40,7 @@ from ..reporting.membrane_figures import plot_lipid_enrichment_matrix, plot_lipi
 from ..observables.residue_membrane_distance import run_residue_membrane_distance
 from ..observables.structure_profiles import postprocess_structure_profiles, run_structure_profiles
 from ..statistics import analyze_project
-from .streaming import run_streaming_pass
+from .streaming import run_streaming_pass, validate_stream_inventory
 from .fused_membrane import enabled_names as fused_enabled_names, run_fused_membrane
 from .fused_extensions import enabled_names as extension_enabled_names, run_fused_extensions
 from .fused_distance import enabled_names as distance_enabled_names, run_fused_distances
@@ -53,6 +53,19 @@ from ..registry import specialized_tasks,additional_time_series,fused_output,fus
 from ..observables.msd import summarize_diffusion, summarize_project_diffusion, summarize_project_multi_origin
 from ..observables.multi_origin_pipeline import run_multi_origin_diffusion
 from ..reporting.coupling_screen import screen_couplings
+
+
+def _check_artifact(path: Path) -> int:
+    """Check a required product using its metadata only."""
+    size = path.stat().st_size
+    if not path.is_file() or not size:
+        raise ValueError(f"Missing or empty artifact: {path}")
+    if path.suffix == ".parquet":
+        from pyarrow.parquet import read_metadata
+        read_metadata(path)
+    elif path.suffix == ".npy":
+        np.load(path, allow_pickle=False, mmap_mode="r")
+    return size
 
 
 class RunState:
@@ -83,13 +96,8 @@ class RunState:
                 return False
             for artifact in required_artifacts:
                 saved_size = recorded.get(str(artifact))
-                if (not isinstance(saved_size, int) or isinstance(saved_size, bool)
-                        or not artifact.is_file() or artifact.stat().st_size != saved_size):
+                if type(saved_size) is not int or _check_artifact(artifact) != saved_size:
                     return False
-                # Reading the Parquet footer catches truncated/invalid outputs
-                # without loading long time series into memory.
-                if artifact.suffix == ".parquet":
-                    pd.read_parquet(artifact, columns=[])
             return set(recorded) == {str(p) for p in required_artifacts}
         except Exception:
             # Corrupted markers, filesystem failures and invalid Parquet
@@ -216,12 +224,18 @@ def summarize_replicate(repout: Path, cfg: dict):
         ([group_base] if not group_base.empty else []) + profile_group_ts,
         group=True
     )
+    written = []
     if not whole.empty:
-        atomic_parquet(summary / "timeseries.parquet", whole)
+        path = summary / "timeseries.parquet"
+        atomic_parquet(path, whole)
+        written.append(path)
         if cfg.get("analyses",{}).get("membrane",{}).get("enabled",False) and cfg.get("analyses",{}).get("membrane",{}).get("msd",{}).get("enabled",False):
             summarize_diffusion(repout,cfg)
     if not grouped.empty:
-        atomic_parquet(summary / "group_timeseries.parquet", grouped)
+        path = summary / "group_timeseries.parquet"
+        atomic_parquet(path, grouped)
+        written.append(path)
+    return tuple(written)
 
 
 def _replicate_state_prefix(rep) -> str:
@@ -275,10 +289,14 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
         "cache",
         {}
     ).get("aligned_coordinates", False))
-    if streaming_required and not state.complete(prefix + "-stream"):
-        t0 = perf_counter()
-        state.mark(prefix + "-stream", run_streaming_pass(rep, cfg, root, state.config_hash))
-        stage_timings.append({"stage": "streaming", "seconds": perf_counter() - t0})
+    if streaming_required:
+        key = prefix + "-stream"
+        if state.complete(key):
+            validate_stream_inventory(rep, repout, state.config_hash)
+        else:
+            t0 = perf_counter()
+            state.mark(key, run_streaming_pass(rep, cfg, root, state.config_hash))
+            stage_timings.append({"stage": "streaming", "seconds": perf_counter() - t0})
 
     # Without protein streaming, run *all* optional observer families in
     # one shared frame loop instead of three separate fallback traversals.
@@ -394,11 +412,15 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
             stage_timings.append({"stage": task.key, "seconds": perf_counter() - t0})
     msd_cfg = cfg.get("analyses", {}).get("membrane", {}).get("msd", {})
     if msd_cfg.get("enabled") and msd_cfg.get("multi_origin", False):
-        target = repout / "summary" / "multi_origin_diffusion.parquet"
-        if not state.complete(prefix + "-multi-origin-msd") or not target.is_file():
+        targets = tuple(repout / "summary" / name for name in (
+            "multi_origin_diffusion.parquet", "multi_origin_msd.parquet",
+        ))
+        if not state.complete(prefix + "-multi-origin-msd", required_artifacts=targets):
             t0 = perf_counter()
             result = run_multi_origin_diffusion(rep, cfg, repout)
-            state.mark(prefix + "-multi-origin-msd", result)
+            state.mark(prefix + "-multi-origin-msd", {
+                **result, "artifacts": {str(p): _check_artifact(p) for p in targets},
+            })
             stage_timings.append({"stage": "multi-origin-msd", "seconds": perf_counter() - t0})
     summary_paths = tuple(
         repout / "summary" / name
@@ -408,16 +430,14 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     # A summary marker is reusable only when its recorded outputs still
     # exist and have valid Parquet footers. Do not infer completion from
     # the marker or from one plausible file alone.
-    if not state.complete(prefix + "-summary", required_artifacts=summary_paths):
+    summary_reusable = state.complete(prefix + "-summary", required_artifacts=summary_paths)
+    if stage_timings or not summary_reusable or (streaming_required and not summary_paths):
         t0 = perf_counter()
-        summarize_replicate(repout, cfg)
-        summary_paths = tuple(
-            repout / "summary" / name
-            for name in ("timeseries.parquet", "group_timeseries.parquet")
-            if (repout / "summary" / name).is_file()
-        )
+        summary_paths = summarize_replicate(repout, cfg)
+        if streaming_required and repout / "summary" / "timeseries.parquet" not in summary_paths:
+            raise RuntimeError(f"Streaming summary produced no time series: {repout}")
         state.mark(prefix + "-summary", {
-            "artifacts": {str(p): p.stat().st_size for p in summary_paths}
+            "artifacts": {str(p): _check_artifact(p) for p in summary_paths},
         })
         stage_timings.append({"stage": "summary", "seconds": perf_counter() - t0})
     if stage_timings:
@@ -452,6 +472,13 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
             if (times.empty or not np.isfinite(times.to_numpy(dtype=float)).all()
                     or not times.is_monotonic_increasing or not times.is_unique):
                 missing.append(f"{rep.system}/{rep.label}: invalid time_ps")
+            for entry in fused_output_plan(cfg, repout):
+                try:
+                    _check_artifact(entry.path)
+                except (OSError, ValueError, EOFError) as exc:
+                    raise ValueError(
+                        f"invalid required {entry.name} artifact: {entry.path.relative_to(repout)} ({exc})"
+                    ) from exc
             checkpoint = repout / "cache" / "stream_checkpoint.npz"
             if checkpoint.is_file():
                 with np.load(checkpoint, allow_pickle=False) as cp:

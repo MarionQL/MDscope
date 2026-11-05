@@ -293,3 +293,32 @@ def test_finalization_rejects_checkpoint_summary_identity_or_frame_mismatch(tmp_
         runner.finalize_project(tmp_path/"unused.yaml", cfg=cfg, root=root,
                                 state=SimpleNamespace(config_hash="summary-integrity"), phase="statistics")
     assert _bytes_snapshot(root) == before
+
+
+def test_completed_stream_rejects_missing_committed_chunk_without_reading_trajectory(tmp_path, monkeypatch):
+    rep, cfg = _project(tmp_path, 2)
+    root = tmp_path / "results"
+    state = runner.RunState(root, "complete-inventory")
+    runner.run_replicate(rep, cfg, root, state)
+    chunk = root / "test/rep1/raw/timeseries-part-000000.parquet"
+    chunk.unlink()
+    before = _bytes_snapshot(root)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("completed stream reopened the trajectory")
+    monkeypatch.setattr(mda, "Universe", forbidden)
+    with pytest.raises(RuntimeError, match="missing committed timeseries parts"):
+        runner.run_replicate(rep, cfg, root, state)
+    assert _bytes_snapshot(root) == before
+
+
+def test_offline_finalization_rejects_missing_enabled_fused_product(tmp_path):
+    rep, cfg = _project(tmp_path, 2)
+    root = tmp_path / "results"
+    state = runner.RunState(root, "required-fused-product")
+    runner.run_replicate(rep, cfg, root, state)
+    (root / "test/rep1/extensions/solvation/counts.parquet").unlink()
+    before = _bytes_snapshot(root)
+    with pytest.raises(RuntimeError, match="invalid required solvation artifact"):
+        runner.finalize_project(tmp_path / "unused.yaml", cfg=cfg, root=root, state=state, phase="statistics")
+    assert _bytes_snapshot(root) == before
