@@ -91,13 +91,15 @@ class RunState:
                 if artifact.suffix == ".parquet":
                     pd.read_parquet(artifact, columns=[])
             return set(recorded) == {str(p) for p in required_artifacts}
-        except (OSError, ValueError, TypeError, ImportError, EOFError, BadZipFile):
+        except Exception:
+            # Corrupted markers, filesystem failures and invalid Parquet
+            # metadata must invalidate reuse, not crash a restart.
             return False
 
     def mark(self, key: str, extra=None):
         atomic_json(
             self.marker(key),
-            {"status": "complete", "config_hash": self.config_hash, **(extra or {})}
+            {**(extra or {}), "status": "complete", "config_hash": self.config_hash}
         )
 
 
