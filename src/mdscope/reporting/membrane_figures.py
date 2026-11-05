@@ -3,6 +3,7 @@
 Do not independently fit uncertainty or pool correlated trajectory frames.
 """
 from __future__ import annotations
+from itertools import combinations
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -58,27 +59,64 @@ def plot_lipid_contacts(cfg, root, system_repouts):
             or not cfg.get('plots', {}).get('families', {}).get('lipid_contacts', True)
             or not cfg.get('analyses', {}).get('lipid_contacts', {}).get('enabled', False)):
         return
+    indices = ['leaflet', 'species_a', 'species_b']
+    metrics = ['neighbors_per_molecule', 'enrichment']
     tables = []
     for system, paths in system_repouts.items():
         for repout in paths:
-            path = Path(repout)/'extensions/lipid_contacts/matrix.parquet'
+            path = Path(repout) / 'extensions/lipid_contacts/matrix.parquet'
             if path.exists():
                 data = pd.read_parquet(path)
-                tables.append(data.groupby(['leaflet','species_a','species_b'], as_index=False)[['neighbors_per_molecule','enrichment']].mean().assign(system=system, replicate=Path(repout).name))
+                columns = metrics + ['pair_count_undirected', 'molecules_a', 'molecules_b']
+                tables.append(data.groupby(indices, as_index=False)[columns].mean()
+                              .assign(system=system, replicate=Path(repout).name))
     if not tables:
         return
     replicas = pd.concat(tables, ignore_index=True)
-    dest = ensure_dir(Path(root)/'project_summary/figures/lipid_contacts')
-    replicas.to_csv(dest/'replicate_matrices.csv', index=False)
-    for (system, leaflet), group in replicas.groupby(['system','leaflet']):
-        for metric in ('neighbors_per_molecule','enrichment'):
-            values = group.groupby(['species_a','species_b'])[metric].mean().unstack()
-            fig, ax = plt.subplots(figsize=(7,6))
-            image = ax.imshow(values, cmap='viridis')
-            ax.set_xticks(range(len(values.columns)), values.columns, rotation=60)
-            ax.set_yticks(range(len(values)), values.index)
-            ax.set_xlabel('Neighbor species B'); ax.set_ylabel('Reference species A')
-            ax.set_title(f'{system} / {leaflet}: {metric.replace("_", " ")}')
-            fig.colorbar(image, ax=ax, label='Neighbors per molecule' if metric == 'neighbors_per_molecule' else 'Contact share / possible-pair share')
-            fig.tight_layout(); fig.savefig(dest/f'lipid_contact_matrix_{system}_{leaflet}_{metric}.png', dpi=180)
-            plt.close(fig)
+    dest = ensure_dir(Path(root) / 'project_summary/figures/lipid_contacts')
+    replicas.to_csv(dest / 'replicate_matrices.csv', index=False)
+
+    def draw(values, title, metric, filename, *, difference=False):
+        fig, ax = plt.subplots(figsize=(7, 6))
+        cmap = plt.get_cmap('RdBu_r' if difference else 'viridis').with_extremes(bad='lightgrey')
+        scale = {}
+        if difference:
+            finite = np.abs(values.to_numpy()[np.isfinite(values.to_numpy())])
+            limit = float(finite.max()) if len(finite) and finite.max() > 0 else 1.
+            scale = dict(vmin=-limit, vmax=limit)
+        image = ax.imshow(values, cmap=cmap, **scale)
+        ax.set_xticks(range(len(values.columns)), values.columns, rotation=60)
+        ax.set_yticks(range(len(values)), values.index)
+        ax.set_xlabel('Neighbor species B')
+        ax.set_ylabel('Reference species A')
+        ax.set_title(f'{title}: {metric.replace("_", " ")}')
+        units = 'Neighbors per molecule' if metric == 'neighbors_per_molecule' else 'Contact share / possible-pair share'
+        fig.colorbar(image, ax=ax, label=f'Difference in {units.lower()}' if difference else units)
+        fig.tight_layout()
+        fig.savefig(dest / filename, dpi=int(cfg.get('plots', {}).get('dpi', 180)))
+        plt.close(fig)
+
+    for (system, leaflet), group in replicas.groupby(['system', 'leaflet']):
+        for metric in metrics:
+            values = group.groupby(['species_a', 'species_b'])[metric].mean().unstack()
+            draw(values, f'{system} / {leaflet}', metric,
+                 f'lipid_contact_matrix_{system}_{leaflet}_{metric}.png')
+
+    # Report a contrast only when every configured replica contributes a
+    # finite estimate and contains both species in the corresponding leaflet.
+    eligible = replicas.loc[(replicas.molecules_a > 0) & (replicas.molecules_b > 0)]
+    grouped = eligible.groupby(['system'] + indices)[metrics]
+    means, counts = grouped.mean(), grouped.count()
+    condition = {
+        system: means.loc[system].where(counts.loc[system] == len(paths))
+        for system, paths in system_repouts.items() if system in means.index.get_level_values('system')
+    }
+    for first, second in combinations(condition, 2):
+        delta = condition[first] - condition[second]
+        for leaflet, group in delta.groupby(level='leaflet'):
+            for metric in metrics:
+                values = group.droplevel('leaflet')[metric].unstack()
+                if values.notna().any().any():
+                    draw(values, f'{first} minus {second} / {leaflet}', metric,
+                         f'lipid_contact_difference_{first}__{second}_{leaflet}_{metric}.png',
+                         difference=True)

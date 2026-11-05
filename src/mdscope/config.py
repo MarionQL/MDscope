@@ -56,6 +56,7 @@ DEFAULTS = {
                 "slope_start_fraction": 0.2,
                 "slope_end_fraction": 0.8,
                 "multi_origin": False,
+                "multi_origin_fit_diagnostics": False,
                 "multi_origin_max_lag_frames": None,
                 "multi_origin_particle_batch": 64
             },

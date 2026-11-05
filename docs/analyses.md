@@ -483,6 +483,24 @@ Project outputs:
 - `project_summary/diffusion/multi_origin_replicates.parquet`
 - `project_summary/diffusion/multi_origin_systems.parquet`
 
+Set `analyses.membrane.msd.multi_origin_fit_diagnostics: true` to add
+`project_summary/diffusion/multi_origin_fit_diagnostics.parquet` during
+finalization (all or plotting phase). It reads saved curves and works with
+existing replicas offline. It compares the configured fit interval with
+its earlier and later overlapping two-thirds. Each fit needs four positive
+lag points and at least 10 origins or 10% of the sampled frames, whichever is
+larger, at every included lag. These are overlapping origins, so the count is
+only a support guard. The table reports observed lag bounds and origin counts,
+D, linear fit R², and the log–log MSD slope by replica and lipid cohort.
+
+The descriptive screen flags a spread in D greater than 25% of the configured
+window's D or a log–log slope more than 0.20 from unity in any window.
+These are pragmatic sensitivity thresholds, with no inferential calibration.
+Missing curves and insufficient or nonpositive fits are marked unavailable.
+A result within the screen cannot establish asymptotic diffusion, rule out
+drift/finite-size effects, or supply a confidence interval. Where support is
+limited or windows disagree, inspect longer trajectories before interpreting D.
+
 **Limits:** Minimum-image reconstruction assumes sampled displacements are less
 than half the relevant box dimension in an unambiguous image sense. The FFT
 kernel assumes stable lipid identity, a fixed analysis frame, and that the
@@ -999,8 +1017,12 @@ and `selection_audit.json`. Searches batch reference atoms and retain only
 unique encoded molecule pairs between batches, not atom event tables. Chunk
 and checkpoint numbers follow the existing fused observer. Matrix group time
 series use the existing temporal/hierarchical statistics and standard plots;
-additional condition/leaflet heatmaps average replicas equally and are
-explicitly descriptive. Raw matrices and audits enter the evidence bundle.
+condition/leaflet heatmaps average replicas equally and are descriptive.
+Difference heatmaps subtract condition means in configuration order and show
+a cell only when both species and a finite estimate are present in every
+configured replica on each side. The companion replicate CSV includes mean
+undirected pair counts and mean leaflet species populations. Raw matrices
+and audits enter the evidence bundle.
 The optional module is off by default; enabling it adds a necessary neighbor
 query, not a second trajectory pass.
 

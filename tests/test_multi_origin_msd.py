@@ -64,3 +64,61 @@ def test_invalid_inputs_fail_explicitly():
         multi_origin_msd(invalid)
     with pytest.raises(ValueError, match="max_lag"):
         multi_origin_msd(xyz, max_lag=10)
+
+
+@pytest.mark.parametrize("exponent, expected", [(1., "within_screen"), (.55, "window_or_scaling_sensitive")])
+def test_diffusion_fit_screen_distinguishes_scaling(exponent, expected):
+    from mdscope.observables.multi_origin_msd import diffusion_fit_sensitivity
+
+    lag = np.arange(101, dtype=float)
+    rows = diffusion_fit_sensitivity(lag, 3. * lag**exponent, 101 - lag)
+    assert {row["screen"] for row in rows} == {expected}
+    assert [row["min_origins_observed"] for row in rows] == [21, 41, 21]
+    np.testing.assert_allclose([row["log_log_slope"] for row in rows], exponent)
+    if exponent == 1.:
+        np.testing.assert_allclose([row["diffusion_nm2_ns"] for row in rows], 7.5)
+
+
+def test_diffusion_fit_screen_flags_poor_support_and_negative_fit():
+    from mdscope.observables.multi_origin_msd import diffusion_fit_sensitivity
+
+    lag = np.arange(8, dtype=float)
+    rows = diffusion_fit_sensitivity(lag, lag, 8 - lag)
+    assert {row["fit_status"] for row in rows} == {"insufficient_support"}
+    assert all(np.isnan(row["diffusion_nm2_ns"]) for row in rows)
+    lag = np.arange(101, dtype=float)
+    rows = diffusion_fit_sensitivity(lag, np.where(lag > 0, 101 - lag, 0), 101 - lag)
+    assert {row["fit_status"] for row in rows} == {"nonpositive_fit"}
+    assert {row["screen"] for row in rows} == {"unavailable"}
+
+
+def test_project_msd_diagnostics_uses_saved_curves_and_preserves_default(tmp_path, monkeypatch):
+    import MDAnalysis as mda
+    import pandas as pd
+    from mdscope.observables.msd import summarize_project_multi_origin
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("diagnostics reopened a trajectory")
+    monkeypatch.setattr(mda, "Universe", forbidden)
+    repout = tmp_path / "condition" / "rep1"
+    summary = repout / "summary"
+    summary.mkdir(parents=True)
+    pd.DataFrame({"system": ["condition"], "replicate": ["rep1"], "metric": ["lateral"],
+                  "diffusion_nm2_ns": [7.5]}).to_parquet(summary / "multi_origin_diffusion.parquet")
+    lag = np.arange(101, dtype=float)
+    pd.DataFrame({"metric": "lateral", "lag_ps": lag, "msd_A2": 3. * lag,
+                  "n_time_origins": 101 - lag}).to_parquet(summary / "multi_origin_msd.parquet")
+    reps = {"condition": [repout, tmp_path / "condition" / "rep2"]}
+    summarize_project_multi_origin(tmp_path, reps)
+    dest = tmp_path / "project_summary" / "diffusion"
+    output = dest / "multi_origin_fit_diagnostics.parquet"
+    assert not output.exists()
+    previous = pd.read_parquet(dest / "multi_origin_replicates.parquet")
+    cfg = {"analyses": {"membrane": {"msd": {"multi_origin_fit_diagnostics": True}}}}
+    summarize_project_multi_origin(tmp_path, reps, cfg)
+    rows = pd.read_parquet(output)
+    assert rows.loc[rows.replicate == "rep1", "screen"].eq("within_screen").all()
+    assert rows.loc[rows.replicate == "rep2", "fit_status"].item() == "missing_curve_or_fit"
+    pd.testing.assert_frame_equal(previous, pd.read_parquet(dest / "multi_origin_replicates.parquet"))
+    summarize_project_multi_origin(tmp_path, reps)
+    assert not output.exists()

@@ -10,6 +10,7 @@ import pandas as pd
 from ..core.geometry import minimum_image_displacements
 from MDAnalysis.exceptions import NoDataError
 from ..config import atomic_parquet, presentation_enabled
+from .multi_origin_msd import diffusion_fit_sensitivity
 
 def _residue_centers(atoms):
     """Vectorized center per selected residue, preserving MDAnalysis residue order.
@@ -162,18 +163,47 @@ def summarize_project_diffusion(root:Path,system_repouts:dict,cfg):
 
 
 
-def summarize_project_multi_origin(root, system_repouts):
+def summarize_project_multi_origin(root, system_repouts, cfg=None):
     """Aggregate independent per-replicate multi-origin fits without frame pseudoreplication."""
+    settings = (cfg or {}).get("analyses", {}).get("membrane", {}).get("msd", {})
+    diagnose = settings.get("multi_origin_fit_diagnostics", False)
+    diagnostics = []
     tables = []
-    for reps in system_repouts.values():
+    for system, reps in system_repouts.items():
         for repout in reps:
             path = Path(repout) / "summary" / "multi_origin_diffusion.parquet"
             if path.exists():
-                tables.append(pd.read_parquet(path))
+                fits = pd.read_parquet(path)
+                tables.append(fits)
+            else:
+                fits = None
+            if diagnose:
+                curve_path = path.with_name("multi_origin_msd.parquet")
+                curves = pd.read_parquet(curve_path) if curve_path.is_file() else None
+                metrics = [] if fits is None else fits["metric"].tolist()
+                for metric in metrics or [None]:
+                    identity = {"system": system, "replicate": Path(repout).name, "metric": metric}
+                    curve = None if curves is None or metric is None else curves.loc[curves.metric == metric]
+                    if curve is None or curve.empty:
+                        diagnostics.append(dict(identity, fit_status="missing_curve_or_fit", screen="unavailable"))
+                        continue
+                    curve = curve.sort_values("lag_ps")
+                    for row in diffusion_fit_sensitivity(
+                        curve.lag_ps, curve.msd_A2, curve.n_time_origins,
+                        start=float(settings.get("slope_start_fraction", .2)),
+                        end=float(settings.get("slope_end_fraction", .8)),
+                    ):
+                        diagnostics.append(identity | row)
+    target = Path(root) / "project_summary" / "diffusion"
+    diagnostic_path = target / "multi_origin_fit_diagnostics.parquet"
+    if diagnostics:
+        target.mkdir(parents=True, exist_ok=True)
+        atomic_parquet(diagnostic_path, pd.DataFrame(diagnostics))
+    else:
+        diagnostic_path.unlink(missing_ok=True)
     if not tables:
         return
     all_rows = pd.concat(tables, ignore_index=True)
-    target = Path(root) / "project_summary" / "diffusion"
     target.mkdir(parents=True, exist_ok=True)
     atomic_parquet(target / "multi_origin_replicates.parquet", all_rows)
     grouped = (all_rows.groupby(["system", "metric"], sort=True)["diffusion_nm2_ns"]
