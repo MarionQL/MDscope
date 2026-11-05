@@ -239,6 +239,9 @@ def test_checkpoint_integrity_fails_without_rewriting_existing_outputs(tmp_path,
 
 def test_offline_finalization_retains_unequal_replica_lengths_and_missing_values(tmp_path, monkeypatch):
     cfg = deepcopy(DEFAULTS)
+    # This fixture only persists a scalar table. Its unrelated observers are disabled.
+    for spec in cfg["analyses"].values():
+        spec["enabled"] = False
     cfg["systems"] = {}
     for system, lengths, means in (("a", [3, 5], [0., 4.]), ("b", [4, 6], [2., 10.])):
         cfg["systems"][system] = {"topology": "unavailable.pdb", "replicates": []}
