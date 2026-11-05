@@ -1,7 +1,7 @@
 """Single-pass trajectory coordinator: analysis-specific metrics live in separate modules.
 
 Compatibility: raw/summary output schema retained; atomic NPZ checkpoints
-include committed artifact fingerprints and replicate identity.
+include committed artifact inventory and replicate identity.
 """
 from __future__ import annotations
 from pathlib import Path
