@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import MDAnalysis as mda
 from ..config import atomic_json,atomic_parquet,ensure_dir,time_ps
-from ..core.lipid_geometry import anchor_groups,centers,lateral_distances,periodic_center,aligned_leaflets,accessible_area_grid
+from ..core.lipid_geometry import anchor_groups,centers,lateral_distances,periodic_center,aligned_leaflets,accessible_area_grid,planar_box
 from ..pipeline.progress import progress
 from ..core.atom_selection import select_heavy_atoms
 
@@ -127,6 +127,7 @@ def run_lipid_enrichment(rep,cfg,repout):
             t=time_ps(ts,k,cfg)
             box=np.asarray(u.dimensions,float)
             anchors = centers(groups)
+            planar_box(box, normal)
             current_leaf, changes = aligned_leaflets(anchors[:, normal], float(box[normal]), leaf)
             # A Cartesian center_of_geometry is incorrect for a protein dimer
             # straddling a periodic boundary. Use a circular lattice center.

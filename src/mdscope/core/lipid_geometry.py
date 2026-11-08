@@ -44,6 +44,23 @@ class AnchorTracker:
         ])
 
 
+def planar_box(dimensions, normal=2):
+    """Validate a cell periodic along the selected Cartesian membrane normal.
+
+    In-plane lattice shear is supported. Shear through the normal is not:
+    Cartesian heights then do not have the assumed box-length periodicity.
+    This guards leaflet classification, not general 3D distance geometry.
+    """
+    box = np.asarray(dimensions, float)
+    if (normal not in (0, 1, 2) or box.shape != (6,)
+            or not np.isfinite(box).all() or np.any(box[:3] <= 0)
+            or np.any(box[3:] <= 0) or np.any(box[3:] >= 180)):
+        raise ValueError("Planar membrane normal requires a finite valid periodic box")
+    if not np.allclose(np.delete(box[3:], normal), 90., rtol=0, atol=1e-5):
+        raise ValueError("Planar membrane normal must be orthogonal to the lateral lattice vectors")
+    return box
+
+
 def classify_leaflets(z, length):
     """Circular two-cluster partition; bilayers may cross the periodic z edge."""
     z = np.asarray(z, float)
@@ -153,9 +170,7 @@ def anchor_groups(u, spec):
     if not np.all(np.isfinite(coords)):
         raise ValueError("Non-finite anchor coordinates")
     normal = {"x": 0, "y": 1, "z": 2}[str(spec.get("axis", "z")).lower()]
-    box = np.asarray(u.dimensions, float)
-    if box.shape != (6,) or np.any(box[:3] <= 0):
-        raise ValueError("Lipid anchors require a periodic simulation box")
+    box = planar_box(u.dimensions, normal)
     leaf = classify_leaflets(coords[:, normal], float(box[normal]))
     return np.asarray(names, str), np.asarray(resids, int), tracker, leaf
 

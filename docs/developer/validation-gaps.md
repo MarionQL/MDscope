@@ -100,8 +100,9 @@ were not replaced by zeros to obtain parity.
    runtime/RSS benchmark (#89) remain open. Passing small-fixture parity does
    not establish production scalability.
 4. The named major-observable SDC4 positive/boundary manifest is in
-   `sdc4-fixtures.md`. Broader cross-observer tilted/triclinic policies (#72)
-   and six-production-replica recomputation/convergence (#98–#109) remain open;
+   `sdc4-fixtures.md`. Cross-observer planar policies now have independent tilted/curved, supported
+   triclinic and explicit unsupported-box references (see scientific contracts).
+   Six-production-replica recomputation/convergence (#98–#109) remains unverified;
    branch coverage and analytic fixtures do not establish their sampling.
 5. Historical issue-prefixed suites retain distinct topology, geometry,
    contact/mass and semantic references. Renaming them alone would add churn

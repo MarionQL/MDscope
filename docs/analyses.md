@@ -152,6 +152,15 @@ analyses:
 
 By default every selected species must be present. For paired system configurations where GM1a/BGAL may be intentionally absent in the control, use `allow_absent_species: true` to skip missing species while still requiring at least one lipid species; missing categories are not silently interpreted as zero enrichment. The lipid selection must contain a representative anchor for each physical molecule. If lipids in the topology consist of multiple bonded residues, designate only the anchoring residue/atom. Use your actual membrane normal axis.
 
+The circular leaflet observers (normals, enrichment and molecular lipid
+contacts) require the configured Cartesian membrane normal to be orthogonal
+to the lateral lattice vectors. In-plane triclinic shear is supported (for
+example, `alpha=beta=90` with arbitrary valid `gamma` for `axis: z`). Shear
+through that normal fails explicitly, including when it appears in a later
+frame. Fixed initial per-leaflet order profiles use the same geometry check
+when their cohorts are assigned. SDC4 maps and optional accessible-area
+references retain their stricter orthorhombic requirements.
+
 **Normals**: fit a local plane to neighboring anchor atoms within the same leaflet using periodic coordinates and report its angular deviation from the configured global axis in degrees. This measures **local interfacial tilt/undulation**, not a lipid acyl-chain order parameter or a mechanical modulus. Lipids with insufficient neighbors are recorded as missing.
 
 **Enrichment**: use a cylindrical (projected lateral) annulus about the protein selection. In each leaflet and frame, compute
@@ -997,7 +1006,8 @@ Optional `analyses.lipid_contacts` shares the raw fused membrane pass. Configure
 `cutoff_A` (default 5), `axis` (default z), and `batch_atoms` (default 4096).
 Bond connectivity is required. Every selected molecule must have exactly one
 anchor; the mapping is validated rather than guessing glycolipid residue IDs.
-This planar leaflet policy explicitly requires an orthorhombic box.
+This uses the circular planar leaflet policy described above, including
+supported in-plane lattice shear.
 
 Each distinct bonded molecule pair is counted once irrespective of atom count,
 with self pairs removed and same-species pairs retained. AB and BA rows repeat

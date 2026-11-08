@@ -401,3 +401,32 @@ Absent species and a fully occluded shell remain unavailable ratios. These
 operational planar areas are not solvent-accessible surfaces, molecular free
 areas or thermodynamic binding constants. Numerical resolution sensitivity is
 separate from trajectory/statistical uncertainty.
+
+## Cross-observer planar geometry contract
+
+`core/lipid_geometry.planar_box` guards Cartesian-height leaflet assignment.
+The two box angles involving the configured normal must be 90 degrees;
+in-plane shear is permitted. Normals, enrichment and molecular lipid contacts
+validate each current frame, not just initialization. Per-leaflet membrane
+order validates the initial frame used to assign its fixed cohorts. General
+3D minimum-image distances, periodic centers and MSD retain triclinic support;
+this guard does not redefine those kernels. SDC4 height maps and projected
+protein-excluded areas remain orthorhombic-only.
+
+The configured axis is a laboratory reference. Rotation about it preserves
+scalar distances, enrichment and normal-deviation angles. Rotating a tilted
+membrane relative to that fixed axis changes its deviation by definition;
+there is no general rotation-invariance claim for height fields. Local tilt
+and weak curvature are tested with analytic planes and quadratic surfaces;
+vesicles/overhangs require a different surface model.
+
+`tests/test_planar_membrane_contracts.py` checks shared orthorhombic and
+in-plane-skew trajectories under translation/independent lattice wrapping,
+a hand-counted square contact graph, zero flat-plane tilt, leaflet exchange
+and reversed reference labels, known tilted/quadratic surfaces and local
+thickness, sparse-neighbor NaNs, initial-cohort MSD against known displacements,
+and unsupported boxes at initialization and after a valid frame. Existing
+coordinate/dual-MSD tests protect source versus fitted provenance and timestamp
+synchronization. Legacy membrane APL/thickness/MSD cohorts still use the
+initial median partition; their centered/resolved first-frame requirement is
+unchanged and is not an instantaneous circular-leaflet guarantee.

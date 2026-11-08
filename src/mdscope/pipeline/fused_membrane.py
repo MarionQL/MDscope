@@ -21,7 +21,7 @@ import pandas as pd
 from MDAnalysis.lib.distances import minimize_vectors
 
 from ..config import atomic_parquet, ensure_dir, time_ps
-from ..core.lipid_geometry import anchor_groups, aligned_leaflets, centers, periodic_center
+from ..core.lipid_geometry import anchor_groups, aligned_leaflets, centers, periodic_center, planar_box
 from ..observables.lipid_enrichment import enrichment_frame, write_area_reference_metadata
 from ..core.atom_selection import select_heavy_atoms
 from ..observables.bilayer_normal import fit_local_normals
@@ -158,7 +158,8 @@ class FusedMembrane:
                     matching = selected[selected.resindices == index]
                     if len(matching):
                         coords[i] = matching.center_of_geometry()
-            leaf = classify_leaflets(coords[:, axis], float(self.u.dimensions[axis]))
+            box = planar_box(self.u.dimensions, axis)
+            leaf = classify_leaflets(coords[:, axis], float(box[axis]))
             leaflet_by_residue = {
                 int(ix): "upper" if flag else "lower"
                 for ix, flag in zip(indices, leaf)
@@ -188,6 +189,7 @@ class FusedMembrane:
             state = entry["state"]
             key = entry["key"]
             if key not in shared:
+                planar_box(box, state["axis"])
                 xyz = centers(state["tracker"])
                 current, changes = aligned_leaflets(
                     xyz[:, state["axis"]], float(box[state["axis"]]), state["initial"]
