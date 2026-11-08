@@ -611,6 +611,9 @@ def _build_pdf(path, cfg, root, system_repouts, options):
                    "contact episodes, with recorded censoring. "
                    f"Showing up to {survival_figure[1]} curves; no uncertainty "
                    "bands are inferred.")
+        if any((rep/"extensions/solvation/bridge_pair_control_summary.parquet").exists()
+               for paths in system_repouts.values() for rep in paths):
+            body("Bridge shift references are descriptive: nonzero circular offsets preserve entity identity and each target's contact history but break contemporaneous alignment. Reference spans are not confidence intervals, p-values, spatial controls or evidence of chemical cooperativity. Short/irregular windows have unavailable references; inspect the full target-atom/solvent audits and replica traces in the bundle.")
         # Compact previews of the remaining scientific observables. The
         # full data remain lossless in the bundle; no invented CI is shown.
         for filename,title_,columns in (
@@ -621,7 +624,7 @@ def _build_pdf(path, cfg, root, system_repouts, options):
             ("shell_stability","Hydration-shell convergence diagnostics",
              ["solvent","target_class","site_class","median_cutoff_A","status"]),
             ("survival","Water/ion contact survival",
-             ["solvent","target_id","time_ps","survival_probability"]),
+             ["solvent","target_id","duration_ps","survival_probability"]),
             ("hydration_sasa","Hydration and solvent accessibility",
              ["time_ps","target_id","n_solvent","sasa_nm2","sasa_coverage"]),
             ("water_density_3d","Local 3D water-density voxel values",

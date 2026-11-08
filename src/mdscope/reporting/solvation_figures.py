@@ -15,6 +15,7 @@ import pandas as pd
 SUMMARY_TABLES = (
     "target_summary", "shell_candidates", "shell_stability",
     "survival", "episodes", "bridges", "water_hbond_bridges",
+    "bridge_pair_timeseries", "bridge_pair_shift_reference", "bridge_pair_control_summary", "target_atoms",
     "hydration_sasa", "water_density_3d",
 )
 
@@ -120,7 +121,7 @@ def solvation_stat_rows(root):
     df=pd.read_parquet(p)
     if "group" not in df:
         return pd.DataFrame()
-    return df[df.group.fillna("").astype(str).str.startswith("solvation/")]
+    return df[df.group.fillna("").astype(str).str.startswith(("solvation/", "solvation_bridges/"))]
 
 
 def solvation_comparison_rows(root):
@@ -130,7 +131,7 @@ def solvation_comparison_rows(root):
     df=pd.read_parquet(p)
     if "group" not in df:
         return pd.DataFrame()
-    return df[df.group.fillna("").astype(str).str.startswith("solvation/")]
+    return df[df.group.fillna("").astype(str).str.startswith(("solvation/", "solvation_bridges/"))]
 
 
 def solvation_survival_figure(system_repouts, *, max_curves=8):
@@ -143,9 +144,10 @@ def solvation_survival_figure(system_repouts, *, max_curves=8):
             if not path.exists():
                 continue
             cols=pq.ParquetFile(path).schema_arrow.names
-            if not {"time_ps","survival_probability"}.issubset(cols):
+            duration_column = "duration_ps" if "duration_ps" in cols else "time_ps"
+            if not {duration_column,"survival_probability"}.issubset(cols):
                 continue
-            df=pd.read_parquet(path)
+            df=pd.read_parquet(path).rename(columns={duration_column: "duration_ps"})
             keys=[k for k in ("solvent","target_id") if k in df]
             groups=df.groupby(keys,sort=False) if keys else [((),df)]
             for key,group in groups:
@@ -159,8 +161,14 @@ def solvation_survival_figure(system_repouts, *, max_curves=8):
     import matplotlib.pyplot as plt
     fig,ax=plt.subplots(figsize=(7.2,3.7))
     for label,df in curves:
-        df=df.sort_values("time_ps")
-        ax.step(df.time_ps,df.survival_probability,where="post",label=label,lw=1)
+        df=df.sort_values("duration_ps")
+        ax.step(df.duration_ps,df.survival_probability,where="post",label=label,lw=1,marker=".")
+    ax.set_xlim(left=0.)
+    if all(curve.duration_ps.eq(0).all() for _, curve in curves):
+        ax.set_xlim(0., 1.)
+        ax.set_xticks([0.])
+        ax.text(.5, .5, "Only zero-span sampled episodes;\nframe spacing limits lifetime resolution.",
+                ha="center", va="center", transform=ax.transAxes, fontsize=9)
     ax.set_xlabel("Observed contact duration (ps)")
     ax.set_ylabel("Survival probability")
     ax.set_ylim(0,1.02)

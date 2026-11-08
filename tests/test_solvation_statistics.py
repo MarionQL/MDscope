@@ -119,3 +119,27 @@ def test_rdf_coverage_counts_entirely_missing_replica(tmp_path):
     assert data.n_replicates.item() == 1
     assert data.expected_replicates.item() == 2
     assert not data.complete_replica_coverage.item()
+
+
+def test_bridge_traces_reuse_replicate_statistics_without_pooling_entities(tmp_path):
+    outputs={}
+    for system,hit in [('control',0),('bridged',1)]:
+        outputs[system]=[]
+        for i in range(3):
+            rep=tmp_path/system/f'rep{i+1}';outputs[system].append(rep)
+            source=rep/'extensions/solvation/bridge_pair_timeseries.parquet'
+            source.parent.mkdir(parents=True);(rep/'summary').mkdir()
+            pd.DataFrame({'time_ps':np.arange(12,dtype=float), 'solvent':'ions/K',
+                'target_a':'HS/site/2','target_b':'protein/acid/1',
+                'bridge_entity_count':hit*3,'bridge_present_fraction':hit}).to_parquet(source)
+    cfg={'statistics':{'enabled':True,'bootstrap_draws':20,'ci':.95,'seed':10,
+        'block':{'length':2},'hypothesis_tests':{'enabled':False}}}
+    analyze_time_series(cfg,tmp_path,outputs)
+    dest=tmp_path/'project_summary/statistics/time_series'
+    reps=pd.read_parquet(dest/'replicate_statistics.parquet')
+    assert len(reps)==12 # two metrics x three independent replicas x two systems
+    assert reps.loc[reps.system.eq('bridged') & reps.metric.eq('bridge_entity_count'),'mean'].eq(3.).all()
+    differences=pd.read_parquet(dest/'system_comparisons.parquet')
+    row=differences.loc[differences.metric.eq('bridge_present_fraction')].iloc[0]
+    assert abs(row.mean_difference_system2_minus_system1)==1.
+    assert pd.isna(row.mean_q_value) # No shift-null or frame-level significance is invented.

@@ -62,6 +62,19 @@ def collect_time_series(repout: Path) -> dict[tuple[str | None, str], pd.DataFra
                 if metric in group and len(finite(group[metric])):
                     out[(group_id, metric)] = group[["time_ps", metric]].rename(
                         columns={metric: "value"})
+    bridges = Path(repout)/"extensions/solvation/bridge_pair_timeseries.parquet"
+    if bridges.exists():
+        import json
+        data = pd.read_parquet(bridges)
+        required = {"time_ps", "solvent", "target_a", "target_b", "bridge_entity_count", "bridge_present_fraction"}
+        if not required <= set(data):
+            raise ValueError(f"Incomplete bridge-pair time series: {bridges}")
+        for (solvent, left, right), group in data.groupby(["solvent", "target_a", "target_b"], sort=False):
+            if group.duplicated("time_ps").any():
+                raise ValueError("Duplicate bridge-pair observation times")
+            identity = "solvation_bridges/"+json.dumps([solvent, left, right], separators=(",", ":"))
+            for metric in ("bridge_present_fraction", "bridge_entity_count"):
+                out[(identity, metric)] = group.sort_values("time_ps")[["time_ps", metric]].rename(columns={metric: "value"})
     matrix = Path(repout)/'extensions/lipid_contacts/matrix.parquet'
     if matrix.exists():
         data = pd.read_parquet(matrix)

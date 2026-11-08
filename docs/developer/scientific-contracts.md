@@ -316,6 +316,34 @@ tables after interruption and clean execution. Use a fresh output directory when
 recomputing historical results with the corrected estimator. An old output may
 remain structurally readable even when it predates a scientific correction.
 
+## Streamed solvent episodes and descriptive bridge references
+
+The persisted contact-event writer orders observations by frame. The episode
+extractor streams those records and uses the full observation-frame map; an
+absent event is a sampled noncontact, not an omitted time point. It closes
+contacts after missed observations, preserves duplicates without double-counting,
+and uses the shared interval rule for terminal imputation. A single observation
+has zero observed span and unavailable imputed duration. Episode output order
+is completion order; scientific identity is in solvent/target/entity/frame keys.
+The legacy in-memory `contact_episodes` reference remains useful for arbitrary
+unordered inputs and independent parity tests. Episode writes are individually
+atomic; this is not a multi-product transaction or a global memory guarantee.
+
+Survival risk counts are computed from grouped duration multiplicities rather
+than rescanning every episode for every distinct duration. Left-censored origins
+are still excluded; right censoring and ties retain the product-limit convention.
+
+Configured bridge pairs receive complete sampled-frame traces and deterministic
+nonzero shift references. Same-entity identity and all-frame denominators are
+preserved. At most 100 evenly spaced nonzero offsets are evaluated; small windows
+use all offsets. Fewer than four samples or irregular sampling suppresses the
+reference. Shift percentiles are descriptive, not Monte Carlo error bounds,
+bootstrap confidence intervals, spatial controls or cooperativity p-values.
+The existing replica statistics consume occupancy/count traces without treating
+individual ions or frames as independent condition-level replicas. Raw bridge
+counts are checked against target-contact reconstruction using integer counts.
+Definitions and caveats are in [analyses](../analyses.md).
+
 ## Required companion products and offline completion (2026-11-08)
 
 The existing registry's `analysis_output_plan` extends fused output planning

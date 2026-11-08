@@ -141,6 +141,50 @@ content hashes. The final individual file replacements are not an atomic
 multi-file transaction. Production-page QA, exact per-datapoint lineage,
 summary dashboard and broader plotting review remain open.
 
+## Bridge evidence and contact-finalization follow-up — 2026-11-08
+
+An independent branch from merged main advances #103/#36 while #135 is open.
+It streams contact-episode extraction in Parquet batches, preserves sampled
+span/imputation/censoring, and atomically rejects malformed event order. Output
+rows follow episode completion; downstream identity is explicit. Aggregated
+survival risk counts remove repeated duration-by-episode rescans. The report's
+survival curve/table now uses the actual duration_ps field, retaining readable
+legacy time_ps exports; the original plotting helper silently omitted current
+survival tables. Both the event-materialization and curve-omission failures
+were reproduced before correction.
+
+Configured same-entity bridge traces enter existing replica statistics and
+receive a deterministic temporal shift reference (at most 100 nonzero offsets),
+with explicit unavailable status for short/irregular sampling. References do
+not establish spatial or chemical cooperativity. Target-atom/solvent-selection
+audits expose names, indices and available charges without guessing missing
+chemistry. Integer bridge counts are cross-checked against independently
+persisted per-target contacts. Legacy data without these optional products
+remain readable; they acquire no invented reference evidence.
+
+Synthetic performance evidence: 500,000 contacts / 1,000 frames / 500 continuous
+entities produced identical episodes after key sorting. Contact reconstruction
+and output with tracemalloc enabled took 4.209 -> 2.938 s; Python allocation peak 58.70 -> 16.92 MiB;
+separate-process peak RSS 313.00 -> 250.96 MiB (imports/readers included). A
+10,000-episode / 2,000-distinct-duration survival table was exactly identical;
+aggregation took 0.3499 -> 0.0078 s. These are synthetic subset benchmarks,
+not full-trajectory or whole-finalizer guarantees. Survival input, bridge
+residence and SASA joins still materialize tables.
+
+Local Python 3.12 validation: 466 passed, four optional real-FreeSASA references
+skipped, two optional benchmarks deselected. All 34 existing finalized Parquet
+tables matched merged main exactly on the mixed-observer fixture; the target
+atom audit is additive. The branch applied cleanly with PR #135 and the combined
+source passed 485 tests (four skips, two optional benchmarks deselected). Final
+report/streaming checks passed again after the final presentation/cleanup edits.
+An 11-page synthetic PDF was generated; the restored survival panel and bridge
+caveat page were visually checked with system Poppler. Compile and whitespace
+checks passed. No binary fixtures or new dependencies were added.
+
+GitHub Actions remains intentionally skipped under the owner's instruction;
+the single consolidated commit uses [skip ci]. Production chemistry, spatial
+controls, six-replica robustness and full-scale resources remain unverified.
+
 ## Consolidated completion follow-up — 2026-11-08
 
 This section supersedes earlier issue-disposition/freshness statements above

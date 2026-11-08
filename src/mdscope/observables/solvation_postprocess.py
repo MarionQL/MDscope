@@ -62,13 +62,14 @@ def kaplan_meier(episodes, *, group_columns=("solvent", "target_id")):
         if group.empty:
             continue
         key = key if isinstance(key, tuple) else (key,)
-        survival = 1.
-        for duration, at_time in group.groupby("duration_ps", sort=True):
-            risk = int((group.duration_ps >= duration).sum())
-            dissociation = int((~at_time.right_censored.astype(bool)).sum())
-            censored = int(at_time.right_censored.astype(bool).sum())
-            survival *= 1. - dissociation/risk
-            rows.append((*key, float(duration), risk, dissociation, censored, survival))
+        durations = group.assign(right_censored=group.right_censored.astype(bool)).groupby(
+            "duration_ps", sort=True).right_censored.agg(['size', 'sum'])
+        risk = durations['size'].iloc[::-1].cumsum().iloc[::-1].to_numpy(int)
+        censored = durations['sum'].to_numpy(int)
+        dissociation = durations['size'].to_numpy(int)-censored
+        survival = np.cumprod(1.-dissociation/risk)
+        rows.extend((*key, float(duration), int(n), int(d), int(c), float(s))
+            for duration, n, d, c, s in zip(durations.index, risk, dissociation, censored, survival))
     return pd.DataFrame(rows, columns=cols)
 
 
@@ -315,3 +316,157 @@ def bridge_pair_occupancy(bridges, frame_times, eligible_pairs, solvents):
                          n_events/len(times), int(subset.solvent_id.nunique()) if n_events else 0))
     return pd.DataFrame(rows, columns=['solvent','target_a','target_b','observed_frames',
         'bridge_frames','sampled_bridge_fraction','mean_simultaneous_bridging_ions', 'unique_bridging_ions'])
+
+
+def contact_records(paths):
+    """Read only contact identity columns in bounded Parquet batches."""
+    import pyarrow.parquet as pq
+    columns = ['frame', 'solvent', 'target_id', 'solvent_id']
+    for path in paths:
+        for batch in pq.ParquetFile(path).iter_batches(batch_size=65536, columns=columns):
+            data = batch.to_pydict()
+            yield from zip(*(data[column] for column in columns))
+
+
+def write_contact_episodes(event_paths, observed_frames, destination):
+    """Stream frame-ordered contacts into sampled episodes atomically.
+
+    State contains at most two successive contact frames plus an output batch.
+    Episodes are written in completion order; identity/duration semantics are
+    identical to the in-memory reference, which also accepts unordered events.
+    Survival and other downstream finalizers have separate memory contracts.
+    """
+    from pathlib import Path
+    import tempfile
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from ..core.residence import sampled_episode_durations
+    from .solvation import EPISODE_COLUMNS
+    destination = Path(destination)
+    frames = [int(frame) for frame, _ in observed_frames]
+    times = np.asarray([time for _, time in observed_frames], float)
+    if len(frames) != len(set(frames)):
+        raise ValueError('Duplicate observation frames')
+    # Shared duration kernel validates the time axis before touching outputs.
+    if len(times):
+        index = np.arange(len(times))
+        _, following = sampled_episode_durations(times, index, index)
+    order = {frame: i for i, frame in enumerate(frames)}
+    active, rows = {}, []
+    previous = -1
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=destination.parent, suffix='.parquet', delete=False) as handle:
+        temporary = Path(handle.name)
+    writer = None
+    def flush():
+        nonlocal writer
+        if not rows:
+            return
+        data = pd.DataFrame(rows, columns=EPISODE_COLUMNS)
+        first = np.asarray([order[int(frame)] for frame in data.start_frame], int)
+        last = np.asarray([order[int(frame)] for frame in data.end_frame], int)
+        data['duration_ps'] = times[last]-times[first]
+        data['sampled_duration_ps'] = data['duration_ps'].to_numpy(float)+following[last]
+        table = pa.Table.from_pandas(data, preserve_index=False)
+        if writer is None:
+            writer = pq.ParquetWriter(temporary, table.schema)
+        writer.write_table(table)
+        rows.clear()
+    def finish(key, bounds):
+        first, last = bounds
+        rows.append((*key, frames[first], frames[last], np.nan,
+            first == 0, last == len(frames)-1, np.nan,
+            'next_sample_interval_or_terminal_median'))
+        if len(rows) >= 4096:
+            flush()
+    try:
+        for frame, solvent, target, entity in contact_records(event_paths):
+            if frame not in order:
+                raise ValueError('Contact event outside observation frames')
+            index = order[frame]
+            if index < previous:
+                raise ValueError('Persisted contact events must be ordered by observation frame')
+            if index != previous:
+                for key in [key for key, (_, last) in active.items() if last < index-1]:
+                    finish(key, active.pop(key))
+                previous = index
+            key = (solvent, target, entity)
+            first, _ = active.get(key, (index, index))
+            active[key] = (first, index)
+        for key, bounds in active.items():
+            finish(key, bounds)
+        flush()
+        if writer is not None:
+            writer.close()
+            writer = None
+        else:
+            pd.DataFrame(columns=EPISODE_COLUMNS).to_parquet(temporary, index=False)
+        temporary.replace(destination)
+    finally:
+        try:
+            if writer is not None:
+                writer.close()
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+def bridge_pair_evidence(event_paths, observed_frames, eligible_pairs, solvents):
+    """Sampled same-entity traces and a deterministic temporal shift reference.
+
+    One common offset shifts target-B contacts for all entities, preserving
+    their identities and target-specific occupancy patterns. This breaks
+    contemporaneous alignment, not spatial crowding, and is not a chemical
+    cooperativity test. Only explicitly configured targets are retained.
+    """
+    from collections import defaultdict
+    frames = [int(frame) for frame, _ in observed_frames]
+    times = np.asarray([time for _, time in observed_frames], float)
+    if (not len(times) or len(set(frames)) != len(frames)
+            or not np.isfinite(times).all() or np.any(np.diff(times) <= 0)):
+        raise ValueError('Bridge evidence requires unique observations and increasing finite times')
+    order = {frame: i for i, frame in enumerate(frames)}
+    pairs = [tuple(sorted(pair)) for pair in eligible_pairs]
+    targets = {target for pair in pairs for target in pair}
+    contacts = defaultdict(lambda: defaultdict(set))
+    for frame, solvent, target, entity in contact_records(event_paths):
+        if frame not in order:
+            raise ValueError('Contact event outside bridge observation frames')
+        if target in targets and solvent in solvents:
+            contacts[(solvent, target)][entity].add(order[frame])
+    regular = bool(len(times) >= 4 and np.allclose(np.diff(times), times[1]-times[0], rtol=1e-5, atol=1e-8))
+    offsets = np.unique(np.linspace(1, len(times)-1, min(100, len(times)-1), dtype=int)) if regular else []
+    traces, references, summaries = [], [], []
+    for solvent in solvents:
+        for left, right in pairs:
+            a, b = contacts[(solvent, left)], contacts[(solvent, right)]
+            common = sorted(a.keys() & b.keys())
+            counts = np.zeros(len(times), int)
+            for entity in common:
+                counts[list(a[entity] & b[entity])] += 1
+            present = counts > 0
+            traces.extend((float(time), solvent, left, right, int(count), int(hit))
+                for time, count, hit in zip(times, counts, present))
+            null = []
+            for offset in offsets:
+                shifted_counts = np.zeros(len(times), int)
+                for entity in common:
+                    overlap = np.intersect1d(np.fromiter(a[entity], int),
+                        (np.fromiter(b[entity], int)+offset) % len(times), assume_unique=True)
+                    shifted_counts[overlap] += 1
+                fraction = float(np.mean(shifted_counts > 0))
+                null.append(fraction)
+                references.append((solvent, left, right, int(offset), fraction,
+                                   float(shifted_counts.mean())))
+            lo, hi = np.quantile(null, [.025, .975]) if null else (np.nan, np.nan)
+            mean = float(np.mean(null)) if null else np.nan
+            summaries.append((solvent, left, right, float(present.mean()), mean,
+                float(lo), float(hi), float(present.mean()-mean), len(offsets),
+                'descriptive_shift_reference' if regular else
+                'unavailable_short_window' if len(times) < 4 else 'unavailable_irregular_sampling'))
+    return (pd.DataFrame(traces, columns=['time_ps','solvent','target_a','target_b',
+                'bridge_entity_count','bridge_present_fraction']),
+            pd.DataFrame(references, columns=['solvent','target_a','target_b','offset_frames',
+                'sampled_bridge_fraction','mean_simultaneous_entities']),
+            pd.DataFrame(summaries, columns=['solvent','target_a','target_b',
+                'observed_bridge_fraction','shift_reference_mean', 'shift_reference_low',
+                'shift_reference_high','observed_minus_shift_mean','n_offsets','status']))
