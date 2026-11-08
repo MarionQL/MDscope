@@ -10,56 +10,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mdscope.config import DEFAULTS, Replicate
+from mdscope.config import DEFAULTS
 from mdscope.pipeline import streaming, runner
-from test_sdc4_geometry_references import _fixture
-
-
-def _project(tmp_path, chunk):
-    u, partial = _fixture()
-    u.atoms.chainIDs = ["H" if c == "HS" else c for c in u.atoms.chainIDs]
-    # Adjacent identical PDB residue IDs are one residue on re-read.
-    u.residues.resids = np.arange(1, len(u.residues)+1)
-    pdb, dcd = tmp_path/"mixed.pdb", tmp_path/"mixed.dcd"
-    u.atoms.write(str(pdb))
-    initial = u.atoms.positions.copy()
-    with mda.Writer(str(dcd), n_atoms=len(u.atoms)) as writer:
-        for i in range(8):
-            xyz = initial.copy()
-            xyz[:12, 0] += .03*i
-            u.atoms.positions = xyz
-            writer.write(u.atoms)
-    cfg = deepcopy(DEFAULTS)
-    for spec in cfg["analyses"].values():
-        spec["enabled"] = False
-    for name in ("alignment", "rmsd", "rmsf", "radius_of_gyration"):
-        cfg["analyses"][name]["enabled"] = True
-    cfg["selections"]["groups"] = {c: {"selection": f"chainID {c} and name CA"} for c in ("A", "B")}
-    cfg["analyses"]["sdc4_mechanisms"] = partial["analyses"]["sdc4_mechanisms"]
-    cfg["analyses"]["sdc4_mechanisms"]["hs_chains"] = {"A1": "chainID H"}
-    for name in ("bilayer_normal", "lipid_enrichment"):
-        cfg["analyses"][name].update(enabled=True, species_selections={"POPC": "resname POPC and name P"},
-                                     protein_selection="protein")
-    cfg["analyses"]["density_1d"] = {"enabled": True, "runs": {
-        "protein": {"selections": {"protein": "protein"}, "axis": "z", "bin_width_A": 5.},
-        "lipid": {"selections": {"lipid": "resname POPC"}, "axis": "z", "bin_width_A": 5.},
-    }}
-    cfg["analyses"]["residue_membrane_distance"] = {"enabled": True, "runs": {
-        c: {"selection": f"chainID {c} and name CA", "membrane_selection": "resname POPC"}
-        for c in ("A", "B")
-    }}
-    cfg["analyses"]["solvation"] = {
-        "enabled": True, "preset": "kinetics",
-        "targets": {"protein": {"backbone_CA": "protein and name CA"}},
-        "water_selection": "resname TIP3 and name OH2",
-        "search_radius_A": 6., "rdf_bin_width_A": 1.,
-    }
-    cfg["trajectory"].update(start=0, stop=8, stride=2, chunk_frames=chunk)
-    cfg["cache"]["aligned_coordinates"] = False
-    cfg["statistics"].update(bootstrap_draws=100, families={"profiles": False, "interactions": False, "solvation_rdfs": False})
-    cfg["plots"]["enabled"] = False
-    cfg["systems"] = {"test": {"topology": str(pdb), "replicates": [{"trajectory": str(dcd), "label": "rep1"}]}}
-    return Replicate("test", 1, pdb, dcd, "rep1"), cfg
+from validation_fixture import make_project
 
 
 def _final_tables(root):
@@ -69,7 +22,7 @@ def _final_tables(root):
 
 @pytest.mark.parametrize("chunk,failure", [(1, "during_frame"), (2, "after_write"), (2, "before_checkpoint")])
 def test_mixed_restart_and_offline_finalization(tmp_path, monkeypatch, chunk, failure):
-    rep, cfg = _project(tmp_path, chunk)
+    rep, cfg = make_project(tmp_path, chunk)
     clean, resumed = tmp_path/"clean", tmp_path/"resumed"
     reference_cfg = deepcopy(cfg)
     reference_cfg["trajectory"]["chunk_frames"] = 3
@@ -162,7 +115,7 @@ def _bytes_snapshot(root):
     ("cache/solvation/counts-000000.parquet", "corrupt"),
 ])
 def test_damaged_committed_observer_chunk_fails_before_rewriting_or_pruning(tmp_path, relative, damage):
-    rep, cfg = _project(tmp_path, 2)
+    rep, cfg = make_project(tmp_path, 2)
     root = tmp_path/"results"
     streaming.run_streaming_pass(rep, cfg, root, "mixed-integrity")
     repout = root/"test/rep1"
@@ -186,7 +139,7 @@ def test_damaged_committed_observer_chunk_fails_before_rewriting_or_pruning(tmp_
 
 
 def test_checkpoint_copied_to_other_replica_is_rejected(tmp_path):
-    rep, cfg = _project(tmp_path, 2)
+    rep, cfg = make_project(tmp_path, 2)
     root = tmp_path/"results"
     streaming.run_streaming_pass(rep, cfg, root, "same-project-hash")
     destination = root/"test/rep2"
@@ -200,7 +153,7 @@ def test_checkpoint_copied_to_other_replica_is_rejected(tmp_path):
 @pytest.mark.parametrize("damage", ["duplicate_chunk", "missing_checkpoint", "legacy", "counter_rollback",
                                   "fractional_counter", "accumulator_count", "group_count", "density_count", "counter_range"])
 def test_checkpoint_integrity_fails_without_rewriting_existing_outputs(tmp_path, damage):
-    rep, cfg = _project(tmp_path, 2)
+    rep, cfg = make_project(tmp_path, 2)
     root = tmp_path/"results"
     streaming.run_streaming_pass(rep, cfg, root, "integrity")
     repout = root/"test/rep1"
@@ -276,7 +229,7 @@ def test_offline_finalization_retains_unequal_replica_lengths_and_missing_values
 
 @pytest.mark.parametrize("damage", ["replicate_swap", "dropped_summary_frame"])
 def test_finalization_rejects_checkpoint_summary_identity_or_frame_mismatch(tmp_path, damage):
-    rep, cfg = _project(tmp_path, 2)
+    rep, cfg = make_project(tmp_path, 2)
     root = tmp_path/"results"
     streaming.run_streaming_pass(rep, cfg, root, "summary-integrity")
     repout = root/"test/rep1"
@@ -299,7 +252,7 @@ def test_finalization_rejects_checkpoint_summary_identity_or_frame_mismatch(tmp_
 
 
 def test_completed_stream_rejects_missing_committed_chunk_without_reading_trajectory(tmp_path, monkeypatch):
-    rep, cfg = _project(tmp_path, 2)
+    rep, cfg = make_project(tmp_path, 2)
     root = tmp_path / "results"
     state = runner.RunState(root)
     runner.run_replicate(rep, cfg, root, state)
@@ -316,7 +269,7 @@ def test_completed_stream_rejects_missing_committed_chunk_without_reading_trajec
 
 
 def test_offline_finalization_rejects_missing_enabled_fused_product(tmp_path):
-    rep, cfg = _project(tmp_path, 2)
+    rep, cfg = make_project(tmp_path, 2)
     root = tmp_path / "results"
     state = runner.RunState(root)
     runner.run_replicate(rep, cfg, root, state)
@@ -328,7 +281,7 @@ def test_offline_finalization_rejects_missing_enabled_fused_product(tmp_path):
 
 @pytest.mark.parametrize("legacy_inventory", [False, True])
 def test_older_completed_replica_is_reused_without_archiving_or_reading_trajectory(tmp_path, monkeypatch, legacy_inventory):
-    rep, cfg = _project(tmp_path, 2)
+    rep, cfg = make_project(tmp_path, 2)
     root = tmp_path / "results"
     state = runner.RunState(root)
     runner.run_replicate(rep, cfg, root, state)
