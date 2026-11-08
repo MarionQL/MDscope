@@ -5,6 +5,7 @@ the implementation to compute their expected answers. Passing them does not
 establish converged simulation estimates or transferable binding affinities.
 """
 import numpy as np
+from mdscope.core.lipid_geometry import accessible_area_grid
 import pandas as pd
 import pytest
 import MDAnalysis as mda
@@ -13,7 +14,7 @@ from mdscope.mechanisms.motif_residence import (
     summarize_lipid_residence, summarize_intermittent_residence,
 )
 from mdscope.mechanisms.sdc4_mechanisms import (
-    _composition_enrichment, _contacts, _accessible_area_grid,
+    _composition_enrichment, _contacts,
 )
 
 
@@ -93,11 +94,11 @@ def test_projected_area_grid_periodicity_and_slab_oracle():
     box = np.array([10., 10., 10., 90., 90., 90.])
     # One protein atom at periodic x=-0.2 blocks only (0,0) on a
     # 1 Å grid when exclusion radius is 0.4 Å.
-    wrapped = _accessible_area_grid([0., 0.], 0., [[9.8, 0., 0.]],
+    wrapped = accessible_area_grid([0., 0.], 0., [[9.8, 0., 0.]],
                                     box, grid, 1., .4, 1.)
-    direct = _accessible_area_grid([0., 0.], 0., [[-.2, 0., 0.]],
+    direct = accessible_area_grid([0., 0.], 0., [[-.2, 0., 0.]],
                                    box, grid, 1., .4, 1.)
-    outside_slab = _accessible_area_grid([0., 0.], 0., [[9.8, 0., 2.]],
+    outside_slab = accessible_area_grid([0., 0.], 0., [[9.8, 0., 2.]],
                                          box, grid, 1., .4, 1.)
     assert wrapped == pytest.approx(8.)
     assert direct == pytest.approx(8.)

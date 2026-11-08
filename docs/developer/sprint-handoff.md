@@ -195,3 +195,37 @@ Validation for this follow-up:
 - Python 3.11/3.13 and real-GROMACS checks remain GitHub CI gates. GROMACS and
   the six full production trajectories are unavailable in this workspace;
   no real-trajectory normalization or production report claim is made.
+
+## Lipid area-reference follow-up — 2026-11-08
+
+One branch addresses #108 and advances #102/#72 by reusing the existing
+SDC4 projected protein-disk/slab model. Its kernel now lives in
+`core/lipid_geometry.py` with migrated callers/tests and no compatibility
+facade. A nonperiodic KD-tree missed protein disks across the opposite edge
+from grid samples; the independent two-point case produced 1 Å² instead of
+0 Å² before the correction. The toroidal query also normalizes tiny negative
+roundoff that can otherwise wrap to exactly the box length.
+
+General lipid enrichment optionally saves distinct full-plane/annular areas
+and density ratios, with analytic disk/union/null references, absent-species
+and blocked-shell semantics, axis permutation and invalid-geometry checks.
+The old composition ratio is unchanged. Fused/standalone/replay references
+agree, and 34 existing finalized Parquet tables exactly match merged main on
+the mixed-observer fixture; the only new default product is a regenerable
+offline molecular composition inventory. New area outputs are disabled by
+default, and their heatmap/labels remain separate from composition enrichment.
+
+A synthetic 2,000-atom/3,096-point compact-grid comparison (seed 42, 50
+repetitions) retained identical area 247.5182666 Å²; measured evaluations were
+1.45 ms before versus 2.35 ms with periodic search. This is a correctness cost
+on that small geometry, not a trajectory throughput or memory benchmark.
+The optional adapter is bounded by quadrature_order² (16..256) and makes no
+additional trajectory pass. Radius/slab/resolution/planarity sensitivity on
+real replicas remains necessary; the model is not physical free area or
+binding affinity.
+
+At the owner's request, no GitHub Actions workflows are dispatched or rerun.
+The consolidated commit carries `[skip ci]`; local tests are the validation
+for this PR. Six-production-replica recomputation and scientific interpretation
+remain unverified, and optional FreeSASA references are reported separately
+when the local dependency is unavailable.

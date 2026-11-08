@@ -20,10 +20,9 @@ import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import capped_distance, minimize_vectors, calc_dihedrals
-from scipy.spatial import cKDTree
 
 from ..config import DEFAULTS, atomic_json, atomic_parquet, ensure_dir, time_ps
-from ..core.lipid_geometry import anchor_groups, aligned_leaflets, periodic_center
+from ..core.lipid_geometry import anchor_groups, aligned_leaflets, periodic_center, accessible_area_grid
 from .mechanistic_common import AA3, heavy, nearest, selected, sequence_matches, unit
 from ..observables.membrane_order import _candidate_sites, _fixed_ch_pairs, _atomic_npz
 from ..pipeline.progress import track
@@ -65,26 +64,6 @@ def _angle(a, b):
     return float(np.degrees(np.arccos(np.clip(np.dot(a, b), -1., 1.)))) if (
         np.all(np.isfinite(a)) and np.all(np.isfinite(b))
     ) else np.nan
-
-
-def _accessible_area_grid(center_xy, surface_z, protein_xyz, box,
-                          sample_xy, spacing_A, exclusion_A, slab_A):
-    """Projected lipid-accessible area (Å²), excluding nearby protein discs.
-
-    This parameterized grid estimate is not a molecular free-energy or
-    exact lipid excluded-volume calculation. Minimum-image geometry is used.
-    """
-    center = np.array([center_xy[0], center_xy[1], surface_z], float)
-    rel = minimize_vectors(np.asarray(protein_xyz, float) - center, box)
-    near = (
-        (np.abs(rel[:, 2]) <= slab_A)
-        & (np.einsum("ij,ij->i", rel[:, :2], rel[:, :2])
-           <= (np.max(np.linalg.norm(sample_xy, axis=1)) + exclusion_A) ** 2)
-    )
-    if not np.any(near):
-        return float(len(sample_xy) * spacing_A ** 2)
-    distances = cKDTree(rel[near, :2]).query(sample_xy, k=1)[0]
-    return float(np.count_nonzero(distances > exclusion_A) * spacing_A ** 2)
 
 
 def _proline_rama_region(phi, psi):
@@ -794,7 +773,7 @@ class SDC4Mechanisms:
                 if self.accessible_area_enabled:
                     region_center = _center(atoms, box)
                     for leaflet, surface in (("upper", upper_z), ("lower", lower_z)):
-                        leaflet_areas[leaflet] = _accessible_area_grid(
+                        leaflet_areas[leaflet] = accessible_area_grid(
                             region_center[:2], surface, self.protein.positions,
                             box, self.area_samples, self.area_grid_A,
                             self.area_exclusion_A, self.area_slab_A,

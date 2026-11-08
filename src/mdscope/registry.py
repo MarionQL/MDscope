@@ -177,6 +177,8 @@ def required_artifacts(entry: FusedOutput, cfg: dict) -> tuple[Path, ...]:
     }.get(name, ())
     paths = [entry.path, *(directory / filename for filename in companions)]
     spec = cfg['analyses'].get(name, {})
+    if name == 'lipid_enrichment' and spec.get('area_reference'):
+        paths.append(directory/'area_reference.json')
     if name == 'sasa':
         spec = next(run.spec for run in analysis_runs(cfg, name)
                     if run.run_id == (entry.run_id or 'default'))

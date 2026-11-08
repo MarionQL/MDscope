@@ -17,6 +17,9 @@ def _set(cfg, keys, value):
 
 
 @pytest.mark.parametrize("keys,value,diagnostic", [
+    (("analyses","lipid_enrichment"), {"enabled":True,"species_selections":{"POPC":"all"},"area_reference":{"exclusion_radius_A":3.}}, "area_reference"),
+    (("analyses","lipid_enrichment"), {"enabled":True,"species_selections":{"POPC":"all"},"area_reference":{"exclusion_radius_A":3.,"slab_half_width_A":-1.}}, "area_reference"),
+    (("analyses","lipid_enrichment"), {"enabled":True,"species_selections":{"POPC":"all"},"area_reference":{"exclusion_radius_A":3.,"slab_half_width_A":5.,"quadrature_order":16.5}}, "area_reference"),
     (("trajectory","stride"), 1.5, "stride"),
     (("trajectory","chunk_frames"), True, "chunk_frames"),
     (("trajectory","start"), .5, "start"),

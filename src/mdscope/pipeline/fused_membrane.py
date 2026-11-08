@@ -22,7 +22,8 @@ from MDAnalysis.lib.distances import minimize_vectors
 
 from ..config import atomic_parquet, ensure_dir, time_ps
 from ..core.lipid_geometry import anchor_groups, aligned_leaflets, centers, periodic_center
-from ..observables.lipid_enrichment import enrichment_frame
+from ..observables.lipid_enrichment import enrichment_frame, write_area_reference_metadata
+from ..core.atom_selection import select_heavy_atoms
 from ..observables.bilayer_normal import fit_local_normals
 from ..observables.membrane_order import (
     AXIS_INDEX, _atomic_npz, _candidate_sites, _fixed_ch_pairs,
@@ -102,6 +103,7 @@ class FusedMembrane:
             self.protein = universe.select_atoms(selection)
             if not len(self.protein):
                 raise ValueError("lipid_enrichment.protein_selection is empty")
+            self.area_obstacles = select_heavy_atoms(self.protein, policy="mechanistic") if spec.get("area_reference") else None
             self.inner = float(spec.get("inner_radius_A", 0.))
             self.outer = float(spec.get("outer_radius_A", 15.))
             if not 0 <= self.inner < self.outer:
@@ -227,7 +229,10 @@ class FusedMembrane:
             else:
                 center = periodic_center(self.protein.positions, box)
                 vals = enrichment_frame(
-                    species, current, xyz, center, box, self.inner, self.outer, axis
+                    species, current, xyz, center, box, self.inner, self.outer, axis,
+                    categories=spec["species_selections"],
+                    obstacles=self.area_obstacles.positions if self.area_obstacles is not None else None,
+                    area_reference=spec.get("area_reference"),
                 )
                 row = {"time_ps": t, "lipid_enrichment_leaflet_changes": changes}
                 for value in vals:
@@ -235,6 +240,8 @@ class FusedMembrane:
                     row[prefix + "_fold"] = value["enrichment_fold"]
                     row[prefix + "_local_fraction"] = value["local_fraction"]
                     row[prefix + "_contact_count"] = value["count_local"]
+                    if spec.get("area_reference"):
+                        row[prefix + "_area_density_ratio"] = value["area_density_ratio"]
                     self.rows["enrichment_counts"].append({"time_ps": t, **value})
                 self.rows[name].append(row)
             self.timings[name] += time.perf_counter() - start
@@ -361,6 +368,8 @@ class FusedMembrane:
                 "species": state["species"], "resindex": state["indices"],
                 "leaflet": np.where(state["initial"], "upper", "lower"),
             }))
+            spec = self.geometry["lipid_enrichment"]["spec"]
+            write_area_reference_metadata(out, spec, spec.get("protein_selection") or self.cfg["selections"]["protein"])
             result["lipid_enrichment"] = {
                 "frames": len(series), "n_lipids": len(state["species"]),
                 "n_species": len(np.unique(state["species"])),
