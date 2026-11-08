@@ -860,7 +860,7 @@ RMSD and RMSF live in `src/mdscope/observables/rmsd.py` and `src/mdscope/observa
 
 The existing `membrane.msd` code is retained in `src/mdscope/observables/msd.py` and now optionally produces **replicate-level diffusion coefficients** as well. Configure `analyses.membrane.msd.slope_start_fraction` (default `0.2`) and `slope_end_fraction` (default `0.8`). This is a descriptive **single-origin MSD** slope fit; it does not claim species-resolved or multi-origin diffusion, and it does not treat time-correlated frames as independent replicates.
 
-Prior results with a mismatched code/configuration hash are archived in `.archives/` instead of silently deleted. A significant refactor may still trigger expensive reanalysis: choose a new project.output path if you do not want the old results invalidated.
+Older outputs remain reusable when their required files and formats are compatible. Use a separate `project.output` when you intend to recompute results with different scientific settings.
 
 
 ## Lipid analyses from issues #1–#5
@@ -943,8 +943,8 @@ Optional `analyses.membrane.msd.remove_drift: true` subtracts the instantaneous
 mean displacement of selected lipid residue centers in each step (the
 lipid-frame reference). This reduces common translation artifacts but changes
 the physical reference frame and introduces a small finite-population bias;
-leave it disabled when laboratory-frame MSD is desired. The option is included
-in the configuration hash and is restart-safe. For scientific interpretation,
+leave it disabled when laboratory-frame MSD is desired. Use a fresh output directory
+when changing the drift policy. For scientific interpretation,
 check membrane drift, trajectory preprocessing, and the fit regime.
 
 ### Performance profiling

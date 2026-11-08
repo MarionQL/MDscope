@@ -30,40 +30,38 @@ SUPPLEMENT_SUFFIXES = (
 
 def figure_inventory(root, system_repouts, cfg=None, include_rejected=False):
     """List every generated PNG with its origin and preferred presentation."""
-    from ..config import config_hash
+    from filecmp import cmp
     root=Path(root)
     paths = _figure_paths(root, system_repouts)
-    fingerprints = {}
-    signature = _presentation_hash(cfg) if cfg is not None else None
     import json
     provenance = Path(root)/'project_summary/report/figure_provenance.json'
     records = json.loads(provenance.read_text()) if cfg is not None and provenance.exists() else {}
     rows=[]
-    seen_png = set()
+    seen_png = {}
     for path in sorted(set(paths)):
         name=path.name
         kind=("primary" if name.startswith("lipid_contact_matrix_") or name.endswith(PRIMARY_SUFFIXES) else
               "supplement" if name.endswith(SUPPLEMENT_SUFFIXES) else "other")
-        status = figure_status(path,cfg,root,system_repouts,records=records,fingerprints=fingerprints,signature=signature) if cfg is not None else 'unverified'
-        if status == 'valid':
-            digest = records[str(path.relative_to(root))].get('png_sha256')
-            if digest in seen_png:
+        status = figure_status(path,cfg,root,system_repouts,records=records) if cfg is not None else 'unverified'
+        if status in {'valid', 'legacy_unverified'}:
+            peers = seen_png.setdefault(path.stat().st_size, [])
+            if any(cmp(path, peer, shallow=False) for peer in peers):
                 status = 'duplicate_figure'
-            seen_png.add(digest)
-        if cfg is not None and status != 'valid' and not include_rejected:
+            else:
+                peers.append(path)
+        if cfg is not None and status not in {'valid', 'legacy_unverified'} and not include_rejected:
             continue
         record = records.get(str(path.relative_to(root)),{})
-        rows.append({"figure_id":config_hash(str(path.relative_to(root))),
+        rows.append({"figure_id":str(path.relative_to(root)),
                      "display_label":record.get('display_label', path.stem.replace('_',' ')),
                      "source_metric":record.get('source_metric'),"units":record.get('units'),
-                     "generation_config_hash":record.get('generation_config_hash'),
                      "generated_at":record.get('generated_at'),
                      "source_files":json.dumps(record.get('source_files',[])),
                      "sampling":json.dumps(record.get('sampling',[])),
                      "status":status,"family":figure_family(path),"figure":str(path.relative_to(root)),
                      "section":str(path.parent.relative_to(root)),
                      "kind":kind,"bytes":path.stat().st_size})
-    return pd.DataFrame(rows,columns=["figure","figure_id","display_label","section","kind","bytes","family","status","source_metric","units","generation_config_hash","generated_at","source_files","sampling"])
+    return pd.DataFrame(rows,columns=["figure","figure_id","display_label","section","kind","bytes","family","status","source_metric","units","generated_at","source_files","sampling"])
 
 
 def report_coverage(root, system_repouts, cfg=None):
@@ -183,13 +181,6 @@ def figure_snapshot(root, system_repouts):
             for p in _figure_paths(root, system_repouts)}
 
 
-def _presentation_hash(cfg):
-    from ..config import config_hash
-    from ..core.provenance import package_code_hash
-    return config_hash({'config': {k: cfg.get(k) for k in ('plots','statistics','analyses','trajectory','time','selections','systems')},
-                        'code_hash': package_code_hash()})
-
-
 def _source_files(root, system_repouts, family):
     root = Path(root)
     folders = {'time_series':'statistics/time_series','profiles':'statistics/profiles',
@@ -216,18 +207,9 @@ def _source_files(root, system_repouts, family):
     return sorted(set(paths))
 
 
-def _source_fingerprint(paths, root):
-    from ..config import config_hash
-    return config_hash([(str(p.relative_to(root)),p.stat().st_size,p.stat().st_mtime_ns) for p in paths]) if paths else None
-
-
 def record_generated_figures(cfg, root, system_repouts, before):
-    """Stamp only newly written PNGs; never bless an unchanged stale figure.
-
-    Source fingerprints use path/size/mtime, not a claimed content digest.
-    PNG content hashes detect edited/replaced images. No trajectory is read.
-    """
-    import json, hashlib
+    """Record source paths and sampling for figures written in this run."""
+    import json
     from datetime import datetime, timezone
     from ..config import atomic_json
     from .report_inventory import _summary_inventory
@@ -236,31 +218,28 @@ def record_generated_figures(cfg, root, system_repouts, before):
     records = json.loads(dest.read_text()) if dest.exists() else {}
     sampling = _summary_inventory(root,cfg,system_repouts).to_dict('records')
     sources = {}
-    signature = _presentation_hash(cfg)
     for path in _figure_paths(root,system_repouts):
         name = str(path.relative_to(root))
         if before.get(name) == (path.stat().st_mtime_ns,path.stat().st_size):
             continue
         family = figure_family(path)
         if family not in sources:
-            files = _source_files(root,system_repouts,family)
-            sources[family] = (files,_source_fingerprint(files,root))
-        files, fingerprint = sources[family]
+            sources[family] = _source_files(root,system_repouts,family)
+        files = sources[family]
         from .labels import _metric_meta
         metric = path.stem.split('__')[0]
         label, units = _metric_meta(metric)
         if units == metric:
             units = 'see figure axes/source schema'
         records[name] = dict(source_metric=metric,units=units,display_label=label,
-            family=family, generation_config_hash=signature,
-            png_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
-            source_fingerprint=fingerprint, source_files=[str(p.relative_to(root)) for p in files],
+            family=family, source_files=[str(p.relative_to(root)) for p in files],
             generated_at=datetime.now(timezone.utc).isoformat(), sampling=sampling)
     atomic_json(dest,records)
 
 
-def figure_status(path, cfg, root, system_repouts, records=None, fingerprints=None, signature=None):
-    import json, hashlib
+def figure_status(path, cfg, root, system_repouts, records=None):
+    import json
+    from PIL import Image
     from ..config import presentation_enabled
     root, path = Path(root), Path(path)
     family = figure_family(path)
@@ -274,31 +253,25 @@ def figure_status(path, cfg, root, system_repouts, records=None, fingerprints=No
     if records is None:
         provenance = root/'project_summary/report/figure_provenance.json'
         records = json.loads(provenance.read_text()) if provenance.exists() else {}
+    try:
+        with Image.open(path, formats=["PNG"]) as image:
+            image.verify()
+    except (OSError, SyntaxError, ValueError):
+        return 'invalid_figure'
     record = records.get(str(path.relative_to(root)))
-    if record is None:
-        return 'unverified'
-    if not all(key in record for key in ('generation_config_hash','source_fingerprint','png_sha256')):
+    if not record:
+        return 'legacy_unverified'
+    sources = record.get('source_files', [])
+    if not isinstance(sources, list) or any(not isinstance(source, str) for source in sources):
         return 'invalid_manifest'
-    if record['generation_config_hash'] != (signature or _presentation_hash(cfg)):
-        return 'stale_config'
-    if fingerprints is None:
-        fingerprints = {}
-    if family not in fingerprints:
-        fingerprints[family] = _source_fingerprint(_source_files(root,system_repouts,family),root)
-    if fingerprints[family] is None:
+    if sources and any(not (root / source).is_file() for source in sources):
         return 'missing_source'
-    if record['source_fingerprint'] != fingerprints[family]:
-        return 'stale_source'
-    if record['png_sha256'] != hashlib.sha256(path.read_bytes()).hexdigest():
-        return 'changed_figure'
-    return 'valid'
+    return 'valid' if sources else 'legacy_unverified'
 
 
 def statistics_status(cfg, root, family):
     """Explain eligibility, preserving explicitly identified legacy exports."""
     import json
-    from ..config import config_hash
-    from ..statistics import analysis_config_hash, input_fingerprint
     stats = cfg.get('statistics', {})
     option = stats.get('families', {}).get(family, True)
     if not stats.get('enabled', True) or option is False or (isinstance(option, dict) and not option.get('enabled', True)):
@@ -310,14 +283,9 @@ def statistics_status(cfg, root, family):
         record = json.loads(manifest.read_text())
         if record.get('status', 'complete') != 'complete':
             return 'incomplete'
-        if record.get('statistics_hash') != config_hash(stats):
-            return 'stale_config'
-        if 'analysis_config_hash' in record and record['analysis_config_hash'] != analysis_config_hash(cfg):
-            return 'stale_config'
-        if 'input_fingerprint' in record:
-            if record['input_fingerprint'] != input_fingerprint(root, record['replicate_paths']):
-                return 'stale_source'
-        else:
+        if record.get('families', {}).get(family) == 'disabled':
+            return 'unavailable'
+        if 'methods' not in record:
             return 'legacy_unverified'
     except (ValueError, TypeError, KeyError, AttributeError, OSError):
         return 'invalid_manifest'
@@ -325,5 +293,20 @@ def statistics_status(cfg, root, family):
 
 
 def current_statistics(cfg, root, family):
-    """Do not ingest disabled, incomplete, or mismatched statistical products."""
+    """Do not ingest disabled, incomplete, or malformed statistical products."""
     return statistics_status(cfg, root, family) in {'valid', 'legacy_unverified'}
+
+
+def saved_statistics_methods(root):
+    """Read recorded inference settings without substituting render settings."""
+    import json
+
+    path = Path(root) / 'project_summary/statistics/manifest.json'
+    try:
+        record = json.loads(path.read_text())
+        methods = record.get('methods')
+        if record.get('status', 'complete') == 'complete' and isinstance(methods, dict):
+            return methods
+    except (OSError, ValueError, AttributeError):
+        pass
+    return None

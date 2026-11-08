@@ -10,22 +10,6 @@ from mdscope.pipeline import runner
 from mdscope.core.lipid_geometry import AnchorTracker
 
 
-def test_code_hash_includes_nested_modules(monkeypatch, tmp_path):
-    root = tmp_path / "analysis"
-    root.mkdir()
-    main = root / "runner.py"
-    main.write_text("a = 1\n")
-    nested = root / "observables"
-    nested.mkdir()
-    module = nested / "msd.py"
-    module.write_text("b = 1\n")
-    from mdscope.core import provenance
-    monkeypatch.setattr(provenance, "__file__", str(main))
-    before = runner.package_code_hash()
-    module.write_text("b = 2\n")
-    assert runner.package_code_hash() != before
-
-
 def test_merge_rejects_conflicting_observable_names():
     first = pd.DataFrame({"time_ps": [0., 1.], "msd": [0., 1.]})
     second = pd.DataFrame({"time_ps": [0., 1.], "msd": [0., 2.]})

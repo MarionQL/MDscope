@@ -86,7 +86,7 @@ Validate selections for each topology before production. Local membrane enrichme
 
 - The common trajectory pass shares I/O for RMSD, RMSF, Rg, density, original membrane MSD and inexpensive contacts.
 - Specialized readers are individually checkpointed by analysis name; result profiles preserve the existing Parquet/NPZ/npy contract.
-- The code/configuration hash invalidates prior checkpoints. **A mismatch archives previous outputs under `.archives/` instead of deleting them.** Changing code can still trigger complete re-analysis, so use a distinct output directory if you wish to retain old figures without creating a new run.
+- Older outputs can be reused when the required files and checkpoint structure are compatible. Use a distinct output directory for an intentional recomputation with changed scientific settings.
 - `python -m compileall -q analysis tests` checks syntax; `pytest -q tests` runs synthetic regression checks.
 - CI runs these checks on pushes and pull requests. End-to-end tests against a real protein/lipid trajectory are still required before manuscript use.
 

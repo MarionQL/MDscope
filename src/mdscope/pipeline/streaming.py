@@ -1,7 +1,7 @@
 """Single-pass trajectory coordinator: analysis-specific metrics live in separate modules.
 
 Compatibility: raw/summary output schema retained; atomic NPZ checkpoints
-include committed artifact fingerprints and replicate identity.
+include committed artifact inventory and replicate identity.
 """
 from __future__ import annotations
 from pathlib import Path
@@ -31,11 +31,11 @@ from ..observables.radius_of_gyration import compute_rg
 from ..observables.density_1d import DensityProfileAccumulator
 from ..observables.membrane import initialize_membrane,membrane_metrics
 from ..interactions import chain_label,initialize_ligand_contacts,initialize_salt_bridges,ligand_contact_events,residue_label,salt_bridge_events
-def _checkpoint_payload(path, cfg_hash, processed, next_part, rmsf, groups, densities, membrane,
+def _checkpoint_payload(path, processed, next_part, rmsf, groups, densities, membrane,
                         rep, artifacts):
     artifacts.update(chunk_artifacts(path.parent.parent, next_part - 1))
     payload = {
-        "config_hash": np.asarray(cfg_hash), "processed": np.asarray(processed),
+        "processed": np.asarray(processed),
         "next_part": np.asarray(next_part),
         "w_n": np.asarray(rmsf.n), "w_mean": rmsf.mean, "w_M2": rmsf.M2,
         "artifact_inventory_version": np.asarray(1),
@@ -60,10 +60,10 @@ def _checkpoint_payload(path, cfg_hash, processed, next_part, rmsf, groups, dens
     tmp.replace(path)
 
 
-def _restore_checkpoint(checkpoint, cfg_hash, rmsf, groups, densities, membrane):
+def _restore_checkpoint(checkpoint, rmsf, groups, densities, membrane):
     with np.load(checkpoint, allow_pickle=False) as cp:
-        if str(cp["config_hash"].item()) != cfg_hash or cp["w_mean"].shape != rmsf.mean.shape:
-            raise ValueError("checkpoint does not match current run")
+        if cp["w_mean"].shape != rmsf.mean.shape or cp["w_M2"].shape != rmsf.M2.shape:
+            raise ValueError("checkpoint accumulator shape does not match the current selection")
         counts = (["processed", "next_part", "w_n"]
                   + [f"g_{key.replace('/', '_')}_n" for key in groups]
                   + [key for key in cp.files if key.startswith("density_") and key.endswith("_frames")])
@@ -95,7 +95,44 @@ def _restore_checkpoint(checkpoint, cfg_hash, rmsf, groups, densities, membrane)
         return processed, int(cp["next_part"])
 
 
-def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
+def validate_stream_inventory(rep, repout: Path, *, completed=False) -> dict:
+    """Validate committed chunks without opening a topology or trajectory."""
+    checkpoint = repout / "cache" / "stream_checkpoint.npz"
+    try:
+        with np.load(checkpoint, allow_pickle=False) as cp:
+            counter = cp["next_part"]
+            if counter.shape != () or counter.dtype.kind not in "iu" or int(counter) < 1:
+                raise ValueError("Invalid checkpoint part counter")
+            next_part = int(counter)
+            if "replicate_identity" in cp and not np.array_equal(
+                    cp["replicate_identity"], [rep.system, rep.label]):
+                raise ValueError("Checkpoint replicate identity does not match requested system/label")
+            if "artifact_inventory_version" not in cp:
+                if completed and "artifact_inventory" not in cp:
+                    # Completed legacy runs need not resume from this state.
+                    raw = repout / "raw"
+                    if next_part > sum(1 for _ in raw.glob("timeseries-part-*.parquet")):
+                        raise ValueError("Legacy checkpoint references missing committed timeseries parts")
+                    validate_committed_parts(raw, next_part)
+                    return {}
+                raise ValueError("Legacy checkpoint has no committed artifact inventory; archive this replicate before rerunning")
+            if int(cp["artifact_inventory_version"].item()) != 1:
+                raise ValueError("Unsupported committed artifact inventory version")
+            if "replicate_identity" not in cp:
+                raise ValueError("Missing checkpoint replicate identity")
+            artifacts = json.loads(str(cp["artifact_inventory"].item()))
+        if not isinstance(artifacts, dict) or next_part > len(artifacts):
+            raise ValueError("Invalid committed artifact counters")
+        validate_committed_parts(repout / "raw", next_part)
+        validate_artifact_inventory(repout, artifacts, next_part)
+    except (OSError, ValueError, KeyError, EOFError, TypeError, IndexError, BadZipFile) as exc:
+        raise RuntimeError(
+            f"Invalid streaming checkpoint {checkpoint}: {exc}. Existing output was preserved."
+        ) from exc
+    return artifacts
+
+
+def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash=None):
     # Protein, membrane, density, salt-bridge, and ligand-contact
     # calculations share one trajectory pass.
     # Reading a large XTC once is substantially cheaper than reopening
@@ -105,28 +142,9 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
     checkpoint = cache / "stream_checkpoint.npz"
     artifacts = {}
     # Validate persisted file identity before constructors, output writes or
-    # orphan pruning. Config hashes are project-wide, not replica identities.
+    # orphan pruning. Older callers may still supply the ignored cfg_hash.
     if checkpoint.exists():
-        try:
-            with np.load(checkpoint, allow_pickle=False) as cp:
-                if str(cp["config_hash"].item()) != cfg_hash:
-                    raise ValueError("checkpoint does not match current run")
-                if "artifact_inventory_version" not in cp:
-                    raise ValueError("Legacy checkpoint has no committed artifact inventory; archive this replicate before rerunning")
-                if int(cp["artifact_inventory_version"].item()) != 1:
-                    raise ValueError("Unsupported committed artifact inventory version")
-                if not np.array_equal(cp["replicate_identity"], [rep.system, rep.label]):
-                    raise ValueError("Checkpoint replicate identity does not match requested system/label")
-                artifacts = json.loads(str(cp["artifact_inventory"].item()))
-                next_part = int(cp["next_part"])
-            if not isinstance(artifacts, dict) or not 0 < next_part <= len(artifacts):
-                raise ValueError("Invalid committed artifact counters")
-            validate_committed_parts(raw, next_part)
-            validate_artifact_inventory(repout, artifacts, next_part)
-        except (OSError, ValueError, KeyError, EOFError, TypeError, IndexError, BadZipFile) as exc:
-            raise RuntimeError(
-                f"Invalid streaming checkpoint {checkpoint}: {exc}. Existing output was preserved."
-            ) from exc
+        artifacts = validate_stream_inventory(rep, repout)
     elif any(numbered_artifacts(repout)):
         raise RuntimeError(
             f"Unsafe streaming restart in {repout}: checkpoint is absent but numbered artifacts exist. "
@@ -263,7 +281,6 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
         try:
             processed, part = _restore_checkpoint(
                 checkpoint,
-                cfg_hash,
                 rmsf_acc,
                 groups,
                 densities,
@@ -476,7 +493,6 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
             part += 1
             _checkpoint_payload(
                 checkpoint,
-                cfg_hash,
                 processed,
                 part,
                 rmsf_acc,
@@ -518,7 +534,6 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash: str):
         part += 1
         _checkpoint_payload(
             checkpoint,
-            cfg_hash,
             processed,
             part,
             rmsf_acc,

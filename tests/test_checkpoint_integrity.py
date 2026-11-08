@@ -1,5 +1,8 @@
 """Resume safety: committed counters and orphan chunk pruning."""
+import os
 from pathlib import Path
+import numpy as np
+import pandas as pd
 import pytest
 from mdscope.core.checkpoints import (validate_progress, validate_committed_parts, prune_uncommitted_parts,
                                      chunk_artifacts, validate_artifact_inventory, prune_artifact_orphans)
@@ -85,17 +88,27 @@ def test_inventory_covers_owned_formats_without_reading_artifact_contents(tmp_pa
     for name in paths + unrelated:
         file = tmp_path/name
         file.parent.mkdir(parents=True, exist_ok=True)
-        file.write_bytes(b"metadata only, not a valid data container")
+        if file.suffix == ".npz":
+            np.savez(file, time_ps=[0.])
+        else:
+            pd.DataFrame({"time_ps": [0.]}).to_parquet(file)
     def forbidden(*a, **k):
         raise AssertionError("checkpoint inventory read scientific data contents")
     monkeypatch.setattr(Path, "read_bytes", forbidden)
     records = chunk_artifacts(tmp_path, 0)
     assert set(records) == set(paths)
+    # Copying an intact result can change mtimes without changing its layout.
+    for name in paths:
+        os.utime(tmp_path / name, ns=(0, 1_000_000_000))
     for name in paths:
         (tmp_path/name.replace("000000", "000001")).write_bytes(b"orphan")
     temporary = tmp_path/"cache/sdc4_mechanisms/map-000001.tmp.npz"
     temporary.write_bytes(b"aborted writer")
     validate_artifact_inventory(tmp_path, records, 1)
+    broken = tmp_path / paths[0]
+    broken.write_bytes(b"X" * broken.stat().st_size)
+    with pytest.raises(ValueError, match="Invalid committed artifact"):
+        validate_artifact_inventory(tmp_path, records, 1)
     prune_artifact_orphans(tmp_path, 1)
     assert not temporary.exists()
     assert all((tmp_path/name).is_file() for name in paths + unrelated)

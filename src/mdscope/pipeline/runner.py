@@ -15,7 +15,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import yaml
-from ..core.provenance import package_code_hash
 from ..core.persistence import archive_output as _archive_previous_output
 from ..core.validation import validate_selections
 
@@ -40,7 +39,7 @@ from ..reporting.membrane_figures import plot_lipid_enrichment_matrix, plot_lipi
 from ..observables.residue_membrane_distance import run_residue_membrane_distance
 from ..observables.structure_profiles import postprocess_structure_profiles, run_structure_profiles
 from ..statistics import analyze_project
-from .streaming import run_streaming_pass
+from .streaming import run_streaming_pass, validate_stream_inventory
 from .fused_membrane import enabled_names as fused_enabled_names, run_fused_membrane
 from .fused_extensions import enabled_names as extension_enabled_names, run_fused_extensions
 from .fused_distance import enabled_names as distance_enabled_names, run_fused_distances
@@ -55,29 +54,61 @@ from ..observables.multi_origin_pipeline import run_multi_origin_diffusion
 from ..reporting.coupling_screen import screen_couplings
 
 
+def _check_artifact(path: Path) -> int:
+    """Check a required product using its metadata only."""
+    size = path.stat().st_size
+    if not path.is_file() or not size:
+        raise ValueError(f"Missing or empty artifact: {path}")
+    if path.suffix == ".parquet":
+        from pyarrow.parquet import read_metadata
+        read_metadata(path)
+    elif path.suffix == ".npy":
+        np.load(path, allow_pickle=False, mmap_mode="r")
+    return size
+
+
 class RunState:
     # Small completion markers let interrupted long trajectories resume
     # without repeating finished stages.
-    def __init__(self, root: Path, config_hash_value: str):
+    def __init__(self, root: Path):
         self.root = ensure_dir(root / ".state")
-        self.config_hash = config_hash_value
 
     def marker(self, key: str) -> Path:
         return self.root / f"{key}.json"
 
-    def complete(self, key: str) -> bool:
+    def complete(self, key: str, required_artifacts: tuple[Path, ...] | None = None) -> bool:
         path = self.marker(key)
         if not path.exists():
             return False
         try:
-            return json.loads(path.read_text()).get("config_hash") == self.config_hash
+            marker = json.loads(path.read_text())
+            if not isinstance(marker, dict) or marker.get("status") != "complete":
+                return False
+            if required_artifacts is None:
+                return True
+            if "artifacts" not in marker:
+                # Older markers can still establish completion if the actual
+                # expected outputs are readable.
+                for artifact in required_artifacts:
+                    _check_artifact(artifact)
+                return True
+            recorded = marker["artifacts"]
+            if not isinstance(recorded, dict):
+                return False
+            for artifact in required_artifacts:
+                saved_size = recorded.get(str(artifact))
+                if type(saved_size) is not int or _check_artifact(artifact) != saved_size:
+                    return False
+            return set(recorded) == {str(p) for p in required_artifacts}
         except Exception:
+            # Corrupted markers, filesystem failures and invalid Parquet
+            # metadata must invalidate reuse, not crash a restart.
             return False
 
     def mark(self, key: str, extra=None):
         atomic_json(
             self.marker(key),
-            {"status": "complete", "config_hash": self.config_hash, **(extra or {})}
+            {**(extra or {}), "status": "complete"}
         )
 
 
@@ -92,25 +123,17 @@ def project_root(cfg: dict, config_path: str | Path) -> Path:
 
 def initialize(config_path: str | Path, cfg: dict):
     root = ensure_dir(project_root(cfg, config_path))
-    code_hash = package_code_hash()
-    hash_value = config_hash({
-        "config": cfg,
-        "mdscope_version": __version__,
-        "code_hash": code_hash,
-    })
     atomic_text(
         root / "resolved_config.yaml",
         yaml.safe_dump(cfg, sort_keys=False),
     )
     metadata = environment_metadata()
     metadata.update({
-        "config_hash": hash_value,
-        "code_hash": code_hash,
         "config_path": str(Path(config_path).resolve()),
         "mdscope_version": __version__,
     })
     atomic_json(root / "run_metadata.json", metadata)
-    return root, RunState(root, hash_value)
+    return root, RunState(root)
 
 
 def _load_parts(pattern: Path) -> pd.DataFrame:
@@ -194,15 +217,22 @@ def summarize_replicate(repout: Path, cfg: dict):
         ([group_base] if not group_base.empty else []) + profile_group_ts,
         group=True
     )
+    written = []
     if not whole.empty:
-        atomic_parquet(summary / "timeseries.parquet", whole)
+        path = summary / "timeseries.parquet"
+        atomic_parquet(path, whole)
+        written.append(path)
         if cfg.get("analyses",{}).get("membrane",{}).get("enabled",False) and cfg.get("analyses",{}).get("membrane",{}).get("msd",{}).get("enabled",False):
             summarize_diffusion(repout,cfg)
     if not grouped.empty:
-        atomic_parquet(summary / "group_timeseries.parquet", grouped)
+        path = summary / "group_timeseries.parquet"
+        atomic_parquet(path, grouped)
+        written.append(path)
+    return tuple(written)
 
 
 def _replicate_state_prefix(rep) -> str:
+    # Keep the historical replica marker filename. It encodes identity only.
     identity_hash = config_hash({
         "system": rep.system,
         "replicate": rep.label,
@@ -210,32 +240,9 @@ def _replicate_state_prefix(rep) -> str:
     return f"rep-{identity_hash}"
 
 
-def _prepare_replicate_output(
-    rep,
-    root: Path,
-    state: RunState,
-) -> Path:
-    repout = root / rep.system / rep.label
-    hash_file = repout / ".config_hash"
-    if repout.exists():
-        previous_hash = None
-        try:
-            previous_hash = hash_file.read_text().strip()
-        except OSError:
-            pass
-        if previous_hash != state.config_hash:
-            prior = previous_hash or "unknown_hash"
-            archived=_archive_previous_output(
-                repout,root/".archives"/"replicates"/rep.system/rep.label,prior)
-            print(f"Archived previous replicate output: {archived}")
-    repout = ensure_dir(repout)
-    atomic_text(hash_file, state.config_hash + "\n")
-    return repout
-
-
 def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     prefix = _replicate_state_prefix(rep)
-    repout = _prepare_replicate_output(rep, root, state)
+    repout = ensure_dir(root / rep.system / rep.label)
     stage_timings = []
     streaming_analyses = [
         "rmsd",
@@ -253,10 +260,14 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
         "cache",
         {}
     ).get("aligned_coordinates", False))
-    if streaming_required and not state.complete(prefix + "-stream"):
-        t0 = perf_counter()
-        state.mark(prefix + "-stream", run_streaming_pass(rep, cfg, root, state.config_hash))
-        stage_timings.append({"stage": "streaming", "seconds": perf_counter() - t0})
+    if streaming_required:
+        key = prefix + "-stream"
+        if state.complete(key):
+            validate_stream_inventory(rep, repout, completed=True)
+        else:
+            t0 = perf_counter()
+            state.mark(key, run_streaming_pass(rep, cfg, root))
+            stage_timings.append({"stage": "streaming", "seconds": perf_counter() - t0})
 
     # Without protein streaming, run *all* optional observer families in
     # one shared frame loop instead of three separate fallback traversals.
@@ -372,16 +383,37 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
             stage_timings.append({"stage": task.key, "seconds": perf_counter() - t0})
     msd_cfg = cfg.get("analyses", {}).get("membrane", {}).get("msd", {})
     if msd_cfg.get("enabled") and msd_cfg.get("multi_origin", False):
-        target = repout / "summary" / "multi_origin_diffusion.parquet"
-        if not state.complete(prefix + "-multi-origin-msd") or not target.is_file():
+        targets = tuple(repout / "summary" / name for name in (
+            "multi_origin_diffusion.parquet", "multi_origin_msd.parquet",
+        ))
+        if not state.complete(prefix + "-multi-origin-msd", required_artifacts=targets):
             t0 = perf_counter()
             result = run_multi_origin_diffusion(rep, cfg, repout)
-            state.mark(prefix + "-multi-origin-msd", result)
+            state.mark(prefix + "-multi-origin-msd", {
+                **result, "artifacts": {str(p): _check_artifact(p) for p in targets},
+            })
             stage_timings.append({"stage": "multi-origin-msd", "seconds": perf_counter() - t0})
-    if not state.complete(prefix + "-summary"):
+    whole = repout / "summary" / "timeseries.parquet"
+    grouped = repout / "summary" / "group_timeseries.parquet"
+    summary_paths = tuple(
+        path for path, required in (
+            (whole, streaming_required),
+            (grouped, any((repout / "raw").glob("group_timeseries-part-*.parquet"))),
+        )
+        if required or path.is_file()
+    )
+    # A summary marker is reusable only when its recorded outputs still
+    # exist and have valid Parquet footers. Do not infer completion from
+    # the marker or from one plausible file alone.
+    summary_reusable = state.complete(prefix + "-summary", required_artifacts=summary_paths)
+    if stage_timings or not summary_reusable:
         t0 = perf_counter()
-        summarize_replicate(repout, cfg)
-        state.mark(prefix + "-summary")
+        summary_paths = summarize_replicate(repout, cfg)
+        if streaming_required and repout / "summary" / "timeseries.parquet" not in summary_paths:
+            raise RuntimeError(f"Streaming summary produced no time series: {repout}")
+        state.mark(prefix + "-summary", {
+            "artifacts": {str(p): _check_artifact(p) for p in summary_paths},
+        })
         stage_timings.append({"stage": "summary", "seconds": perf_counter() - t0})
     if stage_timings:
         atomic_json(repout / "stage_timings.json", {
@@ -402,7 +434,7 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
     # Finalization consumes persisted replica products, not the trajectory.
     # A changed reporting configuration or source revision must not force
     # expensive completed trajectories to be rerun. Validate the actual
-    # required input instead of matching the current run-state hash.
+    # required input using its persisted structure.
     missing = []
     for rep in replicates:
         repout = root / rep.system / rep.label
@@ -415,6 +447,13 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
             if (times.empty or not np.isfinite(times.to_numpy(dtype=float)).all()
                     or not times.is_monotonic_increasing or not times.is_unique):
                 missing.append(f"{rep.system}/{rep.label}: invalid time_ps")
+            for entry in fused_output_plan(cfg, repout):
+                try:
+                    _check_artifact(entry.path)
+                except (OSError, ValueError, EOFError) as exc:
+                    raise ValueError(
+                        f"invalid required {entry.name} artifact: {entry.path.relative_to(repout)} ({exc})"
+                    ) from exc
             checkpoint = repout / "cache" / "stream_checkpoint.npz"
             if checkpoint.is_file():
                 with np.load(checkpoint, allow_pickle=False) as cp:
@@ -434,7 +473,7 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
         )
     project_summary = root / "project_summary"
     if phase != "plotting" and project_summary.exists():
-        archived=_archive_previous_output(project_summary,root/".archives"/"project_summary",state.config_hash)
+        archived=_archive_previous_output(project_summary,root/".archives"/"project_summary","previous")
         print(f"Archived previous project summary: {archived}")
     # Finalization always provides a project summary directory, even when
     # optional statistics and plots are disabled.

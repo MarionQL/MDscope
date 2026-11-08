@@ -7,9 +7,9 @@ import json
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from ..config import presentation_enabled, config_hash, system_label
+from ..config import presentation_enabled, system_label
 from .report_inventory import inference_status, _read, _summary_inventory, _metric_groups, read_report_table
-from .figure_inventory import figure_inventory, report_coverage, metric_coverage, current_statistics
+from .figure_inventory import figure_inventory, report_coverage, metric_coverage, current_statistics, saved_statistics_methods
 from .solvation_figures import (solvation_inventory, solvation_rdf_figure,
     solvation_timeseries_figure, solvation_survival_figure,
     solvation_stat_rows, solvation_comparison_rows)
@@ -152,8 +152,12 @@ def _build_pdf(path, cfg, root, system_repouts, options):
         fontSize=8, leading=10.4, splitLongWords=False,
     ))
     from ..config import statistics_family_config
-    scalar_cfg = statistics_family_config(cfg, 'time_series') or cfg
-    ci_label = f"{100*float(scalar_cfg.get('statistics',{}).get('ci',.95)):g}% CI"
+    methods = saved_statistics_methods(root)
+    ci_label = "CI (level unrecorded)"
+    if methods is not None:
+        saved_cfg = {**cfg, 'statistics': methods}
+        scalar_cfg = statistics_family_config(saved_cfg, 'time_series') or saved_cfg
+        ci_label = f"{100*float(scalar_cfg['statistics'].get('ci', .95)):g}% CI"
     doc = SimpleDocTemplate(
         str(path), pagesize=letter, rightMargin=43, leftMargin=43,
         topMargin=48, bottomMargin=45,
@@ -237,7 +241,7 @@ def _build_pdf(path, cfg, root, system_repouts, options):
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ]))
         story.append(obj)
-        story.append(para(f"Source family: {current_family}; report configuration: {config_hash(cfg)}. "
+        story.append(para(f"Source family: {current_family}. "
                           "Sampling and source-file provenance are recorded in report_provenance.json; raw identifiers are retained in the bundle.", "ReportSmall"))
         story.append(Spacer(1, 8))
     def figure(path_or_buffer, caption, max_width=7.05*inch, max_height=7.6*inch):
@@ -248,7 +252,7 @@ def _build_pdf(path, cfg, root, system_repouts, options):
             if relative not in verified_figures or relative in displayed_figures:
                 return
             displayed_figures.add(relative)
-        caption += f" Source family: {current_family}; report configuration {config_hash(cfg)}; sampling/source audit in companion manifest."
+        caption += f" Source family: {current_family}. Sampling and source paths are in the companion manifest."
         try:
             from PIL import Image as PILImage
             if isinstance(path_or_buffer, (str, Path)):
@@ -288,8 +292,7 @@ def _build_pdf(path, cfg, root, system_repouts, options):
     meta_file = root / "run_metadata.json"
     if meta_file.exists():
         meta = json.loads(meta_file.read_text())
-        body(f"MDscope version: {meta.get('mdscope_version', '?')} | "
-             f"Configuration hash: {meta.get('config_hash', '?')}")
+        body(f"MDscope version recorded in run metadata: {meta.get('mdscope_version', '?')}")
     header("Systems and analyzed sampling")
     inventory = _summary_inventory(root, cfg, system_repouts)
     if inventory.empty:

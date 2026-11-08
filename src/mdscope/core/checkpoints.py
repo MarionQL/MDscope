@@ -2,6 +2,7 @@
 from __future__ import annotations
 from pathlib import Path
 import re
+from zipfile import BadZipFile, ZipFile
 
 _PART = re.compile(r"-part-(\d{6})\.(?:parquet|npz)$")
 _CHUNK = re.compile(r"(?:^|-)(\d{6})\.(?:parquet|npz)$")
@@ -44,8 +45,8 @@ def chunk_artifacts(repout: Path, part: int) -> dict:
 def validate_artifact_inventory(repout: Path, records: dict, next_part: int) -> None:
     """Reject missing/replaced committed artifacts before pruning or rewriting.
 
-    Size/mtime fingerprints detect ordinary edits and damage, not bit rot or
-    adversarial modifications preserving both metadata fields.
+    Validate expected paths and sizes. If an mtime changed, read container
+    metadata to distinguish an intact copy from a damaged chunk.
     """
     root = Path(repout).resolve()
     if not isinstance(records, dict) or not records:
@@ -62,8 +63,19 @@ def validate_artifact_inventory(repout: Path, records: dict, next_part: int) -> 
         if not path.is_file():
             raise ValueError(f"Missing committed artifact: {relative}")
         stat = path.stat()
-        if [stat.st_size, stat.st_mtime_ns] != expected:
+        if stat.st_size != expected[0]:
             raise ValueError(f"Changed committed artifact: {relative}")
+        if stat.st_mtime_ns != expected[1]:
+            try:
+                if path.suffix == ".parquet":
+                    from pyarrow.parquet import read_metadata
+                    read_metadata(path)
+                else:
+                    with ZipFile(path) as archive:
+                        if not archive.namelist():
+                            raise ValueError("Empty NPZ archive")
+            except (OSError, ValueError, EOFError, BadZipFile) as exc:
+                raise ValueError(f"Invalid committed artifact: {relative}") from exc
     current = {path.relative_to(root).as_posix() for path, part in numbered_artifacts(root)
                if part < next_part}
     extra = current - set(records)

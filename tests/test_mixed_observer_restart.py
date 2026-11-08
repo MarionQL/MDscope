@@ -239,6 +239,9 @@ def test_checkpoint_integrity_fails_without_rewriting_existing_outputs(tmp_path,
 
 def test_offline_finalization_retains_unequal_replica_lengths_and_missing_values(tmp_path, monkeypatch):
     cfg = deepcopy(DEFAULTS)
+    # This fixture only persists a scalar table. Its unrelated observers are disabled.
+    for spec in cfg["analyses"].values():
+        spec["enabled"] = False
     cfg["systems"] = {}
     for system, lengths, means in (("a", [3, 5], [0., 4.]), ("b", [4, 6], [2., 10.])):
         cfg["systems"][system] = {"topology": "unavailable.pdb", "replicates": []}
@@ -293,3 +296,58 @@ def test_finalization_rejects_checkpoint_summary_identity_or_frame_mismatch(tmp_
         runner.finalize_project(tmp_path/"unused.yaml", cfg=cfg, root=root,
                                 state=SimpleNamespace(config_hash="summary-integrity"), phase="statistics")
     assert _bytes_snapshot(root) == before
+
+
+def test_completed_stream_rejects_missing_committed_chunk_without_reading_trajectory(tmp_path, monkeypatch):
+    rep, cfg = _project(tmp_path, 2)
+    root = tmp_path / "results"
+    state = runner.RunState(root)
+    runner.run_replicate(rep, cfg, root, state)
+    chunk = root / "test/rep1/raw/timeseries-part-000000.parquet"
+    chunk.unlink()
+    before = _bytes_snapshot(root)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("completed stream reopened the trajectory")
+    monkeypatch.setattr(mda, "Universe", forbidden)
+    with pytest.raises(RuntimeError, match="missing committed timeseries parts"):
+        runner.run_replicate(rep, cfg, root, state)
+    assert _bytes_snapshot(root) == before
+
+
+def test_offline_finalization_rejects_missing_enabled_fused_product(tmp_path):
+    rep, cfg = _project(tmp_path, 2)
+    root = tmp_path / "results"
+    state = runner.RunState(root)
+    runner.run_replicate(rep, cfg, root, state)
+    (root / "test/rep1/extensions/solvation/counts.parquet").unlink()
+    before = _bytes_snapshot(root)
+    with pytest.raises(RuntimeError, match="invalid required solvation artifact"):
+        runner.finalize_project(tmp_path / "unused.yaml", cfg=cfg, root=root, state=state, phase="statistics")
+    assert _bytes_snapshot(root) == before
+
+@pytest.mark.parametrize("legacy_inventory", [False, True])
+def test_older_completed_replica_is_reused_without_archiving_or_reading_trajectory(tmp_path, monkeypatch, legacy_inventory):
+    rep, cfg = _project(tmp_path, 2)
+    root = tmp_path / "results"
+    state = runner.RunState(root)
+    runner.run_replicate(rep, cfg, root, state)
+    repout = root / "test/rep1"
+    (repout / ".config_hash").write_text("old-code-and-config")
+    marker_path = state.marker(runner._replicate_state_prefix(rep) + "-stream")
+    marker_path.write_text('{"status":"complete","config_hash":"old-code-and-config"}')
+    checkpoint = repout / "cache/stream_checkpoint.npz"
+    with np.load(checkpoint, allow_pickle=False) as data:
+        payload = dict(data)
+    if legacy_inventory:
+        for key in ("artifact_inventory", "artifact_inventory_version", "replicate_identity"):
+            del payload[key]
+    np.savez_compressed(checkpoint, **payload, config_hash=np.asarray("old-code-and-config"))
+    before = _bytes_snapshot(repout)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("reuse opened the trajectory")
+    monkeypatch.setattr(mda, "Universe", forbidden)
+    runner.run_replicate(rep, cfg, root, state)
+    assert _bytes_snapshot(repout) == before
+    assert not (root / ".archives/replicates").exists()
