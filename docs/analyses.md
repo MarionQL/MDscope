@@ -1098,6 +1098,53 @@ carried to replica/system descriptive RDF tables with its own replica count
 and coverage flag, and shown as dashed curves. Legacy curves never acquire
 an inferred reference. No production benefit is claimed from the toy tests.
 
+### Bridge evidence and streamed sampled-contact episodes
+
+Residence finalization reads frame-ordered contact identities in bounded Parquet
+batches. It retains active contacts across two successive observation frames
+and a bounded output batch; it does not concatenate the entire event history.
+Observed-span `duration_ps`, interval-imputed `sampled_duration_ps`, and boundary
+censoring retain their definitions. Persisted episode row order follows episode
+completion, rather than first-seen entity grouping. Consumers should use identity
+and frame columns, not row position. Invalid observation/event order fails before
+replacing the previous episode file. Kaplan–Meier output uses aggregated tied
+durations and reverse cumulative risk counts, preserving its numerical contract.
+Survival, bridge residence and SASA joins have separate table-loading limits;
+this does **not** make the entire finalizer bounded-memory.
+
+For explicitly configured `bridge_target_pairs`, finalization also writes:
+
+- `bridge_pair_timeseries.parquet`: one row per observed frame, selected solvent
+  species and configured pair, including zeros. Entity counts and presence use
+  the **same entity ID** at both targets, not two different nearby ions.
+- `bridge_pair_shift_reference.parquet`: at most 100 deterministic, nonzero
+  circular offsets of target-B contact histories. All entities share the same
+  offset, preserving their identities and each target's occupancy pattern.
+- `bridge_pair_control_summary.parquet`: observed occupancy, shift-reference
+  mean, 2.5/97.5 percentiles, observed-minus-reference mean and availability.
+
+The two percentiles describe the selected shifts; they are not confidence
+intervals or adjusted significance tests. No reference is calculated for fewer
+than four observations or irregular times. Circular wrapping and nonstationary
+trajectories can invalidate this temporal reference. It breaks simultaneous
+alignment, **not spatial crowding**, and cannot establish chemical bridging or
+cooperativity. Chemical site identity, shell thresholds and spatial/null geometry
+still need validation on the actual system.
+
+The frame traces enter the existing scalar block/replicate/hierarchical
+statistics; independent trajectories remain the condition-level units. Group
+IDs encode both targets and solvent explicitly. Existing legacy pair summaries
+and ion-count field names remain readable, while new traces use neutral entity
+labels that also apply to water. Bridge-record counts are checked against the
+independent reconstruction from persisted target-contact events.
+
+`target_atoms.parquet` records selected atom names, topology residue membership,
+elements and topology charges (missing charges remain NaN). The metadata's
+`solvent_selection_audit` records the actual selector, entity count, atom names
+and residue names. These records expose the chemical selections; they do not
+guess protonation or certify chemistry. Compatible older outputs without these
+new optional products remain readable and acquire no inferred null evidence.
+
 ### Explicit eligible bridge-pair occupancy
 
 For `solvation.options.bridge_target_pairs`, supply a list of pairs of exact

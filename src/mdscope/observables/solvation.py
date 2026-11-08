@@ -27,6 +27,10 @@ COUNT_COLUMNS = ["frame", "time_ps", "solvent", "target_id", "target_class",
 EVENT_COLUMNS = ["frame", "time_ps", "solvent", "target_id", "solvent_id"]
 BRIDGE_COLUMNS = ["frame", "time_ps", "solvent", "solvent_id", "target_a", "target_b"]
 
+EPISODE_COLUMNS = ["solvent", "target_id", "solvent_id", "start_frame", "end_frame",
+                   "duration_ps", "left_censored", "right_censored",
+                   "sampled_duration_ps", "duration_convention"]
+
 
 def rdf_from_counts(counts, edges, density_exposure):
     """Observed pairs / expected pairs at the supplied reference density exposure."""
@@ -74,9 +78,7 @@ def contact_episodes(events, observed_frames):
     sampled_duration_ps follows the lipid-residence sampled interval rule.
     """
     from ..core.residence import sampled_episode_durations
-    columns = ["solvent", "target_id", "solvent_id", "start_frame", "end_frame",
-               "duration_ps", "left_censored", "right_censored",
-               "sampled_duration_ps", "duration_convention"]
+    columns = EPISODE_COLUMNS
     if len(observed_frames) == 0:
         return pd.DataFrame(columns=columns)
     frames = [int(f) for f, _ in observed_frames]
@@ -316,6 +318,7 @@ class SolvationObserver:
                 selectors["ions/" + str(label)] = selection
         elif self.spec.get("ion_selection"):
             selectors["ions"] = self.spec["ion_selection"]
+        self.solvent_selections = selectors
         assigned = set()
         for name, query in selectors.items():
             group = universe.select_atoms(query)
@@ -677,22 +680,44 @@ class SolvationObserver:
                       for res in group.residues]
         atomic_parquet(dest / "target_residues.parquet", pd.DataFrame(
             membership, columns=["target_id", "topology_residue_index"]))
+        atomic_parquet(dest / "target_atoms.parquet", pd.DataFrame([
+            (target, kind, label, int(atom.index), int(atom.resindex),
+             str(atom.resname), str(atom.name), str(getattr(atom, "element", "")),
+             float(getattr(atom, "charge", np.nan)))
+            for target, kind, label, atoms in self.targets for atom in atoms
+        ], columns=["target_id", "target_class", "site_class", "atom_index", "topology_residue_index",
+                    "resname", "atom_name", "element", "charge_e"]))
         if self.events_on:
             frames = read("frames").drop_duplicates("frame").sort_values("frame")
-            events = read("events")
-            episodes = contact_episodes(
-                events[["frame", "solvent", "target_id", "solvent_id"]].itertuples(index=False, name=None)
-                if not events.empty else [],
-                list(frames[["frame", "time_ps"]].itertuples(index=False, name=None)))
-            atomic_parquet(dest / "episodes.parquet", episodes)
+            from .solvation_postprocess import write_contact_episodes
+            write_contact_episodes(sorted(cache.glob("events-*.parquet")),
+                list(frames[["frame", "time_ps"]].itertuples(index=False, name=None)),
+                dest / "episodes.parquet")
         from .solvation_postprocess import write_solvation_derivatives
         write_solvation_derivatives(dest, self.repout,
             sasa_run=self.spec.get("sasa_run", "default"))
         if self.eligible_bridge_pairs:
-            from .solvation_postprocess import bridge_pair_occupancy
+            from .solvation_postprocess import bridge_pair_occupancy, bridge_pair_evidence
             frame_times = read("frames").drop_duplicates("frame").sort_values("frame").time_ps.to_numpy(float)
-            atomic_parquet(dest / "bridge_pair_summary.parquet", bridge_pair_occupancy(
-                read("bridges"), frame_times, self.eligible_bridge_pairs, self.solvents))
+            pair_summary = bridge_pair_occupancy(
+                read("bridges"), frame_times, self.eligible_bridge_pairs, self.solvents)
+            observations = read("frames").drop_duplicates("frame").sort_values("frame")
+            evidence = bridge_pair_evidence(sorted(cache.glob("events-*.parquet")),
+                list(observations[["frame", "time_ps"]].itertuples(index=False, name=None)),
+                self.eligible_bridge_pairs, self.solvents)
+            keys = ["solvent", "target_a", "target_b"]
+            reconstructed = evidence[0].groupby(keys, as_index=False).agg(
+                frames=("bridge_present_fraction", "sum"), count=("bridge_entity_count", "sum"))
+            matched = pair_summary.merge(reconstructed, on=keys, validate="one_to_one")
+            if (len(matched) != len(pair_summary)
+                    or not np.array_equal(matched.bridge_frames, matched.frames)
+                    or not np.array_equal(np.rint(matched.mean_simultaneous_bridging_ions*
+                        matched.observed_frames).astype(np.int64), matched['count'])):
+                raise ValueError("Bridge records disagree with persisted target-contact identities")
+            atomic_parquet(dest / "bridge_pair_summary.parquet", pair_summary)
+            for name, data in zip(("bridge_pair_timeseries", "bridge_pair_shift_reference",
+                                   "bridge_pair_control_summary"), evidence):
+                atomic_parquet(dest / f"{name}.parquet", data)
         atomic_json(dest / "metadata.json", {
             "preset": self.spec.get("preset", "standard"), "edges_A": self.edges.tolist(),
             "neighbor_method": self.neighbor_method,
@@ -702,7 +727,13 @@ class SolvationObserver:
             "3d_grid_edges_A": self.grid_edges.tolist() if self.grid_frames else None,
             "bridges": self.bridges_on,
             "bridge_target_pairs": self.eligible_bridge_pairs,
+            "bridge_control": "Deterministic nonzero circular offsets of target-B contact traces, at most 100; regular windows with >=4 observations only. Reference span is not a CI or a spatial/chemical cooperativity test.",
             "track_target_classes": self.track_classes,
+            "solvent_selection_audit": {
+                name: {"selection": self.solvent_selections[name], "n_entities": len(atoms),
+                       "atom_names": sorted(set(map(str, atoms.names))),
+                       "resnames": sorted(set(map(str, atoms.resnames)))}
+                for name, atoms in self.solvents.items()},
             "water_hbond_bridges": self.water_hbond_bridges,
             "density_reference": "selected solvent entities / instantaneous full periodic cell volume",
             "aqueous_reference": self.aqueous_reference,

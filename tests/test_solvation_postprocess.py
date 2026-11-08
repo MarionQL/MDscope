@@ -137,3 +137,36 @@ def test_bridge_pair_occupancy_includes_eligible_never_observed_pairs():
     assert row.unique_bridging_ions == 3
     assert result.loc[result.target_a.eq('HS2'), 'sampled_bridge_fraction'].eq(0).all()
     assert result.loc[result.solvent.eq('ions/Na'), 'sampled_bridge_fraction'].eq(0).all()
+
+
+def test_survival_risk_counts_include_ties_censoring_and_exclude_unknown_origins():
+    episodes=pd.DataFrame({'solvent':['ions/K']*7, 'target_id':['site']*7,
+        'duration_ps':[1.,1.,2.,2.,3.,99.,np.nan],
+        'left_censored':[False]*5+[True,False],
+        'right_censored':[False,True,False,False,True,False,False]})
+    result=kaplan_meier(episodes)
+    assert result.at_risk.tolist()==[5,3,1]
+    assert result.dissociations.tolist()==[1,2,0]
+    assert result.right_censored.tolist()==[1,0,1]
+    np.testing.assert_allclose(result.survival_probability,[.8,.8/3,.8/3])
+
+
+def test_survival_plot_uses_the_persisted_duration_axis(tmp_path, monkeypatch):
+    import matplotlib.axes
+    from mdscope.reporting.solvation_figures import solvation_survival_figure
+    rep=tmp_path/'condition/rep1';directory=rep/'extensions/solvation'
+    directory.mkdir(parents=True)
+    pd.DataFrame({'solvent':'ions/K','target_id':'acid',
+        'duration_ps':[1.,2.,3.],'survival_probability':[1.,.5,0.]}).to_parquet(directory/'survival.parquet')
+    observed=[];original=matplotlib.axes.Axes.step
+    def capture(ax,x,y,**kwargs):
+        observed.append(list(x));return original(ax,x,y,**kwargs)
+    monkeypatch.setattr(matplotlib.axes.Axes,'step',capture)
+    assert solvation_survival_figure({'condition':[rep]}) is not None
+    assert observed==[[1.,2.,3.]]
+    # Readable older exports used time_ps for this duration axis.
+    pd.DataFrame({'solvent':'ions/K','target_id':'acid',
+        'time_ps':[1.,2.,3.],'survival_probability':[1.,.5,0.]}).to_parquet(directory/'survival.parquet')
+    observed.clear()
+    assert solvation_survival_figure({'condition':[rep]}) is not None
+    assert observed==[[1.,2.,3.]]

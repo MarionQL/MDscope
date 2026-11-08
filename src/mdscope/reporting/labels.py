@@ -1,5 +1,7 @@
 """Scientific display labels shared by plots and PDF tables, without plotting imports."""
 METRIC_LABELS = {
+    "bridge_present_fraction": ("Same-entity bridge occupancy (sampled frames)", "fraction"),
+    "bridge_entity_count": ("Simultaneous bridging solvent entities", "entities"),
     "rmsd_A": ("RMSD", "A"),
     "radius_of_gyration_A": ("Radius of gyration", "A"),
     "ligand_rmsd_A": ("Ligand RMSD", "A"),
