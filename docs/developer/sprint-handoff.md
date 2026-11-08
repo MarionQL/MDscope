@@ -140,3 +140,58 @@ original parameter provenance. Source fingerprints are metadata checks, not
 content hashes. The final individual file replacements are not an atomic
 multi-file transaction. Production-page QA, exact per-datapoint lineage,
 summary dashboard and broader plotting review remain open.
+
+## Consolidated completion follow-up — 2026-11-08
+
+This section supersedes earlier issue-disposition/freshness statements above
+where they conflict with merged PRs #124/#125/#132/#133 or the owner's
+structure-compatible legacy-output policy. Historical signatures are not
+reuse eligibility gates.
+
+At the owner's direction, #91, #99, #100, #101, #104, #105, #107 and #109
+were closed with explicit outstanding six-production-replica checks recorded
+in each issue. Closure does not establish scientific convergence, endpoint
+prespecification for a future study, biological mechanisms, or production
+report acceptance.
+
+One follow-up branch consolidates:
+- #128: required companion/standalone output checks and preservation on failure;
+- #130: optional measured geometric aqueous-region reference, distinct from
+  full-cell density and shell accessible-volume correction;
+- #103: optional explicit eligible-pair sampled bridge occupancy, including
+  never-observed pairs; existing identity/censoring semantics remain;
+- #106: compact q-based evidence overview using existing scalar statistics;
+- #72/#36: simultaneous source-space geometry/contact observer invariance,
+  independent density/excluded-shell references and failure injection.
+
+Remaining code/method work must not be closed merely because it has some
+passing tests: #102/#108 need validated protein-excluded-area/composition
+sensitivity; #103 still needs chemical/spatial-null interpretation and real
+ion/site validation; #130 needs real-trajectory slab/plateau sensitivity and
+an accessible-shell strategy if justified; #72 needs broader tilted/triclinic
+cross-observer policies; #36 retains release-wide validation/license/citation
+work. #131's adaptive endpoint-precision stopping is unimplemented: fixed
+per-family draws remain the tested default. It needs a justified resource
+benchmark and coherent inferential-family integration rather than extra
+configuration without demonstrated benefit. These limitations remain open.
+
+Validation for this follow-up:
+- Local Python 3.12 suite with real FreeSASA: 454 passed; two optional
+  benchmark tests deselected. Focused completion/invariance/reference checks
+  passed again after the final NPZ-member validation change.
+- Two new entry-point regressions were run against the original code and
+  failed: standalone DSSP omission reached finalization, and a completed run
+  reused a distance matrix after its time axis was removed. Both now fail
+  explicitly before mutation or trajectory reads. Further regressions cover
+  damaged JSON/NPZ, valid-Parquet wrong columns, and mismatched axes.
+- A separate subprocess run against an untouched main snapshot and the
+  modified tree produced 34 exactly matching finalized Parquet tables on the
+  mixed-observer fixture, including statistics. No default estimator change
+  is claimed. This is synthetic numerical parity, not production throughput.
+- Wheel/sdist builds and twine checks passed; compile/whitespace/shell checks
+  passed. A 12-page synthetic report was generated, and its new evidence
+  overview/dense scalar page was visually inspected with system Poppler at
+  150 dpi. No binary fixtures were committed.
+- Python 3.11/3.13 and real-GROMACS checks remain GitHub CI gates. GROMACS and
+  the six full production trajectories are unavailable in this workspace;
+  no real-trajectory normalization or production report claim is made.

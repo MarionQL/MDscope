@@ -35,3 +35,14 @@ def test_metric_groups_consistent_with_report_public_facade():
     )
     assert _read(__import__("pathlib").Path("/nonexistent/mdscope.parquet")).empty
     assert len(_sample_frame_table(pd.DataFrame({"x": range(101)}), 5)) == 5
+
+
+def test_evidence_overview_counts_missing_and_q_support_without_ci_shortcuts():
+    import numpy as np
+    from mdscope.reporting.report_inventory import scalar_evidence_overview
+    comparisons = pd.DataFrame({'metric': ['rmsd_A']*4,
+        'mean_difference_system2_minus_system1': [1.,2.,3.,np.nan],
+        'mean_q_value': [.04,.9,np.nan,.01],
+        'mean_difference_ci_low': [1.,1.,1.,1.]})
+    assert scalar_evidence_overview(comparisons) == [
+        ('Other available scalar observables', 4, 1, 1, 1, 1)]

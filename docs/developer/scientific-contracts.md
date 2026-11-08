@@ -315,3 +315,40 @@ Restart validation compares corrected specificity and both lipid residence
 tables after interruption and clean execution. Use a fresh output directory when
 recomputing historical results with the corrected estimator. An old output may
 remain structurally readable even when it predates a scientific correction.
+
+## Required companion products and offline completion (2026-11-08)
+
+The existing registry's `analysis_output_plan` extends fused output planning
+to standalone DSSP/SASA scheduling. `required_artifacts` lists required
+companions for lipid matrices/enrichment, membrane-order mappings/index,
+H-bond counts/audits, residue-distance axes/mappings/profiles, solvation
+RDF/coordination/membership metadata, and SDC4 maps/audits/conditioned tables.
+Configuration-dependent SASA atoms/burial, motif residence, solvation
+kinetics/grid/reference/pair summaries are required only when requested.
+Sparse bridge/event tables that are legitimately absent when no events occur
+are not required. Disabled analysis families are not required.
+
+`run_replicate` checks existing products before any reader/fallback can
+replace them, and validates finalized products before summary completion.
+`finalize_project` checks the same plan plus enabled multi-origin MSD tables
+before archiving prior project statistics. Missing/corrupt companions produce
+an explicit non-destructive failure with restoration/separate-output guidance;
+missing primary products retain the established restart/fallback behavior.
+No code/config/content digest determines reuse. Compatible historical markers
+and data remain eligible regardless of source version.
+
+Checks include Parquet footer/schema, required primary columns, valid JSON
+objects, memory-mapped NPY readability, streamed ZIP CRC integrity for NPZ,
+indexed membrane-order files, and residue-distance matrix/time/residue shape
+and time-axis agreement. These checks do not inspect every Parquet data page,
+prove scientific selection correctness, or infer historical analysis settings.
+Existing streaming committed-chunk/replica-identity checks are preserved.
+Core scalar summaries still use their established time/checkpoint contract;
+this is not an exhaustive new schema/manifest framework.
+
+Aqueous-region references and explicit pair occupancy use the definitions and
+limits in [analyses](../analyses.md). Both are optional; the default full-cell
+RDF, sampled residence estimators, and statistical RNG behavior are unchanged.
+The report evidence overview counts finite scalar contrasts by the existing
+category and q-based support policy. It neither ranks effects by interval
+sign nor treats the category counts as independent discoveries.

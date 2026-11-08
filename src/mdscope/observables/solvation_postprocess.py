@@ -284,3 +284,34 @@ def bridge_residence(bridges, frame_times, gap_frames=0):
     events = events[['time_ps','motif','species','molecule_id']].drop_duplicates()
     episodes = summarize_lipid_residence(events, frame_times, gap_frames=gap_frames)
     return episodes.merge(pairs, on='motif', validate='many_to_one')
+
+
+def bridge_pair_occupancy(bridges, frame_times, eligible_pairs, solvents):
+    """Any-same-ion occupancy over *all* sampled frames for explicit pairs.
+
+    Different ions at the two sites never constitute a bridge. Zero means a
+    configured, observed pair had no same-ion event; it is not missing data.
+    Fractions count sampled frames, not time-weighted occupation or affinity.
+    """
+    times = np.asarray(frame_times, float)
+    if not len(times) or not np.isfinite(times).all() or np.any(np.diff(times) <= 0):
+        raise ValueError('Bridge occupancy requires a finite increasing observation axis')
+    pairs = [tuple(sorted(pair)) for pair in eligible_pairs]
+    if any(len(pair) != 2 or pair[0] == pair[1] for pair in pairs) or len(set(pairs)) != len(pairs):
+        raise ValueError('Eligible bridge pairs must be distinct non-self target pairs')
+    data = bridges.copy()
+    if not data.empty:
+        if not data.time_ps.isin(times).all():
+            raise ValueError('Bridge event outside observation times')
+        data['pair'] = [tuple(sorted(pair)) for pair in data[['target_a','target_b']].itertuples(index=False, name=None)]
+        data = data.drop_duplicates(['time_ps','solvent','solvent_id','pair'])
+    rows = []
+    for solvent in solvents:
+        for pair in pairs:
+            subset = data.loc[data.solvent.eq(solvent) & data.pair.map(lambda value: value == pair)] if not data.empty else data
+            n_events = len(subset)
+            n_frames = int(subset.time_ps.nunique()) if n_events else 0
+            rows.append((solvent, *pair, len(times), n_frames, n_frames/len(times),
+                         n_events/len(times), int(subset.solvent_id.nunique()) if n_events else 0))
+    return pd.DataFrame(rows, columns=['solvent','target_a','target_b','observed_frames',
+        'bridge_frames','sampled_bridge_fraction','mean_simultaneous_bridging_ions', 'unique_bridging_ions'])

@@ -138,3 +138,65 @@ def fused_output_plan(cfg: dict, repout: Path) -> tuple[FusedOutput, ...]:
         entries.append(fused_output(repout, "sdc4_mechanisms"))
     return tuple(entries)
 
+
+
+def analysis_output_plan(cfg: dict, repout: Path) -> tuple[FusedOutput, ...]:
+    """The same persisted contracts apply to fused and standalone scheduling."""
+    entries = list(fused_output_plan(cfg, repout))
+    names = {entry.name for entry in entries}
+    if cfg['analyses'].get('dssp', {}).get('enabled') and 'dssp' not in names:
+        entries.append(fused_output(repout, 'dssp'))
+    if cfg['analyses'].get('sasa', {}).get('enabled') and 'sasa' not in names:
+        entries.extend(fused_output(repout, 'sasa', run_id=run.run_id)
+                       if run.run_id != 'default' else fused_output(repout, 'sasa')
+                       for run in analysis_runs(cfg, 'sasa'))
+    return tuple(entries)
+
+
+def required_artifacts(entry: FusedOutput, cfg: dict) -> tuple[Path, ...]:
+    """Required companions, without opening trajectories or inventing a manifest.
+
+    Sparse event products that are legitimately absent after no events are not
+    required. Large numerical tables are checked by the caller using metadata.
+    """
+    directory, name = entry.path.parent, entry.name
+    companions = {
+        'lipid_contacts': ('matrix.parquet', 'selection_audit.json'),
+        'lipid_enrichment': ('counts.parquet', 'selection_audit.parquet'),
+        'membrane_order': ('site_mapping.parquet', 'profile_index.parquet'),
+        'hydrogen_bonds': ('count_timeseries.parquet',),
+        'lipid_hydrogen_bonds': ('count_timeseries.parquet', 'molecule_audit.parquet'),
+        'residue_membrane_distance': ('time_ps.npy', 'residues.parquet',
+                                    'median_profile.parquet', 'selection_audit.parquet',
+                                    'membrane_atom_indices.npy'),
+        'solvation': ('rdf.parquet', 'target_residues.parquet', 'metadata.json',
+                      'species_timeseries.parquet', 'target_summary.parquet',
+                      'shell_candidates.parquet'),
+        'sdc4_mechanisms': ('selection_audit.json', 'lipid_density_maps.npz',
+                            'hs_conditioned_solvation.parquet'),
+    }.get(name, ())
+    paths = [entry.path, *(directory / filename for filename in companions)]
+    spec = cfg['analyses'].get(name, {})
+    if name == 'sasa':
+        spec = next(run.spec for run in analysis_runs(cfg, name)
+                    if run.run_id == (entry.run_id or 'default'))
+        if spec.get('atom_sasa_selection'):
+            paths.append(directory/'atom_sasa.parquet')
+        if spec.get('reference_run') is not None:
+            paths.extend(directory/f for f in ('residue_burial.parquet', 'residue_burial_summary.parquet'))
+    if name == 'sdc4_mechanisms' and spec.get('motif_lipid_residence', False):
+        paths.extend(directory/f for f in ('motif_lipid_contact_events.parquet',
+            'motif_lipid_residence.parquet', 'motif_lipid_residence_intermittent.parquet',
+            'lipid_region_specificity.parquet', 'lipid_residue_contacts.parquet'))
+    if name == 'solvation':
+        options = spec.get('options') or {}
+        bridges = options.get('bridges', spec.get('preset', 'standard') != 'standard')
+        if options.get('events', spec.get('preset', 'standard') != 'standard') or bridges or options.get('water_hbond_bridges'):
+            paths.extend(directory/f for f in ('episodes.parquet', 'survival.parquet'))
+        if options.get('bridge_target_pairs'):
+            paths.append(directory/'bridge_pair_summary.parquet')
+        if spec.get('aqueous_reference'):
+            paths.append(directory/'aqueous_reference.parquet')
+        if spec.get('grid_frames'):
+            paths.append(directory/'water_density_3d.parquet')
+    return tuple(paths)

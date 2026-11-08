@@ -36,6 +36,37 @@ def rdf_from_counts(counts, edges, density_exposure):
     return np.asarray(counts, float) / (shell_volume * density_exposure)
 
 
+def aqueous_slab_density(solvent_positions, membrane_positions, box, half_width_A, axis=2):
+    """Selected entities / geometric volume outside an explicit membrane slab.
+
+    This is an aqueous-region reference, not a shell accessible-volume or
+    protein/HS excluded-volume correction. Only axis-aligned orthorhombic
+    bilayers are supported. An empty reference has unavailable density.
+    """
+    box = np.asarray(box, float)
+    solvent = np.asarray(solvent_positions, float)
+    membrane = np.asarray(membrane_positions, float)
+    if (box.shape != (6,) or not np.isfinite(box).all() or np.any(box[:3] <= 0)
+            or not np.allclose(box[3:], 90., rtol=0, atol=1e-5)):
+        raise ValueError("aqueous_reference requires an orthorhombic periodic box")
+    if axis not in (0, 1, 2) or not np.isfinite(half_width_A) or not 0 < half_width_A < box[axis]/2:
+        raise ValueError("aqueous_reference half_width_A must leave a nonempty aqueous region")
+    if (membrane.ndim != 2 or membrane.shape[1] != 3 or not len(membrane)
+            or solvent.ndim != 2 or solvent.shape[1] != 3
+            or not np.isfinite(membrane).all() or not np.isfinite(solvent).all()):
+        raise ValueError("aqueous_reference needs finite membrane and solvent coordinates")
+    length = box[axis]
+    angles = 2*np.pi*membrane[:, axis]/length
+    center_vector = np.mean(np.exp(1j*angles))
+    if abs(center_vector) < 1e-5:
+        raise ValueError("aqueous_reference membrane center is ambiguous; narrow membrane_selection")
+    center = (np.angle(center_vector) % (2*np.pi))*length/(2*np.pi)
+    distance = (solvent[:, axis]-center+length/2) % length-length/2
+    count = int(np.count_nonzero(np.abs(distance) > half_width_A))
+    volume = float(np.prod(box[:3])*(1-2*half_width_A/length))
+    return (count/volume if count else np.nan), count, volume, center
+
+
 def contact_episodes(events, observed_frames):
     """Continuous sampled-frame runs with both observed and imputed durations.
 
@@ -253,6 +284,19 @@ class SolvationObserver:
             i for i, (_, kind, _, _) in enumerate(self.targets)
             if self.track_classes is None or kind in self.track_classes}
 
+        self.eligible_bridge_pairs = opts.get("bridge_target_pairs") or []
+        tracked = {self.targets[i][0] for i in self.tracked_target_indices}
+        normalized_pairs = []
+        for pair in self.eligible_bridge_pairs:
+            if (not isinstance(pair, (list, tuple)) or len(pair) != 2
+                    or pair[0] == pair[1] or not set(pair) <= tracked):
+                raise ValueError("bridge_target_pairs must name two distinct tracked target IDs")
+            normalized_pairs.append(tuple(sorted(pair)))
+        if len(set(normalized_pairs)) != len(normalized_pairs):
+            raise ValueError("bridge_target_pairs contains duplicate pairs")
+        if normalized_pairs and not self.bridges_on:
+            raise ValueError("bridge_target_pairs requires bridges enabled")
+
         indices = np.concatenate([g.indices for _, _, _, g in self.targets])
         self.site_atoms = universe.atoms[indices]
         self.target_of_site = np.concatenate(
@@ -286,6 +330,25 @@ class SolvationObserver:
             self.solvents[name] = group
         if not self.solvents:
             raise ValueError("solvation requires water_selection and/or ion_selection")
+        self.aqueous_reference = self.spec.get("aqueous_reference")
+        self.reference_membrane = None
+        if self.aqueous_reference:
+            if (not isinstance(self.aqueous_reference, dict)
+                    or not self.aqueous_reference.get("membrane_selection")
+                    or "half_width_A" not in self.aqueous_reference
+                    or self.aqueous_reference.get("axis", "z") not in ("x", "y", "z")):
+                raise ValueError("aqueous_reference requires membrane_selection, half_width_A and axis x/y/z")
+            self.reference_membrane = universe.select_atoms(self.aqueous_reference["membrane_selection"])
+            if not len(self.reference_membrane):
+                raise ValueError("aqueous_reference membrane_selection matched zero atoms")
+            self.reference_axis = {"x": 0, "y": 1, "z": 2}[self.aqueous_reference.get("axis", "z")]
+            self.reference_half_width = float(self.aqueous_reference["half_width_A"])
+            aqueous_slab_density(next(iter(self.solvents.values())).positions,
+                self.reference_membrane.positions, universe.dimensions,
+                self.reference_half_width, self.reference_axis)
+        self.reference_rows = []
+        self.aqueous_exposure = defaultdict(float)
+        self.reference_invalid = defaultdict(int)
         self.hbond_rows = []
         self.water_hydrogens = None
         self.hbond_da_A = float(opts.get("hbond_da_cutoff_A", 3.5))
@@ -374,6 +437,16 @@ class SolvationObserver:
             raise ValueError("solvation box volume must be positive")
         self.frame_rows.append((int(frame_index), float(time_ps)))
         for solvent, atoms in self.solvents.items():
+            density_reference = np.nan
+            if self.reference_membrane is not None:
+                if self.edges[-1] > np.min(box[:3])/2:
+                    raise ValueError("aqueous_reference RDF radius exceeds the inscribed periodic sphere")
+                density_reference, count_reference, volume_reference, center_reference = aqueous_slab_density(
+                    atoms.positions, self.reference_membrane.positions, box,
+                    self.reference_half_width, self.reference_axis)
+                self.reference_rows.append((int(frame_index), float(time_ps), solvent,
+                    count_reference, volume_reference, density_reference, center_reference,
+                    "valid" if np.isfinite(density_reference) else "empty_reference"))
             pair, distances = capped_distance(
                 self.site_atoms.positions, atoms.positions,
                 max_cutoff=float(self.edges[-1]), box=box, return_distances=True,
@@ -404,6 +477,11 @@ class SolvationObserver:
                 key = (solvent, kind, label)
                 self.hist[key] += histogram[class_index]
                 self.exposure[key] += self.class_atoms[class_index] * len(atoms)/volume
+                if self.reference_membrane is not None:
+                    if np.isfinite(density_reference):
+                        self.aqueous_exposure[key] += self.class_atoms[class_index]*density_reference
+                    else:
+                        self.reference_invalid[key] += 1
             for i, (target, kind, label, group) in enumerate(self.targets):
                 self.rows.append((int(frame_index), float(time_ps), solvent,
                                   target, kind, label, int(counts[i])))
@@ -498,6 +576,16 @@ class SolvationObserver:
         atomic_parquet(root / f"hist-{part:06d}.parquet",
             pd.DataFrame(history, columns=["solvent", "target_class", "site_class"]
                          + [f"bin_{i}" for i in range(len(self.edges)-1)] + ["exposure"]))
+        if self.reference_membrane is not None:
+            atomic_parquet(root / f"aqueous_reference-{part:06d}.parquet", pd.DataFrame(
+                self.reference_rows, columns=["frame", "time_ps", "solvent", "n_reference",
+                    "reference_volume_A3", "density_per_A3", "membrane_center_A", "status"]))
+            self.reference_rows.clear()
+            atomic_parquet(root / f"aqueous_exposure-{part:06d}.parquet", pd.DataFrame([
+                (*key, self.aqueous_exposure[key], self.reference_invalid[key]) for key in sorted(self.hist)
+            ], columns=["solvent", "target_class", "site_class", "exposure", "invalid_frames"]))
+            self.aqueous_exposure.clear()
+            self.reference_invalid.clear()
         if self.grid_frames:
             records = []
             for target, grid in self.grid_counts.items():
@@ -559,6 +647,19 @@ class SolvationObserver:
         atomic_parquet(dest / "rdf.parquet", pd.DataFrame(rows, columns=[
             "solvent", "target_class", "site_class", "r_inner_A", "r_outer_A",
             "pair_count", "g_bulk"]))
+        if self.reference_membrane is not None:
+            reference = read("aqueous_exposure")
+            rdf_path = dest / "rdf.parquet"
+            rdf = pd.read_parquet(rdf_path)
+            rdf["g_aqueous_reference"] = np.nan
+            for key, group in reference.groupby(["solvent", "target_class", "site_class"]):
+                mask = np.logical_and.reduce([rdf[column].eq(value) for column, value in
+                    zip(("solvent", "target_class", "site_class"), key)])
+                if not group.invalid_frames.sum():
+                    rdf.loc[mask, "g_aqueous_reference"] = rdf_from_counts(
+                        rdf.loc[mask, "pair_count"], self.edges, float(group.exposure.sum()))
+            atomic_parquet(rdf_path, rdf)
+            atomic_parquet(dest / "aqueous_reference.parquet", read("aqueous_reference"))
         if self.grid_frames:
             grids = read("grid")
             exposure = read("grid_exposure").exposure.sum()
@@ -587,6 +688,11 @@ class SolvationObserver:
         from .solvation_postprocess import write_solvation_derivatives
         write_solvation_derivatives(dest, self.repout,
             sasa_run=self.spec.get("sasa_run", "default"))
+        if self.eligible_bridge_pairs:
+            from .solvation_postprocess import bridge_pair_occupancy
+            frame_times = read("frames").drop_duplicates("frame").sort_values("frame").time_ps.to_numpy(float)
+            atomic_parquet(dest / "bridge_pair_summary.parquet", bridge_pair_occupancy(
+                read("bridges"), frame_times, self.eligible_bridge_pairs, self.solvents))
         atomic_json(dest / "metadata.json", {
             "preset": self.spec.get("preset", "standard"), "edges_A": self.edges.tolist(),
             "neighbor_method": self.neighbor_method,
@@ -595,9 +701,12 @@ class SolvationObserver:
             "3d_grid_domain": "Only observed voxels within an inscribed sphere around a target origin; other voxels are not sampled.",
             "3d_grid_edges_A": self.grid_edges.tolist() if self.grid_frames else None,
             "bridges": self.bridges_on,
+            "bridge_target_pairs": self.eligible_bridge_pairs,
             "track_target_classes": self.track_classes,
             "water_hbond_bridges": self.water_hbond_bridges,
             "density_reference": "selected solvent entities / instantaneous full periodic cell volume",
+            "aqueous_reference": self.aqueous_reference,
+            "aqueous_reference_limitation": "Geometric volume outside a configured axis-aligned membrane slab; protein/HS excluded volume and shell accessibility are not corrected. Empty reference in any frame makes the entire aqueous-reference curve unavailable. Not evidence of a bulk plateau or affinity.",
             "rdf_value_column": "g_bulk (legacy name; full-cell average density reference)",
             "rdf_limitation": "Not independently measured aqueous bulk density; no excluded-volume correction. Evaluate alongside SASA and membrane geometry.",
             "residence_limitation": "Episodes represent consecutive sampled contacts; temporal resolution is trajectory frame interval.",

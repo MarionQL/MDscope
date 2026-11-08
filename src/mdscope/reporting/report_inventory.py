@@ -115,3 +115,19 @@ def report_table_inventory(root, cfg):
                      'status': report_table_status(path, cfg, root),
                      'rows': pq.ParquetFile(path).metadata.num_rows})
     return pd.DataFrame(rows, columns=['table', 'status', 'rows'])
+
+
+def scalar_evidence_overview(comparisons):
+    """Count reported contrasts by existing category; never rank by CI sign."""
+    rows = []
+    for category, metrics in _metric_groups(comparisons):
+        data = comparisons.loc[comparisons.metric.isin(metrics)]
+        estimate = pd.to_numeric(data['mean_difference_system2_minus_system1'], errors='coerce')
+        q = pd.to_numeric(data.get('mean_q_value', pd.Series(np.nan, index=data.index)), errors='coerce')
+        finite = np.isfinite(estimate)
+        supported = finite & np.isfinite(q) & (q <= .05)
+        exploratory = finite & np.isfinite(q) & (q > .05)
+        descriptive = finite & ~np.isfinite(q)
+        rows.append((category, len(data), int(supported.sum()), int(exploratory.sum()),
+                     int(descriptive.sum()), int((~finite).sum())))
+    return rows

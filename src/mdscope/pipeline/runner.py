@@ -8,7 +8,7 @@ from __future__ import annotations
 import glob
 import json
 import shutil
-from zipfile import BadZipFile
+from zipfile import BadZipFile, ZipFile
 from time import perf_counter
 from pathlib import Path
 
@@ -48,7 +48,7 @@ from ..mechanisms.sdc4_mechanisms import enabled as sdc4_enabled, run_sdc4_mecha
 from ..mechanisms.shared_states import fit_shared_states
 from ..reporting.sdc4_figures import plot_sdc4_mechanisms
 from ..reporting.report import generate_report
-from ..registry import specialized_tasks,additional_time_series,fused_output,fused_output_plan
+from ..registry import specialized_tasks,additional_time_series,fused_output,fused_output_plan,analysis_output_plan,required_artifacts
 from ..observables.msd import summarize_diffusion, summarize_project_diffusion, summarize_project_multi_origin
 from ..observables.multi_origin_pipeline import run_multi_origin_diffusion
 from ..reporting.coupling_screen import screen_couplings
@@ -64,7 +64,67 @@ def _check_artifact(path: Path) -> int:
         read_metadata(path)
     elif path.suffix == ".npy":
         np.load(path, allow_pickle=False, mmap_mode="r")
+    elif path.suffix == ".npz":
+        # ZIP CRC verification streams payload blocks instead of loading a
+        # potentially large order-profile array into RAM.
+        with ZipFile(path) as archive:
+            if not archive.namelist() or archive.testzip() is not None:
+                raise ValueError(f"Invalid NPZ payload: {path}")
+    elif path.suffix == ".json":
+        if not isinstance(json.loads(path.read_text()), dict):
+            raise ValueError(f"Expected a JSON object: {path}")
     return size
+
+
+def _validate_analysis_output(entry, cfg):
+    """Check enabled primary/companion products before reuse or finalization."""
+    try:
+        for path in required_artifacts(entry, cfg):
+            _check_artifact(path)
+        if entry.path.suffix == ".parquet":
+            from pyarrow.parquet import read_schema
+            columns = set(read_schema(entry.path).names)
+            expected = {
+                "solvation": {"frame", "time_ps", "target_id", "n_solvent"},
+                "dssp": {"time_ps", "topology_residue_index", "dssp"},
+                "sasa": {"time_ps", "topology_residue_index", "sasa_nm2"},
+                "hydrogen_bonds": {"time_ps", "donor", "acceptor"},
+                "lipid_hydrogen_bonds": {"time_ps", "donor", "acceptor"},
+            }.get(entry.name, {"time_ps"})
+            if not expected <= columns:
+                raise ValueError(f"{entry.path}: missing columns {sorted(expected - columns)}")
+        if entry.name == "membrane_order":
+            index = pd.read_parquet(entry.path.parent / "profile_index.parquet")
+            for filename in index["file"]:
+                path = entry.path.parent / str(filename)
+                if path.parent != entry.path.parent:
+                    raise ValueError(f"Invalid profile filename: {filename}")
+                _check_artifact(path)
+                with np.load(path, allow_pickle=False) as profile:
+                    if not {"time_ps", "values", "positions", "labels"} <= set(profile.files):
+                        raise ValueError(f"{path}: missing order-profile arrays")
+        if entry.name == "sdc4_mechanisms":
+            path = entry.path.parent / "lipid_density_maps.npz"
+            with np.load(path, allow_pickle=False) as maps:
+                expected = {"counts", "density_per_nm2", "enrichment_fold",
+                            "bulk_density_per_nm2", "species", "leaflet",
+                            "x_edges_A", "y_edges_A", "nframes"}
+                if not expected <= set(maps.files):
+                    raise ValueError(f"{path}: missing density-map arrays")
+        if entry.name == "residue_membrane_distance":
+            directory = entry.path.parent
+            matrix = np.load(entry.path, allow_pickle=False, mmap_mode="r")
+            times = np.load(directory / "time_ps.npy", allow_pickle=False)
+            from pyarrow.parquet import read_metadata
+            residues = read_metadata(directory / "residues.parquet").num_rows
+            if (matrix.ndim != 2 or times.ndim != 1 or matrix.shape != (len(times), residues)
+                    or not len(times) or not np.isfinite(times).all() or np.any(np.diff(times) <= 0)):
+                raise ValueError(f"{directory}: distance matrix/time/residue shape or time-axis mismatch")
+    except (OSError, ValueError, KeyError, EOFError, TypeError, IndexError, BadZipFile) as exc:
+        raise RuntimeError(
+            f"invalid required {entry.name} artifact: {exc}. Existing outputs were preserved; "
+            "restore the required product or recompute in a separate output directory."
+        ) from exc
 
 
 class RunState:
@@ -244,6 +304,11 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     prefix = _replicate_state_prefix(rep)
     repout = ensure_dir(root / rep.system / rep.label)
     stage_timings = []
+    # Reject incomplete existing products before any reader or fallback can
+    # overwrite them. Missing primary outputs retain existing restart behavior.
+    for entry in analysis_output_plan(cfg, repout):
+        if entry.path.exists():
+            _validate_analysis_output(entry, cfg)
     streaming_analyses = [
         "rmsd",
         "rmsf",
@@ -393,6 +458,8 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
                 **result, "artifacts": {str(p): _check_artifact(p) for p in targets},
             })
             stage_timings.append({"stage": "multi-origin-msd", "seconds": perf_counter() - t0})
+    for entry in analysis_output_plan(cfg, repout):
+        _validate_analysis_output(entry, cfg)
     whole = repout / "summary" / "timeseries.parquet"
     grouped = repout / "summary" / "group_timeseries.parquet"
     summary_paths = tuple(
@@ -447,13 +514,12 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
             if (times.empty or not np.isfinite(times.to_numpy(dtype=float)).all()
                     or not times.is_monotonic_increasing or not times.is_unique):
                 missing.append(f"{rep.system}/{rep.label}: invalid time_ps")
-            for entry in fused_output_plan(cfg, repout):
-                try:
-                    _check_artifact(entry.path)
-                except (OSError, ValueError, EOFError) as exc:
-                    raise ValueError(
-                        f"invalid required {entry.name} artifact: {entry.path.relative_to(repout)} ({exc})"
-                    ) from exc
+            for entry in analysis_output_plan(cfg, repout):
+                _validate_analysis_output(entry, cfg)
+            msd = cfg.get("analyses", {}).get("membrane", {}).get("msd", {})
+            if msd.get("enabled") and msd.get("multi_origin"):
+                for name in ("multi_origin_diffusion.parquet", "multi_origin_msd.parquet"):
+                    _check_artifact(repout / "summary" / name)
             checkpoint = repout / "cache" / "stream_checkpoint.npz"
             if checkpoint.is_file():
                 with np.load(checkpoint, allow_pickle=False) as cp:
@@ -464,7 +530,7 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
                         count = cp["processed"]
                         if count.shape != () or count.dtype.kind not in "iu" or len(times) != int(count):
                             raise ValueError("summary frame count disagrees with checkpoint")
-        except (OSError, ValueError, KeyError, ImportError, EOFError, TypeError, IndexError, BadZipFile) as exc:
+        except (OSError, ValueError, KeyError, ImportError, EOFError, TypeError, IndexError, BadZipFile, RuntimeError) as exc:
             missing.append(f"{rep.system}/{rep.label}: invalid persisted inputs ({exc})")
     if missing:
         raise RuntimeError(

@@ -40,7 +40,8 @@ def analyze_solvation_rdfs(cfg, root, system_repouts):
                 continue
             if rdf.duplicated(RDF_KEYS).any():
                 raise ValueError(f"duplicate RDF radial bins in {source}")
-            frames.append(rdf[RDF_KEYS+["g_bulk"]].assign(
+            frames.append(rdf[RDF_KEYS+["g_bulk"] +
+                (["g_aqueous_reference"] if "g_aqueous_reference" in rdf else [])].assign(
                 system=system, replicate=Path(repout).name))
     if not frames:
         return
@@ -50,6 +51,12 @@ def analyze_solvation_rdfs(cfg, root, system_repouts):
         n_replicates=("g_bulk", "count"),
         mean_g_bulk=("g_bulk", "mean"),
         sd_g_bulk=("g_bulk", "std"))
+    if "g_aqueous_reference" in reps:
+        reference = reps.groupby(keys, as_index=False).agg(
+            n_aqueous_replicates=("g_aqueous_reference", "count"),
+            mean_g_aqueous_reference=("g_aqueous_reference", "mean"),
+            sd_g_aqueous_reference=("g_aqueous_reference", "std"))
+        system = system.merge(reference, on=keys, validate="one_to_one")
     # A missing replicate/bin must not be presented as a complete
     # uncertainty estimate for that chemical class.
     # Compare against requested replicas, including those whose entire RDF
@@ -59,6 +66,9 @@ def analyze_solvation_rdfs(cfg, root, system_repouts):
     system["expected_replicates"] = system.system.map(expected).astype(int)
     system["complete_replica_coverage"] = (
         system.n_replicates == system.expected_replicates)
+    if "n_aqueous_replicates" in system:
+        system["complete_aqueous_replica_coverage"] = (
+            system.n_aqueous_replicates == system.expected_replicates)
     dest = ensure_dir(Path(root)/"project_summary"/"statistics"/"solvation")
     atomic_parquet(dest/"replicate_rdf.parquet", reps)
     atomic_parquet(dest/"system_rdf.parquet", system)

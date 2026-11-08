@@ -349,6 +349,14 @@ def _build_pdf(path, cfg, root, system_repouts, options):
                  "all pairwise comparisons are included in the ZIP.")
         first, second = (system_ids + ["not_configured", "not_configured"])[:2]
         body(f"Contrast direction: {system_label(cfg,second)} minus {system_label(cfg,first)}.")
+        if not comparisons.empty:
+            from .report_inventory import scalar_evidence_overview
+            overview = comparisons.loc[comparisons.system_1.eq(first) & comparisons.system_2.eq(second)]
+            if not overview.empty:
+                sub("Evidence overview")
+                body("Counts of reported scalar contrasts by analysis category. Adjusted support uses q <= 0.05; interval exclusion of zero does not determine support. Descriptive means no finite adjusted test. These counts are not independent discoveries or a ranking of biological importance.")
+                table([["Category", "Total", "Adjusted support", "Exploratory", "Descriptive", "Unavailable"],
+                       *scalar_evidence_overview(overview)], [210, 45, 65, 65, 65, 60])
         for category, metrics in _metric_groups(systems):
             sub(category)
             total = len(metrics)
