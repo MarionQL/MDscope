@@ -88,8 +88,8 @@ def test_completed_run_detects_missing_companion_without_trajectory_read(tmp_pat
     import MDAnalysis as mda
     import pytest
     from mdscope.pipeline import runner
-    from test_mixed_observer_restart import _project
-    rep, cfg = _project(tmp_path, 3)
+    from validation_fixture import make_project
+    rep, cfg = make_project(tmp_path, 3)
     root = tmp_path/'results'
     state = runner.RunState(root)
     runner.run_replicate(rep, cfg, root, state)
@@ -111,8 +111,8 @@ import pytest
 def test_finalizer_rejects_invalid_companions_before_mutation(tmp_path, damage):
     import numpy as np
     from mdscope.pipeline import runner
-    from test_mixed_observer_restart import _project
-    rep, cfg = _project(tmp_path, 3)
+    from validation_fixture import make_project
+    rep, cfg = make_project(tmp_path, 3)
     root = tmp_path/'results'
     state = runner.RunState(root)
     runner.run_replicate(rep, cfg, root, state)

@@ -1,0 +1,7 @@
+cff-version: 1.2.0
+message: "Cite MDscope with the version and commit used for the analysis."
+type: software
+title: MDscope
+authors:
+  - name: MDscope contributors
+repository-code: "https://github.com/MarionQL/MDscope"

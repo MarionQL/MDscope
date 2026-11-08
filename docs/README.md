@@ -13,6 +13,7 @@ Start with the [repository README](../README.md) for installation, basic usage, 
 - [Architecture](developer/architecture.md) — package boundaries and installation model.
 - [Scientific audit and outstanding validation](developer/scientific-audit.md) — prioritized methodology findings, corrections, benchmarks and production commands.
 - [Scientific contracts](developer/scientific-contracts.md) — coordinate conventions, geometry, numerical regression and validation.
+- [Numerical reference project and release checklist](developer/release-validation.md) — portable YAML fixture, independent expected outputs, release evidence and citation/license status.
 - [Contributing](developer/contributing.md) — refactoring rules and testing expectations.
 
 Documentation is organized by enduring functionality, not GitHub issue numbers. Historical development discussions remain available in Git history and closed issues.

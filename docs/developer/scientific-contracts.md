@@ -240,12 +240,14 @@ between-condition test units. Paired tests preserve matching replicate labels.
 Units: MSD coordinates are unwrapped Å; lateral MSD is Å²; ACF and corrected
 p-values are dimensionless; block lengths are measured in sampled frames.
 
-Outstanding before a publication-quality release: a redistributable YAML
-end-to-end reference dataset with audited output tables and tolerances, mixed
-observer interrupted-checkpoint restart comparison, profile-axis alignment
-and missing-observation reference cases, representative real-GROMACS numerical
-comparisons, benchmark resource budget, and final documented license/citation.
-Passing these unit tests does not certify the remaining requirements.
+The [portable YAML reference project and release checklist](release-validation.md)
+collect the remaining release gates. Its seven numerical products supplement
+mixed-observer interrupted-checkpoint tests, profile-axis/missing-observation
+references and native-library tests already present. Representative real-GROMACS
+and six-production-replica scientific checks remain separate; local completion
+does not certify those gates. Citation metadata is available; the repository's
+undeclared redistribution-license status is explicit in that checklist.
+
 
 
 ## Matched local lipid populations and sampled residence (PR #117)
