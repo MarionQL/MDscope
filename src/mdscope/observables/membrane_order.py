@@ -13,7 +13,7 @@ from MDAnalysis.exceptions import NoDataError
 from MDAnalysis.lib.distances import capped_distance, minimize_vectors
 
 from ..config import atomic_parquet, ensure_dir, time_ps
-from ..core.lipid_geometry import classify_leaflets
+from ..core.lipid_geometry import classify_leaflets, planar_box
 from ..pipeline.progress import progress
 
 
@@ -333,7 +333,8 @@ def run_membrane_order(rep, cfg: dict, repout: Path) -> dict:
                 matching = selected[selected.resindices == index]
                 if len(matching):
                     coords[i] = matching.center_of_geometry()
-        leaf = classify_leaflets(coords[:, axis_index], float(universe.dimensions[axis_index]))
+        box = planar_box(universe.dimensions, axis_index)
+        leaf = classify_leaflets(coords[:, axis_index], float(box[axis_index]))
         leaflet_by_residue = {int(ix): "upper" if flag else "lower"
                               for ix, flag in zip(indices, leaf)}
     profiles = _profiles(sites, spec, leaflet_by_residue)

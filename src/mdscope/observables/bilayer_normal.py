@@ -10,7 +10,7 @@ import pandas as pd
 import MDAnalysis as mda
 from MDAnalysis.lib.distances import capped_distance,minimize_vectors
 from ..config import ensure_dir,atomic_parquet,time_ps
-from ..core.lipid_geometry import anchor_groups,centers,aligned_leaflets
+from ..core.lipid_geometry import anchor_groups,centers,aligned_leaflets,planar_box
 from ..pipeline.progress import progress
 
 def fit_local_normals(xyz,upper,box,radius=15.,min_neighbors=5,normal=2):
@@ -67,6 +67,7 @@ def run_bilayer_normal(rep,cfg,repout):
                   enabled=cfg.get("progress",{}).get("enabled",True)) as iterator:
         for k,ts in enumerate(iterator):
             t=time_ps(ts,k,cfg)
+            planar_box(u.dimensions, axis)
             xyz = centers(groups)
             current_upper, changes = aligned_leaflets(
                 xyz[:, axis], float(u.dimensions[axis]), upper

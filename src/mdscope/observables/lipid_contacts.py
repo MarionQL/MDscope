@@ -9,7 +9,7 @@ import re
 import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import capped_distance
-from ..core.lipid_geometry import anchor_groups, aligned_leaflets
+from ..core.lipid_geometry import anchor_groups, aligned_leaflets, planar_box
 from ..core.atom_selection import select_heavy_atoms
 from ..config import atomic_parquet, atomic_json, ensure_dir
 
@@ -86,9 +86,7 @@ class LipidContacts:
             interpretation='geometric proximity; not hydrogen bonds or affinity'))
 
     def update(self, ts, frame_index, time_ps):
-        box = np.asarray(self.u.dimensions, float)
-        if box.shape != (6,) or not np.isfinite(box).all() or not np.allclose(box[3:], 90.):
-            raise ValueError('lipid_contacts leaflet labels require an orthorhombic planar membrane')
+        box = planar_box(self.u.dimensions, self.axis)
         leaf, changes = aligned_leaflets(self.tracker.positions()[:, self.axis], box[self.axis], self.initial)
         n = len(self.species)
         encoded = set()
