@@ -34,6 +34,9 @@ def _metric_meta(metric: str):
         label = re.sub(r'PRO([AB])_\d+', r'chain \1', label)
         label = label.replace('steric_occlusion','contact occlusion proxy').replace('_',' ')
         return label[:1].upper()+label[1:], unit
+    if metric.startswith("lipid_enrichment_") and metric.endswith("_area_density_ratio"):
+        label = metric[len("lipid_enrichment_"):-len("_area_density_ratio")].replace("_", " ")
+        return f"{label}: density ratio (protein-excluded planar area model)", "ratio"
     if metric.startswith("lipid_order_") and metric.endswith("_mean"):
         label = metric[len("lipid_order_"):-len("_mean")].replace("_", " ")
         return f"Mean lipid order: {label}", "-S_CH"

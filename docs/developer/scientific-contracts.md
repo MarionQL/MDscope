@@ -352,3 +352,24 @@ RDF, sampled residence estimators, and statistical RNG behavior are unchanged.
 The report evidence overview counts finite scalar contrasts by the existing
 category and q-based support policy. It neither ranks effects by interval
 sign nor treats the category counts as independent discoveries.
+
+## Periodic projected protein footprint and lipid area references
+
+`core/lipid_geometry.py:accessible_area_grid` owns the existing SDC4 slab/disk
+area estimator; mechanism and general lipid-enrichment callers share it. The
+nearest-disk query is periodic in both lateral coordinates. Previously a protein
+atom and a grid point on opposite sides of the cell could appear far apart in
+a nonperiodic KD-tree despite being periodic neighbors. A hand-counted two-point
+reference fails against that original implementation (1 Å² instead of 0 Å²).
+The correction may change previously underestimated occlusion at periodic edges;
+ordinary compact local grids away from this boundary case keep their results.
+
+The optional general area adapter evaluates full-plane and annular equal-weight
+quadratures using this same kernel. Annular midpoint sampling is uniform in
+r² and angle. Its density ratio is distinct from composition enrichment, with
+raw counts and both area denominators persisted. Duplicate obstacles cannot
+subtract area twice; atoms outside the normal slab cannot occlude a leaflet.
+Absent species and a fully occluded shell remain unavailable ratios. These
+operational planar areas are not solvent-accessible surfaces, molecular free
+areas or thermodynamic binding constants. Numerical resolution sensitivity is
+separate from trajectory/statistical uncertainty.

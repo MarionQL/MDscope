@@ -49,6 +49,7 @@ from ..mechanisms.shared_states import fit_shared_states
 from ..reporting.sdc4_figures import plot_sdc4_mechanisms
 from ..reporting.report import generate_report
 from ..registry import specialized_tasks,additional_time_series,fused_output,fused_output_plan,analysis_output_plan,required_artifacts
+from ..observables.lipid_enrichment import summarize_lipid_composition
 from ..observables.msd import summarize_diffusion, summarize_project_diffusion, summarize_project_multi_origin
 from ..observables.multi_origin_pipeline import run_multi_origin_diffusion
 from ..reporting.coupling_screen import screen_couplings
@@ -576,6 +577,10 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
             print(f"TIMING finalize {stage}: {seconds:.3f} s", flush=True)
 
     if phase in {"all", "statistics"}:
+        if cfg.get("analyses", {}).get("lipid_enrichment", {}).get("enabled"):
+            for paths in system_repouts.values():
+                for repout in paths:
+                    summarize_lipid_composition(repout)
         timed("statistics", analyze_project, cfg, root, system_repouts)
     if phase == "statistics":
         return root

@@ -690,6 +690,15 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
     enrich = cfg["analyses"].get("lipid_enrichment",{})
     if enrich.get("enabled") and not (0<=float(enrich.get("inner_radius_A",0))<float(enrich.get("outer_radius_A",15))):
         raise ValueError("lipid_enrichment radii require 0 <= inner < outer")
+    area = enrich.get("area_reference")
+    if enrich.get("enabled") and area is not None:
+        if (not isinstance(area, dict) or "exclusion_radius_A" not in area or "slab_half_width_A" not in area
+                or not np.isfinite(float(area["exclusion_radius_A"]))
+                or float(area["exclusion_radius_A"]) <= 0
+                or not np.isfinite(float(area["slab_half_width_A"])) or float(area["slab_half_width_A"]) <= 0
+                or type(area.get("quadrature_order", 64)) is not int
+                or not 16 <= area.get("quadrature_order", 64) <= 256):
+            raise ValueError("lipid_enrichment.area_reference requires positive exclusion_radius_A/slab_half_width_A and integer quadrature_order 16..256")
     normal = cfg["analyses"].get("bilayer_normal",{})
     if normal.get("enabled") and (float(normal.get("neighbor_radius_A",15))<=0 or int(normal.get("min_neighbors",5))<3):
         raise ValueError("bilayer_normal requires positive radius and >=3 neighbors")

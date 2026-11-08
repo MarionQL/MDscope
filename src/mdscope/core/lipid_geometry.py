@@ -175,3 +175,42 @@ def planar_offsets(points, reference, box, normal=2):
 
 def lateral_distances(points, reference, box, normal=2):
     return np.linalg.norm(planar_offsets(points, reference, box, normal), axis=-1)
+
+
+def accessible_area_grid(center_xy, surface_z, protein_xyz, box,
+                         sample_xy, spacing_A, exclusion_A, slab_A, *, normal=2):
+    """Area (A^2) outside projected protein disks within a leaflet slab.
+
+    This is the existing SDC4 uniform-disk model. The toroidal query handles
+    opposite-edge samples as well as independently wrapped protein atoms.
+    Each equally weighted sample represents spacing_A**2 square Angstroms;
+    callers can use Cartesian grids or equal-area polar samples.
+    """
+    from scipy.spatial import cKDTree
+    dimensions = np.asarray(box, float)
+    if (dimensions.shape != (6,) or not np.isfinite(dimensions).all()
+            or np.any(dimensions[:3] <= 0)
+            or not np.allclose(dimensions[3:], 90., rtol=0, atol=1e-5)):
+        raise ValueError("Accessible-area grid requires an orthorhombic planar box")
+    if normal not in (0, 1, 2):
+        raise ValueError("Accessible-area grid requires normal 0, 1 or 2")
+    samples = np.asarray(sample_xy, float).reshape(-1, 2)
+    protein = np.asarray(protein_xyz, float).reshape(-1, 3)
+    if (not np.isfinite(samples).all() or not np.isfinite(protein).all()
+            or not np.isfinite([*center_xy, surface_z, spacing_A, exclusion_A, slab_A]).all()
+            or min(spacing_A, exclusion_A, slab_A) <= 0):
+        raise ValueError("Accessible-area grid needs finite geometry and positive parameters")
+    lateral = [i for i in range(3) if i != normal]
+    center = np.empty(3, float)
+    center[lateral], center[normal] = center_xy, surface_z
+    rel = minimum_image_displacements(protein-center, dimensions) if len(protein) else protein
+    near = np.abs(rel[:, normal]) <= slab_A
+    if not np.any(near):
+        return float(len(samples)*spacing_A**2)
+    lengths = dimensions[lateral]
+    wrapped = rel[near][:, lateral] % lengths
+    # Tiny negative roundoff can map to exactly L, outside cKDTree's [0,L).
+    wrapped[wrapped >= lengths] = 0.
+    tree = cKDTree(wrapped, boxsize=lengths)
+    distances = tree.query(samples % lengths, k=1)[0]
+    return float(np.count_nonzero(distances > exclusion_A)*spacing_A**2)
