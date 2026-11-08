@@ -88,3 +88,38 @@ def test_matrix_plot_family_disabled_before_parquet_read(tmp_path, monkeypatch):
     monkeypatch.setattr(pd,'read_parquet',forbidden)
     plot_lipid_contacts({'plots':{'families':{'lipid_contacts':False}},
                          'analyses':{'lipid_contacts':{'enabled':True}}}, tmp_path, {'condition':[rep]})
+
+
+def test_difference_heatmap_uses_replica_means_and_masks_unavailable_species(tmp_path, monkeypatch):
+    import matplotlib.axes
+    from mdscope.reporting.membrane_figures import plot_lipid_contacts
+
+    cfg = {'analyses': {'lipid_contacts': {'enabled': True}}, 'plots': {'dpi': 25}}
+    paths = {}
+    for system, values in [('control', [2., 8.]), ('treated', [3., 3.])]:
+        paths[system] = []
+        for i, value in enumerate(values):
+            repout = tmp_path / system / f'rep{i}'
+            paths[system].append(repout)
+            dest = repout / 'extensions/lipid_contacts'
+            dest.mkdir(parents=True)
+            data = pd.DataFrame({'leaflet': 'upper', 'species_a': ['A', 'A'],
+                                 'species_b': ['A', 'B'], 'neighbors_per_molecule': [value, 0.],
+                                 'enrichment': [value, 0.], 'molecules_a': [2, 2],
+                                 'molecules_b': [2, 0 if system == 'treated' and i == 0 else 2],
+                                 'pair_count_undirected': [1, 0]})
+            pd.concat([data] * (i + 1)).to_parquet(dest / 'matrix.parquet')
+    deltas = []
+    original = matplotlib.axes.Axes.imshow
+
+    def observe(ax, values, **kwargs):
+        if 'vmin' in kwargs:
+            deltas.append(values)
+        return original(ax, values, **kwargs)
+
+    monkeypatch.setattr(matplotlib.axes.Axes, 'imshow', observe)
+    plot_lipid_contacts(cfg, tmp_path, paths)
+    assert len(deltas) == 2
+    for values in deltas:
+        assert values.loc['A', 'A'] == 2.
+        assert np.isnan(values.loc['A', 'B'])

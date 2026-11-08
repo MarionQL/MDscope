@@ -523,7 +523,7 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
     timed("sdc4_plots", plot_sdc4_mechanisms, cfg, root, system_repouts)
     timed("lipid_contact_plots", plot_lipid_contacts, cfg, root, system_repouts)
     timed("diffusion_summary", summarize_project_diffusion, root, system_repouts, cfg)
-    timed("multi_origin_summary", summarize_project_multi_origin, root, system_repouts)
+    timed("multi_origin_summary", summarize_project_multi_origin, root, system_repouts, cfg)
     if cfg.get('analyses',{}).get('coupling_screen',{}).get('enabled',False):
         timed("coupling_screen", screen_couplings, cfg, root, system_repouts)
     record_generated_figures(cfg, root, system_repouts, figure_before)

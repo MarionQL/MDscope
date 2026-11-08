@@ -141,3 +141,58 @@ def fit_multi_origin_curve(lag_ps, msd_A2, *, fit_start_fraction=.2, fit_end_fra
         "fit_start_ps": float(low), "fit_end_ps": float(high),
         "n_fit": int(mask.sum()),
     }
+
+
+def diffusion_fit_sensitivity(lag_ps, msd_A2, origins, *, start=.2, end=.8):
+    """Screen an existing MSD curve for fit-window and scaling sensitivity."""
+    t, y, n = np.asarray(lag_ps, float), np.asarray(msd_A2, float), np.asarray(origins, float)
+    if (t.ndim != 1 or len(t) == 0 or y.shape != t.shape or n.shape != t.shape
+            or not np.isfinite(t).all() or not np.isfinite(y).all()
+            or not np.isfinite(n).all() or t[0] != 0 or np.any(np.diff(t) <= 0)
+            or np.any(y < 0) or np.any(n < 1) or np.any(n != np.floor(n))
+            or np.any(np.diff(n) != -1)):
+        raise ValueError("Invalid multi-origin MSD curve or origin counts")
+    if not 0 <= start < end <= 1:
+        raise ValueError("Require 0 <= start < end <= 1")
+
+    width = end - start
+    min_origins = max(10, int(np.ceil(.10 * n[0])))
+    rows = []
+    for name, low, high in (
+        ("configured", start, end),
+        ("earlier", start, start + 2 * width / 3),
+        ("later", end - 2 * width / 3, end),
+    ):
+        mask = (t > 0) & (t >= low * t[-1]) & (t <= high * t[-1])
+        row = {
+            "window": name, "start_fraction": low, "end_fraction": high,
+            "n_fit": int(mask.sum()), "fit_start_ps": np.nan, "fit_end_ps": np.nan,
+            "min_origins_observed": np.nan, "min_origins_required": min_origins,
+            "slope_A2_ps": np.nan, "diffusion_nm2_ns": np.nan,
+            "r_squared": np.nan, "log_log_slope": np.nan, "fit_status": "insufficient_support",
+        }
+        if mask.any():
+            row.update(fit_start_ps=float(t[mask][0]), fit_end_ps=float(t[mask][-1]),
+                       min_origins_observed=int(n[mask].min()))
+        if len(t) >= 6 and row["n_fit"] >= 4 and row["min_origins_observed"] >= min_origins:
+            # Use the same fit as production and retain the requested lag bounds.
+            fit = fit_multi_origin_curve(t, y, fit_start_fraction=low, fit_end_fraction=high)
+            row.update({key: fit[key] for key in ("slope_A2_ps", "diffusion_nm2_ns", "r_squared")})
+            if row["slope_A2_ps"] <= 0 or np.ptp(y[mask]) == 0:
+                row["fit_status"] = "nonpositive_fit"
+            elif np.all(y[mask] > 0):
+                row["log_log_slope"] = float(np.polyfit(np.log(t[mask]), np.log(y[mask]), 1)[0])
+                row["fit_status"] = "fit"
+            else:
+                row["fit_status"] = "undefined_scaling"
+        rows.append(row)
+
+    spread = np.nan
+    if all(row["fit_status"] == "fit" for row in rows):
+        estimates = [row["diffusion_nm2_ns"] for row in rows]
+        spread = (max(estimates) - min(estimates)) / estimates[0]
+        near_linear = all(abs(row["log_log_slope"] - 1.) <= .20 for row in rows)
+        screen = "within_screen" if spread <= .25 and near_linear else "window_or_scaling_sensitive"
+    else:
+        screen = "unavailable"
+    return [dict(row, relative_d_spread=spread, screen=screen) for row in rows]
