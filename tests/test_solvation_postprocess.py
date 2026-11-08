@@ -122,3 +122,18 @@ def test_chunked_coordination_summary_empty_inputs():
     from mdscope.observables.solvation_postprocess import aggregate_coordination_parts
     by_class, by_target = aggregate_coordination_parts([])
     assert by_class.empty and by_target.empty
+
+
+def test_bridge_pair_occupancy_includes_eligible_never_observed_pairs():
+    from mdscope.observables.solvation_postprocess import bridge_pair_occupancy
+    bridges = pd.DataFrame({'time_ps': [0., 0., 0., 20.], 'solvent': ['ions/K']*4,
+        'solvent_id': [7,7,8,9], 'target_a': ['acid']*4, 'target_b': ['HS1']*4})
+    result = bridge_pair_occupancy(bridges, [0.,10.,20.,30.],
+                                  [('acid','HS1'),('acid','HS2')], ['ions/K','ions/Na'])
+    row = result.query("solvent == 'ions/K' and target_a == 'HS1'").iloc[0]
+    assert row.observed_frames == 4 and row.bridge_frames == 2
+    assert row.sampled_bridge_fraction == .5
+    assert row.mean_simultaneous_bridging_ions == .75
+    assert row.unique_bridging_ions == 3
+    assert result.loc[result.target_a.eq('HS2'), 'sampled_bridge_fraction'].eq(0).all()
+    assert result.loc[result.solvent.eq('ions/Na'), 'sampled_bridge_fraction'].eq(0).all()

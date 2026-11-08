@@ -58,9 +58,13 @@ def solvation_rdf_figure(root, system_repouts, *, max_panels=6):
             sd=curve.sd_g_bulk.to_numpy(float)
             ax.plot(x,y,label=f"{system} (n={int(curve.n_replicates.min())})")
             ax.fill_between(x,y-sd,y+sd,alpha=.18)
+            if "mean_g_aqueous_reference" in curve:
+                aqueous = curve.mean_g_aqueous_reference.to_numpy(float)
+                if np.isfinite(aqueous).any():
+                    ax.plot(x, aqueous, ls="--", label=f"{system}: aqueous-region reference")
         ax.axhline(1,color="gray",ls=":",lw=.8)
         ax.set_title(" / ".join(map(str,key)),fontsize=9)
-        ax.set_ylabel("g(r), full-cell density reference")
+        ax.set_ylabel("g(r); solid: full-cell reference")
         ax.legend(fontsize=7,frameon=False)
     axes[-1,0].set_xlabel("Distance (Å)")
     fig.tight_layout()

@@ -333,3 +333,27 @@ def test_water_hbond_uses_shared_triclinic_minimum_image():
         shifted, solvent, hydrogens, pairs, box)))
     assert expected == {(0, 0, 0), (0, 1, 1)}
     assert result == expected
+
+
+def test_explicit_bridge_pair_with_no_events_is_observed_zero(tmp_path):
+    u = _universe()
+    u.trajectory.coordinate_array[:, 2:4] = [10., 10., 10.]
+    pair = ['protein/first/0', 'protein/second/0']
+    cfg = {'analyses': {'solvation': {
+        'enabled': True, 'preset': 'kinetics',
+        'targets': {'protein': {'first': 'index 0', 'second': 'index 1'}},
+        'water_selection': 'resname SOL and name OW', 'search_radius_A': 5.,
+        'options': {'bridge_target_pairs': [pair]},
+    }}}
+    observer = SolvationObserver(u, cfg, tmp_path)
+    for i, ts in enumerate(u.trajectory):
+        observer.update(ts, i, float(i))
+    observer.flush(0); observer.finalize()
+    result = pd.read_parquet(tmp_path/'extensions/solvation/bridge_pair_summary.parquet')
+    assert result.observed_frames.item() == 2
+    assert result.sampled_bridge_fraction.item() == 0.
+    # Unknown/untracked targets cannot be silently called zero.
+    cfg['analyses']['solvation']['options']['bridge_target_pairs'] = [['unknown', pair[0]]]
+    import pytest
+    with pytest.raises(ValueError, match='tracked target IDs'):
+        SolvationObserver(u, cfg, tmp_path/'invalid')

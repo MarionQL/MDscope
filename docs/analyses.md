@@ -1058,3 +1058,66 @@ processes): 1,024 molecules / 12,288 atoms / three frames, batch 256 took
 0.750 s at 170.5 MiB peak RSS; batch 4096 took 0.619 s at 174.7 MiB. Matrix
 digests were identical. This demonstrates a memory/runtime tradeoff and
 batch invariance, not a production trajectory speedup prediction.
+
+### Optional aqueous-region solvation RDF reference
+
+`analyses.solvation.aqueous_reference` adds `g_aqueous_reference` to the
+existing `rdf.parquet`; it never changes the historical full-cell `g_bulk`.
+For an axis-aligned orthorhombic bilayer, choose a nonempty membrane anchor
+selection and an explicit excluded slab half-width that includes the membrane
+and a justified interfacial buffer. For example (the width is illustrative,
+not a recommended physical boundary):
+
+```yaml
+analyses:
+  solvation:
+    aqueous_reference:
+      membrane_selection: "resname POPC DOPC and name P"
+      axis: z
+      half_width_A: 30.0
+```
+
+The circular membrane center is recalculated per frame. For normal length L,
+cell volume V and half-width h, the reference geometric volume is
+`V * (1 - 2*h/L)`. Each solvent species uses **the same selected entities**
+as its RDF, counted outside that slab. The per-frame count, volume, density
+(Å⁻³), center (Å), and availability are in `aqueous_reference.parquet`.
+The RDF denominator sums site-atom count times frame-specific density,
+rather than using a ratio of average volumes/counts. An empty reference in
+any frame makes that species' entire aqueous-reference curve unavailable;
+its full-cell curve remains available. Invalid boxes/regions and RDF radii
+larger than half the shortest box length fail explicitly. General triclinic,
+rotated and strongly curved membranes are unsupported for this option.
+
+This is a **geometric aqueous-region reference**, not proof of bulk density.
+Protein/HS volume within that region and the inaccessible part of each RDF
+shell remain uncorrected. A hemisphere can still give g(r)=0.5 at the correct
+aqueous density. Inspect spatial density/plateau and slab-width sensitivity
+on real trajectories before comparing systems. The optional reference is
+carried to replica/system descriptive RDF tables with its own replica count
+and coverage flag, and shown as dashed curves. Legacy curves never acquire
+an inferred reference. No production benefit is claimed from the toy tests.
+
+### Explicit eligible bridge-pair occupancy
+
+For `solvation.options.bridge_target_pairs`, supply a list of pairs of exact
+`target_id` strings from `target_residues.parquet` (or the selection audit).
+Both targets must be distinct, tracked, and have bridges enabled. For example:
+
+```yaml
+options:
+  bridges: true
+  bridge_target_pairs:
+    - ["protein/carboxylate/7", "hs/sulfate/200"]
+```
+
+These are illustrative topology IDs; use the actual saved IDs. The optional
+`bridge_pair_summary.parquet` includes every configured pair for each selected
+solvent species, even if it never bridged. `sampled_bridge_fraction` is the
+fraction of **all sampled observation frames** with at least one *same ion*
+simultaneously coordinating both targets. `mean_simultaneous_bridging_ions`
+is the unique-ion count summed over frames divided by that same denominator.
+Duplicate event records do not increase either metric. An unknown/untracked
+pair fails rather than becoming zero. Occupancy is sampled-frame based,
+not time-weighted; it does not establish a chemical bridge or cooperativity.
+Existing per-ion episode tables and censoring conventions remain distinct.
