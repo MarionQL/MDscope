@@ -97,3 +97,39 @@ def test_raw_reader_rejects_mismatched_frame_count(monkeypatch):
         trajectory_sources.open_msd_universe(
             rep, {"analyses": {"membrane": spec}}, state, main, 0,
         )
+
+
+def test_multi_origin_closes_scratch_mapping_before_publishing(tmp_path, monkeypatch):
+    from mmap import mmap
+    import pandas as pd
+    from mdscope.observables import multi_origin_pipeline as pipeline
+
+    universe = _universe(0.)
+    xyz = universe.atoms.positions + np.arange(10)[:, None, None] * [1., 0., 0.]
+    universe.load_new(xyz, format=MemoryReader, dimensions=[10., 10., 10., 90., 90., 90.])
+    monkeypatch.setattr(pipeline.mda, "Universe", lambda *args: universe)
+    mappings = []
+
+    def capture_mapping(*args):
+        mapping = mmap(*args)
+        mappings.append(mapping)
+        return mapping
+
+    write = pipeline.atomic_parquet
+
+    def check_then_write(path, table):
+        assert len(mappings) == 1 and mappings[0].closed
+        write(path, table)
+
+    monkeypatch.setattr(pipeline, "mmap", capture_mapping, raising=False)
+    monkeypatch.setattr(pipeline, "atomic_parquet", check_then_write)
+    rep = SimpleNamespace(system="test", label="rep1", topology="unused.tpr",
+                          trajectory="unused.xtc", msd_trajectory=None)
+    cfg = {"trajectory": {"stride": 1}, "analyses": {"membrane": {
+        "enabled": True, "headgroup_selection": "all",
+        "msd": {"enabled": True, "multi_origin": True},
+    }}}
+    pipeline.run_multi_origin_diffusion(rep, cfg, tmp_path)
+    curves = pd.read_parquet(tmp_path / "summary/multi_origin_msd.parquet")
+    np.testing.assert_allclose(curves["msd_A2"], curves["lag_ps"] ** 2, atol=1e-10)
+    assert set(tmp_path.iterdir()) == {tmp_path / "summary"}

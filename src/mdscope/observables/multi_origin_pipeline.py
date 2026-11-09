@@ -5,8 +5,10 @@ state untouched. Positions are staged in a temporary on-disk memmap; FFT
 processing only loads a limited number of lipid tracks at a time.
 """
 from __future__ import annotations
+from contextlib import ExitStack
+from mmap import mmap
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from tempfile import TemporaryFile
 import numpy as np
 import pandas as pd
 import MDAnalysis as mda
@@ -42,11 +44,14 @@ def run_multi_origin_diffusion(rep, cfg, repout):
     output = Path(repout) / "summary"
     output.mkdir(parents=True, exist_ok=True)
     times = np.empty(n_frames, dtype=np.float64)
-    with TemporaryDirectory(prefix="mdscope-multi-origin-", dir=Path(repout)) as tmp:
-        track = np.lib.format.open_memmap(
-            Path(tmp) / "unwrapped.npy", mode="w+", dtype=np.float64,
-            shape=(n_frames, n_lipids, 3),
-        )
+    shape = (n_frames, n_lipids, 3)
+    size = n_frames * n_lipids * 3 * np.dtype(np.float64).itemsize
+    # Close the mapping before closing the scratch file, including on error.
+    # An unnamed file avoids removing a directory containing an open mapping.
+    with TemporaryFile(dir=repout) as backing, ExitStack() as resources:
+        backing.truncate(size)
+        mapping = resources.enter_context(mmap(backing.fileno(), size))
+        track = np.ndarray(shape, dtype=np.float64, buffer=mapping)
         last = None
         displacement = np.zeros((n_lipids, 3), dtype=np.float64)
         for i, ts in enumerate(frames):
@@ -61,7 +66,6 @@ def run_multi_origin_diffusion(rep, cfg, repout):
             last = current
         if not np.all(np.isfinite(times)) or np.any(np.diff(times) <= 0) or not np.allclose(np.diff(times), np.diff(times)[0], rtol=1e-5, atol=1e-8):
             raise ValueError("Multi-origin MSD requires regularly spaced finite time samples")
-        track.flush()
         rows, curves = [], []
         from .multi_origin_msd import multi_origin_msd, fit_multi_origin_curve
         for suffix, mask in (
@@ -105,6 +109,6 @@ def run_multi_origin_diffusion(rep, cfg, repout):
                 "metric": metric, "lag_ps": float(t), "msd_A2": float(v),
                 "n_time_origins": int(n_frames - j),
             } for j, (t, v) in enumerate(zip(lag_times, curve)))
-        atomic_parquet(output / "multi_origin_diffusion.parquet", pd.DataFrame(rows))
-        atomic_parquet(output / "multi_origin_msd.parquet", pd.DataFrame(curves))
+    atomic_parquet(output / "multi_origin_diffusion.parquet", pd.DataFrame(rows))
+    atomic_parquet(output / "multi_origin_msd.parquet", pd.DataFrame(curves))
     return {"frames": n_frames, "lipids": n_lipids, "method": "multi_origin_fft"}
