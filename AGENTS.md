@@ -11,6 +11,27 @@ Use the existing project documentation as the source of truth. Read the files re
 - [SDC4 reference fixtures](docs/developer/sdc4-fixtures.md): system-specific test contracts, when touching SDC4 mechanisms.
 - [Repository documentation index](docs/README.md): navigation to other maintained material.
 
+## Local code map
+
+Use Graphify for changes that span modules, such as following an analysis from
+its runner through output validation and reporting. Query specific symbols with
+`graphify explain SYMBOL` or `graphify path FROM TO`, then verify the callers,
+YAML, output contracts and tests in the source. Use ordinary source search for
+small edits or when Graphify is unavailable.
+
+From the checkout root, build the optional code-only map with:
+
+```sh
+uv tool install graphifyy==0.9.104
+GRAPHIFY_BACKEND=none graphify extract . --code-only
+GRAPHIFY_BACKEND=none graphify cluster-only .
+```
+
+The generated JSON, report and HTML live in the ignored `graphify-out/` folder
+in each checkout. When using the map, run `GRAPHIFY_BACKEND=none graphify update .`
+before querying after a pull or branch change, and after edits that change
+callers or module boundaries. Keep the map local to development checkouts.
+
 ## Working agreement
 
 1. Inspect existing callers, contracts, tests and relevant docs; state the intended change and its acceptance criteria. Preserve the distinction between **numerically correct** and **physically interpretable**.

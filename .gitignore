@@ -30,3 +30,6 @@ results/
 results_*/
 mdscope_results/
 *.log
+
+# Generated developer code map
+/graphify-out/
