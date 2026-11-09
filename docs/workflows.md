@@ -44,7 +44,8 @@ deliberate and are *not* production passes.
 For configurations with no regular protein streaming, all optional observers
 share a single observer-only fallback traversal. A non-serial DSSP backend
 remains an intentional separate analysis, because its multiprocessing
-execution is controlled by MDAnalysis. Extra reads may also occur when
+execution is controlled by MDAnalysis. The full production profile also runs multi-origin MSD and the potassium
+bridge audit as separately restartable passes. Extra reads may occur when
 rebuilding missing/corrupted outputs.
 
 ### Hydrogen bonds and DSSP
@@ -110,7 +111,7 @@ an assessment of sampling convergence or statistical significance.
 Use **`synd4_full_mechanisms.yaml`**. It preserves the **same two systems,
 topology paths and all six replicate XTC paths** as
 `synd4_baseline.yaml`. The output is separate:
-`results_memb_full_mechanisms/` (relative to the YAML directory), so the
+`results_memb_full_analysis/` (relative to the YAML directory), so the
 existing baseline outputs are not archived or overwritten.
 
 The new YAML enables:
@@ -119,7 +120,15 @@ The new YAML enables:
   distances, DSSP, protein H-bonds and salt bridges
 - Global lipid C-H order, local bilayer-normal deviations, leaflet-normalized
   lipid enrichment and intermolecular lipid-lipid hydrogen bonds
-- Protein-centered GM1a/BGAL/cholesterol density maps
+- Lipid neighbor matrices, protein-excluded lipid area, and
+  protein-centered density maps for all configured lipid species
+- Single- and multi-origin MSD with multi-origin fit diagnostics
+- Isolated and environment SASA, including membrane/HS burial
+- Protein, HS and lipid solvation counts and RDFs, aqueous-reference RDFs,
+  and two carboxylate-centered 3D hydration maps
+- Acidic-patch/HS bridge occupancy, water hydrogen-bond bridges and K spatial
+  references, plus a separate topology, RDF peak, shared-water and steric audit
+- Local environment contacts and the descriptive coupling screen
 - Ectodomain height, tilt and membrane-contact states
 - Sequence-derived NxIP occlusion and direct motif SASA (protein-only)
 - **Six individual covalently attached HS chains** with orientation, direct
@@ -128,7 +137,16 @@ The new YAML enables:
 - Local membrane thickness, quadratic curvature and C-H order
 - One shared conformational-state model across all six replicates
 - Hierarchical statistics, replicate-aware comparisons and figures
-- A PDF evidence report and a compact review ZIP
+- A PDF evidence report and a review ZIP containing the full audit tables
+
+Solvent identity tracking is limited to the acidic patches and HS anionic
+sites. Other charged protein sites and lipid phosphates contribute counts
+and RDFs. Environment SASA uses whole, centered coordinates because the
+dimer exceeds the compact-target limit of periodic SASA. Interpret this
+burial metric only while the target is clear of the periodic faces.
+Ligand contacts require a designated ligand. The finalization-fast
+variant consumes the same outputs with atom-identity lipid H-bond statistics
+omitted and a relaxed shared-state completeness threshold.
 
 ### HS chains: actual TPR bond audit
 
@@ -178,7 +196,7 @@ existing tables. The full `run` command already finalizes automatically.
 Once all analyses and project-level finalization finish:
 
 ```text
-results_memb_full_mechanisms/
+results_memb_full_analysis/
   project_summary/
     report/
       MDscope_evidence_report.pdf

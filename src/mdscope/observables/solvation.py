@@ -383,18 +383,27 @@ class SolvationObserver:
             if not (0 < self.hbond_da_A <= float(self.spec.get("search_radius_A", 8.))
                     and 0 < self.hbond_angle <= 180):
                 raise ValueError("invalid water H-bond bridge thresholds")
-            ids = []
-            for oxygen in self.solvents["water"]:
-                try:
-                    bonded = oxygen.bonded_atoms
-                except Exception as exc:
-                    raise ValueError("water H-bond bridging requires O-H topology bonds") from exc
-                hydrogen = [int(atom.index) for atom in bonded
-                            if str(atom.name).upper().lstrip("0123456789").startswith("H")]
-                if len(hydrogen) != 2:
-                    raise ValueError("water oxygen must have precisely two bonded H atoms")
-                ids.extend(hydrogen)
-            self.water_hydrogens = self.u.atoms[ids]
+            try:
+                bonds = self.u.bonds.indices
+            except Exception as exc:
+                raise ValueError("water H-bond bridging requires O-H topology bonds") from exc
+            waters = self.solvents["water"]
+            water_owner = np.full(len(self.u.atoms), -1, dtype=int)
+            water_owner[waters.indices] = np.arange(len(waters))
+            directed = np.concatenate((bonds, bonds[:, ::-1]))
+            owners = water_owner[directed[:, 0]]
+            neighbors = directed[owners >= 0, 1]
+            owners = owners[owners >= 0]
+            hydrogen = np.fromiter(
+                (str(name).upper().lstrip("0123456789").startswith("H")
+                 for name in self.u.atoms[neighbors].names),
+                dtype=bool, count=len(neighbors),
+            )
+            owners = owners[hydrogen]
+            if not np.all(np.bincount(owners, minlength=len(waters)) == 2):
+                raise ValueError("water oxygen must have precisely two bonded H atoms")
+            self.water_hydrogens = self.u.atoms[neighbors[hydrogen][np.argsort(owners, kind="stable")]]
+
 
         radius = float(self.spec.get("search_radius_A", 8.0))
         width = float(self.spec.get("rdf_bin_width_A", 0.2))
@@ -427,8 +436,14 @@ class SolvationObserver:
             for target, selection in self.spec["grid_frames"].items():
                 if target not in known:
                     raise ValueError(f"unknown 3D hydration target {target}")
-                frame = universe.select_atoms(selection)
-                if len(frame) != 3:
+                if isinstance(selection, list):
+                    anchors = [universe.select_atoms(query) for query in selection]
+                    if len(anchors) != 3 or any(len(group) != 1 for group in anchors):
+                        raise ValueError(f"3D hydration frame {target} needs three single-atom selectors")
+                    frame = universe.atoms[[int(group.indices[0]) for group in anchors]]
+                else:
+                    frame = universe.select_atoms(selection)
+                if len(frame) != 3 or len(set(frame.indices)) != 3:
                     raise ValueError(f"3D hydration frame {target} needs exactly 3 ordered atoms")
                 target_atoms = next(g for name, _, _, g in self.targets if name == target)
                 if int(frame.indices[0]) not in set(map(int, target_atoms.indices)):

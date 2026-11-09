@@ -145,6 +145,7 @@ DEFAULTS = {
             "ion_cutoff_A": 4.0,
             "local_order": {"enabled": False, "lipid_selection": None},
         },
+        "potassium_bridge_audit": {"enabled": False},
         "shared_states": {
             "enabled": False, "features": None,
             "n_states": 3, "seed": 2026, "bootstrap_draws": 300,
@@ -457,6 +458,16 @@ def load_config(path: str | Path) -> dict[str, Any]:
 
 
 def validate_config(cfg: dict, base: Path = Path(".")) -> None:
+    if analysis_enabled(cfg, "potassium_bridge_audit"):
+        analyses = cfg["analyses"]
+        solvation = analyses["solvation"]
+        motif = solvation["targets"].get("motif", {}).get("acidic_patch", {})
+        hs = analyses["sdc4_mechanisms"]["hs_auto"]
+        if not (solvation.get("water_selection") and isinstance(motif, dict)
+                and motif.get("sequence") and motif.get("selection")
+                and hs.get("glycan_selection") and hs.get("attachment_selection")):
+            raise ValueError("potassium_bridge_audit requires solvation water and acidic_patch "
+                             "selectors and sdc4_mechanisms.hs_auto selections")
     contacts = cfg.get('analyses', {}).get('lipid_contacts', {})
     if contacts.get('enabled', False):
         if not contacts.get('selection') or not contacts.get('species_selections'):

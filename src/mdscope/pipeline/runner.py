@@ -442,7 +442,12 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
         ):
             continue
         key=prefix+"-"+task.key
-        if not state.complete(key):
+        if task.key == "potassium_bridge_audit":
+            # The complete audit directory is published atomically. Reuse it
+            # even if the process stopped before recording the stage marker.
+            if fused_output(repout, task.key).path.is_file():
+                continue
+        if task.key == "potassium_bridge_audit" or not state.complete(key):
             t0 = perf_counter()
             result=task.run(rep,cfg,repout)
             state.mark(key,result if isinstance(result,dict) else {})
