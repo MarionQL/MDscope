@@ -5,6 +5,7 @@ helpers.
 
 from __future__ import annotations
 
+import math
 import time
 from copy import deepcopy
 from dataclasses import dataclass
@@ -832,8 +833,24 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
     for name, option in families.items():
         if isinstance(option, bool):
             continue
-        if not isinstance(option, dict) or set(option) - {"enabled", "bootstrap", "bootstrap_draws", "ci", "hypothesis_tests", "hierarchy"}:
+        if not isinstance(option, dict) or set(option) - (
+                {"enabled", "bootstrap", "bootstrap_draws", "ci", "hypothesis_tests", "hierarchy"}
+                | ({"adaptive_hierarchy"} if name == "time_series" else set())):
             raise ValueError(f"statistics.families.{name}: unsupported options")
+        if "adaptive_hierarchy" in option:
+            adaptive = option["adaptive_hierarchy"]
+            counts = {"min_draws", "max_draws", "batch_size", "stable_checks"}
+            tolerances = {"absolute_tolerance", "relative_tolerance"}
+            if (not isinstance(adaptive, dict) or not counts <= adaptive.keys()
+                    or adaptive.keys() - counts - tolerances
+                    or any(type(adaptive[k]) is not int or adaptive[k] < 1 for k in counts)
+                    or not 100 <= adaptive["min_draws"] <= adaptive["max_draws"]
+                    or any(type(adaptive.get(k, 0)) not in (int, float)
+                           or not math.isfinite(adaptive.get(k, 0)) or adaptive.get(k, 0) < 0
+                           for k in tolerances)
+                    or not any(adaptive.get(k, 0) > 0 for k in tolerances)):
+                raise ValueError("statistics.families.time_series.adaptive_hierarchy requires valid "
+                                 "draw bounds, batch_size, stable_checks and a positive tolerance")
         for key in ("enabled", "bootstrap", "hypothesis_tests"):
             if key in option and not isinstance(option[key], bool):
                 raise ValueError(f"statistics.families.{name}.{key} must be boolean")
@@ -932,7 +949,7 @@ def statistics_family_config(cfg, family):
     if not option and stats.get("bootstrap", True):
         return cfg
     result = deepcopy(cfg)
-    for key in ("bootstrap", "bootstrap_draws", "ci"):
+    for key in ("bootstrap", "bootstrap_draws", "ci", "adaptive_hierarchy"):
         if key in option:
             result["statistics"][key] = option[key]
     if "hypothesis_tests" in option:

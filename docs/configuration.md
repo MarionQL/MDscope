@@ -181,6 +181,32 @@ statistics:
     primary: [sdc4_motif_NxIP_PROB_1_steric_occlusion_fraction]
 ```
 
+Optional adaptive Monte Carlo precision is available for scalar
+`time_series` system and contrast intervals. Set
+`statistics.families.time_series.adaptive_hierarchy` to a mapping such as:
+
+```yaml
+min_draws: 1000
+max_draws: 8000
+batch_size: 500
+stable_checks: 2
+relative_tolerance: 0.05
+```
+
+Each row checks both endpoints of its mean and median intervals. The tolerance
+is the optional `absolute_tolerance` in the metric's units plus
+`relative_tolerance` times the corresponding interval width at the first look.
+At least one tolerance must be positive. Simultaneous binomial rank bands
+account for the scheduled looks and endpoints within each row. Rows report
+actual draws, achieved endpoint bounds, settings, seed and status. A capped
+row reports `not_converged` and retains its estimated interval.
+
+The bands measure second-stage Monte Carlo precision conditional on the
+fixed-size replicate bootstrap pools (`bootstrap_draws`). Replicate intervals,
+other families, and the scientific interpretation of uncertainty retain their
+existing contracts. Adaptive mode uses a separate seeded RNG stream and is
+reproducible for a fixed input order and configuration.
+
 Inclusion/exclusion occurs before interaction Parquet reads; exclusions take
 precedence. Scalar hypothesis-family membership partitions BH adjustment by
 condition contrast and family. All unlisted endpoints remain exploratory.

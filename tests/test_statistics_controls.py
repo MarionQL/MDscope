@@ -66,7 +66,8 @@ def test_global_bootstrap_disable_can_be_overridden_by_one_family():
     assert cfg == before
 
 
-@pytest.mark.parametrize('bad', [{'unknown': False}, {'profiles': {'enabled': 'no'}}, {'time_series': {'bootstrap_draws': 0}}, {'profiles': {'ci': 2}}, {'profiles': {'typo': 1}}])
+@pytest.mark.parametrize('bad', [{'unknown': False}, {'profiles': {'enabled': 'no'}}, {'time_series': {'bootstrap_draws': 0}}, {'profiles': {'ci': 2}}, {'profiles': {'typo': 1}},
+    {'time_series': {'adaptive_hierarchy': {'min_draws': 10}}}])
 def test_invalid_statistics_controls_fail_before_processing(tmp_path, bad):
     cfg = deepcopy(DEFAULTS)
     top = tmp_path/'a.pdb'; top.touch()

@@ -1231,3 +1231,19 @@ in which each configured species is available. Configured absent species retain
 zero populations and undefined enrichment. This table can be regenerated from
 compatible legacy counts without reopening trajectories; it is not a new reuse
 requirement for old results.
+
+Set `solvation.options.bridge_spatial_ion: ions/K` to additionally evaluate an
+in-plane spatial reference for that explicitly selected species. For each
+sampled frame and eligible target pair, eight fixed nonzero fractional cell
+translations shift all selected ions together. Periodic wrapping preserves ion
+height and the ion–ion arrangement. The reference uses the same contact cutoff
+and same-ion requirement as the observations. It uses orthorhombic boxes and
+the aqueous-reference normal if configured, with `z` as the default.
+
+`bridge_spatial_reference.parquet` contains the per-offset unique-ion counts.
+`bridge_pair_timeseries.parquet` includes the fraction of offsets with a bridge
+and the observed-minus-reference contrast. The scalar statistics family can
+summarize that contrast across frames and replicas. The translations may put
+ions inside excluded volume, so treat this as a descriptive geometry and
+crowding reference. Chemical assignments, RDF peak boundaries and sensitivity
+to steric exclusion still require separate evidence.

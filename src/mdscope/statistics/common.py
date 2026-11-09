@@ -223,6 +223,58 @@ def _ci(draws, level: float) -> tuple[float, float]:
     return tuple(map(float, np.quantile(x, [alpha, 1 - alpha])))
 
 
+def _adaptive_intervals(sample, level, options):
+    """Stop jointly for both endpoints of each scalar supplied by sample."""
+    from scipy.stats import binom
+
+    minimum = options["min_draws"]
+    maximum = options["max_draws"]
+    batch = options["batch_size"]
+    checks = options["stable_checks"]
+    probabilities = np.array([(1 - level) / 2, (1 + level) / 2])
+    # Simultaneous rank bands across four endpoints and every scheduled look.
+    tail = 0.05 / (8 * (1 + math.ceil((maximum - minimum) / batch)))
+    result = np.empty((maximum, 2))
+    stable = 0
+    tolerance = None
+    n = 0
+    errors = np.full((2, 2), np.nan)
+    status = "unavailable"
+    while n < maximum:
+        end = min(maximum, n + (batch if n else minimum))
+        draws = sample(end - n)
+        if draws.shape != (end - n, 2) or not np.isfinite(draws).all():
+            n = 0
+            errors.fill(np.nan)
+            status = "unavailable"
+            break
+        result[n:end] = draws
+        n = end
+        endpoints = np.quantile(result[:n], probabilities, axis=0)
+        if tolerance is None:
+            tolerance = (options.get("absolute_tolerance", 0.)
+                         + options.get("relative_tolerance", 0.) * np.diff(endpoints, axis=0))
+        low = binom.ppf(tail, n, probabilities).astype(int) - 1
+        high = binom.isf(tail, n, probabilities).astype(int)
+        errors = np.full((2, 2), np.inf)
+        valid = (low >= 0) & (high < n)
+        if valid.any():
+            ordered = np.sort(result[:n], axis=0)
+            errors[valid] = np.maximum(endpoints[valid] - ordered[low[valid]],
+                                       ordered[high[valid]] - endpoints[valid])
+        stable = stable + 1 if np.all(errors <= tolerance) else 0
+        status = "converged" if stable >= checks else "not_converged"
+        if status == "converged":
+            break
+    metadata = {
+        "bootstrap_mc_status": status,
+        "bootstrap_mc_algorithm": "simultaneous_binomial_rank_bands_95_conditional",
+        **{f"{stat}_ci_{side}_mc_error_bound": errors[i, j]
+           for i, side in enumerate(("low", "high")) for j, stat in enumerate(("mean", "median"))},
+    }
+    return result[:n].T, metadata
+
+
 def _point_difference(a, b, paired=False, reducer="mean"):
     """Finite-observation descriptive contrast when temporal draws are unavailable."""
     reduce = np.median if reducer == "median" else np.mean

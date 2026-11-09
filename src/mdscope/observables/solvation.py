@@ -5,7 +5,7 @@ All distances are Å and times ps; the actual water/ion atom selections are
 explicit to avoid guessing CHARMM lipid and glycan atom chemistry.
 """
 from collections import defaultdict
-from itertools import combinations
+from itertools import combinations, product
 from pathlib import Path
 import os
 import tempfile
@@ -26,6 +26,11 @@ COUNT_COLUMNS = ["frame", "time_ps", "solvent", "target_id", "target_class",
                  "site_class", "n_solvent"]
 EVENT_COLUMNS = ["frame", "time_ps", "solvent", "target_id", "solvent_id"]
 BRIDGE_COLUMNS = ["frame", "time_ps", "solvent", "solvent_id", "target_a", "target_b"]
+
+# A fixed, symmetric in-plane grid makes the reference reproducible on restart.
+SPATIAL_OFFSETS = tuple(pair for pair in product((0., 1/3, 2/3), repeat=2) if any(pair))
+SPATIAL_COLUMNS = ["frame", "time_ps", "solvent", "target_a", "target_b",
+                   "offset_u_fraction", "offset_v_fraction", "bridge_entity_count"]
 
 EPISODE_COLUMNS = ["solvent", "target_id", "solvent_id", "start_frame", "end_frame",
                    "duration_ps", "left_censored", "right_censored",
@@ -333,6 +338,22 @@ class SolvationObserver:
             self.solvents[name] = group
         if not self.solvents:
             raise ValueError("solvation requires water_selection and/or ion_selection")
+        self.spatial_ion = opts.get("bridge_spatial_ion")
+        self.spatial_rows = []
+        if self.spatial_ion is not None:
+            if (not isinstance(self.spatial_ion, str)
+                    or not self.spatial_ion.startswith("ions/")
+                    or self.spatial_ion not in self.solvents or not normalized_pairs):
+                raise ValueError("bridge_spatial_ion requires a named ion species and bridge_target_pairs")
+            axis = self.spec.get("aqueous_reference") or {}
+            self.spatial_plane = [i for i, label in enumerate("xyz") if label != axis.get("axis", "z")]
+            targets_by_id = {name: i for i, (name, _, _, _) in enumerate(self.targets)}
+            selected = [targets_by_id[name] for pair in normalized_pairs for name in pair]
+            mask = np.isin(self.target_of_site, selected)
+            self.spatial_sites = self.site_atoms[mask]
+            self.spatial_site_targets = self.target_of_site[mask]
+            self.spatial_pairs = [(a, b, targets_by_id[a], targets_by_id[b])
+                                  for a, b in normalized_pairs]
         self.aqueous_reference = self.spec.get("aqueous_reference")
         self.reference_membrane = None
         if self.aqueous_reference:
@@ -547,6 +568,24 @@ class SolvationObserver:
                                 (int(frame_index), float(time_ps),
                                  int(atoms.indices[water_idx]),
                                  self.targets[a][0], self.targets[b][0]))
+            if solvent == self.spatial_ion:
+                if not np.allclose(box[3:], 90., rtol=0, atol=1e-5):
+                    raise ValueError("bridge_spatial_ion requires an orthorhombic periodic box")
+                positions = atoms.positions
+                sites = self.spatial_sites.positions
+                cutoff = float(self.shells[solvent])
+                method = None if self.neighbor_method == "auto" else self.neighbor_method
+                for du, dv in SPATIAL_OFFSETS:
+                    shift = np.zeros(3)
+                    shift[self.spatial_plane] = np.array([du, dv]) * box[self.spatial_plane]
+                    neighbors = capped_distance(sites, (positions + shift) % box[:3],
+                        max_cutoff=cutoff, box=box, return_distances=False, method=method)
+                    target_ids = self.spatial_site_targets[neighbors[:, 0]]
+                    ion_ids = neighbors[:, 1]
+                    for left, right, a, b in self.spatial_pairs:
+                        count = len(np.intersect1d(ion_ids[target_ids == a], ion_ids[target_ids == b]))
+                        self.spatial_rows.append((int(frame_index), float(time_ps), solvent,
+                                                  left, right, du, dv, count))
             if self.bridges_on:
                 inverse = defaultdict(set)
                 for target_index, solvent_ids in contacts.items():
@@ -568,6 +607,7 @@ class SolvationObserver:
             ("bridges", self.bridges, BRIDGE_COLUMNS),
             ("water_hbond_bridges", self.hbond_rows,
              ["frame", "time_ps", "water_id", "target_a", "target_b"]),
+            ("bridge_spatial_reference", self.spatial_rows, SPATIAL_COLUMNS),
             ("frames", self.frame_rows, ["frame", "time_ps"]),
         ):
             if values or name in {"counts", "frames"}:
@@ -714,6 +754,29 @@ class SolvationObserver:
                     or not np.array_equal(np.rint(matched.mean_simultaneous_bridging_ions*
                         matched.observed_frames).astype(np.int64), matched['count'])):
                 raise ValueError("Bridge records disagree with persisted target-contact identities")
+            if self.spatial_ion is not None:
+                spatial = read("bridge_spatial_reference")
+                trace = evidence[0]
+                frame_keys = keys + ["frame", "time_ps"]
+                expected = trace.loc[trace.solvent == self.spatial_ion].merge(
+                    observations, on="time_ps", validate="many_to_one")[frame_keys]
+                if spatial.empty or spatial.duplicated(frame_keys + SPATIAL_COLUMNS[5:7]).any():
+                    raise ValueError("Missing or duplicate spatial bridge reference records")
+                fractions = (spatial.assign(present=spatial.bridge_entity_count.gt(0))
+                             .groupby(frame_keys, as_index=False)
+                             .agg(shifted_bridge_fraction=("present", "mean"),
+                                  offsets=("present", "size")))
+                coverage = expected.merge(fractions, on=frame_keys, how="outer", validate="one_to_one",
+                                          indicator=True)
+                if not coverage._merge.eq("both").all() or not coverage.offsets.eq(len(SPATIAL_OFFSETS)).all():
+                    raise ValueError("Incomplete spatial bridge reference coverage")
+                trace = trace.merge(fractions.drop(columns=["offsets", "frame"]),
+                                    on=keys + ["time_ps"], how="left",
+                                    validate="one_to_one")
+                trace["observed_minus_spatial_bridge_fraction"] = (
+                    trace.bridge_present_fraction - trace.shifted_bridge_fraction)
+                atomic_parquet(dest / "bridge_spatial_reference.parquet", spatial)
+                evidence = (trace, *evidence[1:])
             atomic_parquet(dest / "bridge_pair_summary.parquet", pair_summary)
             for name, data in zip(("bridge_pair_timeseries", "bridge_pair_shift_reference",
                                    "bridge_pair_control_summary"), evidence):
@@ -727,6 +790,11 @@ class SolvationObserver:
             "3d_grid_edges_A": self.grid_edges.tolist() if self.grid_frames else None,
             "bridges": self.bridges_on,
             "bridge_target_pairs": self.eligible_bridge_pairs,
+            **({"bridge_spatial_ion": self.spatial_ion,
+                "bridge_spatial_axes": self.spatial_plane,
+                "bridge_spatial_offsets": SPATIAL_OFFSETS,
+                "bridge_spatial_limitation": "Rigid periodic in-plane ion shifts preserve height and ion–ion distances but may put ions in excluded volume. Descriptive reference, not a chemical cooperativity or affinity test."}
+               if self.spatial_ion is not None else {}),
             "bridge_control": "Deterministic nonzero circular offsets of target-B contact traces, at most 100; regular windows with >=4 observations only. Reference span is not a CI or a spatial/chemical cooperativity test.",
             "track_target_classes": self.track_classes,
             "solvent_selection_audit": {

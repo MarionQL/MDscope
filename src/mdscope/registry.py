@@ -197,6 +197,9 @@ def required_artifacts(entry: FusedOutput, cfg: dict) -> tuple[Path, ...]:
             paths.extend(directory/f for f in ('episodes.parquet', 'survival.parquet'))
         if options.get('bridge_target_pairs'):
             paths.append(directory/'bridge_pair_summary.parquet')
+        if options.get("bridge_spatial_ion") is not None:
+            paths.extend(directory/name for name in ("bridge_spatial_reference.parquet",
+                                                      "bridge_pair_timeseries.parquet"))
         if spec.get('aqueous_reference'):
             paths.append(directory/'aqueous_reference.parquet')
         if spec.get('grid_frames'):
