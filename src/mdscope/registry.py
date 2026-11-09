@@ -10,12 +10,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 import pandas as pd
-from .config import analysis_runs
+from .config import analysis_enabled, analysis_runs
 from .observables.residue_membrane_distance import run_residue_membrane_distance
 from .observables.membrane_order import run_membrane_order
 from .observables.structure_profiles import run_structure_profiles
 from .interactions.hydrogen_bonds import run_hydrogen_bonds
 from .mechanisms.local_environment import run_local_environment
+from .mechanisms.potassium_bridge_audit import run_potassium_bridge_audit
 from .observables.lipid_enrichment import run_lipid_enrichment
 from .observables.bilayer_normal import run_bilayer_normal
 from .interactions.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
@@ -40,6 +41,9 @@ def specialized_tasks(cfg):
     if cfg.get("analyses",{}).get("local_environment",{}).get("enabled",False):
         yield AnalysisTask("local_environment",run_local_environment,
                            "extensions/local_environment/timeseries.parquet")
+
+    if analysis_enabled(cfg, "potassium_bridge_audit"):
+        yield AnalysisTask("potassium_bridge_audit", run_potassium_bridge_audit)
 
     for name,fn in (("lipid_enrichment",run_lipid_enrichment),
                     ("bilayer_normal",run_bilayer_normal),
@@ -81,6 +85,7 @@ FUSED_OUTPUTS = {
     "local_environment": "extensions/local_environment/timeseries.parquet",
     "solvation": "extensions/solvation/counts.parquet",
     "sdc4_mechanisms": "extensions/sdc4_mechanisms/timeseries.parquet",
+    "potassium_bridge_audit": "extensions/potassium_bridge_audit/topology_audit.json",
 }
 
 
@@ -150,6 +155,8 @@ def analysis_output_plan(cfg: dict, repout: Path) -> tuple[FusedOutput, ...]:
         entries.extend(fused_output(repout, 'sasa', run_id=run.run_id)
                        if run.run_id != 'default' else fused_output(repout, 'sasa')
                        for run in analysis_runs(cfg, 'sasa'))
+    if analysis_enabled(cfg, "potassium_bridge_audit"):
+        entries.append(fused_output(repout, "potassium_bridge_audit"))
     return tuple(entries)
 
 
@@ -172,6 +179,9 @@ def required_artifacts(entry: FusedOutput, cfg: dict) -> tuple[Path, ...]:
         'solvation': ('rdf.parquet', 'target_residues.parquet', 'metadata.json',
                       'species_timeseries.parquet', 'target_summary.parquet',
                       'shell_candidates.parquet'),
+        'potassium_bridge_audit': ('chemical_sites.parquet', 'bridge_frames.parquet',
+                                  'bridge_summary.parquet', 'rdf.parquet',
+                                  'rdf_peak_candidates.parquet'),
         'sdc4_mechanisms': ('selection_audit.json', 'lipid_density_maps.npz',
                             'hs_conditioned_solvation.parquet'),
     }.get(name, ())

@@ -1,16 +1,14 @@
 """Hand-built topology, periodic steric reference and RDF interpretation fixtures."""
-from argparse import Namespace
 import json
-from pathlib import Path
-from runpy import run_path
 
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 import pytest
-import yaml
 
-AUDIT = run_path(str(Path(__file__).resolve().parents[1] / "scripts/audit_potassium_bridges.py"))
+from mdscope.config import DEFAULTS, Replicate, merge
+from mdscope.mechanisms.potassium_bridge_audit import peak_rows, topology_sites
+from mdscope.pipeline.runner import RunState, run_replicate
 
 
 def test_audit_requires_bonded_charged_sites_and_tracks_periodic_steric_reference(tmp_path, monkeypatch):
@@ -65,17 +63,24 @@ def test_audit_requires_bonded_charged_sites_and_tracks_periodic_steric_referenc
             "attachment_selection": "resname SER and name OG", "min_glycan_residues": 2,
             "expected_chains": 2}},
     }}
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text(yaml.safe_dump(config))
+    cfg = merge(DEFAULTS, config)
+    for spec in cfg["analyses"].values():
+        spec["enabled"] = False
+    cfg["analyses"]["potassium_bridge_audit"]["enabled"] = True
+    cfg["cache"]["aligned_coordinates"] = False
+    cfg["time"]["dt_ps"] = 100.
+    cfg["time"]["origin_ps"] = 200.
+    rep = Replicate("test", 1, tmp_path / "fixture.tpr", tmp_path / "fixture.xtc", "rep1")
     monkeypatch.setattr(mda, "Universe", lambda *args: u)
-    args = Namespace(config=config_path, tpr=Path("fixture.tpr"), xtc=Path("fixture.xtc"),
-                     output=tmp_path / "out", initial_frame=False, start=0, stop=None, stride=1)
-    AUDIT["run"](args)
-    topology = json.loads((args.output / "topology_audit.json").read_text())
+    state = RunState(tmp_path)
+    run_replicate(rep, cfg, tmp_path, state)
+    output = tmp_path / "test/rep1/extensions/potassium_bridge_audit"
+    topology = json.loads((output / "topology_audit.json").read_text())
     assert topology["site_counts"] == {"protein_carboxylate": 4, "hs_carboxylate": 4,
                                        "hs_sulfate": 6}
     assert topology["potassium_ions"] == 1
-    frames = pd.read_parquet(args.output / "bridge_frames.parquet")
+    frames = pd.read_parquet(output / "bridge_frames.parquet")
+    assert frames.time_ps.unique().tolist() == [200.]
     first = frames.query("acid_patch == 'acid_PROA_1' and hs_chain == 'PROA_S1' "
                          "and hs_kind == 'hs_carboxylate' and contact_cutoff_A == 3")
     observed = first.query("shift_x == 0 and shift_y == 0")
@@ -83,11 +88,16 @@ def test_audit_requires_bonded_charged_sites_and_tracks_periodic_steric_referenc
     shifted = first[np.isclose(first.shift_x, 1/3) & first.shift_y.eq(0)]
     assert shifted.eligible_ions.tolist() == [1, 0, 0, 0]
     assert shifted.bridging_ions.tolist() == [1, 0, 0, 0]
-    rdf = pd.read_parquet(args.output / "rdf.parquet")
+    rdf = pd.read_parquet(output / "rdf.parquet")
     assert rdf.query("kind == 'water_oxygen'").pair_count.sum() == 1
     u.atoms[potassium].charge = 0.
     with pytest.raises(ValueError, match="unbonded"):
-        AUDIT["topology_sites"](u, config)
+        topology_sites(u, config)
+    # A complete directory remains reusable, even with invalid source data.
+    run_replicate(rep, cfg, tmp_path, state)
+    (output / "rdf.parquet").unlink()
+    with pytest.raises(RuntimeError, match="invalid required potassium_bridge_audit artifact"):
+        run_replicate(rep, cfg, tmp_path, state)
 
 
 def test_peak_candidates_have_intervening_minimum_and_allow_missing_second_peak():
@@ -95,10 +105,10 @@ def test_peak_candidates_have_intervening_minimum_and_allow_missing_second_peak(
     first = np.exp(-((r-2.8)/.3)**2)
     second = .5*np.exp(-((r-5.)/.4)**2)
     rdf = pd.DataFrame({"kind": "test", "g_box": first + second})
-    for _, _, _, low, minimum, high in AUDIT["peak_rows"](rdf, 100):
+    for _, _, _, low, minimum, high in peak_rows(rdf, 100):
         assert low == pytest.approx(2.8, abs=.051)
         assert high == pytest.approx(5., abs=.051)
         assert low < minimum < high
     rdf["g_box"] = first
     assert all(np.isnan(row[-1]) and np.isnan(row[-2])
-               for row in AUDIT["peak_rows"](rdf, 100))
+               for row in peak_rows(rdf, 100))

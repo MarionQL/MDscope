@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import capped_distance, minimize_vectors, calc_dihedrals
 
-from ..config import DEFAULTS, atomic_json, atomic_parquet, ensure_dir, time_ps
+from ..config import DEFAULTS, atomic_json, atomic_parquet, ensure_dir, profile_dir, time_ps
 from ..core.lipid_geometry import anchor_groups, aligned_leaflets, periodic_center, accessible_area_grid
 from .mechanistic_common import AA3, heavy, nearest, selected, sequence_matches, unit
 from ..observables.membrane_order import _candidate_sites, _fixed_ch_pairs, _atomic_npz
@@ -966,7 +966,10 @@ class SDC4Mechanisms:
         # Optional direct motif SASA endpoint, using the *existing*
         # FreeSASA calculation instead of recomputing SASA or reading XTC.
         # Interpretation follows the atom selection used for global SASA.
-        sasa_file = self.repout / "profiles/sasa/residue_sasa.parquet"
+        sasa_run = self.spec.get("sasa_run", "default")
+        sasa_dir = (profile_dir(self.repout, "sasa", sasa_run) if sasa_run != "default"
+                    else self.repout / "profiles/sasa")
+        sasa_file = sasa_dir / "residue_sasa.parquet"
         if sasa_file.exists() and self.motifs:
             sasa = pd.read_parquet(sasa_file)
             if not sasa.empty:
@@ -987,7 +990,7 @@ class SDC4Mechanisms:
                                       validate="one_to_one")
         # Reuse per-atom FreeSASA areas: non-backbone carbon exposure,
         # not a claim that all carbon atoms have identical hydrophobicity.
-        atom_path = self.repout / "profiles/sasa/atom_sasa.parquet"
+        atom_path = sasa_dir / "atom_sasa.parquet"
         if atom_path.is_file():
             atom_data = pd.read_parquet(atom_path)
             for name, info in self.motifs.items():

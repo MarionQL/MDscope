@@ -133,14 +133,18 @@ def test_sparse_or_rank_deficient_local_surface_is_unavailable(tmp_path):
     assert np.isnan(_local_surface(np.zeros((9, 2)), np.zeros(9)))
 
 
-def test_motif_sasa_requires_every_mapped_residue_at_each_time(tmp_path):
+@pytest.mark.parametrize("sasa_run", ["default", "isolated"])
+def test_motif_sasa_requires_every_mapped_residue_at_each_time(tmp_path, sasa_run):
     u, cfg = _fixture()
+    cfg["analyses"]["sdc4_mechanisms"]["sasa_run"] = sasa_run
     obs = SDC4Mechanisms(u, cfg, tmp_path)
     for i in range(3):
         u.trajectory.ts.time = float(i)
         obs.update(u.trajectory.ts, i)
     obs.flush(0)
     folder = tmp_path/"profiles/sasa"
+    if sasa_run != "default":
+        folder /= sasa_run
     folder.mkdir(parents=True)
     # NxIP_A comprises resindices 12:15. A complete motif totals 10 nm²;
     # a missing or nonfinite residue is unavailable, never a smaller SASA.

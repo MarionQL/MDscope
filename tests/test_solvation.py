@@ -1,6 +1,7 @@
 """Independent tiny-system references for solvation counting, PBC and kinetics."""
 import numpy as np
 import pandas as pd
+import pytest
 import MDAnalysis as mda
 from MDAnalysis.coordinates.memory import MemoryReader
 
@@ -69,13 +70,14 @@ def test_periodic_unique_water_count_and_restart_histograms(tmp_path):
     assert (root / "metadata.json").exists()
 
 
-def test_local_grid_uses_same_water_candidates(tmp_path):
+@pytest.mark.parametrize("anchors", ["index 0 1 4", ["index 1", "index 0", "index 4"]])
+def test_local_grid_uses_same_water_candidates(tmp_path, anchors):
     u = _universe()
     cfg = {"analyses": {"solvation": {
         "enabled": True, "preset": "standard",
         "targets": {"protein": {"oxygen": "resname GLU and name OE1 OE2"}},
         "water_selection": "resname SOL and name OW",
-        "grid_frames": {"protein/oxygen/0": "index 0 1 4"},
+        "grid_frames": {"protein/oxygen/0": anchors},
         "grid_width_A": 10., "grid_spacing_A": 1.,
         "search_radius_A": 8.,
     }}}
@@ -83,6 +85,8 @@ def test_local_grid_uses_same_water_candidates(tmp_path):
     observer.update(u.trajectory[0], 0, 0.)
     observer.flush(0)
     observer.finalize()
+    if isinstance(anchors, list):
+        assert observer.grid_frames["protein/oxygen/0"].indices.tolist() == [1, 0, 4]
     density = pd.read_parquet(tmp_path/"extensions/solvation/water_density_3d.parquet")
     assert density["count"].sum() == 2
     assert np.all(np.isfinite(density["g_bulk"]))

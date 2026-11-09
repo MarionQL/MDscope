@@ -619,7 +619,9 @@ For optional locally aligned 3D hydration maps, specify exact target IDs and
       protein/acidic_oxygen/42: "index 100 101 102"
 ```
 
-The numeric ID and atom indices above are placeholders. Maps use the same
+The numeric ID and atom indices above are placeholders. To specify atom
+order explicitly, use a list of three selectors that each match one atom,
+in origin, axis, and plane order. Maps use the same
 periodic candidate-water pairs as the radial calculations and accumulate
 co-moving local density in `water_density_3d.parquet`. Only the inscribed
 sphere (radius half the grid width) is sampled, and the frame origin must be
@@ -1250,8 +1252,14 @@ to steric exclusion still require separate evidence.
 
 ### Potassium bridge audit for the Syndecan-4 release
 
-With MDscope installed, run the audit separately for each condition and
-replicate. The example uses the glycolipid release pair. A signed-in GitHub CLI
+The production YAML enables `analyses.potassium_bridge_audit`. MDscope runs
+it once per replicate in a separate pass on the configured frame window and
+time axis. It publishes the completed output directory at
+`extensions/potassium_bridge_audit/` and includes the tables in the review
+bundle. Finalization reads the saved products.
+
+The standalone script also accepts a single topology and trajectory. The
+example uses the glycolipid release pair. A signed-in GitHub CLI
 can download the private release with `gh release download test-data-v1
 --repo MarionQL/MDscope --dir real_test_data`.
 

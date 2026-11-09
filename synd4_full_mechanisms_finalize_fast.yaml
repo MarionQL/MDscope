@@ -1,14 +1,15 @@
 project:
   name: synd4_full_mechanisms
   # Separate directory prevents overwriting/archiving the existing baseline run.
-  output: results_memb_full_mechanisms
+  output: results_memb_full_analysis
 
 trajectory:
   # Raw frame index. This is ~100 ns only if the XTC spacing is 100 ps/frame.
   start: 1000
   stop: null
   stride: 10
-  chunk_frames: 1000
+  # Flush high-cardinality solvation and contact tables in bounded chunks.
+  chunk_frames: 50
 
 time:
   # Leave null when the XTC contains correct timestamps.
@@ -127,7 +128,9 @@ analyses:
       enabled: true
       # null reuses membrane.headgroup_selection.
       selection: null
-      include_3d: false
+      include_3d: true
+      multi_origin: true
+      multi_origin_fit_diagnostics: true
       slope_start_fraction: 0.2
 
 
@@ -150,7 +153,7 @@ analyses:
     allow_absent_species: true
     neighbor_radius_A: 15.0
     min_neighbors: 5
-    save_lipid_angles: false
+    save_lipid_angles: true
     species_selections:
       POPC: "resname POPC and name P"
       DPPC: "resname DPPC and name P"
@@ -170,10 +173,14 @@ analyses:
     enabled: true
     axis: z
     allow_absent_species: true
-    protein_selection: "protein and name CA and (chainID PROA or chainID PROB)"
+    protein_selection: "protein"
+    area_reference:
+      exclusion_radius_A: 3.0
+      slab_half_width_A: 5.0
+      quadrature_order: 64
     inner_radius_A: 0.0
     outer_radius_A: 20.0
-    species_selections:
+    species_selections: &lipid_anchors
       POPC: "resname POPC and name P"
       DPPC: "resname DPPC and name P"
       POPE: "resname POPE and name P"
@@ -186,11 +193,34 @@ analyses:
       BGAL: "chainID BGAL and resname CER160 and name NF"
       CER160: "chainID CER160 and resname CER160 and name NF"
 
+  lipid_contacts:
+    enabled: true
+    axis: z
+    allow_absent_species: true
+    selection: &whole_lipids "(resname POPC DPPC POPE POPI POPS PSM DOPC CHL1) or (chainID GM1a BGAL CER160)"
+    species_selections: *lipid_anchors
+
+  local_environment:
+    enabled: true
+    protein_selection: "protein"
+    lipid_selection: *whole_lipids
+    glycan_selection: "resname AGLCNA AIDOA BGLCA BGAL BXYL and chainID PROA PROB"
+    ion_selection: "resname POT CLA"
+    motifs:
+      NxIP: "N.IP"
+      gxxxg: "GGIVG"
+      proline_hydrophobic: "VVHPLVPL"
+
+  coupling_screen:
+    enabled: true
+    include_defaults: true
+    block_frames: 5
+
   # Whole lipid molecules (not just headgroups), with bonded-component
   # exclusion for intermolecular lipid-lipid hydrogen bonds.
   lipid_hydrogen_bonds:
     enabled: true
-    lipid_selection: "(resname POPC DPPC POPE POPI POPS PSM DOPC CHL1) or (chainID GM1a BGAL CER160)"
+    lipid_selection: *whole_lipids
     d_h_cutoff_A: 1.2
     d_a_cutoff_A: 3.0
     angle_cutoff_deg: 150.0
@@ -225,22 +255,12 @@ analyses:
     hs_chains: {}
     hs_attachment_sites: {}
 
-    lipid_anchors:
-      POPC: "resname POPC and name P"
-      DPPC: "resname DPPC and name P"
-      POPE: "resname POPE and name P"
-      POPI: "resname POPI and name P"
-      POPS: "resname POPS and name P"
-      PSM: "resname PSM and name P"
-      DOPC: "resname DOPC and name P"
-      CHL1: "resname CHL1 and name O3"
-      GM1a: "chainID GM1a and resname CER160 and name NF"
-      BGAL: "chainID BGAL and resname CER160 and name NF"
-      CER160: "chainID CER160 and resname CER160 and name NF"
+    lipid_anchors: *lipid_anchors
+    sasa_run: isolated
     allow_absent_species: true
     # Compare local bilayer surfaces using chemically equivalent P anchors.
     surface_anchor_species: [POPC, DPPC, POPE, POPI, POPS, PSM, DOPC]
-    lipid_contact_selection: "(resname POPC DPPC POPE POPI POPS PSM DOPC CHL1) or (chainID GM1a BGAL CER160)"
+    lipid_contact_selection: *whole_lipids
     water_oxygen_selection: "resname TIP3 and name OH2"
     ion_selections:
       K: "resname POT"
@@ -279,10 +299,13 @@ analyses:
       lipid_selection: "resname POPC DPPC POPE POPI POPS PSM DOPC"
       min_carbons_per_tail: 4
 
-  # Sequence-resolved hydration and ion coordination of the acidic patch.
-  # The exact sequence is matched independently in each protein chain from
-  # the loaded TPR; absent/mismatched sequences fail rather than silently
-  # analyzing incorrect residue numbers. Each patch is one target per chain.
+  # The separate topology-verified audit sweeps K contact and steric cutoffs
+  # and records shared-water RDF evidence on the same sampled frames.
+  potassium_bridge_audit:
+    enabled: true
+
+  # Coordination targets use verified terminal oxygens for the bridge pairs.
+  # Other protein/HS/lipid targets contribute counts and RDFs only.
   solvation:
     enabled: true
     preset: detailed
@@ -290,17 +313,65 @@ analyses:
       motif:
         acidic_patch:
           sequence: "DDEDVVGPGQESDDFELSGSGDLDDLED"
-          selection: "protein and name CA and (chainID PROA or chainID PROB)"
-          group_by: selection
+          selection: "protein and name CA and chainID PROA PROB"
+          atom_selection: "name OD1 OD2 OE1 OE2"
+      hs_anionic:
+        oxygen:
+          selection: >-
+            chainID PROA PROB and ((resname AIDOA BGLCA and name O61 O62)
+            or (resname AGLCNA and name OS32 OS33 OS34 OS62 OS63 OS64)
+            or (resname AIDOA and name OS22 OS23 OS24))
+          group_by: hs_chain
+      protein:
+        other_acidic_sidechain:
+          selection: >-
+            protein and ((resname ASP and name OD1 OD2) or (resname GLU and name OE1 OE2))
+            and not ((chainID PROA and resid 44:71) or (chainID PROB and resid 314:341))
+        basic_sidechain: "protein and ((resname LYS and name NZ) or (resname ARG and name NE NH1 NH2))"
+      lipid:
+        phospholipid_phosphate: "resname POPC POPE POPI POPS DPPC DOPC PSM and name O11 O12 O13 O14"
     water_selection: "resname TIP3 and name OH2"
     ion_selections:
       K: "resname POT"
       Cl: "resname CLA"
+    sasa_run: isolated
     search_radius_A: 8.0
     rdf_bin_width_A: 0.2
     shell_cutoffs_A:
       water: 3.5
       ions: 4.0
+    # Geometric reference excluding the bilayer plus an interfacial buffer.
+    aqueous_reference:
+      membrane_selection: "resname POPC DPPC POPE POPI POPS PSM DOPC and name P"
+      axis: z
+      half_width_A: 30.0
+    # OD1 origin, CG axis, OD2 plane of the first Asp in each patch.
+    grid_frames:
+      motif/acidic_patch/acidic_patch_PROA_1:
+        - "protein and chainID PROA and resid 44 and name OD1"
+        - "protein and chainID PROA and resid 44 and name CG"
+        - "protein and chainID PROA and resid 44 and name OD2"
+      motif/acidic_patch/acidic_patch_PROB_1:
+        - "protein and chainID PROB and resid 314 and name OD1"
+        - "protein and chainID PROB and resid 314 and name CG"
+        - "protein and chainID PROB and resid 314 and name OD2"
+    options:
+      track_target_classes: [motif, hs_anionic]
+      water_hbond_bridges: true
+      bridge_spatial_ion: ions/K
+      bridge_target_pairs:
+        - [motif/acidic_patch/acidic_patch_PROA_1, hs_anionic/oxygen/PROA_S39]
+        - [motif/acidic_patch/acidic_patch_PROA_1, hs_anionic/oxygen/PROA_S61]
+        - [motif/acidic_patch/acidic_patch_PROA_1, hs_anionic/oxygen/PROA_S63]
+        - [motif/acidic_patch/acidic_patch_PROA_1, hs_anionic/oxygen/PROB_S309]
+        - [motif/acidic_patch/acidic_patch_PROA_1, hs_anionic/oxygen/PROB_S331]
+        - [motif/acidic_patch/acidic_patch_PROA_1, hs_anionic/oxygen/PROB_S333]
+        - [motif/acidic_patch/acidic_patch_PROB_1, hs_anionic/oxygen/PROA_S39]
+        - [motif/acidic_patch/acidic_patch_PROB_1, hs_anionic/oxygen/PROA_S61]
+        - [motif/acidic_patch/acidic_patch_PROB_1, hs_anionic/oxygen/PROA_S63]
+        - [motif/acidic_patch/acidic_patch_PROB_1, hs_anionic/oxygen/PROB_S309]
+        - [motif/acidic_patch/acidic_patch_PROB_1, hs_anionic/oxygen/PROB_S331]
+        - [motif/acidic_patch/acidic_patch_PROB_1, hs_anionic/oxygen/PROB_S333]
 
   # Fit one ectodomain-only state model across all six replicates.
   # NxIP accessibility, TM crossing and local bilayer thickness are outcomes,
@@ -347,15 +418,27 @@ analyses:
     guess_hydrogens: true
     backend: serial
 
-  # Required for direct NxIP solvent-accessible surface area (protein-only).
+  # Isolated protein SASA and burial by the membrane and attached HS.
   # Requires: pip install freesasa
   sasa:
     enabled: true
-    selection: "protein"
-    # Preserve side-chain carbon areas from the existing FreeSASA pass.
-    atom_sasa_selection: "protein and name C* and not name C CA"
-    atom_sasa_sequences: ["VVHPLVPL"]
-    atom_sasa_expected_matches: 2
+    runs:
+      isolated:
+        target_selection: "protein"
+        occluder_selection: "protein"
+        atom_sasa_selection: "protein and name C* and not name C CA"
+        atom_sasa_sequences: ["VVHPLVPL"]
+        atom_sasa_expected_matches: 2
+      environment:
+        target_selection: "protein"
+        occluder_selection: >-
+          protein or resname POPC DPPC POPE POPI POPS PSM DOPC CHL1
+          or chainID GM1a BGAL CER160
+          or (resname AGLCNA AIDOA BGLCA BGAL BXYL and chainID PROA PROB)
+        # Use the whole, centered coordinates. The dimer spans over half
+        # the box height, outside the compact-target periodic SASA contract.
+        periodic: false
+        reference_run: isolated
 
   salt_bridges:
     enabled: true
@@ -364,11 +447,13 @@ analyses:
   hydrogen_bonds:
     enabled: true
     mode: protein_protein
+    restrict_search_to_protein: true
     d_h_cutoff_A: 1.2
     d_a_cutoff_A: 3.0
     angle_cutoff_deg: 150.0
     update_selections: false
 
+  # These simulations have no designated ligand.
   ligand_contacts:
     enabled: false
     cutoff_A: 4.0
@@ -417,11 +502,10 @@ report:
   max_hs_key_metrics: 20
   max_conditioned_rows: 80
   include_lipid_maps: true
-  map_species: [GM1a, BGAL, CHL1, CER160]
+  map_species: [POPC, DPPC, POPE, POPI, POPS, PSM, DOPC, CHL1, GM1a, BGAL, CER160]
   sample_frames_per_replicate: 250
 
 cache:
-  # RMSF is disabled, so the aligned-coordinate cache is unnecessary here.
   aligned_coordinates: true
   dtype: float32
   keep: true
