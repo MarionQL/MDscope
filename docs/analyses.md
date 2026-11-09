@@ -1247,3 +1247,52 @@ summarize that contrast across frames and replicas. The translations may put
 ions inside excluded volume, so treat this as a descriptive geometry and
 crowding reference. Chemical assignments, RDF peak boundaries and sensitivity
 to steric exclusion still require separate evidence.
+
+### Potassium bridge audit for the Syndecan-4 release
+
+With MDscope installed, run the audit separately for each condition and
+replicate. The example uses the glycolipid release pair. A signed-in GitHub CLI
+can download the private release with `gh release download test-data-v1
+--repo MarionQL/MDscope --dir real_test_data`.
+
+```bash
+python scripts/audit_potassium_bridges.py \
+  --tpr real_test_data/carb-sdc4-step7_production.tpr \
+  --xtc real_test_data/carb-sdc4-rep1_test.xtc \
+  --stride 10 --output potassium-audit-carb-rep1
+```
+
+Omit `--xtc` for the topology audit alone. Use `--initial-frame` with
+MDAnalysis 2.11 or newer to check the starting structure stored in the TPR,
+including its box. A starting structure supports a geometry check only.
+
+- `chemical_sites.parquet` records the terminal oxygens of Asp/Glu
+  carboxylates and covalently attached HS carboxylates, sulfates and
+  sulfamates, as present. The graph and charges come from the TPR. HS chains
+  are identified by attachment bonds. The two exact acidic-patch matches and
+  the unbonded +1 CHARMM POT selection are checked before analysis.
+- `rdf.parquet` stores 0.1 Å radial bins, raw oxygen–K pair counts and
+  full-cell-density-normalized RDFs by oxygen chemistry. The normalization
+  includes membrane and solute volume. Compare peak locations across sampling
+  windows and the 0.1/0.2 Å smoothing widths in
+  `rdf_peak_candidates.parquet`. The first peak, intervening minimum and
+  second peak are distance candidates. To evaluate solvent sharing, compare
+  the shared-water pair counts against the total counts at each peak. The same
+  water must be within 3.5 Å of K and donate an H bond to the target oxygen
+  (donor–acceptor distance ≤3.5 Å and angle ≥150°). A pair can satisfy this
+  geometric water criterion while also in direct contact.
+- `bridge_frames.parquet` and `bridge_summary.parquet` keep each patch,
+  HS chain and HS chemical class separate. Compare the observed fraction
+  of frames with a same-K bridge with the fraction of frame–offset samples
+  in the shifted reference, at each contact cutoff (3, 3.5, 4 and 5 Å).
+  The same geometric exclusion rule applies to both observed and shifted
+  ions (none, or minimum solute heavy-atom separation of 1.8, 2.1 or 2.4 Å).
+  Check eligible ion counts alongside occupancy because steric filtering can
+  change both. A minimum periodic target–target separation greater than
+  twice the contact cutoff rules out a bridge by geometry. The exclusion sweep is a geometric sensitivity analysis,
+  with water and mobile monatomic ions excluded from the blocker set. It
+  provides neither force-field insertion energies nor chemical cooperativity.
+
+The release provides one trajectory per condition. Frame–offset samples are
+correlated references, and condition-level inference requires separate
+production replicas.
