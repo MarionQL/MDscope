@@ -103,3 +103,39 @@ def test_disagreement_between_bridge_and_contact_records_is_detected(tmp_path):
     data.iloc[1:].to_parquet(source,index=False) # Remove one real same-entity contact.
     with pytest.raises(ValueError,match='disagree'):
         observer.finalize()
+
+
+def test_spatial_reference_preserves_height_and_uses_periodic_same_ion(tmp_path):
+    from mdscope.observables.solvation import SolvationObserver
+    from mdscope.statistics.time_series import collect_time_series
+    from test_solvation import _universe
+
+    u = _universe()
+    cfg = {"analyses": {"solvation": dict(
+        enabled=True, preset="kinetics", search_radius_A=5.,
+        targets={"protein": {"first": "index 0", "second": "index 1"}},
+        ion_selections={"K": "index 4"}, options={
+            "bridge_target_pairs": [["protein/first/0", "protein/second/0"]],
+            "bridge_spatial_ion": "ions/K",
+        })}}
+    observer = SolvationObserver(u, cfg, tmp_path)
+    first = u.trajectory[0]
+    observer.update(first, 0, 0.)
+    observer.flush(0)
+    second = u.trajectory[1]
+    u.atoms[4].position = [3 + 20/3, 1, 2]
+    observer.update(second, 1, 5.)
+    observer.flush(1)
+    observer.finalize()
+
+    directory = tmp_path / "extensions/solvation"
+    reference = pd.read_parquet(directory / "bridge_spatial_reference.parquet")
+    positive = reference[reference.bridge_entity_count > 0]
+    assert positive.frame.tolist() == [1]
+    assert positive.offset_u_fraction.item() == pytest.approx(2/3)
+    assert positive.offset_v_fraction.item() == 0
+    trace = pd.read_parquet(directory / "bridge_pair_timeseries.parquet")
+    assert trace.bridge_present_fraction.tolist() == [1, 0]
+    assert trace.observed_minus_spatial_bridge_fraction.tolist() == [1, -1/8]
+    assert any(metric == "observed_minus_spatial_bridge_fraction"
+               for _, metric in collect_time_series(tmp_path))

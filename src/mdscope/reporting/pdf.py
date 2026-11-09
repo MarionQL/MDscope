@@ -614,6 +614,10 @@ def _build_pdf(path, cfg, root, system_repouts, options):
         if any((rep/"extensions/solvation/bridge_pair_control_summary.parquet").exists()
                for paths in system_repouts.values() for rep in paths):
             body("Bridge shift references are descriptive: nonzero circular offsets preserve entity identity and each target's contact history but break contemporaneous alignment. Reference spans are not confidence intervals, p-values, spatial controls or evidence of chemical cooperativity. Short/irregular windows have unavailable references; inspect the full target-atom/solvent audits and replica traces in the bundle.")
+        if sol_inventory.table.eq("bridge_spatial_reference").any():
+            body("The in-plane spatial bridge reference preserves ion height and ion–ion spacing. "
+                 "Shifted ions can enter excluded volume. The observed-minus-reference contrast "
+                 "is descriptive and does not establish chemical cooperativity.")
         # Compact previews of the remaining scientific observables. The
         # full data remain lossless in the bundle; no invented CI is shown.
         for filename,title_,columns in (
