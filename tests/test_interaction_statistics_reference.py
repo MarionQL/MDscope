@@ -50,3 +50,31 @@ def test_interaction_points_missing_vs_zero_and_reproducibility(tmp_path,design)
     known=rep[(rep.system=='a')&(rep.replicate=='rep1')&rep.interaction.str.startswith('ASP0')]
     assert known.loc[known.metric.eq('occupancy'),'value'].item()==.25
     assert known.loc[known.metric.eq('mean_lifetime_ps'),'value'].item()==20.
+
+
+def test_occupancy_screen_keeps_boundary_and_all_replicas(tmp_path):
+    cfg, paths = fixture(tmp_path / "input")
+    cfg["statistics"]["interaction_min_occupancy"] = 0.20
+    for system, replicas in paths.items():
+        for rep in replicas:
+            path = rep / "interactions/salt_bridges/presence.parquet"
+            present = pd.read_parquet(path)
+            if system == "a" and rep.name == "rep1":
+                pd.DataFrame({"time_ps": np.arange(10) * 10.}).to_parquet(
+                    rep / "summary/timeseries.parquet"
+                )
+            else:
+                present = present[~(present.residue_1.eq("ASP0") & present.time_ps.eq(20.))]
+            # Repeating rows for a single frame cannot increase occupancy.
+            duplicate = present[present.residue_1.eq("ASP1")]
+            pd.concat([present, duplicate, duplicate]).to_parquet(path, index=False)
+
+    analyze_interactions(cfg, tmp_path / "output", paths)
+    table = pd.read_parquet(
+        tmp_path / "output/project_summary/statistics/interactions/replicate_interaction_metrics.parquet"
+    )
+    assert table.interaction.str.startswith("ASP0").all()
+    occupancy = table[table.metric.eq("occupancy")].set_index(["system", "replicate"]).value
+    assert len(occupancy) == 6
+    assert occupancy.loc[("a", "rep1")] == pytest.approx(0.20)
+    assert occupancy.drop(("a", "rep1")).lt(0.20).all()

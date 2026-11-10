@@ -464,6 +464,7 @@ analyses:
     gap_factor: 1.5
 
 statistics:
+  interaction_min_occupancy: 0.20
   # Finalization-only: omit atom-identity lipid H-bond statistics; raw tables remain.
   interaction_exclude_kinds: [lipid_hydrogen_bonds]
   enabled: true

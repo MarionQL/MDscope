@@ -464,6 +464,7 @@ analyses:
     gap_factor: 1.5
 
 statistics:
+  interaction_min_occupancy: 0.20
   enabled: true
   bootstrap_draws: 5000
   ci: 0.95

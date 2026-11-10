@@ -176,10 +176,20 @@ statistics:
     solvation_rdfs: true
   interaction_include_kinds: [salt_bridges, hydrogen_bonds]
   interaction_exclude_kinds: [lipid_hydrogen_bonds]
+  interaction_min_occupancy: 0.20
   interaction_progress_every: 1000
   hypothesis_families:
     primary: [sdc4_motif_NxIP_PROB_1_steric_occlusion_fraction]
 ```
+
+Set `statistics.interaction_min_occupancy` to screen interaction identities
+before bootstrapping. Occupancy is the fraction of analyzed frames in a
+replicate where the identity was present, counting each frame once. An
+identity qualifies if it meets or exceeds the cutoff in at least one
+replicate. All replicas still contribute to statistics for retained identities,
+including replicas with zero occupancy. The default is zero, which disables
+screening. Both full Syndecan-4 profiles use 0.20. This setting applies to
+interaction statistics derived from saved tables.
 
 Optional adaptive Monte Carlo precision is available for scalar
 `time_series` system and contrast intervals. Set
