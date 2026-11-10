@@ -24,6 +24,14 @@ from ..observables.rmsf import temporal_rmsf_profiles
 
 from .common import _temporal, _block_weights, _hierarchical, _hierarchical_difference, _ci, _direction, _permutation, _fdr, _range_meta, _point_difference
 
+def _presence_frame_indices(times, presence_times):
+    indices = np.searchsorted(times, np.asarray(presence_times, float))
+    valid = (indices < len(times)) & np.isclose(
+        times[np.minimum(indices, len(times) - 1)], presence_times
+    )
+    return indices, valid
+
+
 def _interaction_bootstrap(
     times,
     presence_times,
@@ -41,9 +49,8 @@ def _interaction_bootstrap(
     n = len(times)
     dt = sample_dt(times)
     presence = np.zeros(n, np.float32)
-    if len(presence_times):
-        idx = np.searchsorted(times, np.asarray(presence_times, float))
-        valid = (idx < n) & np.isclose(times[np.minimum(idx, n - 1)], presence_times)
+    if n and len(presence_times):
+        idx, valid = _presence_frame_indices(times, presence_times)
         presence[idx[valid]] = 1
     meta = _temporal(presence, times, cfg)
     key = (rep_key, n, meta["block_length_frames"])
@@ -118,6 +125,9 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
     if not cfg.get("statistics", {}).get("enabled", True):
         return
     stats = cfg["statistics"]
+    min_occupancy = float(stats.get("interaction_min_occupancy", 0.0))
+    if not 0 <= min_occupancy <= 1:
+        raise ValueError("statistics.interaction_min_occupancy must be between 0 and 1")
     draws, level = int(stats.get("bootstrap_draws", 2000)), float(stats.get("ci", 0.95))
     system_draws = draws if stats.get("hierarchy", {}).get("enabled", True) else 0
     rng = np.random.default_rng(int(stats.get("seed", 2026)) + 2)
@@ -145,7 +155,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
     rep_rows, sys_rows, comps = [], [], []
     weight_cache = {}
     for kind in sorted(kinds - excluded_kinds):
-        interactions, prepared = set(), {}
+        interactions, retained, prepared = set(), set(), {}
         for key, (times, tables) in sources.items():
             tab = tables.get(kind, {})
             presence = tab.get("presence", pd.DataFrame()).copy()
@@ -166,6 +176,12 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                         else "interaction"
                     )
                     interactions.update(table["interaction"])
+            if min_occupancy and len(times) and not presence.empty:
+                indices, valid = _presence_frame_indices(times, presence["time_ps"])
+                occupied_frames = pd.Series(
+                    indices[valid], index=presence.loc[valid, "interaction"].to_numpy()
+                ).groupby(level=0, sort=False).nunique()
+                retained.update(occupied_frames.index[occupied_frames / len(times) >= min_occupancy])
             presence_groups = (
                 {identity: group["time_ps"].to_numpy(float)
                  for identity, group in presence.groupby("interaction", sort=False)}
@@ -176,6 +192,14 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                 if not life.empty else {}
             )
             prepared[key] = (times, presence_groups, life_groups)
+        if min_occupancy:
+            if cfg.get("progress", {}).get("enabled", False):
+                print(
+                    f"Interaction statistics {kind}: retaining {len(retained)}/{len(interactions)} "
+                    f"identities with occupancy >= {min_occupancy:.1%} in at least one replicate",
+                    flush=True,
+                )
+            interactions = retained
         kind_started = perf_counter()
         log_every = int(stats.get("interaction_progress_every", 1000))
         for completed, interaction in enumerate(sorted(interactions), 1):
