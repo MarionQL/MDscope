@@ -118,3 +118,238 @@ package consistently.
 Reusable CLI/programmatic topology validation resides in `core/validation.py`.
 Reporting operates on persisted outputs. No estimator, observer, coordinate transform
 or trajectory pass is moved into reporting.
+
+---
+
+## Executable architecture map (repository audit: 2026-11-11)
+
+This section maps the **implemented** call paths, persisted artifacts and change impact.
+It complements the module-ownership rules above; it does not replace the scientific
+definitions in [analyses](../analyses.md), [scientific contracts](scientific-contracts.md)
+or [workflows](../workflows.md). Audit basis: the `main` repository tree (209 tracked
+files), including production modules, tests, scripts, workflow definitions, YAML
+configurations and existing documentation. **Static source review is not a passing
+test or a production-trajectory validation.**
+
+### Runtime entry points and phase boundaries
+
+| Entry point | Owner and actual behavior |
+| --- | --- |
+| `mdscope init` | `cli.py:interactive_init`: write a starter YAML. |
+| `mdscope validate CONFIG` | `cli.py:cmd_validate` → `config.load_config`, `config.iter_replicates` and `core.validation.validate_selections`. Reads input topologies/selections; does not generate analysis results. |
+| `mdscope replicate CONFIG --index N` | `pipeline.runner.run_one` → `run_replicate` for one indexed system/replica. Does **not** finalize project statistics. Used by `run_mdscope.sh` array tasks. |
+| `mdscope run CONFIG` | `pipeline.runner.run_all`: run every replicate, then `finalize_project(phase="all")`. |
+| `mdscope statistics CONFIG` | `finalize_project(phase="statistics")`: validate existing replica products, then run project-level statistics without rereading XTC. Used by `statistics_mdscope.sh`. |
+| `mdscope plotting CONFIG` | `finalize_project(phase="plotting")`: plotting **plus** shared-state fitting, project diffusion summaries, optional coupling screen, and report/bundle creation. Used by `plotting_mdscope.sh`; this is not yet a pure renderer. |
+| `mdscope finalize CONFIG` | `finalize_project(phase="all")`: statistics followed by the plotting-phase operations. Used by `finalize_mdscope.sh`. |
+| `mdscope report CONFIG` | `reporting.report.generate_report`: rebuild the optional PDF/ZIP from saved finalized results. |
+
+YAML is parsed and merged with defaults in `config.py`. Multiple named analysis
+instances are handled by `analysis_runs` (notably density, SASA and residue-to-membrane
+distance). `registry.py` maps enabled outputs, analysis instances, completion
+identities and required companion artifacts.
+
+```mermaid
+flowchart TD
+    YAML["YAML + TPR/XTC paths"] --> CONFIG["config.py + selection preflight"]
+    CONFIG --> CLI["cli.py"]
+    CLI --> RUNNER["pipeline/runner.py"]
+    RUNNER --> PASS["pipeline/streaming.py: raw-coordinate frame loop"]
+    PASS --> MEM["FusedMembrane"]
+    PASS --> EXT["FusedExtensions"]
+    PASS --> DIST["FusedDistances"]
+    PASS --> SDC4["SDC4Mechanisms"]
+    PASS --> BASE["RMSD/RMSF/Rg, density, membrane, contact observers"]
+    MEM --> PRODUCTS["Persisted per-replicate products"]
+    EXT --> PRODUCTS
+    DIST --> PRODUCTS
+    SDC4 --> PRODUCTS
+    BASE --> PRODUCTS
+    RUNNER --> EXTRA["Restartable additional passes: multi-origin MSD, K audit, eligible standalone fallbacks"]
+    EXTRA --> PRODUCTS
+    PRODUCTS --> SUMMARY["summarize_replicate: summary tables + interaction postprocessing"]
+    SUMMARY --> STATS["statistics/analyze_project: replica and system inference"]
+    PRODUCTS --> STATS
+    STATS --> FINAL["project_summary/statistics + coverage + manifest"]
+    FINAL --> PLOTS["reporting plots and optional PDF/ZIP"]
+    PRODUCTS --> PLOTS
+    PRODUCTS --> STATES["shared_states.fit_shared_states (currently called in plotting phase)"]
+    STATES --> PLOTS
+```
+
+This is a **logical** map, not a claim of one trajectory pass in every
+configuration. The normal protein/membrane run shares its raw-coordinate pass
+with the fused observers; observer-only configurations can use `fused_all.py`.
+Multi-origin MSD, potassium bridge audit and some DSSP configurations can
+require separate reads. See [workflows](../workflows.md) for precise traversal
+conditions and replay rules.
+
+### Runtime owners: where to inspect before changing behavior
+
+| Concern | Implementation | Downstream consumer / contract |
+| --- | --- | --- |
+| Input shape, analysis groups, options, named instances | `config.py`, `core/validation.py` | CLI, registry, every observer and statistics family |
+| Source coordinates, alignment, synchronized raw MSD input | `core/trajectory_sources.py`, `core/alignment.py`, `core/coordinate_contracts.py` | Streaming, diffusion; do not rotate or center shared raw membrane coordinates |
+| PBC, atoms, leaflets and lipid anchors | `core/geometry.py`, `core/lipid_geometry.py`, `core/atom_selection.py` | Membrane, contacts, HS, solvation and SDC4 observers |
+| Frame/chunk lifecycle, regular scalar observables | `pipeline/streaming.py`, `pipeline/fused_all.py` | `raw/` parts, `cache/` and `summary/` |
+| Fused observers | `pipeline/fused_membrane.py`, `pipeline/fused_extensions.py`, `pipeline/fused_distance.py` | Physical lipid metrics, H bonds/DSSP/SASA/solvation, named residue distances |
+| Protein, membrane, density and diffusion kernels | `observables/` | Fused or standalone execution, profile extraction, statistics |
+| Interaction events and lifetimes | `interactions/`, particularly `interaction_tables.py` | Presence/event/occupancy/lifetime products and interaction bootstrap |
+| SDC4/HS mechanisms, shared states and chemical audit | `mechanisms/` | `extensions/sdc4_mechanisms/`, `project_summary/shared_states/`, potassium audit |
+| Output contracts and restart | `registry.py`, `pipeline/runner.py:RunState`, `core/checkpoints.py`, `core/persistence.py` | Validation, resume and non-destructive failures |
+| Project statistics | `statistics/__init__.py` and the family modules listed below | `project_summary/statistics/` |
+| Figures and evidence exports | `reporting/` | Reads saved products; PDF/ZIP are optional presentation artifacts |
+
+Ownership does not imply zero cross-package imports: some observables call
+`pipeline.progress` for progress reporting, and statistics reuse profile
+extractors defined next to their observables. Preserve the scientific contract
+and trace the actual callers before moving code.
+
+### Persisted data flow and retention boundaries
+
+| Location under `project.output` | Producer | Why it matters |
+| --- | --- | --- |
+| `resolved_config.yaml`, `run_metadata.json` | `runner.initialize` | Resolved inputs, environment and version provenance |
+| `.state/rep-*.json` | `RunState` | Stage completion and artifact inventory; stage identity is **not** a blanket code-hash gate |
+| `<system>/<replicate>/raw/` | `streaming.py` | Part-numbered scalar/group time series, raw contact events, RMSF and other raw outputs |
+| `<system>/<replicate>/cache/` | Streaming/fused observers | `stream_checkpoint.npz`, committed observer parts, optional aligned feature NPZ, density/profile parts; essential for efficient interrupted-run replay |
+| `<system>/<replicate>/summary/` | `summarize_replicate` and downstream methods | `timeseries.parquet`, `group_timeseries.parquet`, diffusion summaries, and per-replica statistical/ACF tables |
+| `<system>/<replicate>/profiles/` | Profile observers/postprocessors | Density, DSSP, SASA, lipid order, residue-distance arrays and their coordinate/selection metadata |
+| `<system>/<replicate>/interactions/` | Interaction writers and postprocessing | Event, presence, occupancy, lifetime and count-time-series products |
+| `<system>/<replicate>/extensions/` | Specialized/fused observers | Lipid neighbors/enrichment/normals, SDC4/HS, solvation/RDF and K-bridge evidence |
+| `project_summary/statistics/` | `statistics.analyze_project` | Repeatable comparison tables, uncertainty, coverage, `manifest.json` |
+| `project_summary/shared_states/` | `mechanisms.shared_states.fit_shared_states` | Model, assignments, populations and conditioned analyses; currently a plotting-phase side effect |
+| `project_summary/` reporting outputs | `reporting/` | Plots, optional PDF/review ZIP and presentation provenance; not authoritative trajectory measurements |
+| `.archives/` | `core.persistence.archive_output` as invoked during finalization | Prior project/statistics/report products are **moved**, not deleted; repeated finalization can increase disk usage |
+
+**Current storage policy:** preserve the established observable outputs,
+including valuable per-frame or per-residue arrays and restart caches. Do not
+change file formats, downsample computed measurements, delete cache parts or
+introduce a new database as an incidental consequence of a statistics or
+documentation change. An eventual retention policy must classify *completed
+products*, *restart-critical chunks* and *disposable presentation outputs*
+separately. Check output integrity and downstream readers before any cleanup.
+
+`registry.analysis_output_plan` and `registry.required_artifacts` are the
+authoritative programmatic map for required observable companions. A primary
+file existing by itself is not sufficient evidence of a complete analysis.
+`runner._validate_analysis_output` and `validate_stream_inventory` protect
+restarts/finalization from incomplete or inconsistent products.
+
+### Statistics dependency and output map
+
+`statistics.analyze_project` operates on **persisted** data from all
+requested replicas; it does not reopen production trajectories. Its
+`manifest.json` records methods, enabled families and completion status.
+A pre/post file-stat snapshot detects input modifications during a run.
+It calls the following families in sequence, then optional matched-window
+time-series statistics and `coverage.write_contrast_coverage`:
+
+| Family | Reads / estimator owner | Principal outputs under `project_summary/statistics/` |
+| --- | --- | --- |
+| Scalar and grouped time series | `statistics/time_series.py`, `common.py`; `summary/timeseries.parquet`, group tables, selected solvation/bridge/lipid contact series | `time_series/replicate_statistics.parquet`, `system_statistics.parquet`, `system_comparisons.parquet`, `autocorrelation.parquet` |
+| Temporal profiles | `statistics/profiles.py`; profile accessors beside RMSF, density, SASA/DSSP, lipid order and residue-distance observables | `profiles/replicate_profiles.parquet`, `system_profiles.parquet`, `system_profile_statistics.parquet`, `system_comparisons.parquet` |
+| Interaction occupancy and events | `statistics/interactions.py`, `interactions/interaction_tables.py`; saved presence/lifetimes and sampled frame times | `interactions/replicate_interaction_metrics.parquet`, `system_interaction_metrics.parquet`, `system_interaction_comparisons.parquet` |
+| RDF shape and shell contrasts | `statistics/solvation.py`; per-replica `extensions/solvation/rdf.parquet` | `solvation/replicate_rdf.parquet`, `system_rdf.parquet`, `replicate_rdf_shells.parquet`, `rdf_shell_comparisons.parquet` |
+| Shared-lag diffusion | `statistics/diffusion.py`; saved multi-origin MSD curves, refitted on common supported lags | `diffusion/replicate_common_lag_slopes.parquet`, `common_lag_comparisons.parquet` |
+| Coupling | `statistics/coupling.py`; saved regular-grid series, replica correlations | `coupling/replicate_correlations.parquet`, `system_comparisons.parquet` |
+| Second scalar window | `statistics/time_series.py` with configured `matched_window_ps` | `matched_time_series/`, alongside full-window results |
+| Coverage audit | `statistics/coverage.py` | `coverage/contrast_coverage.parquet` |
+
+For standard scalar, profile and interaction families, `common.py` provides
+FFT autocorrelation, automatic temporal block length, moving-block bootstrap
+within replica, hierarchical resampling across replicas, paired/independent
+contrasts, permutation tests and Benjamini–Hochberg FDR. Adaptive two-endpoint
+bootstrap Monte Carlo precision is available for scalar hierarchical CIs.
+`replicate_contrasts.py` handles between-replica uncertainty for RDF-shell,
+diffusion and coupling estimates; do **not** replace their estimators with
+frame-level resampling. Pointwise RDF mean ± SD is descriptive, **not** a
+confidence interval.
+
+The full SDC4 YAML currently specifies three independent replicas per
+condition, 5,000 bootstrap draws, 95% CIs, moving blocks, an independent
+permutation design, and `statistics.interaction_min_occupancy: 0.20`. The
+interaction filter retains identities meeting the occupancy threshold in
+**at least one replicate** at the statistics stage; it does not erase raw
+interaction observations. The finalization-fast YAML additionally excludes
+lipid H-bond identity statistics without deleting their saved events.
+
+**Statistical interpretation guardrails:**
+
+- Individual trajectory frames are correlated observations, not biological
+  or independent simulation replicates. Keep per-replica estimates visible.
+- For independent 3-versus-3 replicas, a two-sided exact label-permutation
+  test has 20 assignments and a smallest attainable p-value of 0.10. A
+  percentile bootstrap CI excluding zero does **not** imply an exact
+  permutation p-value below 0.05 or an FDR-significant finding.
+- Incomplete or irregular time grids, conditional local geometry, missing
+  interaction events and missing entire replica outputs have distinct
+  meanings. Follow existing validity/coverage fields rather than dropping
+  invalid frames or treating missing as physical zero.
+- Review hierarchy behavior and uncertainty calibration before changing
+  scientific conclusions: three replicas per condition place important
+  limits on between-replica inference. `common._hierarchical`,
+  `time_series.analyze_time_series`, `profiles.analyze_profiles` and
+  `interactions.analyze_interactions` are the main review surfaces.
+- Changes to per-frame quantities, replica aggregation, hypothesis families,
+  uncertainty definitions or output schema are **scientific behavior changes**,
+  not report-format refactors. Use the reference tests and real data before
+  claiming numerical equivalence.
+
+### Presentation is not yet separate from derived analysis
+
+`reporting/plotting.py`, `membrane_figures.py`, `sdc4_figures.py` and
+`solvation_figures.py` render from stored products; `figure_inventory.py`
+tracks source availability and figure provenance. `report.py` orchestrates
+PDF/ZIP exports through `pdf.py`, `bundle.py` and
+`report_inventory.py`. These can be disabled or deferred without changing
+observable collection.
+
+However `runner.finalize_project(phase="plotting")` also calls
+`shared_states.fit_shared_states`, `msd.summarize_project_diffusion`,
+`msd.summarize_project_multi_origin` and optional
+`reporting.coupling_screen.screen_couplings`. Some derived scientific
+tables therefore depend on a command called "plotting". A later narrow
+refactor should move **derived analyses** into an offline computation phase,
+leaving an opt-in renderer. Do not simply remove `reporting/` or skip
+`plotting` while those non-plot side effects remain necessary.
+
+Repeated `statistics` and `finalize` runs can move previous summaries into
+`.archives/project_summary/` and `.archives/statistics/`. Inventory archive
+growth before introducing pruning; retain reproducibility and never delete
+a possibly needed observable or restart chunk automatically.
+
+### Change-impact checklist (choose only the relevant row)
+
+| Intended change | Inspect/update together | Minimum regression target |
+| --- | --- | --- |
+| New/modified scalar observable | `config.py`, `pipeline/streaming.py` or relevant observer, `runner.summarize_replicate`, `statistics/time_series.py` | `test_streaming_smoke.py`, `test_data_integrity.py`, `test_statistics_controls.py` |
+| New/modified temporal profile | Relevant `observables/*`, `statistics/profiles.py`, optional fused observer and registry contract | `test_fused_output_catalog.py`, `test_statistics_modes.py`, profile-specific reference tests |
+| Molecular interaction/event change | `interactions/interaction_tables.py`, detector, `statistics/interactions.py`, persisted identity columns | `test_interaction_statistics_reference.py`, `test_interaction_tables_filter.py`, event-specific tests |
+| SDC4, glycan, lipid or solvation science | `mechanisms/*` or `observables/solvation*`, `registry.required_artifacts`, YAML selections | `test_sdc4_geometry_references.py`, `test_solvation.py`, `test_scientific_reference_oracles.py` |
+| Statistical estimator or reporting table | `statistics/common.py` and affected family, `coverage.py`, `reporting/figure_inventory.py` (if inference semantics change) | `test_publication_references.py`, `test_statistics_controls.py`, `test_statistics_modes.py`, `test_ci_coverage.py` |
+| Checkpoint, restart or output schema | `core/checkpoints.py`, `core/persistence.py`, `registry.py`, `pipeline/streaming.py`, `pipeline/runner.py` | `test_checkpoint_integrity.py`, `test_mixed_observer_restart.py`, `test_issue128_restart_artifact_contract.py` |
+| Pure figure/PDF change | `reporting/*` and presentation controls; avoid entering observers/statistical kernels | `test_presentation_controls.py`, `test_report_integrity.py`, `test_report_inventory.py` |
+| SLURM/packaging/CLI | `run_mdscope.sh`, `statistics_mdscope.sh`, `plotting_mdscope.sh`, `finalize_mdscope.sh`, `pyproject.toml`, `cli.py` | `test_package_contract.py`, `test_cli_end_to_end.py`, `test_profiling_and_slurm.py` |
+
+For code changes, follow [contributing](contributing.md): identify the
+scientific contract, callers and failure modes, run the smallest useful
+tests, then the applicable `.github/workflows/mdscope-checks.yml` and
+real-trajectory smoke/physics checks. The release-reference workflow may
+require GROMACS release data and is not guaranteed to run on ordinary PRs.
+When Actions minutes are unavailable, run equivalent checks locally/ARC and
+record the actual commands and outcomes.
+
+### Prioritized architecture work, without changing observable storage
+
+1. **Statistics quality audit:** map estimands and missing-data semantics for
+   each family; examine replica weighting, block-length sensitivity, the
+   bootstrap hierarchy and three-replica uncertainty. Improve statistical
+   results only with independent numerical oracles and reference cases.
+2. **Separate derived offline computation from figure generation:** preserve
+   shared-state/coupling/diffusion tables when automatic plotting is disabled.
+3. **Manage archives rather than stripping useful data:** measure archive and
+   report duplication independently from trajectory/observer outputs.
+4. **Maintain this map at the interface changed:** when adding an analysis or
+   changing a persisted contract, update the relevant owner, output table and
+   tests instead of creating a competing architecture guide.
