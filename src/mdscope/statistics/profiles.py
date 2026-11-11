@@ -15,7 +15,7 @@ import pandas as pd
 from ..config import statistics_family_config, atomic_parquet, ensure_dir
 from ..interactions import interaction_key_columns, interaction_tables, sample_dt
 from ..observables.membrane_order import temporal_membrane_order_profiles
-from ..observables.density_1d import temporal_density_profiles
+from ..observables.density_1d import align_density_profiles, temporal_density_profiles
 from ..observables.residue_membrane_distance import temporal_residue_membrane_profiles
 from ..observables.structure_profiles import temporal_structure_profiles
 from ..observables.rmsf import temporal_rmsf_profiles
@@ -212,14 +212,19 @@ def analyze_profiles(
     comps = []
 
     for profile in profiles:
+        profile_sources = {
+            key: source[profile] for key, source in sources.items() if profile in source
+        }
+        if profile.startswith("density_1d__"):
+            profile_sources = align_density_profiles(profile_sources, profile)
         prepared = {}
         for system, reps in system_repouts.items():
             for repout in reps:
-                source = sources[(system, repout.name)]
-                if profile not in source:
+                key = (system, repout.name)
+                if key not in profile_sources:
                     continue
-                item = _prepare_profile(source[profile], cfg, draws, rng)
-                prepared[(system, repout.name)] = item
+                item = _prepare_profile(profile_sources[key], cfg, draws, rng)
+                prepared[key] = item
                 rep_points.extend(
                     {
                         "system": system,

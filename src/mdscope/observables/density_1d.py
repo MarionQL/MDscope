@@ -229,6 +229,7 @@ def temporal_density_profiles(repout: Path, cfg: dict) -> dict[str, dict]:
             values = np.concatenate([part["density"] for part in parts]).astype(float)
             positions = np.asarray(parts[0]["positions_A"], float)
             out[f"density_1d__{run.run_id}__{key}"] = {
+                "density_bin_width_A": float(run.spec.get("bin_width_A", 1.0)),
                 "times": times,
                 "values": values,
                 "positions": positions,
@@ -240,4 +241,58 @@ def temporal_density_profiles(repout: Path, cfg: dict) -> dict[str, dict]:
     return out
 
 
-# Shared trajectory pass and protein-derived time series.
+def align_density_profiles(specs: dict, profile: str) -> dict:
+    """Rebin offset uniform density slabs on a shared zero-anchored axis.
+
+    Legacy frame caches contain slab centers. The accumulator uses uniform
+    edges, so their physical widths can be recovered from the center spacing.
+    Treat each saved density as constant within its slab and retain only
+    target bins fully supported by every source grid.
+    """
+    axes = [np.asarray(spec["positions"], dtype=float) for spec in specs.values()]
+    if len(axes) < 2 or all(np.array_equal(axis, axes[0]) for axis in axes[1:]):
+        return specs
+
+    source_edges = []
+    for centers in axes:
+        spacing = np.diff(centers)
+        if not len(spacing) or not np.isfinite(centers).all():
+            raise ValueError(f"{profile}: cannot recover density edges from cached centers")
+        step = float(np.median(spacing))
+        if step <= 0 or not np.allclose(spacing, step, rtol=1e-4, atol=2e-5):
+            raise ValueError(f"{profile}: cached density grid must be increasing and uniform")
+        source_edges.append(np.r_[
+            centers[0] - step / 2, (centers[:-1] + centers[1:]) / 2,
+            centers[-1] + step / 2,
+        ])
+
+    widths = {spec["density_bin_width_A"] for spec in specs.values()}
+    width = next(iter(widths))
+    if len(widths) != 1 or not np.isfinite(width) or width <= 0:
+        raise ValueError(f"{profile}: density profiles require one positive target bin width")
+    lower = max(edges[0] for edges in source_edges)
+    upper = min(edges[-1] for edges in source_edges)
+    first = int(np.ceil(lower / width))
+    last = int(np.floor(upper / width))
+    target_edges = width * np.arange(first, last + 1)
+    target_edges = target_edges[(target_edges >= lower) & (target_edges <= upper)]
+    if len(target_edges) < 2:
+        raise ValueError(f"{profile}: density grids have no fully shared {width:g} Å bin")
+    positions = (target_edges[:-1] + target_edges[1:]) / 2
+    labels = positions.astype(str)
+
+    aligned = {}
+    for (key, spec), edges in zip(specs.items(), source_edges):
+        values = np.asarray(spec["values"], dtype=float)
+        if values.ndim != 2 or values.shape[1] != len(edges) - 1:
+            raise ValueError(f"{profile}: frame density matrix does not match cached grid")
+        rebinned = np.empty((len(values), len(positions)), dtype=float)
+        for i, (left, right) in enumerate(zip(target_edges[:-1], target_edges[1:])):
+            start = np.searchsorted(edges, left, side="right") - 1
+            stop = np.searchsorted(edges, right, side="left")
+            overlap = np.minimum(edges[start + 1:stop + 1], right) - np.maximum(
+                edges[start:stop], left
+            )
+            rebinned[:, i] = np.sum(values[:, start:stop] * overlap, axis=1) / width
+        aligned[key] = {**spec, "values": rebinned, "positions": positions, "labels": labels}
+    return aligned

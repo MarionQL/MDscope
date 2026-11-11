@@ -191,6 +191,69 @@ python -m mdscope.cli finalize synd4_full_mechanisms.yaml
 summary, whereas `report` below only regenerates the PDF/ZIP from
 existing tables. The full `run` command already finalizes automatically.
 
+For 1D density comparisons, MDscope rebins offset replica frame caches to
+shared physical slabs before bootstrapping. The target width is
+`density_1d.bin_width_A`, with edges anchored at zero on the configured
+axis. Rebinning weights source densities by bin overlap and uses only bins
+fully covered by every contributing replica. It uses the coordinate origin
+already recorded in the caches, so compare runs with equivalent centering.
+Existing frame caches can be reused by rerunning project statistics
+(`python -m mdscope.cli statistics <config>`) before regenerating plots.
+
+Project statistics write `statistics/coverage/contrast_coverage.parquet`
+under `project_summary`. The audit records valid intervals and missing
+comparisons by observable and system pair for time series, profiles,
+interactions, RDF shells and multi-origin diffusion. The review bundle
+also exports the CSV. An interval excluding zero is distinct from a
+multiple-testing-adjusted permutation result.
+
+RDF shell contrasts use the shell-volume-weighted mean of the saved
+normalized RDF up to the configured water or ion cutoff. Diffusion
+contrasts refit all replica curves on the same supported physical lags,
+with the fit range bounded by the shortest saved curve. These two
+families resample independent replica estimates. They require complete
+replica coverage and at least two replicas per condition (or two matched
+pairs). Diffusion intervals describe the effective MSD slopes over those
+lags. Check the per-replica scaling diagnostics and source trajectory
+windows before interpreting them as a diffusivity change.
+
+For local upper height, upper curvature and local thickness, statistics
+export the fraction of frames with a usable estimate. Conditional
+geometry intervals resample the original regular frame grid with the
+missing entries preserved. The conditional interval is unavailable when
+the observed frames do not support it.
+
+The coupling screen compares replicate Pearson coefficients over the
+shared regular frame grid. It keeps missing observations at their original
+times and excludes incomplete blocks. Its confidence interval describes
+the difference in mean replicate correlation and is exploratory.
+Set `statistics.matched_window_ps` to `auto` or explicit `[start, stop]`
+bounds to keep a second scalar statistics pass in
+`statistics/matched_time_series/`, alongside the default full-window
+tables. Explicit bounds must be inside every saved replica time range.
+The shared-state analysis compares full- and matched-window state
+populations using the same state assignments. Use
+`statistics.scalar_window_ps` to restrict the primary scalar pass itself. For a matched trajectory-time MSD
+estimate, set `analyses.membrane.msd.multi_origin_window_ps` to those
+bounds when generating the replica MSD curves. Fitted curves record their
+actual sampled start and end times.
+
+The full SDC4 production configuration includes a common phospholipid
+phosphate distance profile alongside the composition-dependent nearest
+lipid profiles. It also writes distinct HS residue and chain contact
+counts, nonoverlapping near/far chain order by lipid species and leaflet,
+and isolated/environment acidic-patch SASA and acidic-oxygen SASA.
+The configured Ser138 site has signed C-alpha height relative to a fitted
+local phosphate plane and a separate exact nearest-lipid distance,
+species and topology-local molecule identifier. Configure additional sites
+with `analyses.sdc4_mechanisms.residue_surface_sites`. Height is available
+when enough nearby anchors constrain the fit. Scalar statistics derive HS
+occupancy and contact-conditional counts from the saved series and export
+censored HS contact episodes from complete, regularly sampled traces.
+The new trajectory observables require refreshed replicate products.
+To apply updated statistics to legacy results first, use the configuration
+that generated their existing replicate products.
+
 ### Files to send back to ChatGPT
 
 Once all analyses and project-level finalization finish:

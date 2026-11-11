@@ -77,6 +77,39 @@ def _moving_block_ci(states, k, draws, block, rng):
     return np.quantile(values, [0.025, 0.975], axis=0)
 
 
+def _write_matched_populations(cfg, out, assignments, system_repouts, n_states):
+    from ..statistics.replicate_contrasts import replicate_mean_contrasts
+    from ..statistics.windows import matched_grid
+
+    grid = matched_grid(cfg, system_repouts)
+    if grid is None:
+        return
+    full = (assignments.groupby(["system", "replicate", "state"]).size()
+            .unstack("state", fill_value=0).reindex(columns=range(n_states), fill_value=0))
+    full = full.div(full.sum(axis=1), axis=0).rename_axis("state", axis=1)
+    full = full.stack().rename("value").reset_index()
+    full_contrasts = replicate_mean_contrasts(full, ["state"], system_repouts, cfg["statistics"])
+    if not full_contrasts.empty:
+        atomic_parquet(out / "full_population_comparisons.parquet", full_contrasts)
+    rows = []
+    for (system, replicate), part in assignments.groupby(["system", "replicate"], sort=True):
+        subset = part.loc[part.time_ps.between(grid[0], grid[-1])].sort_values("time_ps")
+        complete = np.array_equal(subset.time_ps.to_numpy(float), grid)
+        for state in range(n_states):
+            count = int(subset.state.eq(state).sum())
+            rows.append(dict(system=system, replicate=replicate, state=state,
+                             frames=count, expected_frames=len(grid), observed_frames=len(subset),
+                             window_start_ps=grid[0], window_end_ps=grid[-1],
+                             value=count / len(grid) if complete else np.nan))
+    values = pd.DataFrame(rows)
+    if values.empty:
+        return
+    contrasts = replicate_mean_contrasts(values, ["state"], system_repouts, cfg["statistics"])
+    atomic_parquet(out / "matched_replicate_populations.parquet", values)
+    if not contrasts.empty:
+        atomic_parquet(out / "matched_population_comparisons.parquet", contrasts)
+
+
 def fit_shared_states(cfg, root, system_repouts):
     spec = cfg.get("analyses", {}).get("shared_states", {})
     if not spec.get("enabled", False):
@@ -609,7 +642,9 @@ def fit_shared_states(cfg, root, system_repouts):
             "occlusion_contact_mean", "occlusion_no_contact_mean",
         ]),
     )
-    atomic_parquet(out / "frame_assignments.parquet", pd.concat(assignments, ignore_index=True))
+    frame_assignments = pd.concat(assignments, ignore_index=True)
+    atomic_parquet(out / "frame_assignments.parquet", frame_assignments)
+    _write_matched_populations(cfg, out, frame_assignments, system_repouts, k)
     atomic_parquet(out / "replicate_populations.parquet", pd.DataFrame(populations))
     atomic_parquet(out / "sampling_diagnostics.parquet", pd.DataFrame(diagnostics))
     atomic_parquet(out / "state_conditioned_hs_solvation.parquet", pd.DataFrame(conditioned))

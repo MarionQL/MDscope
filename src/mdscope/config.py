@@ -457,6 +457,14 @@ def load_config(path: str | Path) -> dict[str, Any]:
     return cfg
 
 
+def _validate_time_window(window, label):
+    if window is not None and (
+            not isinstance(window, (list, tuple)) or len(window) != 2
+            or any(type(value) not in (int, float) or not math.isfinite(value) for value in window)
+            or window[0] >= window[1]):
+        raise ValueError(f"{label} requires two increasing finite times")
+
+
 def validate_config(cfg: dict, base: Path = Path(".")) -> None:
     if analysis_enabled(cfg, "potassium_bridge_audit"):
         analyses = cfg["analyses"]
@@ -635,6 +643,7 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
         if not 0 <= frac < end_frac <= 1:
             raise ValueError("membrane.msd slope fractions require 0 <= start < end <= 1")
         multi = mem.get("msd", {}) or {}
+        _validate_time_window(multi.get("multi_origin_window_ps"), "membrane.msd.multi_origin_window_ps")
         if multi.get("multi_origin", False):
             if not multi.get("enabled", False):
                 raise ValueError("membrane.msd.multi_origin requires msd.enabled")
@@ -766,6 +775,19 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
             raise ValueError("solvation shell cutoffs must be positive and <= search radius")
 
     mechanisms = cfg["analyses"].get("sdc4_mechanisms", {})
+    surface_sites = mechanisms.get("residue_surface_sites", {})
+    if not isinstance(surface_sites, dict) or any(
+            not isinstance(name, str) or not name.strip()
+            or not isinstance(selection, str) or not selection.strip()
+            for name, selection in surface_sites.items()):
+        raise ValueError("sdc4_mechanisms.residue_surface_sites must map site names to selections")
+    environment_run = mechanisms.get("environment_sasa_run")
+    if mechanisms.get("enabled") and environment_run is not None:
+        sasa_runs = {run.run_id: run.spec for run in analysis_runs(cfg, "sasa")}
+        reference = mechanisms.get("sasa_run", "default")
+        if (not isinstance(environment_run, str) or environment_run not in sasa_runs
+                or sasa_runs[environment_run].get("reference_run") != reference):
+            raise ValueError("sdc4_mechanisms.environment_sasa_run must reference its sasa_run")
     if mechanisms.get("enabled"):
         tm = mechanisms.get("tm_chains") or {}
         ecto = mechanisms.get("ectodomains") or {}
@@ -838,8 +860,11 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
             raise ValueError(f"statistics.{key} must be a list of kinds")
     if int(stats.get("interaction_progress_every", 1000)) < 1:
         raise ValueError("statistics.interaction_progress_every must be positive")
+    _validate_time_window(stats.get("scalar_window_ps"), "statistics.scalar_window_ps")
+    if stats.get("matched_window_ps") != "auto":
+        _validate_time_window(stats.get("matched_window_ps"), "statistics.matched_window_ps")
     families = stats.get("families", {})
-    if not isinstance(families, dict) or set(families) - {"time_series", "profiles", "interactions", "solvation_rdfs"}:
+    if not isinstance(families, dict) or set(families) - {"time_series", "profiles", "interactions", "solvation_rdfs", "diffusion", "coupling"}:
         raise ValueError("statistics.families has unknown families or is not a mapping")
     for name, option in families.items():
         if isinstance(option, bool):

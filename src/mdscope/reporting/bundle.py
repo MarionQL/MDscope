@@ -91,6 +91,7 @@ def _make_bundle(root, pdf, system_repouts, options, cfg=None):
                         "motif_lipid_residence.parquet",
                         "motif_lipid_residence_intermittent.parquet",
                         "motif_lipid_contact_events.parquet",
+                        "residue_surface_sites.parquet",
                     ):
                         path = mechanism / name
                         if path.is_file():
