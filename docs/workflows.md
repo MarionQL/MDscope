@@ -191,6 +191,15 @@ python -m mdscope.cli finalize synd4_full_mechanisms.yaml
 summary, whereas `report` below only regenerates the PDF/ZIP from
 existing tables. The full `run` command already finalizes automatically.
 
+For 1D density comparisons, MDscope rebins offset replica frame caches to
+shared physical slabs before bootstrapping. The target width is
+`density_1d.bin_width_A`, with edges anchored at zero on the configured
+axis. Rebinning weights source densities by bin overlap and uses only bins
+fully covered by every contributing replica. It uses the coordinate origin
+already recorded in the caches, so compare runs with equivalent centering.
+Existing frame caches can be reused by rerunning project statistics
+(`python -m mdscope.cli statistics <config>`) before regenerating plots.
+
 ### Files to send back to ChatGPT
 
 Once all analyses and project-level finalization finish:
