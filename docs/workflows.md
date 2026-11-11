@@ -200,6 +200,29 @@ already recorded in the caches, so compare runs with equivalent centering.
 Existing frame caches can be reused by rerunning project statistics
 (`python -m mdscope.cli statistics <config>`) before regenerating plots.
 
+Project statistics write `statistics/coverage/contrast_coverage.parquet`
+under `project_summary`. The audit records valid intervals and missing
+comparisons by observable and system pair for time series, profiles,
+interactions, RDF shells and multi-origin diffusion. The review bundle
+also exports the CSV. An interval excluding zero is distinct from a
+multiple-testing-adjusted permutation result.
+
+RDF shell contrasts use the shell-volume-weighted mean of the saved
+normalized RDF up to the configured water or ion cutoff. Diffusion
+contrasts refit all replica curves on the same supported physical lags,
+with the fit range bounded by the shortest saved curve. These two
+families resample independent replica estimates. They require complete
+replica coverage and at least two replicas per condition (or two matched
+pairs). Diffusion intervals describe the effective MSD slopes over those
+lags. Check the per-replica scaling diagnostics and source trajectory
+windows before interpreting them as a diffusivity change.
+
+For local upper height, upper curvature and local thickness, statistics
+export the fraction of frames with a usable estimate. Conditional
+geometry intervals resample the original regular frame grid with the
+missing entries preserved. The conditional interval is unavailable when
+the observed frames do not support it.
+
 ### Files to send back to ChatGPT
 
 Once all analyses and project-level finalization finish:

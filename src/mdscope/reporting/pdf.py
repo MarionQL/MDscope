@@ -340,6 +340,17 @@ def _build_pdf(path, cfg, root, system_repouts, options):
          "MDscope's hierarchical statistics. Contrasts are system 2 minus system 1; "
          "q-values use the configured multiple-testing correction. "
          "Unavailable denotes missing or non-finite data; a measured zero remains zero.")
+    ci_coverage = read_table(root / "project_summary/statistics/coverage/contrast_coverage.parquet")
+    if not ci_coverage.empty:
+        sub("Bootstrap contrast coverage")
+        body("Counts include all saved comparison pairs and estimators for the registered statistics families. "
+             "An interval excluding zero is an exploratory result. See contrast_coverage.csv in the review ZIP.")
+        rows = [["Analysis family", "Above zero", "Below zero", "Includes zero", "Unavailable"]]
+        for family, entries in ci_coverage.groupby("family", sort=True):
+            counts = entries.status.value_counts()
+            valid = [int(counts.get(key, 0)) for key in ("above_zero", "below_zero", "includes_zero")]
+            rows.append([family.replace("_", " "), *valid, len(entries) - sum(valid)])
+        table(rows, [190, 80, 80, 80, 80])
     if systems.empty:
         body("System statistics not available. Enable statistics and complete finalization.")
     else:

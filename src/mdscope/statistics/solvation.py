@@ -1,4 +1,4 @@
-"""Replicate-level descriptive RDF outputs, without treating RDF bins as independent."""
+"""Replicate RDF curves and predefined first-shell contrasts."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config, atomic_parquet, ensure_dir
+from .replicate_contrasts import replicate_mean_contrasts
 
 
 RDF_KEYS = ["solvent", "target_class", "site_class", "r_inner_A", "r_outer_A"]
@@ -72,4 +73,42 @@ def analyze_solvation_rdfs(cfg, root, system_repouts):
     dest = ensure_dir(Path(root)/"project_summary"/"statistics"/"solvation")
     atomic_parquet(dest/"replicate_rdf.parquet", reps)
     atomic_parquet(dest/"system_rdf.parquet", system)
+    _write_shell_contrasts(reps, dest, cfg, system_repouts)
 
+
+def _write_shell_contrasts(reps, dest, cfg, system_repouts):
+    """Compare shell-volume-weighted mean g(r) at the configured cutoffs."""
+    options = cfg.get("analyses", {}).get("solvation", {})
+    cutoffs = {"water": 3.5, "ions": 4.0} | (options.get("shell_cutoffs_A") or {})
+    keys = ["solvent", "target_class", "site_class"]
+    rows = []
+    for identity, rdf in reps.groupby(["system", "replicate", *keys], sort=True):
+        cutoff = cutoffs.get(identity[2].split("/", 1)[0])
+        if cutoff is None:
+            continue
+        cutoff = float(cutoff)
+        shell = rdf.loc[rdf.r_inner_A.lt(cutoff)].sort_values("r_inner_A")
+        left = shell.r_inner_A.to_numpy(float)
+        right = shell.r_outer_A.to_numpy(float)
+        complete = (len(left) > 0 and np.isclose(left[0], 0)
+                    and (right[-1] >= cutoff or np.isclose(right[-1], cutoff))
+                    and np.all(right > left) and np.allclose(left[1:], right[:-1]))
+        for normalization in ("g_bulk", "g_aqueous_reference"):
+            if normalization not in reps:
+                continue
+            density = shell[normalization].to_numpy(float)
+            value = np.nan
+            if complete and np.isfinite(density).all():
+                weights = np.minimum(right, cutoff) ** 3 - left ** 3
+                value = float(np.average(density, weights=weights))
+            rows.append(dict(zip(["system", "replicate", *keys], identity),
+                             normalization=normalization, shell_cutoff_A=cutoff, value=value))
+    if not rows:
+        return
+    shell_values = pd.DataFrame(rows)
+    comparisons = replicate_mean_contrasts(
+        shell_values, [*keys, "normalization", "shell_cutoff_A"], system_repouts, cfg["statistics"]
+    )
+    atomic_parquet(dest / "replicate_rdf_shells.parquet", shell_values)
+    if not comparisons.empty:
+        atomic_parquet(dest / "rdf_shell_comparisons.parquet", comparisons)

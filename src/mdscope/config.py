@@ -839,7 +839,7 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
     if int(stats.get("interaction_progress_every", 1000)) < 1:
         raise ValueError("statistics.interaction_progress_every must be positive")
     families = stats.get("families", {})
-    if not isinstance(families, dict) or set(families) - {"time_series", "profiles", "interactions", "solvation_rdfs"}:
+    if not isinstance(families, dict) or set(families) - {"time_series", "profiles", "interactions", "solvation_rdfs", "diffusion"}:
         raise ValueError("statistics.families has unknown families or is not a mapping")
     for name, option in families.items():
         if isinstance(option, bool):

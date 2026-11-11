@@ -4,6 +4,8 @@ from .time_series import collect_time_series, analyze_time_series
 from .profiles import collect_temporal_profiles, analyze_profiles
 from .interactions import analyze_interactions
 from .solvation import analyze_solvation_rdfs
+from .diffusion import analyze_multi_origin_diffusion
+from .coverage import write_contrast_coverage
 
 
 def _input_snapshot(root, replicate_paths):
@@ -29,7 +31,7 @@ def analyze_project(cfg, root, system_repouts):
     from ..core.persistence import archive_output
     from pathlib import Path
     import os
-    families = ("time_series", "profiles", "interactions", "solvation_rdfs")
+    families = ("time_series", "profiles", "interactions", "solvation_rdfs", "diffusion")
     dest = Path(root) / "project_summary/statistics"
     if (dest / "manifest.json").exists():
         archive_output(dest / "manifest.json", Path(root) / ".archives/statistics/manifests",
@@ -49,11 +51,16 @@ def analyze_project(cfg, root, system_repouts):
         ("profiles", "profiles", analyze_profiles),
         ("interactions", "interactions", analyze_interactions),
         ("solvation_rdfs", "solvation", analyze_solvation_rdfs),
+        ("diffusion", "diffusion", analyze_multi_origin_diffusion),
     ):
         if (dest / folder).exists():
             archive_output(dest / folder, Path(root) / ".archives/statistics" / folder,
                            "previous")
         analyze(cfg, root, system_repouts)
+    coverage_folder = dest / "coverage"
+    if coverage_folder.exists():
+        archive_output(coverage_folder, Path(root) / ".archives/statistics/coverage", "previous")
+    write_contrast_coverage(dest, system_repouts, manifest["families"])
     if inputs_before != _input_snapshot(root, manifest['replicate_paths']):
         raise RuntimeError('Persisted statistics inputs changed during finalization; retry on stable outputs')
     manifest["status"] = "complete"

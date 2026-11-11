@@ -21,7 +21,38 @@ from ..observables.structure_profiles import temporal_structure_profiles
 from ..observables.rmsf import temporal_rmsf_profiles
 
 
-from .common import finite, _temporal, _block_bootstrap, _hierarchical, _hierarchical_difference, _ci, _describe, _direction, _permutation, _fdr, _range_meta, _regular_times, _point_difference, _adaptive_intervals
+from .common import finite, _temporal, _block_indices, _block_bootstrap, _hierarchical, _hierarchical_difference, _ci, _describe, _direction, _permutation, _fdr, _range_meta, _regular_times, _point_difference, _adaptive_intervals
+
+LOCAL_GEOMETRY = {
+    "sdc4_local_upper_height_A", "sdc4_local_upper_curvature_Ainv", "sdc4_local_thickness_A",
+}
+
+
+def _conditional_geometry_bootstrap(values, times, cfg, draws, rng):
+    """Preserve full-grid observation gaps when resampling local geometry."""
+    present = np.isfinite(values)
+    missing = np.full(draws, np.nan)
+    if not _regular_times(times) or present.sum() < 2:
+        return missing, missing, None, False
+    center = values[present].mean()
+    block = max(
+        _temporal(present.astype(float), times, cfg)["block_length_frames"],
+        _temporal(np.where(present, values - center, 0), times, cfg)["block_length_frames"],
+    )
+    # An interval needs support in more than one block. Withhold it if any
+    # sampled full-length trace has no defined conditional estimate.
+    if len(np.unique(np.flatnonzero(present) // block)) < 2:
+        return missing, missing, block, False
+    means, medians = np.empty(draws), np.empty(draws)
+    for start in range(0, draws, 32):
+        stop = min(start + 32, draws)
+        sample = values[_block_indices(len(values), block, stop - start, rng)]
+        if not np.isfinite(sample).any(axis=1).all():
+            return missing, missing, block, False
+        means[start:stop] = np.nanmean(sample, axis=1)
+        medians[start:stop] = np.nanmedian(sample, axis=1)
+    return means, medians, block, True
+
 
 def collect_time_series(repout: Path) -> dict[tuple[str | None, str], pd.DataFrame]:
     out = {}
@@ -35,6 +66,11 @@ def collect_time_series(repout: Path) -> dict[tuple[str | None, str], pd.DataFra
         groups = [(None, data)] if group_col is None else data.groupby(group_col, sort=False)
         for group_id, subset in groups:
             for metric in subset.columns:
+                if group_id is None and metric in LOCAL_GEOMETRY:
+                    available = pd.to_numeric(subset[metric], errors="coerce").map(np.isfinite)
+                    out[(None, metric + "_available_fraction")] = pd.DataFrame({
+                        "time_ps": subset.time_ps, "value": available.astype(float),
+                    })
                 if metric not in {"time_ps", "group"} and len(finite(subset[metric])):
                     out[(
                         None if group_id is None else str(group_id),
@@ -116,6 +152,11 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
                 times = pd.to_numeric(table["time_ps"], errors="coerce").to_numpy(float)
                 valid = np.isfinite(values) & np.isfinite(times)
                 temporal_valid = bool(valid.all() and _regular_times(times))
+                conditional = group is None and metric in LOCAL_GEOMETRY and not temporal_valid
+                if conditional:
+                    conditional_boot = _conditional_geometry_bootstrap(
+                        np.where(np.isfinite(values), values, np.nan), times, cfg, draws, rng
+                    )
                 values = values[valid]
                 times = times[valid]
                 if not len(values):
@@ -135,15 +176,25 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
                     rng,
                     "median"
                 ) if temporal_valid and draws else np.full(draws, np.nan)
+                sampling_status = "regular_complete" if temporal_valid else "unavailable_gapped_or_irregular"
                 if not temporal_valid:
                     meta.update(acf=np.array([]), tau_int_frames=np.nan,
                                 tau_int_ps=np.nan, effective_n=np.nan)
+                if conditional:
+                    mean_boot, med_boot, block, temporal_valid = conditional_boot
+                    if block is not None:
+                        meta.update(block_length_frames=block,
+                                    blocks_per_pseudostudy=int(np.ceil(len(valid) / block)))
+                    sampling_status = (
+                        "regular_conditional_on_availability" if temporal_valid
+                        else "unavailable_conditional_block_support"
+                    )
                 mlo, mhi = _ci(mean_boot, level)
                 dlo, dhi = _ci(med_boot, level)
                 row = {
                     "system": system,
                     "replicate": repout.name,
-                    "temporal_sampling_status": "regular_complete" if temporal_valid else "unavailable_gapped_or_irregular",
+                    "temporal_sampling_status": sampling_status,
                     "group": group,
                     "metric": metric,
                     **_describe(values),
@@ -196,7 +247,8 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
         gid = None if pd.isna(group) else str(group)
         rows = sub.to_dict("records")
         keys = [(system, r["replicate"], gid, metric) for r in rows]
-        temporal_valid = all(cache[k]["temporal_valid"] for k in keys)
+        complete_geometry = metric not in LOCAL_GEOMETRY or len(keys) == len(system_repouts[system])
+        temporal_valid = complete_geometry and all(cache[k]["temporal_valid"] for k in keys)
         if adaptive:
             def sample(n):
                 return np.column_stack([
@@ -218,12 +270,15 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
         }
         mlo, mhi = _ci(mean_boot, level)
         dlo, dhi = _ci(med_boot, level)
+        sampling = sorted(set(sub.temporal_sampling_status))
+        if not complete_geometry:
+            sampling.append("incomplete_replica_coverage")
         sys_rows.append({
             "system": system,
             "group": gid,
             "metric": metric,
             "n_replicates": len(sub),
-            "temporal_sampling_status": "regular_complete" if temporal_valid else "unavailable_gapped_or_irregular",
+            "temporal_sampling_status": "|".join(sampling),
             "mean": float(sub["mean"].mean()),
                          "median": float(sub["median"].median()), "mean_ci_low": mlo,
                          "mean_ci_high": mhi,
@@ -321,6 +376,7 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
                           "median_probability_difference_gt_0": dpgt,
                           "median_probability_difference_lt_0": dplt,
                           "median_p_value": _permutation(amed, bmed, cfg, rng),
+                          "ci_status": "unavailable_temporal_support" if not regular else None,
                           "bootstrap_draws": len(dmean) if adaptive else system_draws,
                           "ci_level": level, **adaptive_provenance, **precision})
     comp = pd.DataFrame(comps)
