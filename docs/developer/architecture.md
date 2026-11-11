@@ -353,3 +353,157 @@ record the actual commands and outcomes.
 4. **Maintain this map at the interface changed:** when adding an analysis or
    changing a persisted contract, update the relevant owner, output table and
    tests instead of creating a competing architecture guide.
+
+---
+
+## Output completeness and difference-discovery design (proposal; not implemented)
+
+**Scope:** This is a plan for making saved scientific data discoverable **without
+changing observable collection, existing persisted formats or statistical
+estimators now**. Existing downstream code must remain compatible.
+
+### Actual output-to-uncertainty coverage
+
+The current `statistics/coverage.py:SOURCES` registers **seven** contrast
+families: `time_series`, `matched_time_series`, `profiles`, `interactions`,
+`coupling`, `diffusion` and `solvation_rdfs`. It audits candidate observations
+from each family's **statistics-level replica output**; it does **not** inventory
+every enabled raw observable or every specialized offline derivative.
+
+| Persisted scientific product | Current uncertainty / contrast path | Gap to surface |
+| --- | --- | --- |
+| `summary/timeseries.parquet`, `summary/group_timeseries.parquet` and selected extension scalar series | `statistics/time_series.py`: replica, system and mean/median **difference** CIs where temporal support is valid | A user-friendly catalog is missing; values saved outside `collect_time_series` are not guaranteed a comparison. |
+| Density, RMSF, SASA/DSSP, membrane-order and residue-distance temporal profiles | `statistics/profiles.py`: per-position comparisons and pointwise CIs | Potentially very many rows; no unified *whole-profile* effect ranking or predefined contiguous-region discovery. Pointwise CIs should not be read as simultaneous confidence bands. |
+| Contact, H-bond and salt-bridge events | `statistics/interactions.py`: per-identity occupancy, event-rate and lifetime contrasts when supported | High cardinality; default production `interaction_min_occupancy: 0.20` filters identities with <20% occupancy in every replica. Suppressed, disabled and unobserved identities need explicit statuses distinct from physical zero. |
+| Solvation RDF curves | `statistics/solvation.py`: per-bin replica mean±SD (descriptive) and shell-integrated replica-level difference CIs | Whole RDF curve shape and peak-location differences do **not** currently have registered comparison intervals. |
+| Multi-origin diffusion curves | `statistics/diffusion.py`: common-lag refitted replica slopes and difference CIs | Single-origin `project_summary/diffusion/` coefficients are currently descriptive only; report distinction and fit support. |
+| Coupling correlation outputs | `statistics/coupling.py`: replica correlation contrasts | Descriptive screen, with limited independent-replica evidence. |
+| Shared-state model, state-conditioned SDC4 analyses | `mechanisms/shared_states.py` creates several separate population and conditioned CI tables | Not part of the seven-family central `contrast_coverage` audit; some conditioned tables are descriptive only. |
+| Lipid/solvent density maps, detailed spatial K bridge audit and other specialized outputs | Retained as source data; some summarized elsewhere | Not every saved high-dimensional map has a registered condition-level contrast or CI. Do not imply one exists. |
+
+### Required audit before any expensive statistical rerun
+
+Introduce a **catalog-first read-only audit** driven by configured analysis
+instances, `registry.analysis_output_plan`/`required_artifacts` and actual
+columns, coordinate labels and shapes of saved files. Inventory
+statistically eligible products **before** running estimators.
+
+The audit should produce an entry for every enabled and saved observable, plus
+enabled-but-missing outputs, with fields:
+
+- `observable_id`, `analysis_instance`, `family`, `measure`, `units`,
+  `dimensions`, `selection`/chemical identity, `source_path`, `schema_version`.
+- `system`, `replicate`, `time_start_ps`, `time_end_ps`,
+  `n_observations`, `n_finite`, `n_expected_replicates`, `n_available_replicates`,
+  and source QC/availability.
+- `comparison_eligible`, `comparison_method`,
+  `comparison_status` and a reason if unavailable, filtered or not implemented.
+
+**Completeness invariant:** every configured scientific output belongs to
+exactly one of (1) a recorded condition-comparison result, (2) a documented
+descriptive-only output, (3) an intentionally excluded candidate, or (4) an
+explicitly missing/invalid/unsupported result with a reason. Never equate
+`not_tested`, `no_observed_events`, `no_valid_frames` or `filtered` with
+`no_effect`. A completed project-level statistics manifest alone does not
+prove full scientific comparison coverage.
+
+### Shared presentation schema, not a data-format migration
+
+Preserve all existing raw Parquet/NPY/NPZ paths and the current family-specific
+tables. Add **small derived normalized views** under a dedicated project-level
+catalog folder; do not flatten large arrays or atom-event tables merely to
+standardize them.
+
+- `observable_catalog.parquet`: one row per registered measurement
+  identity/coordinate and its provenance, availability and supported estimator.
+- `estimates.parquet`: one row per replica or condition estimate,
+  keyed by `family, observable_id, coordinate_id, system, [replicate],
+  statistic`; numeric fields `estimate, ci_low, ci_high`, units, coverage and
+  estimator metadata.
+- `comparisons.parquet`: one row per condition-pair/metric/coordinate/estimand:
+  `system_1, system_2, difference_system2_minus_system1,
+  ci_low, ci_high, ci_level, p_value, q_value, n_replicates_1,
+  n_replicates_2, method, status`. Missing intervals remain null with a reason.
+- `discovery.parquet`: one row per *scientifically meaningful family or region*
+  with effect magnitude, direction, replicate agreement, support, rank,
+  exploratory/confirmatory status and a link to underlying comparison rows.
+- `coverage.parquet`: extended source-to-estimate-to-comparison reconciliation,
+  including dedicated analyses outside the seven core statistics families.
+
+The identity schema must preserve chemical/molecular semantics: units,
+residue numbers **and topology indices**, protomer, HS chain, lipid species,
+leaflet, group/motif, measured quantity, physical position and normalization
+reference as applicable. Use structured columns and stable IDs; do not encode
+all identity solely in a presentation label. Maintain a distinction between
+population occupancy, event rate, event lifetime, RDF shape, surface-area
+burial, diffusion slope and correlations.
+
+A narrow reader/normalizer for each existing statistics family is sufficient;
+do not introduce a database, rewrite the collector, or build a competing
+analysis framework. Views should be regenerable from saved outputs.
+
+### High-dimensional candidate selection before expensive per-feature CIs
+
+User goal: identify chemically or structurally meaningful *differences*
+rather than the directions with greatest combined variance (the PCA goal).
+Prefer a **difference-first, replica-aware discovery stage**:
+
+1. **Cheap deterministic inventory and screening:** from existing saved
+   replica summary values/curves, compute the condition contrast, within-
+   condition replica dispersion, independent-replica consistency, and
+   observation/selection support for *every* candidate. Retain all rows.
+   Compare like chemical sites and the same profile coordinate/normalization.
+2. **Scientific grouping before individual tests:** for ordered profiles,
+   report whole-curve contrasts (e.g. integrated absolute difference and
+   region-wise signed differences) and pre-specified contiguous regions; for
+   unordered interactions, group by motif/residue domain, lipid species,
+   leaflet, or bridge class and screen group occupancies. Never treat
+   adjacent radial bins or frames as independent replicates.
+3. **Prioritize follow-up CIs:** compute detailed per-residue/bin/interaction
+   bootstrap intervals for high-support, high-effect candidates plus
+   predeclared primary hypotheses. Preserve a searchable descriptive screen
+   for every remaining candidate, marked `not_ci_evaluated`, not `nonsignificant`.
+4. **If formal inference on adaptively selected features is desired:** avoid
+   interpreting same-data-selected pointwise intervals as confirmatory.
+   Pre-specify regions, use properly calibrated simultaneous intervals or
+   global profile tests, and/or confirm findings in independent new replicas.
+   Selecting within a trajectory and then treating another temporal window
+   as an independent validation dataset is invalid.
+5. **Rank, don't automatically claim significance:** simple standardized
+   contrast/replicate-consistency/coverage scores are *discovery heuristics*,
+   not p-values or posterior probabilities. With three independent replicas
+   per condition, guard against artificially large standardized effects
+   when between-replica variance happens to be near zero.
+
+**Method options for later evaluation:** functional-data global curve tests,
+simultaneous confidence bands or cluster-based permutation for ordered
+residue/radial/distance profiles; physically motivated region aggregation;
+cheap sparse-feature effect screens for large interaction sets. PCA finds
+directions of **total variance**, not necessarily the between-condition
+difference. Supervised PLS-DA/feature-selection models have high overfitting
+risk with only six independent simulations and are **not** the default.
+
+For every family, produce at minimum a **whole-family/region-level answer**
+when possible even if per-coordinate CIs are selectively deferred. Some
+outputs are legitimately descriptive-only (e.g. 3D maps or RDF bins) until
+an estimand and uncertainty method are specified. Do **not** promise all
+possible per-atom/per-bin CIs merely because the corresponding numerical
+observable was saved.
+
+### Recommended first implementation (future PR)
+
+- Read-only coverage/catalog prototype on the six-replica saved output trees.
+  No XTC traversal; record raw-observable → summary → contrast paths.
+- Normalize the **existing** comparison tables into one queryable view,
+  preserving exact original files and full CI/status metadata.
+- Add lightweight deterministic contrast/effect/support ranking to profile
+  and interaction families; benchmark screening cost and verify nothing
+  silently disappears from the catalog.
+- Add any new statistical estimator only later, after explicit scientific
+  estimand definitions, independent reference tests, and six-replica
+  validity checks.
+
+This design intentionally separates **exhaustive awareness of the saved
+measurements** from **selectively expensive confidence-interval computation**,
+and preserves the option to revisit every candidate without regenerating the
+trajectory observables.
