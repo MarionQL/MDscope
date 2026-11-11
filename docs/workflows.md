@@ -223,6 +223,26 @@ geometry intervals resample the original regular frame grid with the
 missing entries preserved. The conditional interval is unavailable when
 the observed frames do not support it.
 
+The coupling screen compares replicate Pearson coefficients over the
+shared regular frame grid. It keeps missing observations at their original
+times and excludes incomplete blocks. Its confidence interval describes
+the difference in mean replicate correlation and is exploratory.
+Use `statistics.scalar_window_ps: [start, stop]` for a second scalar
+statistics pass on an explicit common time window. Set both endpoints
+inside every replica's saved time range. For a matched trajectory-time MSD
+estimate, set `analyses.membrane.msd.multi_origin_window_ps` to those
+bounds when generating the replica MSD curves. Fitted curves record their
+actual sampled start and end times.
+
+The full SDC4 production configuration includes a common phospholipid
+phosphate distance profile alongside the composition-dependent nearest
+lipid profiles. It also writes distinct HS residue and chain contact
+counts, nonoverlapping near/far chain order by lipid species and leaflet,
+and isolated/environment acidic-patch SASA and acidic-oxygen SASA.
+The new trajectory observables require refreshed replicate products.
+To apply updated statistics to legacy results first, use the configuration
+that generated their existing replicate products.
+
 ### Files to send back to ChatGPT
 
 Once all analyses and project-level finalization finish:

@@ -257,6 +257,7 @@ analyses:
 
     lipid_anchors: *lipid_anchors
     sasa_run: isolated
+    environment_sasa_run: environment
     allow_absent_species: true
     # Compare local bilayer surfaces using chemically equivalent P anchors.
     surface_anchor_species: [POPC, DPPC, POPE, POPI, POPS, PSM, DOPC]
@@ -296,6 +297,7 @@ analyses:
     protein_footprint_slab_A: 5.0
     local_order:
       enabled: true
+      by_species_leaflet: true
       lipid_selection: "resname POPC DPPC POPE POPI POPS PSM DOPC"
       min_carbons_per_tail: 4
 
@@ -408,6 +410,10 @@ analyses:
         label: "Full membrane"
         membrane_selection: "resname POPC DPPC POPE POPI POPS PSM DOPC CHL1 CER1 or chainID BGAL GM1a CER160"
 
+      common_phosphate:
+        label: "Shared phospholipid phosphate anchors"
+        membrane_selection: "resname POPC DPPC POPE POPI POPS PSM DOPC and name P"
+
       cer160_only:
         label: "All ceramide-based lipids"
         membrane_selection: "chainID BGAL GM1a CER160"
@@ -426,9 +432,11 @@ analyses:
       isolated:
         target_selection: "protein"
         occluder_selection: "protein"
-        atom_sasa_selection: "protein and name C* and not name C CA"
-        atom_sasa_sequences: ["VVHPLVPL"]
-        atom_sasa_expected_matches: 2
+        atom_sasa_selection: &motif_sasa_atoms >-
+          protein and ((name C* and not name C CA) or
+          (resname ASP GLU and name OD1 OD2 OE1 OE2))
+        atom_sasa_sequences: &motif_sasa_sequences ["VVHPLVPL", "DDEDVVGPGQESDDFELSGSGDLDDLED"]
+        atom_sasa_expected_matches: 4
       environment:
         target_selection: "protein"
         occluder_selection: >-
@@ -439,6 +447,9 @@ analyses:
         # the box height, outside the compact-target periodic SASA contract.
         periodic: false
         reference_run: isolated
+        atom_sasa_selection: *motif_sasa_atoms
+        atom_sasa_sequences: *motif_sasa_sequences
+        atom_sasa_expected_matches: 4
 
   salt_bridges:
     enabled: true

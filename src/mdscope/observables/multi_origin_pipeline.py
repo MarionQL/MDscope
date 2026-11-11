@@ -5,6 +5,7 @@ state untouched. Positions are staged in a temporary on-disk memmap; FFT
 processing only loads a limited number of lipid tracks at a time.
 """
 from __future__ import annotations
+from bisect import bisect_left, bisect_right
 from contextlib import ExitStack
 from mmap import mmap
 from pathlib import Path
@@ -19,18 +20,36 @@ from .membrane import initialize_membrane
 from .msd import _residue_centers
 
 
+def _sampled_window(trajectory, cfg, window):
+    tr = cfg["trajectory"]
+    indices = range(len(trajectory))[slice(tr.get("start"), tr.get("stop"), int(tr["stride"]))]
+    if window is None or not len(indices):
+        return indices, 0
+    lower, upper = window
+
+    def at(index):
+        return time_ps(trajectory[indices[index]], index, cfg)
+
+    frame_numbers = range(len(indices))
+    if not at(0) <= lower < upper <= at(len(indices) - 1):
+        raise ValueError("Multi-origin MSD window extends outside the sampled trajectory")
+    start = bisect_left(frame_numbers, lower, key=at)
+    stop = bisect_right(frame_numbers, upper, key=at)
+    return indices[start:stop], start
+
+
 def run_multi_origin_diffusion(rep, cfg, repout):
     settings = cfg["analyses"]["membrane"]["msd"]
     if not settings.get("multi_origin", False):
         return {}
     source = rep.msd_trajectory or rep.trajectory
     u = mda.Universe(str(rep.topology), str(source))
-    tr = cfg["trajectory"]
-    frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr["stride"]))]
-    n_frames = len(frames)
+    indices, offset = _sampled_window(u.trajectory, cfg, settings.get("multi_origin_window_ps"))
+    n_frames = len(indices)
     if n_frames < 6:
         raise ValueError("Multi-origin MSD requires at least six sampled frames")
-    u.trajectory[0 if tr.get("start") is None else int(tr["start"])]
+    frames = u.trajectory[indices.start:indices.stop:indices.step]
+    u.trajectory[indices[0]]
     membrane = initialize_membrane(u, cfg)
     if not membrane.msd:
         raise ValueError("Multi-origin MSD requires analyses.membrane.msd.enabled")
@@ -55,7 +74,7 @@ def run_multi_origin_diffusion(rep, cfg, repout):
         last = None
         displacement = np.zeros((n_lipids, 3), dtype=np.float64)
         for i, ts in enumerate(frames):
-            times[i] = time_ps(ts, i, cfg)
+            times[i] = time_ps(ts, i + offset, cfg)
             current = _residue_centers(membrane.msd_atoms)
             if last is not None:
                 step = np.asarray(minimize_vectors(current - last, u.dimensions), float)
@@ -103,11 +122,13 @@ def run_multi_origin_diffusion(rep, cfg, repout):
             rows.append({
                 "system": rep.system, "replicate": rep.label, "metric": metric,
                 "method": "multi_origin_fft", "n_lipids": int(len(selected)),
-                "n_frames": int(n_frames), **fit,
+                "n_frames": int(n_frames), "time_window_start_ps": float(times[0]),
+                "time_window_end_ps": float(times[-1]), **fit,
             })
             curves.extend({
                 "metric": metric, "lag_ps": float(t), "msd_A2": float(v),
                 "n_time_origins": int(n_frames - j),
+                "time_window_start_ps": float(times[0]), "time_window_end_ps": float(times[-1]),
             } for j, (t, v) in enumerate(zip(lag_times, curve)))
     atomic_parquet(output / "multi_origin_diffusion.parquet", pd.DataFrame(rows))
     atomic_parquet(output / "multi_origin_msd.parquet", pd.DataFrame(curves))

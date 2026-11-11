@@ -29,6 +29,47 @@ from ..pipeline.progress import track
 from .hs_topology import discover_covalent_hs
 
 
+def _add_acidic_patch_sasa(frame, motifs, isolated_dir, environment_dir):
+    burial_path = environment_dir / "residue_burial.parquet"
+    if not burial_path.is_file():
+        return frame
+    burial = pd.read_parquet(burial_path)
+    atom_paths = [folder / "atom_sasa.parquet" for folder in (isolated_dir, environment_dir)]
+    atoms = [pd.read_parquet(path) for path in atom_paths] if all(path.is_file() for path in atom_paths) else []
+    for name, motif in motifs.items():
+        if not name.startswith("acidic_patch_"):
+            continue
+        prefix = f"sdc4_motif_{name}_"
+        resids = motif["resindices"]
+        sub = burial.loc[burial.topology_residue_index.isin(resids)]
+        cols = ["environment_sasa_nm2", "buried_sasa_nm2"]
+        totals = sub.groupby("time_ps")[cols].sum(min_count=len(resids)).add_prefix(prefix)
+        frame = frame.merge(totals, on="time_ps", how="left", validate="one_to_one")
+        if not atoms:
+            continue
+        selected = [
+            table.loc[table.topology_residue_index.isin(resids)
+                      & table.atom_name.isin(["OD1", "OD2", "OE1", "OE2"]),
+                      ["time_ps", "atom_index", "sasa_nm2"]]
+            for table in atoms
+        ]
+        a, b = selected
+        paired = a.merge(b, on=["time_ps", "atom_index"], suffixes=("_isolated", "_environment"),
+                         validate="one_to_one")
+        if len(paired) != len(a) or len(paired) != len(b):
+            raise ValueError(f"SASA acidic oxygens differ between runs for {name}")
+        if paired.empty:
+            continue
+        cols = ["sasa_nm2_isolated", "sasa_nm2_environment"]
+        paired[cols] = paired[cols].where(np.isfinite(paired[cols]))
+        totals = paired.groupby("time_ps")[cols].sum(min_count=paired.atom_index.nunique())
+        totals.columns = [prefix + "acidic_oxygen_isolated_sasa_nm2",
+                          prefix + "acidic_oxygen_environment_sasa_nm2"]
+        totals[prefix + "acidic_oxygen_buried_sasa_nm2"] = totals.iloc[:, 0] - totals.iloc[:, 1]
+        frame = frame.merge(totals, on="time_ps", how="left", validate="one_to_one")
+    return frame
+
+
 def enabled(cfg):
     return bool(cfg.get("analyses", {}).get("sdc4_mechanisms", {}).get("enabled", False))
 
@@ -540,6 +581,21 @@ class SDC4Mechanisms:
             keep = np.isin(indices, list(local_res)) & np.isfinite(values)
             row["sdc4_local_minus_SCH"] = float(values[keep].mean()) if np.any(keep) else np.nan
             row["sdc4_bulk_minus_SCH"] = float(np.nanmean(values)) if np.any(np.isfinite(values)) else np.nan
+            if self.spec.get("local_order", {}).get("by_species_leaflet", False):
+                valid = np.isfinite(values)
+                for leaflet, leaflet_mask in (("upper", leaf), ("lower", ~leaf)):
+                    for species in self.surface_species:
+                        anchors_of_species = leaflet_mask & (self.species == species)
+                        near = valid & np.isin(indices, self.resindices[anchors_of_species & local])
+                        far = valid & np.isin(indices, self.resindices[anchors_of_species & ~local])
+                        near_order = float(values[near].mean()) if near.any() else np.nan
+                        far_order = float(values[far].mean()) if far.any() else np.nan
+                        prefix = f"sdc4_order_{_id(species)}_{leaflet}_"
+                        row[prefix + "near_n_lipids"] = int(near.sum())
+                        row[prefix + "far_n_lipids"] = int(far.sum())
+                        row[prefix + "near_minus_SCH"] = near_order
+                        row[prefix + "far_minus_SCH"] = far_order
+                        row[prefix + "near_minus_far_SCH"] = near_order - far_order
         for chain, ag in self.ecto.items():
             ecto_center = _center(ag, box)
             # Determine the extracellular side from the distal ectodomain's
@@ -654,12 +710,16 @@ class SDC4Mechanisms:
                 len(np.unique(protein_other.resindices[contacts[:, 1]])) if len(contacts) else 0
             )
             row[prefix + "glycan_contacts"] = len(gly_hits)
-            contacted_hs_atoms = set(
-                map(int, glycan_all.indices[gly_hits[:, 1]])
-            ) if len(gly_hits) else set()
+            contacted = glycan_all[np.unique(gly_hits[:, 1])] if len(gly_hits) else glycan_all[:0]
+            contacted_hs_atoms = set(map(int, contacted.indices))
+            row[prefix + "hs_contact_residues"] = len(np.unique(contacted.resindices))
+            n_chains = 0
             for hs_name, hs_atoms in self.hs.items():
-                n_hs = len(contacted_hs_atoms.intersection(map(int, hs_atoms.indices)))
-                row[prefix + f"hs_{hs_name}_contact_state"] = int(n_hs > 0)
+                contact = int(bool(contacted_hs_atoms.intersection(map(int, hs_atoms.indices))))
+                row[prefix + f"hs_{hs_name}_contact_state"] = contact
+                n_chains += contact
+            row[prefix + "hs_contact_chains"] = n_chains
+            row[prefix + "hs_any_contact_state"] = int(n_chains > 0)
 
             row[prefix + "lipid_contacts"] = len(lip_hits)
             # Separate distinct physical occluders so NxIP exposure
@@ -988,6 +1048,10 @@ class SDC4Mechanisms:
                         ].sum(min_count=len(info["resindices"])).rename(columns={"sasa_nm2": label})
                         df = df.merge(values, on="time_ps", how="left",
                                       validate="one_to_one")
+        environment_run = self.spec.get("environment_sasa_run")
+        if environment_run:
+            environment_dir = profile_dir(self.repout, "sasa", environment_run)
+            df = _add_acidic_patch_sasa(df, self.motifs, sasa_dir, environment_dir)
         # Reuse per-atom FreeSASA areas: non-backbone carbon exposure,
         # not a claim that all carbon atoms have identical hydrophobicity.
         atom_path = sasa_dir / "atom_sasa.parquet"
@@ -998,6 +1062,8 @@ class SDC4Mechanisms:
                     continue
                 subset = atom_data.loc[
                     atom_data["topology_residue_index"].isin(info["resindices"])
+                    & atom_data["atom_name"].str.startswith("C")
+                    & ~atom_data["atom_name"].isin(["C", "CA"])
                 ]
                 if not subset.empty:
                     col = f"sdc4_motif_{name}_sidechain_carbon_sasa_nm2"

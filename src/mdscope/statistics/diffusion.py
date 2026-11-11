@@ -17,12 +17,15 @@ def analyze_multi_origin_diffusion(cfg, root, system_repouts):
     if not settings.get("enabled") or not settings.get("multi_origin"):
         return
     curves = {}
-    columns = ["metric", "lag_ps", "msd_A2", "n_time_origins"]
+    requested = settings.get("multi_origin_window_ps")
+    time_columns = ["time_window_start_ps", "time_window_end_ps"]
     for system, reps in system_repouts.items():
         for rep in reps:
             path = Path(rep) / "summary" / "multi_origin_msd.parquet"
             if path.is_file():
-                data = pd.read_parquet(path, columns=columns)
+                data = pd.read_parquet(path)
+                if requested is not None and not set(time_columns) <= set(data):
+                    raise ValueError(f"{path} lacks trajectory-window provenance. Regenerate its multi-origin MSD.")
                 for metric, curve in data.groupby("metric", sort=True):
                     curve = curve.set_index("lag_ps").sort_index()
                     lag = curve.index.to_numpy(float)
@@ -32,6 +35,13 @@ def analyze_multi_origin_diffusion(cfg, root, system_repouts):
                             or not np.isfinite(origins).all() or np.any(origins < 1)
                             or not np.isfinite(msd).all() or np.any(msd < 0)):
                         raise ValueError(f"Invalid multi-origin curve for {metric} in {path}")
+                    if requested is not None:
+                        observed = curve[time_columns].drop_duplicates().to_numpy(float)
+                        step = float(np.diff(lag)[0]) if len(lag) > 1 else 0.0
+                        if (observed.shape != (1, 2) or step <= 0
+                                or not np.isfinite(observed).all()
+                                or np.any(np.abs(observed[0] - requested) >= step)):
+                            raise ValueError(f"{path} does not match the requested trajectory window. Regenerate its multi-origin MSD.")
                     curves.setdefault(metric, {})[system, rep.name] = curve
     start = float(settings.get("slope_start_fraction", .2))
     end = float(settings.get("slope_end_fraction", .8))
@@ -39,6 +49,10 @@ def analyze_multi_origin_diffusion(cfg, root, system_repouts):
         raise ValueError("Diffusion slope fractions require 0 <= start < end <= 1")
     rows = []
     for metric, by_replica in sorted(curves.items()):
+        if requested is not None:
+            observed = {tuple(curve[time_columns].iloc[0]) for curve in by_replica.values()}
+            if len(observed) != 1:
+                raise ValueError(f"{metric}: replica MSD curves have different trajectory windows")
         duration = min(float(curve.index[-1]) for curve in by_replica.values())
         shared = None
         for curve in by_replica.values():
@@ -51,6 +65,8 @@ def analyze_multi_origin_diffusion(cfg, root, system_repouts):
                        fit_start_ps=np.nan, fit_end_ps=np.nan, n_fit=len(shared),
                        n_frames=int(curve.n_time_origins.iloc[0]), log_log_slope=np.nan,
                        fit_status="insufficient_common_lags")
+            for column in time_columns:
+                row[column] = float(curve[column].iloc[0]) if column in curve else np.nan
             if len(shared) >= 5:
                 lag = np.r_[0.0, shared]
                 msd = curve.loc[lag, "msd_A2"].to_numpy(float)

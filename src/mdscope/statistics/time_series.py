@@ -28,6 +28,13 @@ LOCAL_GEOMETRY = {
 }
 
 
+def _has_conditional_support(metric):
+    return metric in LOCAL_GEOMETRY or (
+        metric.startswith("sdc4_order_")
+        and metric.endswith(("near_minus_SCH", "far_minus_SCH", "near_minus_far_SCH"))
+    )
+
+
 def _conditional_geometry_bootstrap(values, times, cfg, draws, rng):
     """Preserve full-grid observation gaps when resampling local geometry."""
     present = np.isfinite(values)
@@ -66,7 +73,7 @@ def collect_time_series(repout: Path) -> dict[tuple[str | None, str], pd.DataFra
         groups = [(None, data)] if group_col is None else data.groupby(group_col, sort=False)
         for group_id, subset in groups:
             for metric in subset.columns:
-                if group_id is None and metric in LOCAL_GEOMETRY:
+                if group_id is None and _has_conditional_support(metric):
                     available = pd.to_numeric(subset[metric], errors="coerce").map(np.isfinite)
                     out[(None, metric + "_available_fraction")] = pd.DataFrame({
                         "time_ps": subset.time_ps, "value": available.astype(float),
@@ -130,6 +137,7 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
     if not cfg.get("statistics", {}).get("enabled", True):
         return
     stats = cfg["statistics"]
+    scalar_window = stats.get("scalar_window_ps")
     draws, level = int(stats.get("bootstrap_draws", 2000)), float(stats.get("ci", 0.95))
     system_draws = draws if stats.get("hierarchy", {}).get("enabled", True) else 0
     seed = int(stats.get("seed", 2026))
@@ -148,11 +156,16 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
         for repout in reps:
             local_rows, local_acf = [], []
             for (group, metric), table in collect_time_series(repout).items():
+                window_covered = True
+                if scalar_window is not None:
+                    lower, upper = scalar_window
+                    window_covered = table.time_ps.min() <= lower and table.time_ps.max() >= upper
+                    table = table.loc[table.time_ps.between(lower, upper)]
                 values = pd.to_numeric(table["value"], errors="coerce").to_numpy(float)
                 times = pd.to_numeric(table["time_ps"], errors="coerce").to_numpy(float)
                 valid = np.isfinite(values) & np.isfinite(times)
-                temporal_valid = bool(valid.all() and _regular_times(times))
-                conditional = group is None and metric in LOCAL_GEOMETRY and not temporal_valid
+                temporal_valid = bool(window_covered and valid.all() and _regular_times(times))
+                conditional = window_covered and group is None and _has_conditional_support(metric) and not temporal_valid
                 if conditional:
                     conditional_boot = _conditional_geometry_bootstrap(
                         np.where(np.isfinite(values), values, np.nan), times, cfg, draws, rng
@@ -177,6 +190,8 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
                     "median"
                 ) if temporal_valid and draws else np.full(draws, np.nan)
                 sampling_status = "regular_complete" if temporal_valid else "unavailable_gapped_or_irregular"
+                if not window_covered:
+                    sampling_status = "unavailable_window_coverage"
                 if not temporal_valid:
                     meta.update(acf=np.array([]), tau_int_frames=np.nan,
                                 tau_int_ps=np.nan, effective_n=np.nan)
@@ -247,8 +262,9 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
         gid = None if pd.isna(group) else str(group)
         rows = sub.to_dict("records")
         keys = [(system, r["replicate"], gid, metric) for r in rows]
-        complete_geometry = metric not in LOCAL_GEOMETRY or len(keys) == len(system_repouts[system])
-        temporal_valid = complete_geometry and all(cache[k]["temporal_valid"] for k in keys)
+        require_complete = scalar_window is not None or _has_conditional_support(metric)
+        complete_replica_coverage = not require_complete or len(keys) == len(system_repouts[system])
+        temporal_valid = complete_replica_coverage and all(cache[k]["temporal_valid"] for k in keys)
         if adaptive:
             def sample(n):
                 return np.column_stack([
@@ -271,7 +287,7 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
         mlo, mhi = _ci(mean_boot, level)
         dlo, dhi = _ci(med_boot, level)
         sampling = sorted(set(sub.temporal_sampling_status))
-        if not complete_geometry:
+        if not complete_replica_coverage:
             sampling.append("incomplete_replica_coverage")
         sys_rows.append({
             "system": system,

@@ -17,6 +17,8 @@ SOURCES = (
      ("profile", "position_label"), ("saved",)),
     ("interactions", "interactions", "replicate_interaction_metrics",
      "system_interaction_comparisons", ("interaction_type", "interaction", "metric"), ("saved",)),
+    ("coupling", "coupling", "replicate_correlations", "system_comparisons",
+     ("mechanism", "x", "y"), ("saved",)),
     ("diffusion", "diffusion", "replicate_common_lag_slopes", "common_lag_comparisons",
      ("metric",), ("saved",)),
     ("solvation_rdfs", "solvation", "replicate_rdf_shells", "rdf_shell_comparisons",

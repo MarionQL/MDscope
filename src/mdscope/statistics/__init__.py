@@ -6,6 +6,7 @@ from .interactions import analyze_interactions
 from .solvation import analyze_solvation_rdfs
 from .diffusion import analyze_multi_origin_diffusion
 from .coverage import write_contrast_coverage
+from .coupling import analyze_coupling
 
 
 def _input_snapshot(root, replicate_paths):
@@ -15,9 +16,9 @@ def _input_snapshot(root, replicate_paths):
     records = []
     for relative in replicate_paths:
         rep = root / relative
-        for folder in ('summary', 'extensions', 'interactions', 'cache'):
+        for folder in ('summary', 'extensions', 'interactions', 'cache', 'profiles'):
             for path in sorted((rep / folder).rglob('*')):
-                if path.suffix not in {'.parquet', '.npz'} or not path.is_file():
+                if path.suffix not in {'.parquet', '.npz', '.npy'} or not path.is_file():
                     continue
                 if path.name in {'time_series_statistics.parquet', 'autocorrelation.parquet'}:
                     continue  # statistics outputs, not inputs
@@ -31,7 +32,7 @@ def analyze_project(cfg, root, system_repouts):
     from ..core.persistence import archive_output
     from pathlib import Path
     import os
-    families = ("time_series", "profiles", "interactions", "solvation_rdfs", "diffusion")
+    families = ("time_series", "profiles", "interactions", "solvation_rdfs", "diffusion", "coupling")
     dest = Path(root) / "project_summary/statistics"
     if (dest / "manifest.json").exists():
         archive_output(dest / "manifest.json", Path(root) / ".archives/statistics/manifests",
@@ -52,6 +53,7 @@ def analyze_project(cfg, root, system_repouts):
         ("interactions", "interactions", analyze_interactions),
         ("solvation_rdfs", "solvation", analyze_solvation_rdfs),
         ("diffusion", "diffusion", analyze_multi_origin_diffusion),
+        ("coupling", "coupling", analyze_coupling),
     ):
         if (dest / folder).exists():
             archive_output(dest / folder, Path(root) / ".archives/statistics" / folder,
