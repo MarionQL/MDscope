@@ -7,6 +7,7 @@ from .solvation import analyze_solvation_rdfs
 from .diffusion import analyze_multi_origin_diffusion
 from .coverage import write_contrast_coverage
 from .coupling import analyze_coupling
+from .windows import matched_grid
 
 
 def _input_snapshot(root, replicate_paths):
@@ -45,6 +46,14 @@ def analyze_project(cfg, root, system_repouts):
         "replicate_paths": [os.path.relpath(rep, root)
                             for reps in system_repouts.values() for rep in reps],
     }
+    matched = cfg.get("statistics", {}).get("matched_window_ps") is not None
+    bounds = None
+    if matched:
+        manifest["families"]["matched_time_series"] = manifest["families"]["time_series"]
+        if manifest["families"]["matched_time_series"] == "enabled":
+            grid = matched_grid(cfg, system_repouts)
+            bounds = [float(grid[0]), float(grid[-1])]
+            manifest["matched_scalar_window_ps"] = bounds
     inputs_before = _input_snapshot(root, manifest['replicate_paths'])
     atomic_json(dest / "manifest.json", manifest)
     for family, folder, analyze in (
@@ -59,6 +68,12 @@ def analyze_project(cfg, root, system_repouts):
             archive_output(dest / folder, Path(root) / ".archives/statistics" / folder,
                            "previous")
         analyze(cfg, root, system_repouts)
+    matched_folder = dest / "matched_time_series"
+    if matched_folder.exists():
+        archive_output(matched_folder, Path(root) / ".archives/statistics/matched_time_series", "previous")
+    if bounds is not None:
+        matched_cfg = {**cfg, "statistics": {**cfg["statistics"], "scalar_window_ps": bounds}}
+        analyze_time_series(matched_cfg, root, system_repouts, output_name="matched_time_series")
     coverage_folder = dest / "coverage"
     if coverage_folder.exists():
         archive_output(coverage_folder, Path(root) / ".archives/statistics/coverage", "previous")

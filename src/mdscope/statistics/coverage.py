@@ -13,6 +13,8 @@ from ..config import atomic_parquet
 SOURCES = (
     ("time_series", "time_series", "replicate_statistics", "system_comparisons",
      ("group", "metric"), ("mean", "median")),
+    ("matched_time_series", "matched_time_series", "replicate_statistics", "system_comparisons",
+     ("group", "metric"), ("mean", "median")),
     ("profiles", "profiles", "replicate_profiles", "system_comparisons",
      ("profile", "position_label"), ("saved",)),
     ("interactions", "interactions", "replicate_interaction_metrics",
@@ -58,6 +60,8 @@ def write_contrast_coverage(dest: Path, systems, families):
     for family, folder, replica_file, contrast_file, keys, estimators in SOURCES:
         path = dest / folder / f"{contrast_file}.parquet"
         source = str(path.relative_to(dest))
+        if family not in families:
+            continue
         enabled = families[family] == "enabled"
         if enabled and path.is_file():
             contrasts = pd.read_parquet(path)

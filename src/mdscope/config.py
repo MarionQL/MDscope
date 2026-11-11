@@ -775,6 +775,12 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
             raise ValueError("solvation shell cutoffs must be positive and <= search radius")
 
     mechanisms = cfg["analyses"].get("sdc4_mechanisms", {})
+    surface_sites = mechanisms.get("residue_surface_sites", {})
+    if not isinstance(surface_sites, dict) or any(
+            not isinstance(name, str) or not name.strip()
+            or not isinstance(selection, str) or not selection.strip()
+            for name, selection in surface_sites.items()):
+        raise ValueError("sdc4_mechanisms.residue_surface_sites must map site names to selections")
     environment_run = mechanisms.get("environment_sasa_run")
     if mechanisms.get("enabled") and environment_run is not None:
         sasa_runs = {run.run_id: run.spec for run in analysis_runs(cfg, "sasa")}
@@ -855,6 +861,8 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
     if int(stats.get("interaction_progress_every", 1000)) < 1:
         raise ValueError("statistics.interaction_progress_every must be positive")
     _validate_time_window(stats.get("scalar_window_ps"), "statistics.scalar_window_ps")
+    if stats.get("matched_window_ps") != "auto":
+        _validate_time_window(stats.get("matched_window_ps"), "statistics.matched_window_ps")
     families = stats.get("families", {})
     if not isinstance(families, dict) or set(families) - {"time_series", "profiles", "interactions", "solvation_rdfs", "diffusion", "coupling"}:
         raise ValueError("statistics.families has unknown families or is not a mapping")

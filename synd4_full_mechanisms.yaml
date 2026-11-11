@@ -258,6 +258,8 @@ analyses:
     lipid_anchors: *lipid_anchors
     sasa_run: isolated
     environment_sasa_run: environment
+    residue_surface_sites:
+      PROA_S138: "protein and chainID PROA and resid 138 and name CA"
     allow_absent_species: true
     # Compare local bilayer surfaces using chemically equivalent P anchors.
     surface_anchor_species: [POPC, DPPC, POPE, POPI, POPS, PSM, DOPC]
@@ -476,6 +478,7 @@ analyses:
 
 statistics:
   interaction_min_occupancy: 0.20
+  matched_window_ps: auto
   enabled: true
   bootstrap_draws: 5000
   ci: 0.95

@@ -19,7 +19,7 @@ import time
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-from MDAnalysis.lib.distances import capped_distance, minimize_vectors, calc_dihedrals
+from MDAnalysis.lib.distances import capped_distance, minimize_vectors, calc_dihedrals, distance_array
 
 from ..config import DEFAULTS, atomic_json, atomic_parquet, ensure_dir, profile_dir, time_ps
 from ..core.lipid_geometry import anchor_groups, aligned_leaflets, periodic_center, accessible_area_grid
@@ -27,6 +27,22 @@ from .mechanistic_common import AA3, heavy, nearest, selected, sequence_matches,
 from ..observables.membrane_order import _candidate_sites, _fixed_ch_pairs, _atomic_npz
 from ..pipeline.progress import track
 from .hs_topology import discover_covalent_hs
+
+
+def _leaflet_plane_height(position, anchors, box, side, radius, minimum):
+    """Signed vertical distance to the local plane at the query's xy position."""
+    offsets = minimize_vectors(np.asarray(anchors) - position, box)
+    offsets = offsets[np.linalg.norm(offsets[:, :2], axis=1) <= radius]
+    if len(offsets) < minimum:
+        return np.nan
+    # Coordinates are relative to the query, so the intercept is the
+    # surface height at its xy position. Positive output points outward.
+    xy = offsets[:, :2]
+    if np.any(xy.min(axis=0) > 0) or np.any(xy.max(axis=0) < 0):
+        return np.nan
+    matrix = np.column_stack((xy, np.ones(len(offsets))))
+    coeff, _, rank, _ = np.linalg.lstsq(matrix, offsets[:, 2], rcond=None)
+    return float(-side * coeff[-1]) if rank == 3 else np.nan
 
 
 def _add_acidic_patch_sasa(frame, motifs, isolated_dir, environment_dir):
@@ -292,11 +308,20 @@ class SDC4Mechanisms:
         self.lipid_contact = heavy(selected(
             universe, s.get("lipid_contact_selection"), required=True
         ))
+        self.surface_sites = {}
+        for name, selection in (s.get("residue_surface_sites") or {}).items():
+            ca = selected(universe, selection, required=True)
+            if len(ca) != 1 or ca.names[0] != "CA":
+                raise ValueError(f"Residue surface site {name!r} must select one C-alpha")
+            label = _id(name)
+            if label in self.surface_sites:
+                raise ValueError(f"Duplicate normalized residue surface site {label!r}")
+            self.surface_sites[label] = ca, heavy(ca.residues.atoms)
         self.motif_lipid_residence_enabled = bool(s.get("motif_lipid_residence", False))
         self.lipid_molecule_by_atom = {}
         self.lipid_molecule_species = {}
         self.unmapped_lipid_fragment_count = 0
-        if self.motif_lipid_residence_enabled:
+        if self.motif_lipid_residence_enabled or self.surface_sites:
             # Bonded fragments are stable physical molecules in a TPR. Unlike
             # residue numbers they correctly group GM1/BGAL ceramide + sugars.
             try:
@@ -333,7 +358,7 @@ class SDC4Mechanisms:
                 for index in fragment.indices:
                     self.lipid_molecule_by_atom[int(index)] = identifier
             if not self.lipid_molecule_by_atom:
-                raise ValueError("No lipid molecules identified for motif residence")
+                raise ValueError("No lipid molecules identified for contact tracking")
         # Chemically defined moieties are explicit MDAnalysis selections.
         # Atom names alone do not reliably distinguish ceramide polar heads
         # and hydrocarbon tails across different force fields.
@@ -558,6 +583,25 @@ class SDC4Mechanisms:
         )[2]
         tm_z = float(midpoint[2])
         local = np.linalg.norm(dxy, axis=1) <= self.local_A
+        for name, (ca, atoms) in self.surface_sites.items():
+            position = ca.positions[0]
+            dz = _vector([position[0], position[1], mid_z], position, box)[2]
+            side = 1.0 if dz >= 0 else -1.0
+            leaflet = leaf if side > 0 else ~leaf
+            prefix = f"sdc4_surface_site_{name}_"
+            row[prefix + "leaflet_height_A"] = _leaflet_plane_height(
+                position, anchors[leaflet & self.surface_mask], box, side, self.local_A, self.min_lipids
+            )
+            # A site contains only one residue, so the exact matrix is small
+            # even for the full lipid selection. Resolve species by fragment.
+            distances = distance_array(atoms.positions, self.lipid_contact.positions, box=box)
+            nearest_atom = int(np.unravel_index(distances.argmin(), distances.shape)[1])
+            atom_index = int(self.lipid_contact.indices[nearest_atom])
+            molecule = self.lipid_molecule_by_atom.get(atom_index)
+            row[prefix + "nearest_lipid_distance_A"] = float(distances.min())
+            row[prefix + "nearest_lipid_atom_index"] = atom_index
+            row[prefix + "nearest_lipid_molecule_id"] = molecule
+            row[prefix + "nearest_lipid_species"] = self.lipid_molecule_species.get(molecule)
         upper_local = local & leaf & self.surface_mask
         lower_local = local & ~leaf & self.surface_mask
         for label, mask in (("upper", upper_local), ("lower", lower_local)):
@@ -1073,6 +1117,16 @@ class SDC4Mechanisms:
                     df = df.merge(values, on="time_ps", how="left",
                                   validate="one_to_one")
         out = ensure_dir(self.repout / "extensions" / "sdc4_mechanisms")
+        identities = [
+            col for col in df
+            if col.startswith("sdc4_surface_site_") and col.endswith(
+                ("_nearest_lipid_atom_index", "_nearest_lipid_molecule_id", "_nearest_lipid_species")
+            )
+        ]
+        if identities:
+            measures = [col for col in df if col.startswith("sdc4_surface_site_")]
+            atomic_parquet(out / "residue_surface_sites.parquet", df[["time_ps", *measures]])
+            df = df.drop(columns=identities)
         atomic_parquet(out / "timeseries.parquet", df)
         counts = np.zeros_like(self.map_counts)
         baselines = np.zeros_like(self.map_baselines)

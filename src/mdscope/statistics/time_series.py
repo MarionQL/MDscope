@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config, atomic_parquet, ensure_dir
+from ..interactions.interaction_tables import event_lifetimes
 from ..interactions import interaction_key_columns, interaction_tables, sample_dt
 from ..observables.membrane_order import temporal_membrane_order_profiles
 from ..observables.density_1d import temporal_density_profiles
@@ -28,8 +29,26 @@ LOCAL_GEOMETRY = {
 }
 
 
+def _hs_contact_observables(series, group_id):
+    """Derive occupancy and conditional counts even from older motif tables."""
+    for name in series.columns:
+        if not (name.startswith("sdc4_motif_") and name.endswith("_glycan_contacts")):
+            continue
+        count = pd.to_numeric(series[name], errors="coerce").where(lambda x: np.isfinite(x))
+        prefix = name.removesuffix("glycan_contacts")
+        yield (group_id, prefix + "hs_contacts_during_contact"), pd.DataFrame({
+            "time_ps": series.time_ps, "value": count.where(count.gt(0)),
+        })
+        if prefix + "hs_any_contact_state" not in series:
+            yield (group_id, prefix + "hs_any_contact_state"), pd.DataFrame({
+                "time_ps": series.time_ps, "value": count.gt(0).astype(float).where(count.notna()),
+            })
+
+
 def _has_conditional_support(metric):
     return metric in LOCAL_GEOMETRY or (
+        metric.startswith("sdc4_surface_site_") and metric.endswith("_leaflet_height_A")
+    ) or metric.endswith("_hs_contacts_during_contact") or (
         metric.startswith("sdc4_order_")
         and metric.endswith(("near_minus_SCH", "far_minus_SCH", "near_minus_far_SCH"))
     )
@@ -72,8 +91,10 @@ def collect_time_series(repout: Path) -> dict[tuple[str | None, str], pd.DataFra
         data = pd.read_parquet(path)
         groups = [(None, data)] if group_col is None else data.groupby(group_col, sort=False)
         for group_id, subset in groups:
+            out.update(_hs_contact_observables(subset, group_id))
             for metric in subset.columns:
-                if group_id is None and _has_conditional_support(metric):
+                if (group_id is None and _has_conditional_support(metric)
+                        and not metric.endswith("_hs_contacts_during_contact")):
                     available = pd.to_numeric(subset[metric], errors="coerce").map(np.isfinite)
                     out[(None, metric + "_available_fraction")] = pd.DataFrame({
                         "time_ps": subset.time_ps, "value": available.astype(float),
@@ -130,7 +151,9 @@ def collect_time_series(repout: Path) -> dict[tuple[str | None, str], pd.DataFra
     return out
 
 
-def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]) -> None:
+def analyze_time_series(
+    cfg: dict, root: Path, system_repouts: dict[str, list[Path]], *, output_name="time_series"
+) -> None:
     cfg = statistics_family_config(cfg, "time_series")
     if cfg is None:
         return
@@ -150,8 +173,8 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
         "bootstrap_mc_seed": seed,
         "bootstrap_mc_first_stage_draws": draws,
     } if adaptive else {})
-    outdir = ensure_dir(root / "project_summary" / "statistics" / "time_series")
-    rep_rows, acf_rows, cache = [], [], {}
+    outdir = ensure_dir(root / "project_summary" / "statistics" / output_name)
+    rep_rows, acf_rows, cache, hs_episodes = [], [], {}, []
     for system, reps in system_repouts.items():
         for repout in reps:
             local_rows, local_acf = [], []
@@ -164,6 +187,14 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
                 values = pd.to_numeric(table["value"], errors="coerce").to_numpy(float)
                 times = pd.to_numeric(table["time_ps"], errors="coerce").to_numpy(float)
                 valid = np.isfinite(values) & np.isfinite(times)
+                if (group is None and metric.startswith("sdc4_motif_") and "_hs_" in metric
+                        and metric.endswith("_contact_state") and window_covered
+                        and valid.all() and _regular_times(times) and np.isin(values, [0, 1]).all()):
+                    occupied = pd.DataFrame({"time_ps": times[values == 1], "observable": metric})
+                    gap_factor = cfg.get("analyses", {}).get("lifetimes", {}).get("gap_factor", 1.5)
+                    episodes = event_lifetimes(occupied, ["observable"], times, gap_factor)
+                    if not episodes.empty:
+                        hs_episodes.append(episodes.assign(system=system, replicate=repout.name))
                 temporal_valid = bool(window_covered and valid.all() and _regular_times(times))
                 conditional = window_covered and group is None and _has_conditional_support(metric) and not temporal_valid
                 if conditional:
@@ -239,7 +270,7 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
                          "lag_ps": lag * meta["sample_dt_ps"], "autocorrelation": float(value)}
                     acf_rows.append(a)
                     local_acf.append(a)
-            if local_rows:
+            if local_rows and output_name == "time_series":
                 atomic_parquet(
                     repout / "summary" / "time_series_statistics.parquet",
                     pd.DataFrame(local_rows)
@@ -251,6 +282,8 @@ def analyze_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Pa
     rep = pd.DataFrame(rep_rows)
     if rep.empty:
         return
+    if hs_episodes:
+        atomic_parquet(outdir / "hs_contact_episodes.parquet", pd.concat(hs_episodes, ignore_index=True))
     atomic_parquet(outdir / "replicate_statistics.parquet", rep)
     atomic_parquet(outdir / "autocorrelation.parquet", pd.DataFrame(acf_rows))
     sys_rows, sys_boot = [], {}

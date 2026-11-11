@@ -227,9 +227,13 @@ The coupling screen compares replicate Pearson coefficients over the
 shared regular frame grid. It keeps missing observations at their original
 times and excludes incomplete blocks. Its confidence interval describes
 the difference in mean replicate correlation and is exploratory.
-Use `statistics.scalar_window_ps: [start, stop]` for a second scalar
-statistics pass on an explicit common time window. Set both endpoints
-inside every replica's saved time range. For a matched trajectory-time MSD
+Set `statistics.matched_window_ps` to `auto` or explicit `[start, stop]`
+bounds to keep a second scalar statistics pass in
+`statistics/matched_time_series/`, alongside the default full-window
+tables. Explicit bounds must be inside every saved replica time range.
+The shared-state analysis compares full- and matched-window state
+populations using the same state assignments. Use
+`statistics.scalar_window_ps` to restrict the primary scalar pass itself. For a matched trajectory-time MSD
 estimate, set `analyses.membrane.msd.multi_origin_window_ps` to those
 bounds when generating the replica MSD curves. Fitted curves record their
 actual sampled start and end times.
@@ -239,6 +243,13 @@ phosphate distance profile alongside the composition-dependent nearest
 lipid profiles. It also writes distinct HS residue and chain contact
 counts, nonoverlapping near/far chain order by lipid species and leaflet,
 and isolated/environment acidic-patch SASA and acidic-oxygen SASA.
+The configured Ser138 site has signed C-alpha height relative to a fitted
+local phosphate plane and a separate exact nearest-lipid distance,
+species and topology-local molecule identifier. Configure additional sites
+with `analyses.sdc4_mechanisms.residue_surface_sites`. Height is available
+when enough nearby anchors constrain the fit. Scalar statistics derive HS
+occupancy and contact-conditional counts from the saved series and export
+censored HS contact episodes from complete, regularly sampled traces.
 The new trajectory observables require refreshed replicate products.
 To apply updated statistics to legacy results first, use the configuration
 that generated their existing replicate products.
