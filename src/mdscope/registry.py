@@ -17,7 +17,7 @@ from .observables.structure_profiles import run_structure_profiles
 from .interactions.hydrogen_bonds import run_hydrogen_bonds
 from .mechanisms.local_environment import run_local_environment
 from .mechanisms.potassium_bridge_audit import run_potassium_bridge_audit
-from .observables.lipid_enrichment import run_lipid_enrichment
+from .observables.lipid_enrichment import FOOTPRINT_OUTPUT, run_lipid_enrichment
 from .observables.bilayer_normal import run_bilayer_normal
 from .interactions.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
 
@@ -49,8 +49,7 @@ def specialized_tasks(cfg):
                     ("bilayer_normal",run_bilayer_normal),
                     ("lipid_hydrogen_bonds",run_lipid_hydrogen_bonds)):
         if cfg.get("analyses",{}).get(name,{}).get("enabled",False):
-            output=(f"extensions/{name}/timeseries.parquet"
-                    if name!="lipid_hydrogen_bonds" else None)
+            output = FUSED_OUTPUTS[name] if name != "lipid_hydrogen_bonds" else None
             yield AnalysisTask(name,fn,output)
 
 def additional_time_series(repout:Path,cfg):
@@ -77,7 +76,7 @@ FUSED_OUTPUTS = {
     "lipid_contacts": "extensions/lipid_contacts/timeseries.parquet",
     "membrane_order": "profiles/membrane_order/timeseries.parquet",
     "bilayer_normal": "extensions/bilayer_normal/timeseries.parquet",
-    "lipid_enrichment": "extensions/lipid_enrichment/timeseries.parquet",
+    "lipid_enrichment": f"{FOOTPRINT_OUTPUT}/timeseries.parquet",
     "hydrogen_bonds": "interactions/hydrogen_bonds/events.parquet",
     "lipid_hydrogen_bonds": "interactions/lipid_hydrogen_bonds/events.parquet",
     "dssp": "profiles/dssp/assignments.parquet",
@@ -169,7 +168,7 @@ def required_artifacts(entry: FusedOutput, cfg: dict) -> tuple[Path, ...]:
     directory, name = entry.path.parent, entry.name
     companions = {
         'lipid_contacts': ('matrix.parquet', 'selection_audit.json'),
-        'lipid_enrichment': ('counts.parquet', 'selection_audit.parquet'),
+        'lipid_enrichment': ('counts.parquet', 'selection_audit.parquet', 'reference.json'),
         'membrane_order': ('site_mapping.parquet', 'profile_index.parquet'),
         'hydrogen_bonds': ('count_timeseries.parquet',),
         'lipid_hydrogen_bonds': ('count_timeseries.parquet', 'molecule_audit.parquet'),
@@ -187,8 +186,6 @@ def required_artifacts(entry: FusedOutput, cfg: dict) -> tuple[Path, ...]:
     }.get(name, ())
     paths = [entry.path, *(directory / filename for filename in companions)]
     spec = cfg['analyses'].get(name, {})
-    if name == 'lipid_enrichment' and spec.get('area_reference'):
-        paths.append(directory/'area_reference.json')
     if name == 'sasa':
         spec = next(run.spec for run in analysis_runs(cfg, name)
                     if run.run_id == (entry.run_id or 'default'))

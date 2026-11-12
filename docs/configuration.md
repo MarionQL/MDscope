@@ -48,6 +48,32 @@ The shared trajectory pass remains the execution engine. Every independently
 configured instance needs its own output identity and verifiable completion
 state. Existing algorithms, PBC rules and coordinate spaces must be preserved.
 
+### Membrane-relative density runs
+
+Set `membrane_center_selection` on a named `density_1d` run to register
+each frame to the midpoint of two lipid leaflets. Choose one anchor atom
+per lipid from a shared chemical group, such as phospholipid phosphate.
+Set `half_width_A` to a positive multiple of `bin_width_A` that fits
+within half the periodic length along `axis` for every sampled frame.
+Keep `center_selection` unset for this reference.
+
+```yaml
+analyses:
+  density_1d:
+    enabled: true
+    axis: z
+    bin_width_A: 1.0
+    selections:
+      water: "resname TIP3 and name OH2"
+    runs:
+      membrane_relative:
+        membrane_center_selection: "resname POPC DPPC POPE POPI POPS PSM DOPC and name P"
+        half_width_A: 100.0
+```
+
+The run saves its reference and frame count alongside its profiles.
+Use a new run ID for a different reference or target selection.
+
 ### SASA: named targets and environments
 
 SASA supports named runs that all share the existing trajectory pass.

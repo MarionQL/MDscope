@@ -22,12 +22,12 @@ import pandas as pd
 from MDAnalysis.lib.distances import capped_distance, minimize_vectors, calc_dihedrals, distance_array
 
 from ..config import DEFAULTS, atomic_json, atomic_parquet, ensure_dir, profile_dir, time_ps
-from ..core.lipid_geometry import anchor_groups, aligned_leaflets, periodic_center, accessible_area_grid
+from ..core.lipid_geometry import anchor_groups, aligned_leaflets, periodic_center, accessible_area_grid, circular_axis_mean
 from .mechanistic_common import AA3, heavy, nearest, selected, sequence_matches, unit
 from ..observables.membrane_order import _candidate_sites, _fixed_ch_pairs, _atomic_npz
 from ..pipeline.progress import track
 from .hs_topology import discover_covalent_hs
-from .residue_occlusion import OCCLUSION_FILE, ResidueOcclusion
+from .residue_occlusion import OCCLUSION_FILE, ResidueOcclusion, residue_environment_pending
 
 
 def _leaflet_plane_height(position, anchors, box, side, radius, minimum):
@@ -168,12 +168,6 @@ def _contacts(a, b, cutoff, box):
         a.positions, b.positions, max_cutoff=float(cutoff),
         box=box, return_distances=False,
     )
-
-
-def _zmean(z, length):
-    theta = np.asarray(z, float) * (2. * np.pi / length)
-    return (np.arctan2(np.sin(theta).mean(), np.cos(theta).mean())
-            * length / (2. * np.pi)) % length
 
 
 def _local_surface(xy, z, minimum=8):
@@ -401,6 +395,10 @@ class SDC4Mechanisms:
             universe, s.get("protein_selection") or cfg["selections"]["protein"],
             required=True,
         ))
+        self.water = selected(
+            universe, s.get("water_oxygen_selection"),
+            required=bool(self.hs) or s.get("residue_water_cutoff_A") is not None,
+        )
         self.residue_occlusion = None
         if s.get("residue_occlusion", False):
             hs_atoms = self.u.atoms[np.unique(np.concatenate([
@@ -408,8 +406,8 @@ class SDC4Mechanisms:
             ]))] if self.hs else self.u.atoms[[]]
             self.residue_occlusion = ResidueOcclusion(
                 self.protein, hs_atoms, self.lipid_contact, s.get("contact_cutoff_A", 5.),
+                self.water, s.get("residue_water_cutoff_A"),
             )
-        self.water = selected(universe, s.get("water_oxygen_selection"), required=bool(self.hs))
         self.ions = { _id(k): selected(universe, v, required=True)
                       for k, v in (s.get("ion_selections") or {}).items() }
         self.motifs = {}
@@ -587,8 +585,8 @@ class SDC4Mechanisms:
             self.map_baselines[j] += int(mask.sum()) / area_A2
         self.map_frames += 1
         row = {"time_ps": t, "sdc4_lipid_leaflet_changes": changed}
-        upper_z = _zmean(anchors[leaf & self.surface_mask, 2], box[2])
-        lower_z = _zmean(anchors[~leaf & self.surface_mask, 2], box[2])
+        upper_z = circular_axis_mean(anchors[leaf & self.surface_mask, 2], box[2])
+        lower_z = circular_axis_mean(anchors[~leaf & self.surface_mask, 2], box[2])
         mid_z = lower_z + .5 * _vector(
             [0., 0., lower_z], [0., 0., upper_z], box
         )[2]
@@ -1101,7 +1099,10 @@ class SDC4Mechanisms:
             expected_residues = np.tile(self.residue_occlusion.resindices, len(df))
             if (not np.array_equal(occlusion["time_ps"].to_numpy(), expected_times)
                     or not np.array_equal(occlusion["topology_residue_index"], expected_residues)
-                    or not occlusion["contact_cutoff_A"].eq(self.residue_occlusion.cutoff).all()):
+                    or not occlusion["contact_cutoff_A"].eq(self.residue_occlusion.cutoff).all()
+                    or (self.residue_occlusion.water_cutoff is not None
+                        and ("water_cutoff_A" not in occlusion
+                             or not occlusion["water_cutoff_A"].eq(self.residue_occlusion.water_cutoff).all()))):
                 raise ValueError("Residue occlusion chunks disagree on frames, residues or cutoff")
             atomic_parquet(self.repout / "extensions/sdc4_mechanisms" / OCCLUSION_FILE, occlusion)
         # Optional direct motif SASA endpoint, using the *existing*
@@ -1304,11 +1305,11 @@ def complete_residue_occlusion(rep, cfg, repout):
         raise ValueError("Residue occlusion requires an enabled sdc4_mechanisms configuration")
     out = Path(repout) / "extensions/sdc4_mechanisms"
     path = out / OCCLUSION_FILE
-    if path.exists():
-        raise FileExistsError(f"Residue occlusion already exists: {path}")
+    spec = cfg["analyses"]["sdc4_mechanisms"]
+    if not residue_environment_pending(path, spec):
+        raise FileExistsError(f"Residue environment already exists: {path}")
+    existing = pd.read_parquet(path) if path.exists() else None
     expected = pd.read_parquet(out / "timeseries.parquet", columns=["time_ps"])["time_ps"]
-    spec = {**cfg["analyses"]["sdc4_mechanisms"], "residue_occlusion": True}
-    cfg = {**cfg, "analyses": {**cfg["analyses"], "sdc4_mechanisms": spec}}
     u = mda.Universe(str(rep.topology), str(rep.trajectory))
     tr = cfg["trajectory"]
     frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr["stride"]))]
@@ -1317,12 +1318,23 @@ def complete_residue_occlusion(rep, cfg, repout):
     frames[0]
     observer = SDC4Mechanisms(u, cfg, repout).residue_occlusion
     fractions = []
+    collect = observer.frame if existing is None else observer.water_frame
     for index, ts in enumerate(track(
         frames, total=len(frames), desc=f"{rep.system}/{rep.label}: residue occlusion",
         enabled=cfg.get("progress", {}).get("enabled", True),
     )):
         if time_ps(ts, index, cfg) != expected.iat[index]:
             raise ValueError("Trajectory times do not match the saved SDC4 timeseries")
-        fractions.append(observer.frame(_box(u)))
-    atomic_parquet(path, observer.table(expected, fractions))
+        fractions.append(collect(_box(u)))
+    if existing is None:
+        existing = observer.table(expected, fractions)
+    else:
+        residues = len(observer.resindices)
+        if (not np.array_equal(existing["time_ps"], np.repeat(expected, residues))
+                or not np.array_equal(existing["topology_residue_index"],
+                                      np.tile(observer.resindices, len(expected)))
+                or not existing["contact_cutoff_A"].eq(observer.cutoff).all()):
+            raise ValueError("Saved residue occlusion has a different frame grid, residue selection or cutoff")
+        observer.add_water(existing, np.concatenate(fractions))
+    atomic_parquet(path, existing)
     return path

@@ -54,6 +54,11 @@ def validate_selections(cfg, base=Path("."), *, systems=None, emit=None):
         if cfg["analyses"].get("sasa", {}).get("enabled", False):
             sasa_instances(universe, cfg, validate_only=True)
         for run in analysis_runs(cfg, "density_1d"):
+            reference = run.spec.get("membrane_center_selection")
+            if reference:
+                atoms = universe.select_atoms(reference)
+                if len(atoms) < 4 or len(atoms) != len(atoms.residues):
+                    raise ValueError(f"{system}: membrane density needs at least four single-atom lipid anchors")
             for label, selection in (run.spec.get("selections") or {}).items():
                 selection = selection if isinstance(selection, str) else selection["selection"]
                 if not len(universe.select_atoms(selection)):
@@ -136,7 +141,7 @@ def validate_selections(cfg, base=Path("."), *, systems=None, emit=None):
                 raise ValueError(f"{system}: {kind} requires >=4 lipid anchors")
             if kind=="lipid_enrichment":
                 protein=universe.select_atoms(str(
-                    extension.get("protein_selection") or cfg["selections"]["protein"]))
+                    extension["footprint_selection"]))
                 if not len(protein):
                     raise ValueError(f"{system}: lipid enrichment protein selection matched no atoms")
         hb=cfg.get("analyses",{}).get("lipid_hydrogen_bonds",{})

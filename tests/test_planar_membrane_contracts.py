@@ -41,6 +41,8 @@ def test_shared_observers_inplane_skew_and_periodic_crossing(tmp_path, gamma):
     for wrap in (False, True):
         u, cfg = _universe(), _cfg()
         u.add_TopologyAttr('bonds', [])
+        if gamma != 90.:
+            cfg['analyses']['lipid_enrichment']['enabled'] = False
         cfg['analyses']['lipid_contacts'] = dict(enabled=True, selection='resname POPC',
             species_selections={'POPC':'name P'}, cutoff_A=16.)
         cfg['analyses']['solvation'] = dict(enabled=True, water_selection='resname POPC',
@@ -66,8 +68,11 @@ def test_shared_observers_inplane_skew_and_periodic_crossing(tmp_path, gamma):
         observer.finalize(); solvent.finalize()
         np.testing.assert_array_equal(u.trajectory.coordinate_array, before)
         roots.append(root)
-    for relative in ('bilayer_normal/timeseries.parquet', 'lipid_enrichment/counts.parquet',
-                     'lipid_contacts/matrix.parquet', 'solvation/counts.parquet', 'solvation/rdf.parquet'):
+    paths = ['bilayer_normal/timeseries.parquet', 'lipid_contacts/matrix.parquet',
+             'solvation/counts.parquet', 'solvation/rdf.parquet']
+    if gamma == 90.:
+        paths.append('lipid_footprint/counts.parquet')
+    for relative in paths:
         left, right = [pd.read_parquet(root/'extensions'/relative) for root in roots]
         pd.testing.assert_frame_equal(left, right, check_exact=False, atol=1e-4, rtol=1e-5)
     matrix = pd.read_parquet(roots[0]/'extensions/lipid_contacts/matrix.parquet')
@@ -156,6 +161,7 @@ def test_msd_keeps_initial_cohorts_under_independent_lattice_wraps(tmp_path, gam
     # first frame. Subsequent image choices must not change their MSD.
     u.trajectory.coordinate_array[1:] += (((np.arange(30).reshape(10,3) % 3)-1) @ lattice)[None]
     u.trajectory[0]
+    cfg['analyses']['lipid_enrichment']['enabled'] = False
     cfg['analyses']['membrane'] = dict(enabled=True, headgroup_selection='name P',
         area_per_lipid={'enabled':False}, thickness={'enabled':False}, msd={'enabled':True})
     state = initialize_membrane(u, cfg)

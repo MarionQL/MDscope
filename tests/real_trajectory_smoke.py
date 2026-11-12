@@ -131,8 +131,8 @@ def build_config(system: str, topology: Path, trajectory: Path, species: dict) -
             },
             "lipid_enrichment": {
                 "enabled": True, "axis": "z", "species_selections": species,
-                "protein_selection": "protein and name CA",
-                "inner_radius_A": 0.0, "outer_radius_A": 25.0,
+                "footprint_selection": "protein and (resid 146:174 or resid 416:444)",
+                "shell_edges_A": [0, 5, 10, 20],
             },
             "lipid_hydrogen_bonds": {
                 "enabled": True, "lipid_selection": lipid_sel,
@@ -168,8 +168,8 @@ def check_outputs(system: str):
         "streaming": rep / "summary" / "timeseries.parquet",
         "order": rep / "profiles" / "membrane_order" / "timeseries.parquet",
         "normal": rep / "extensions" / "bilayer_normal" / "timeseries.parquet",
-        "enrichment": rep / "extensions" / "lipid_enrichment" / "timeseries.parquet",
-        "enrichment_counts": rep / "extensions" / "lipid_enrichment" / "counts.parquet",
+        "enrichment": rep / "extensions" / "lipid_footprint" / "timeseries.parquet",
+        "enrichment_counts": rep / "extensions" / "lipid_footprint" / "counts.parquet",
         "lipid_hbonds": rep / "interactions" / "lipid_hydrogen_bonds" / "count_timeseries.parquet",
     }
     result = {}
@@ -215,7 +215,7 @@ def compare_fused_to_independent(system, config, topology, trajectory):
     for name, fn, path in (
         ("membrane_order", run_membrane_order, "profiles/membrane_order"),
         ("bilayer_normal", run_bilayer_normal, "extensions/bilayer_normal"),
-        ("lipid_enrichment", run_lipid_enrichment, "extensions/lipid_enrichment"),
+        ("lipid_enrichment", run_lipid_enrichment, "extensions/lipid_footprint"),
     ):
         fn(rep, cfg, independent)
         left = fused / path

@@ -47,6 +47,8 @@ def _hs_contact_observables(series, group_id):
 
 def _has_conditional_support(metric):
     return metric in LOCAL_GEOMETRY or (
+        metric.startswith("lipid_footprint_") and metric.endswith("_fold")
+    ) or (
         metric.startswith("sdc4_surface_site_") and metric.endswith("_leaflet_height_A")
     ) or metric.endswith("_hs_contacts_during_contact") or (
         metric.startswith("sdc4_order_")

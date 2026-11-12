@@ -200,11 +200,12 @@ def test_residue_occlusion_counts_target_atoms_and_periodic_partners():
     np.testing.assert_array_equal(frame[4], [1., 1., 0., 1.])
 
 
-def test_backfill_matches_fused_occlusion_and_feeds_profile_statistics(tmp_path, monkeypatch):
+def test_completion_matches_fused_occlusion_and_feeds_profile_statistics(tmp_path, monkeypatch):
     from mdscope.mechanisms import sdc4_mechanisms as mechanisms
 
     repout = tmp_path / "legacy"
     cfg = _run(repout)
+    cfg["analyses"]["sdc4_mechanisms"]["residue_occlusion"] = True
     _run(tmp_path / "fused", occlusion=True)
     folder = repout / "extensions/sdc4_mechanisms"
     timeseries = folder / "timeseries.parquet"
@@ -220,7 +221,7 @@ def test_backfill_matches_fused_occlusion_and_feeds_profile_statistics(tmp_path,
     fused = tmp_path / "fused/extensions/sdc4_mechanisms" / path.name
     pd.testing.assert_frame_equal(pd.read_parquet(path), pd.read_parquet(fused))
     assert timeseries.read_bytes() == original
-    # Read through the collector used by profile statistics with an old config.
+    # Read through the collector used by profile statistics with the enabled config.
     cfg["analyses"]["rmsf"] = {"enabled": False}
     profiles = collect_temporal_profiles(repout, cfg)
     assert set(profiles) == {f"residue_occlusion__{key}" for key in ("protein", "hs", "lipid", "any")}
@@ -623,3 +624,66 @@ def test_hs_shape_has_independent_linear_chain_reference(tmp_path):
     np.testing.assert_allclose(data.sdc4_hs_A1_radius_of_gyration_A,2.5)
     np.testing.assert_allclose(data.sdc4_hs_A1_shape_anisotropy,1.)
     np.testing.assert_allclose(data.sdc4_hs_A1_vertical_span_A,5.)
+
+
+def test_residue_water_counts_unique_oxygen_and_bootstraps_conditioned_frames():
+    from mdscope.statistics.profiles import _prepare_profile
+
+    u = mda.Universe.empty(6, n_residues=5, atom_resindex=[0, 0, 1, 2, 3, 4], trajectory=True)
+    u.add_TopologyAttr("names", ["N", "O", "CA", "OH2", "OH2", "OH2"])
+    u.add_TopologyAttr("resnames", ["ALA", "ALA", "TIP3", "TIP3", "TIP3"])
+    u.add_TopologyAttr("resids", [1, 2, 3, 4, 5])
+    u.add_TopologyAttr("chainIDs", ["A", "A", "A", "W", "W", "W"])
+    u.atoms.positions = [[1, 0, 0], [1, 1, 0], [25, 0, 0], [99, 0, 0], [4, 0, 0], [25, 0, 0]]
+    box = [100., 100., 100., 90., 90., 90.]
+    observer = ResidueOcclusion(u.atoms[:3], u.atoms[[]], u.atoms[[]], 5., u.atoms[3:], 3.5)
+    frame = observer.frame(box)
+    table = observer.table([0.], [frame])
+    np.testing.assert_array_equal(table["polar_atom_count"], [2, 0])
+    np.testing.assert_array_equal(table["water_count"], [2, 0])
+
+    values = np.full((24, 3), np.nan)
+    values[::2, 0] = 2.
+    values[3, 1] = 4.
+    result = _prepare_profile(
+        {"times": np.arange(24.), "values": values, "positions": np.arange(3.),
+         "labels": ["a", "b", "c"], "conditional": True},
+        {"statistics": {"block": {"length": 2}}}, 32, np.random.default_rng(7),
+    )
+    np.testing.assert_array_equal(result["point"], [2., 4., np.nan])
+    np.testing.assert_array_equal(result["temporal_valid"], [True, False, False])
+    np.testing.assert_array_equal(result["draws"][:, 0], 2.)
+
+
+def test_completed_occlusion_reuses_contact_fractions_for_hydration(tmp_path, monkeypatch):
+    from mdscope.mechanisms import sdc4_mechanisms as mechanisms
+
+    def topology():
+        u = _synthetic()
+        u.atoms[4].name = "N"
+        return u
+
+    cfg = _cfg()
+    cfg["analyses"]["sdc4_mechanisms"]["residue_occlusion"] = True
+    u = topology()
+    observer = SDC4Mechanisms(u, cfg, tmp_path)
+    for index, frame in enumerate(u.trajectory):
+        observer.update(frame, index)
+    observer.flush(0)
+    observer.finalize()
+    original = pd.read_parquet(tmp_path / "extensions/sdc4_mechanisms/residue_occlusion.parquet")
+    cfg["analyses"]["sdc4_mechanisms"]["residue_water_cutoff_A"] = 3.5
+    monkeypatch.setattr(mechanisms, "mda", SimpleNamespace(Universe=lambda *args: topology()))
+
+    def forbidden(*args):
+        raise AssertionError("hydration replay recalculated contact fractions")
+
+    monkeypatch.setattr(ResidueOcclusion, "frame", forbidden)
+    rep = SimpleNamespace(system="test", label="rep1", topology="top", trajectory="traj")
+    path = mechanisms.complete_residue_occlusion(rep, cfg, tmp_path)
+    enriched = pd.read_parquet(path)
+    pd.testing.assert_frame_equal(enriched[original.columns], original)
+    assert enriched.polar_atom_count.sum() == 4
+    profiles = collect_temporal_profiles(tmp_path, cfg)
+    assert profiles["residue_water_coordination__all"]["values"].shape == (4, 1)
+    assert profiles["residue_water_coordination__during_hs"]["conditional"]

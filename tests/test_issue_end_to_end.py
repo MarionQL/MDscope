@@ -38,8 +38,8 @@ def test_lipid_analyses_real_small_trajectory(tmp_path):
          "time":{"dt_ps":None},
          "analyses":{
              "lipid_enrichment":{"species_selections":selections,"axis":"z",
-                "protein_selection":"resname ALA and name CA",
-                "inner_radius_A":0.,"outer_radius_A":9.},
+                "footprint_selection":"resname ALA and name CA",
+                "shell_edges_A":[0, 9], "slab_half_width_A":12., "exclusion_radius_A":2.},
              "bilayer_normal":{"species_selections":selections,"axis":"z",
                 "neighbor_radius_A":10.,"min_neighbors":3}}}
     rep=Replicate("test",1,pdb,dcd,"rep1")
@@ -47,10 +47,10 @@ def test_lipid_analyses_real_small_trajectory(tmp_path):
     a=run_lipid_enrichment(rep,cfg,out)
     b=run_bilayer_normal(rep,cfg,out)
     assert a["frames"]==5 and b["frames"]==5
-    e=pd.read_parquet(out/"extensions/lipid_enrichment/timeseries.parquet")
+    e=pd.read_parquet(out/"extensions/lipid_footprint/timeseries.parquet")
     n=pd.read_parquet(out/"extensions/bilayer_normal/timeseries.parquet")
     assert len(e)==len(n)==5
-    assert "lipid_enrichment_POPC_upper_fold" in e.columns
+    assert "lipid_footprint_POPC_upper_0_9A_fold" in e.columns
     assert np.all(np.isfinite(n["bilayer_normal_valid_fraction"]))
     assert (out/"extensions/bilayer_normal/timeseries.parquet").exists()
 

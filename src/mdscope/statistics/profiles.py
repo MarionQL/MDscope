@@ -58,6 +58,38 @@ def _rmsf_profile(
     return residue_rmsf, labels, residx
 
 
+def _conditional_profile(values, times, cfg, draws, rng):
+    """Bootstrap conditional means on the full sampled frame grid."""
+    present = np.isfinite(values)
+    n_present = present.sum(axis=0)
+    numerators = np.where(present, values, 0.)
+    point = np.divide(numerators.sum(axis=0), n_present,
+                      out=np.full(values.shape[1], np.nan), where=n_present > 0)
+    centered = np.where(present, values - point, 0.)
+    meta = _temporal(present.mean(axis=1), times, cfg)
+    # Use the longest supported block of either contact occurrence or
+    # centered water counts across eligible residues.
+    block = meta["block_length_frames"]
+    if cfg["statistics"].get("block", {}).get("length", "auto") == "auto":
+        for column in np.flatnonzero(n_present >= 2):
+            for signal in (present[:, column], centered[:, column]):
+                candidate = _temporal(signal, times, cfg)
+                if candidate["block_length_frames"] > block:
+                    meta, block = candidate, candidate["block_length_frames"]
+    support = np.logical_or.reduceat(present, np.arange(0, len(times), block), axis=0).sum(axis=0) >= 2
+    valid = support & _regular_times(times)
+    boot = np.full((draws, values.shape[1]), np.nan)
+    if draws and valid.any():
+        weights = _block_weights(len(times), block, draws, rng).astype(float)
+        counts = weights @ present[:, valid].astype(float)
+        sums = weights @ numerators[:, valid]
+        columns = np.flatnonzero(valid)
+        complete = (counts > 0).all(axis=0)
+        boot[:, columns[complete]] = sums[:, complete] / counts[:, complete]
+        valid[columns[~complete]] = False
+    return point, boot, meta, valid
+
+
 def _prepare_profile(spec: dict, cfg: dict, draws: int, rng: np.random.Generator) -> dict:
     times = np.asarray(spec["times"], float)
     regular = _regular_times(times)
@@ -65,6 +97,11 @@ def _prepare_profile(spec: dict, cfg: dict, draws: int, rng: np.random.Generator
         values = np.asarray(spec["values"], float)
         if values.ndim != 2 or len(values) != len(times):
             raise ValueError("Profile values must have one row per time sample")
+        if spec.get("conditional"):
+            point, boot, meta, valid = _conditional_profile(values, times, cfg, draws, rng)
+            return {"positions": np.asarray(spec["positions"], float),
+                    "labels": np.asarray(spec["labels"], str), "point": point, "draws": boot,
+                    "temporal": meta, "temporal_valid": valid}
         reducer = str(spec.get("reducer", "mean"))
         complete = np.all(np.isfinite(values), axis=0)
         if not complete.all() and np.isinf(values).any():
@@ -389,12 +426,13 @@ def analyze_profiles(
             low, high = (np.nanquantile(delta, [alpha, 1 - alpha], axis=0)
                          if len(delta) else np.full((2, len(common_labels)), np.nan))
 
+            label_maps = {key: _profile_label_map(item) for key, item in prepared.items()}
             for index, label in enumerate(common_labels):
                 position = float(sys_1["positions"][idx_1[index]])
                 amap = {}
                 bmap = {}
                 for (system, replicate), item in prepared.items():
-                    label_map = _profile_label_map(item)
+                    label_map = label_maps[system, replicate]
                     if label not in label_map:
                         continue
                     value = float(item["point"][label_map[label]])

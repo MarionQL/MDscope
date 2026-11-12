@@ -1,10 +1,13 @@
 """Frame-wise 1D mass/number density with profile cache and resumable accumulators."""
 from __future__ import annotations
 from dataclasses import dataclass,field
+import json
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from ..config import DEFAULT_INSTANCE_ID, analysis_groups, analysis_runs, atomic_parquet, ensure_dir, group_label, profile_dir
+from ..config import DEFAULT_INSTANCE_ID, analysis_groups, analysis_runs, atomic_json, atomic_parquet, ensure_dir, group_label, profile_dir
+from ..core.lipid_geometry import bilayer_midplane, planar_box
+
 AXIS_INDEX={"x":0,"y":1,"z":2}
 @dataclass
 class DensityTarget:
@@ -26,6 +29,43 @@ def _center_coordinate(atoms, axis_index: int) -> float:
     if not np.all(np.isfinite(center)):
         center = atoms.center_of_geometry()
     return float(center[axis_index])
+
+
+def _membrane_reference(spec):
+    return {
+        "coordinate_reference": "phosphate_leaflet_midplane",
+        "selection": spec["membrane_center_selection"],
+        "axis": str(spec.get("axis", "z")).lower(),
+        "bin_width_A": float(spec.get("bin_width_A", 1.0)),
+        "half_width_A": float(spec["half_width_A"]),
+    }
+
+
+def missing_membrane_density_runs(repout, cfg):
+    """Find density runs that need a trajectory pass without reusing box bins."""
+    missing = []
+    for run in analysis_runs(cfg, "density_1d"):
+        if not run.spec.get("membrane_center_selection"):
+            continue
+        directory = profile_dir(repout, "density_1d", run.run_id)
+        marker = directory / "reference.json"
+        if not marker.is_file():
+            missing.append(run)
+            continue
+        saved = json.loads(marker.read_text())
+        if (saved["reference"] != _membrane_reference(run.spec)
+                or saved["selections"] != run.spec["selections"]):
+            raise ValueError(f"{directory}: density reference differs from configuration; use a new run ID")
+        frame_directory = saved["frame_directory"]
+        if frame_directory not in {"frames", "replayed_frames"}:
+            raise ValueError(f"{directory}: invalid membrane density frame directory")
+        if not saved["targets"] or any(
+            not (directory / f"{target}.parquet").is_file()
+            or not any((directory / frame_directory).glob(f"{target}__part-*.npz"))
+            for target in saved["targets"]
+        ):
+            raise ValueError(f"{directory}: incomplete membrane-relative density output")
+    return missing
 
 
 class DensityProfileAccumulator:
@@ -62,11 +102,23 @@ class DensityProfileAccumulator:
                 "density_1d.center_selection matched zero atoms: "
                 f"{spec['center_selection']}"
             )
+        self.membrane_reference = None
+        if spec.get("membrane_center_selection"):
+            self.membrane_reference = _membrane_reference(spec)
+            self.membrane_selections = spec["selections"]
+            self.phosphates = universe.select_atoms(spec["membrane_center_selection"])
+            if len(self.phosphates) < 4 or len(self.phosphates) != len(self.phosphates.residues):
+                raise ValueError("Membrane density requires one anchor per lipid and at least four anchors")
         length = float(universe.dimensions[self.ai]) if universe.dimensions is not None else 0.0
         if length <= 0:
             raise ValueError("density_1d requires valid periodic box dimensions")
-        nbins = max(1, int(np.ceil(length / self.bin_width)))
-        self.edges = np.linspace(-length / 2.0, length / 2.0, nbins + 1)
+        if self.membrane_reference is None:
+            nbins = max(1, int(np.ceil(length / self.bin_width)))
+            self.edges = np.linspace(-length / 2.0, length / 2.0, nbins + 1)
+        else:
+            half_bins = round(self.membrane_reference["half_width_A"] / self.bin_width)
+            self.edges = self.bin_width * np.arange(-half_bins, half_bins + 1)
+            nbins = len(self.edges) - 1
         self.centers = 0.5 * (self.edges[:-1] + self.edges[1:])
         self.targets: list[DensityTarget] = []
         for key, raw in (spec.get("selections", {}) or {}).items():
@@ -105,11 +157,14 @@ class DensityProfileAccumulator:
         dims = np.asarray(universe.dimensions[:3], float)
         if length <= 0 or np.any(dims <= 0):
             return
-        origin = (
-            _center_coordinate(self.center_atoms, self.ai)
-            if self.center_atoms is not None
-            else length / 2.0
-        )
+        if self.membrane_reference is not None:
+            planar_box(universe.dimensions, self.ai)
+            if self.edges[-1] > length / 2:
+                raise ValueError("Membrane density half_width_A exceeds half the current box length")
+            origin = bilayer_midplane(self.phosphates.positions[:, self.ai], length)
+        else:
+            origin = (_center_coordinate(self.center_atoms, self.ai)
+                      if self.center_atoms is not None else length / 2.0)
         cross_area = float(getattr(universe.trajectory.ts, "volume", np.prod(dims))) / length
         volume = cross_area * np.diff(self.edges)
         if tps is not None:
@@ -161,6 +216,8 @@ class DensityProfileAccumulator:
             return {}
         prefix = f"density_{self.run_id}_"
         out = {prefix + "edges": self.edges}
+        if self.membrane_reference is not None:
+            out[prefix + "reference"] = np.asarray(json.dumps(self.membrane_reference, sort_keys=True))
         for i, target in enumerate(self.targets):
             out[f"{prefix}{i}_counts"] = target.counts
             out[f"{prefix}{i}_sum"] = target.density_sum
@@ -179,6 +236,10 @@ class DensityProfileAccumulator:
                 f"density_1d[{self.run_id}] checkpoint bins do not match "
                 "configuration"
             )
+        if self.membrane_reference is not None:
+            key = prefix + "reference"
+            if key not in checkpoint or json.loads(str(checkpoint[key].item())) != self.membrane_reference:
+                raise ValueError(f"density_1d[{self.run_id}] checkpoint reference differs")
         for i, target in enumerate(self.targets):
             for suffix in ("counts", "sum", "frames"):
                 if f"{prefix}{i}_{suffix}" not in checkpoint:
@@ -190,7 +251,7 @@ class DensityProfileAccumulator:
             target.density_sum = np.asarray(checkpoint[f"{prefix}{i}_sum"], float)
             target.frames = int(checkpoint[f"{prefix}{i}_frames"])
 
-    def finalize(self, repout: Path):
+    def finalize(self, repout: Path, *, replay=False):
         if not self.enabled:
             return
         out = ensure_dir(profile_dir(repout, "density_1d", self.run_id))
@@ -205,6 +266,17 @@ class DensityProfileAccumulator:
                 "density_unit": "1/A^3" if target.mode == "number" else "amu/A^3",
                 "n_frames": target.frames,
             }))
+        if self.membrane_reference is not None:
+            frame_directory = "replayed_frames" if replay else "frames"
+            if replay:
+                (out / "frames").rename(out / frame_directory)
+            atomic_json(out / "reference.json", {
+                "frame_directory": frame_directory,
+                "reference": self.membrane_reference,
+                "selections": self.membrane_selections,
+                "frames": self.targets[0].frames,
+                "targets": [target.key for target in self.targets],
+            })
 
 
 def temporal_density_profiles(repout: Path, cfg: dict) -> dict[str, dict]:
@@ -213,21 +285,44 @@ def temporal_density_profiles(repout: Path, cfg: dict) -> dict[str, dict]:
     bootstrap statistics.
     """
     out = {}
+    missing = missing_membrane_density_runs(repout, cfg)
+    if missing:
+        raise ValueError(f"{repout}: missing membrane-relative density; run MDscope with this config")
     for run in analysis_runs(cfg, "density_1d"):
-        directory = profile_dir(repout, "density_1d", run.run_id) / "frames"
+        directory = profile_dir(repout, "density_1d", run.run_id)
+        relative = run.spec.get("membrane_center_selection")
+        recorded = json.loads((directory / "reference.json").read_text()) if relative else None
+        directory = directory / (recorded["frame_directory"] if recorded else "frames")
         if not directory.exists():
             continue
         keys = sorted({path.name.split(
             "__part-",
             1
         )[0] for path in directory.glob("*__part-*.npz")})
+        if recorded is not None and set(keys) != set(recorded["targets"]):
+            raise ValueError(f"{directory}: membrane density frame targets differ from saved reference")
+        common_times = None
         for key in keys:
-            parts = [np.load(path) for path in sorted(directory.glob(f"{key}__part-*.npz"))]
-            if not parts:
-                continue
-            times = np.concatenate([part["time_ps"] for part in parts]).astype(float)
-            values = np.concatenate([part["density"] for part in parts]).astype(float)
-            positions = np.asarray(parts[0]["positions_A"], float)
+            chunks = sorted(directory.glob(f"{key}__part-*.npz"))
+            time_chunks, density_chunks = [], []
+            positions = None
+            for path in chunks:
+                with np.load(path) as part:
+                    current = np.asarray(part["positions_A"], float)
+                    if positions is None:
+                        positions = current
+                    elif not np.array_equal(positions, current):
+                        raise ValueError(f"{path}: density grid changes between chunks")
+                    time_chunks.append(part["time_ps"])
+                    density_chunks.append(part["density"])
+            times = np.concatenate(time_chunks).astype(float)
+            values = np.concatenate(density_chunks).astype(float)
+            if recorded is not None:
+                if (len(times) != recorded["frames"] or not np.isfinite(times).all()
+                        or np.any(np.diff(times) <= 0)
+                        or (common_times is not None and not np.array_equal(common_times, times))):
+                    raise ValueError(f"{directory}: incomplete or inconsistent membrane density frame grid")
+                common_times = times
             out[f"density_1d__{run.run_id}__{key}"] = {
                 "density_bin_width_A": float(run.spec.get("bin_width_A", 1.0)),
                 "times": times,
@@ -236,8 +331,6 @@ def temporal_density_profiles(repout: Path, cfg: dict) -> dict[str, dict]:
                 "labels": np.asarray([f"{x:.2f}" for x in positions], object),
                 "reducer": "mean",
             }
-            for part in parts:
-                part.close()
     return out
 
 

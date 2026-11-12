@@ -14,6 +14,7 @@ import re
 import time
 from collections import defaultdict
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import MDAnalysis as mda
 import numpy as np
@@ -21,9 +22,8 @@ import pandas as pd
 from MDAnalysis.lib.distances import minimize_vectors
 
 from ..config import atomic_parquet, ensure_dir, time_ps
-from ..core.lipid_geometry import anchor_groups, aligned_leaflets, centers, periodic_center, planar_box
-from ..observables.lipid_enrichment import enrichment_frame, write_area_reference_metadata
-from ..core.atom_selection import select_heavy_atoms
+from ..core.lipid_geometry import anchor_groups, aligned_leaflets, centers, planar_box
+from ..observables.lipid_enrichment import FOOTPRINT_OUTPUT, LipidFootprint
 from ..observables.bilayer_normal import fit_local_normals
 from ..observables.membrane_order import (
     AXIS_INDEX, _atomic_npz, _candidate_sites, _fixed_ch_pairs,
@@ -76,12 +76,12 @@ def _profile_batches(profiles, frame_count, budget_bytes):
 class FusedMembrane:
     """Stateful, chunk-flushed lipid observers sharing a single Universe."""
 
-    def __init__(self, universe, cfg, repout):
+    def __init__(self, universe, cfg, repout, names=None, cache_dir=None):
         self.u = universe
         self.cfg = cfg
         self.repout = Path(repout)
-        self.names = enabled_names(cfg)
-        self.cache = ensure_dir(self.repout / "cache" / "fused_membrane")
+        self.names = enabled_names(cfg) if names is None else names
+        self.cache = ensure_dir(cache_dir or (self.repout / "cache" / "fused_membrane"))
         self.rows = defaultdict(list)
         self.profile_frames = defaultdict(list)
         self.profile_times = []
@@ -98,16 +98,11 @@ class FusedMembrane:
             self.geometry["bilayer_normal"] = self._geometry_setup("bilayer_normal")
         if "lipid_enrichment" in self.names:
             self.geometry["lipid_enrichment"] = self._geometry_setup("lipid_enrichment")
-            spec = cfg["analyses"]["lipid_enrichment"]
-            selection = str(spec.get("protein_selection") or cfg["selections"]["protein"])
-            self.protein = universe.select_atoms(selection)
-            if not len(self.protein):
-                raise ValueError("lipid_enrichment.protein_selection is empty")
-            self.area_obstacles = select_heavy_atoms(self.protein, policy="mechanistic") if spec.get("area_reference") else None
-            self.inner = float(spec.get("inner_radius_A", 0.))
-            self.outer = float(spec.get("outer_radius_A", 15.))
-            if not 0 <= self.inner < self.outer:
-                raise ValueError("Require 0 <= inner_radius_A < outer_radius_A")
+            entry = self.geometry["lipid_enrichment"]
+            state = entry["state"]
+            self.footprint = LipidFootprint(
+                universe, entry["spec"], state["species"], state["indices"], state["axis"],
+            )
         if "membrane_order" in self.names:
             self.order = self._order_setup()
 
@@ -229,23 +224,9 @@ class FusedMembrane:
                         )
                 self.rows[name].append(row)
             else:
-                center = periodic_center(self.protein.positions, box)
-                vals = enrichment_frame(
-                    species, current, xyz, center, box, self.inner, self.outer, axis,
-                    categories=spec["species_selections"],
-                    obstacles=self.area_obstacles.positions if self.area_obstacles is not None else None,
-                    area_reference=spec.get("area_reference"),
-                )
-                row = {"time_ps": t, "lipid_enrichment_leaflet_changes": changes}
-                for value in vals:
-                    prefix = f"lipid_enrichment_{value['species']}_{value['leaflet']}"
-                    row[prefix + "_fold"] = value["enrichment_fold"]
-                    row[prefix + "_local_fraction"] = value["local_fraction"]
-                    row[prefix + "_contact_count"] = value["count_local"]
-                    if spec.get("area_reference"):
-                        row[prefix + "_area_density_ratio"] = value["area_density_ratio"]
-                    self.rows["enrichment_counts"].append({"time_ps": t, **value})
-                self.rows[name].append(row)
+                row, counts = self.footprint.frame(t, xyz, current, changes, box)
+                self.rows["footprint_counts"].extend(counts)
+                self.rows["footprint_series"].append(row)
             self.timings[name] += time.perf_counter() - start
 
         if self.order is not None:
@@ -299,14 +280,14 @@ class FusedMembrane:
         start = time.perf_counter()
         if self.lipid_contacts is not None:
             self.lipid_contacts.flush(part)
-        for name in ("bilayer_normal", "lipid_enrichment", "membrane_order"):
+        for name in ("bilayer_normal", "footprint_series", "membrane_order"):
             if self.rows[name]:
                 atomic_parquet(
                     ensure_dir(self.cache / name) / f"part-{part:06d}.parquet",
                     pd.DataFrame(self.rows[name]),
                 )
                 self.rows[name].clear()
-        for name, key in (("lipid_enrichment", "enrichment_counts"),
+        for name, key in (("lipid_enrichment", "footprint_counts"),
                           ("bilayer_normal", "angles")):
             if self.rows[key]:
                 atomic_parquet(
@@ -332,7 +313,14 @@ class FusedMembrane:
         """Drop uncommitted part files left by an interrupted frame chunk."""
         if self.lipid_contacts is not None:
             self.lipid_contacts.prune_from(next_part)
-        for path in self.cache.rglob("part-*"):
+        active = {
+            "lipid_enrichment": ("footprint_series", "footprint_counts"),
+            "bilayer_normal": ("bilayer_normal", "angles"),
+            "membrane_order": ("membrane_order", "order_profiles"),
+        }
+        paths = (path for name in self.names for key in active.get(name, ())
+                 for path in (self.cache / key).glob("part-*"))
+        for path in paths:
             match = re.search(r"part-(\d+)", path.name)
             if match and int(match.group(1)) >= next_part and path.is_file():
                 path.unlink()
@@ -359,19 +347,22 @@ class FusedMembrane:
             }
         if "lipid_enrichment" in self.names:
             state = self.geometry["lipid_enrichment"]["state"]
-            out = ensure_dir(self.repout / "extensions" / "lipid_enrichment")
-            series = _concat(_parts(self.cache / "lipid_enrichment", ".parquet"))
+            out = ensure_dir(self.repout / FOOTPRINT_OUTPUT)
+            series = _concat(_parts(self.cache / "footprint_series", ".parquet"))
+            times = series["time_ps"]
+            if times.empty or not times.is_unique or not times.is_monotonic_increasing:
+                raise ValueError("Lipid footprint has an incomplete or invalid frame grid")
+            (out / "reference.json").unlink(missing_ok=True)
             atomic_parquet(out / "timeseries.parquet", series)
             atomic_parquet(
                 out / "counts.parquet",
-                _concat(_parts(self.cache / "enrichment_counts", ".parquet"))
+                _concat(_parts(self.cache / "footprint_counts", ".parquet"))
             )
             atomic_parquet(out / "selection_audit.parquet", pd.DataFrame({
                 "species": state["species"], "resindex": state["indices"],
                 "leaflet": np.where(state["initial"], "upper", "lower"),
             }))
-            spec = self.geometry["lipid_enrichment"]["spec"]
-            write_area_reference_metadata(out, spec, spec.get("protein_selection") or self.cfg["selections"]["protein"])
+            self.footprint.write_reference(out)
             result["lipid_enrichment"] = {
                 "frames": len(series), "n_lipids": len(state["species"]),
                 "n_species": len(np.unique(state["species"])),
@@ -455,26 +446,32 @@ class FusedMembrane:
         return result
 
 
-def run_fused_membrane(rep, cfg, repout):
+def run_fused_membrane(rep, cfg, repout, names=None):
     """One-pass fallback for geometry-only systems without protein streaming."""
-    if not enabled_names(cfg):
+    if names is None and not enabled_names(cfg):
         return {}
     tr = cfg["trajectory"]
     u = mda.Universe(str(rep.topology), str(rep.trajectory))
     start = 0 if tr.get("start") is None else int(tr["start"])
     u.trajectory[start]
-    observer = FusedMembrane(u, cfg, repout)
-    observer.prune_from(0)
-    frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr["stride"]))]
+    frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr.get("stride", 1)))]
     chunk = max(1, int(tr.get("chunk_frames", 1000)))
-    for k, ts in enumerate(track(
-        frames, total=len(frames), desc=f"{rep.system}/{rep.label}: fused membrane",
-        enabled=cfg.get("progress", {}).get("enabled", True)
-    )):
-        observer.update(ts, k)
-        if (k + 1) % chunk == 0:
-            observer.flush(k // chunk)
-    if observer.frame_count % chunk:
-        observer.flush(observer.frame_count // chunk)
-    return observer.finalize()
-
+    summary = Path(repout) / "summary" / "timeseries.parquet"
+    expected = pd.read_parquet(summary, columns=["time_ps"])["time_ps"] if summary.is_file() else None
+    if not len(frames) or (expected is not None and len(expected) != len(frames)):
+        raise ValueError("Trajectory frame count does not match the replicate frame grid")
+    # This independent pass must not create or rewrite stream-owned chunks.
+    with TemporaryDirectory(dir=ensure_dir(Path(repout))) as temporary:
+        observer = FusedMembrane(u, cfg, repout, names, cache_dir=Path(temporary))
+        for k, ts in enumerate(track(
+            frames, total=len(frames), desc=f"{rep.system}/{rep.label}: fused membrane",
+            enabled=cfg.get("progress", {}).get("enabled", True),
+        )):
+            if expected is not None and time_ps(ts, k, cfg) != expected.iat[k]:
+                raise ValueError("Trajectory times do not match the replicate frame grid")
+            observer.update(ts, k)
+            if (k + 1) % chunk == 0:
+                observer.flush(k // chunk)
+        if observer.frame_count % chunk:
+            observer.flush(observer.frame_count // chunk)
+        return observer.finalize()

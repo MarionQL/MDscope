@@ -186,14 +186,35 @@ python -m mdscope.cli finalize synd4_full_mechanisms.yaml
 archive the previous project summary. `run` also performs this phase
 after processing replicas.
 
-For 1D density comparisons, MDscope rebins offset replica frame caches to
-shared physical slabs before bootstrapping. The target width is
-`density_1d.bin_width_A`, with edges anchored at zero on the configured
-axis. Rebinning weights source densities by bin overlap and uses only bins
-fully covered by every contributing replica. It uses the coordinate origin
-already recorded in the caches, so compare runs with equivalent centering.
-Existing frame caches can be reused by rerunning project statistics
-(`python -m mdscope.cli statistics <config>`) before regenerating plots.
+### Lipid footprint and residue hydration
+
+With the updated SDC4 YAML, the normal replicate workflow adds the
+`extensions/lipid_footprint/` products and the residue water columns in
+`extensions/sdc4_mechanisms/residue_occlusion.parquet`. Completed replicas
+reuse their other persisted analyses. When residue occlusion is already
+available, the hydration pass reuses its saved contact fractions. Regenerate
+project statistics after all replicas finish so the new footprint metrics
+replace the former centroid-based enrichment in the consolidated results.
+
+### Membrane-relative density
+
+The SDC4 configurations use the named `membrane_relative` run. At each
+frame, MDscope separates the shared phospholipid phosphate anchors into
+two periodic leaflets and centers the density bins at the midpoint of
+their circular means. The two leaflets have equal weight even when their
+populations differ. Positions are measured along the configured planar
+membrane-normal axis, z for SDC4. The method follows bilayer translation,
+including periodic crossings, and preserves leaflet asymmetry. It uses a
+fixed physical grid spanning ±100 Å for these systems. Each frame's slab
+volume is its cross-sectional area times bin width.
+
+For completed replicas, run MDscope with the updated YAML to add the new
+density profiles. Only the missing named runs require coordinates. The
+previous box-referenced profiles are retained under their original ID.
+Statistics can rebin old profiles to shared slab edges, but that operation
+cannot recover the per-frame membrane midplane. This global profile also
+retains broadening from membrane undulations and does not fit a local
+surface or a tilted plane.
 
 Project statistics write `statistics/coverage/contrast_coverage.parquet`
 under `project_summary`. The audit records valid intervals and missing

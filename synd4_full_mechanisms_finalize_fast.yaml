@@ -82,8 +82,10 @@ analyses:
     enabled: true
     axis: z
     bin_width_A: 1.0
-    # Appropriate if whole_system_*.xtc is already centered in the box.
-    center_selection: null
+    runs:
+      membrane_relative:
+        membrane_center_selection: "resname POPC DPPC POPE POPI POPS PSM DOPC and name P"
+        half_width_A: 100.0
     selections:
       water_oxygen:
         label: "Water oxygen"
@@ -173,13 +175,12 @@ analyses:
     enabled: true
     axis: z
     allow_absent_species: true
-    protein_selection: "protein"
-    area_reference:
-      exclusion_radius_A: 3.0
-      slab_half_width_A: 5.0
-      quadrature_order: 64
-    inner_radius_A: 0.0
-    outer_radius_A: 20.0
+    footprint_selection: "protein and ((chainID PROA and resid 146:174) or (chainID PROB and resid 416:444))"
+    shell_edges_A: [0, 5, 10, 20]
+    exclusion_radius_A: 3.0
+    slab_half_width_A: 8.0
+    area_grid_size: 64
+    contact_cutoff_A: 5.0
     species_selections: &lipid_anchors
       POPC: "resname POPC and name P"
       DPPC: "resname DPPC and name P"
@@ -235,6 +236,8 @@ analyses:
     enabled: true
     axis: z
     protein_selection: "protein"
+    residue_occlusion: true
+    residue_water_cutoff_A: 3.5
     tm_chains:
       A: "protein and chainID PROA and resid 150:170 and name CA"
       B: "protein and chainID PROB and resid 420:440 and name CA"

@@ -5,13 +5,14 @@ include committed artifact inventory and replicate identity.
 """
 from __future__ import annotations
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from time import perf_counter
 import json
 from zipfile import BadZipFile
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-from ..config import analysis_groups, analysis_runs, atomic_parquet,ensure_dir,time_ps
+from ..config import analysis_groups, analysis_runs, atomic_parquet,ensure_dir,time_ps,profile_dir
 from .progress import track
 from ..core.profiling import PhaseProfiler
 from ..core.trajectory_sources import open_msd_universe, paired_frames
@@ -31,6 +32,42 @@ from ..observables.radius_of_gyration import compute_rg
 from ..observables.density_1d import DensityProfileAccumulator
 from ..observables.membrane import initialize_membrane,membrane_metrics
 from ..interactions import chain_label,initialize_ligand_contacts,initialize_salt_bridges,ligand_contact_events,residue_label,salt_bridge_events
+def complete_membrane_density(rep, cfg, repout, runs):
+    """Collect missing named density runs in one pass over the saved frame grid."""
+    parent = ensure_dir(Path(repout) / "profiles/density_1d")
+    destinations = {run.run_id: parent / run.run_id for run in runs}
+    if any(path.exists() for path in destinations.values()):
+        raise ValueError("Incomplete membrane density directory exists; review it or use a new run ID")
+    expected = pd.read_parquet(repout / "summary/timeseries.parquet", columns=["time_ps"])
+    tr = cfg["trajectory"]
+    u = mda.Universe(str(rep.topology), str(rep.trajectory))
+    frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr["stride"]))]
+    if not len(frames) or len(frames) != len(expected):
+        raise ValueError("Membrane density replay differs from saved replica frame count")
+    frames[0]
+    observers = [DensityProfileAccumulator(u, cfg, run.spec, run.run_id) for run in runs]
+    chunk = int(tr.get("chunk_frames", 1000))
+    with TemporaryDirectory(dir=repout, prefix=".membrane-density-") as temporary:
+        stage = Path(temporary)
+        for i, ts in enumerate(track(
+            frames, total=len(frames), desc=f"{rep.system}/{rep.label}: membrane density",
+            enabled=cfg.get("progress", {}).get("enabled", True),
+        )):
+            time = time_ps(ts, i, cfg)
+            if time != expected.time_ps.iat[i]:
+                raise ValueError("Membrane density replay differs from saved replica timestamps")
+            for observer in observers:
+                observer.update(u, time)
+                if (i + 1) % chunk == 0:
+                    observer.flush_frames(stage, i // chunk)
+        for observer in observers:
+            if len(frames) % chunk:
+                observer.flush_frames(stage, len(frames) // chunk)
+            observer.finalize(stage, replay=True)
+        for run_id, destination in destinations.items():
+            profile_dir(stage, "density_1d", run_id).rename(destination)
+
+
 def _checkpoint_payload(path, processed, next_part, rmsf, groups, densities, membrane,
                         rep, artifacts):
     artifacts.update(chunk_artifacts(path.parent.parent, next_part - 1))
