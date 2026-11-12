@@ -52,3 +52,32 @@ def test_density_profiles_use_shared_physical_bins(tmp_path):
     per_replica = pd.read_parquet(out / "replicate_profiles.parquet")
     first = per_replica.loc[per_replica.system.eq("first")]
     np.testing.assert_allclose(first.groupby("replicate").value.sum(), [14.0, 14.0])
+
+
+def test_midplane_density_is_invariant_to_drift_and_periodic_wrap(tmp_path):
+    import MDAnalysis as mda
+
+    from mdscope.observables.density_1d import DensityProfileAccumulator, temporal_density_profiles
+
+    u = mda.Universe.empty(7, n_residues=7, atom_resindex=np.arange(7), trajectory=True)
+    u.add_TopologyAttr("names", ["P"] * 5 + ["O"] * 2)
+    spec = {
+        "enabled": True, "axis": "z", "bin_width_A": 1.0, "half_width_A": 20.0,
+        "membrane_center_selection": "name P", "selections": {"probe": "name O"},
+    }
+    cfg = {"analyses": {"density_1d": {"enabled": True, "runs": {"membrane": spec}}}}
+    # Unequal leaflet populations have the same midplane. Probe positions
+    # land in the bins centered at -3.5 and +5.5 Å.
+    relative = np.array([-10., -10., 10., 10., 10., -3.4, 5.4])
+    u.dimensions = [20., 30., 100., 90., 90., 90.]
+    observer = DensityProfileAccumulator(u, cfg, spec, "membrane")
+    for i, origin in enumerate((45., 96.)):
+        u.atoms.positions = np.column_stack([np.zeros(7), np.zeros(7), (origin + relative) % 100.])
+        observer.update(u, float(i))
+    observer.flush_frames(tmp_path, 0)
+    observer.finalize(tmp_path)
+    profile = temporal_density_profiles(tmp_path, cfg)["density_1d__membrane__probe"]
+    np.testing.assert_array_equal(profile["values"][0], profile["values"][1])
+    observed = profile["values"][0]
+    np.testing.assert_array_equal(profile["positions"][observed > 0], [-3.5, 5.5])
+    np.testing.assert_allclose(observed.sum() * 20 * 30, 2.)

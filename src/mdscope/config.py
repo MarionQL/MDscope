@@ -567,6 +567,16 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
             raise ValueError(
                 f"density_1d[{run.run_id}].axis must be x, y, or z"
             )
+        reference = run.spec.get("membrane_center_selection")
+        if reference is not None:
+            if (not isinstance(reference, str) or not reference.strip()
+                    or run.spec.get("center_selection") or run.run_id == DEFAULT_INSTANCE_ID):
+                raise ValueError("Membrane density needs a named run and a single membrane center selection")
+            width = float(run.spec.get("bin_width_A", 1.0))
+            extent = float(run.spec.get("half_width_A", 0.0))
+            if (not np.isfinite(width) or width <= 0 or not np.isfinite(extent)
+                    or extent < width or not np.isclose(extent / width, round(extent / width))):
+                raise ValueError("Membrane density half_width_A must be a positive multiple of bin_width_A")
         selections = run.spec.get("selections") or {}
         if float(run.spec.get("bin_width_A", 1.0)) <= 0 or not selections:
             raise ValueError(

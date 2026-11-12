@@ -61,6 +61,26 @@ def planar_box(dimensions, normal=2):
     return box
 
 
+def circular_axis_mean(positions, length):
+    """Circular mean along one periodic Cartesian axis."""
+    angle = np.asarray(positions, float) * (2.0 * np.pi / length)
+    return (np.arctan2(np.sin(angle).mean(), np.cos(angle).mean())
+            * length / (2.0 * np.pi)) % length
+
+
+def bilayer_midplane(positions, length):
+    """Use equal leaflet weights and the shorter periodic interleaflet span."""
+    if not np.isfinite(positions).all():
+        raise ValueError("Membrane anchors contain nonfinite heights")
+    upper = classify_leaflets(positions, length)
+    first = circular_axis_mean(positions[~upper], length)
+    second = circular_axis_mean(positions[upper], length)
+    gap = (second - first + length / 2) % length - length / 2
+    if np.isclose(abs(gap), length / 2):
+        raise ValueError("Cannot distinguish the bilayer and solvent midplanes at half-box leaflet separation")
+    return (first + gap / 2) % length
+
+
 def classify_leaflets(z, length):
     """Circular two-cluster partition; bilayers may cross the periodic z edge."""
     z = np.asarray(z, float)

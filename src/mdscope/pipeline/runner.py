@@ -37,7 +37,8 @@ from ..observables.membrane_order import membrane_order_timeseries, run_membrane
 from ..observables.residue_membrane_distance import run_residue_membrane_distance
 from ..observables.structure_profiles import postprocess_structure_profiles, run_structure_profiles
 from ..statistics import analyze_project
-from .streaming import run_streaming_pass, validate_stream_inventory
+from .streaming import run_streaming_pass, validate_stream_inventory, complete_membrane_density
+from ..observables.density_1d import missing_membrane_density_runs
 from .fused_membrane import enabled_names as fused_enabled_names, run_fused_membrane
 from .fused_extensions import enabled_names as extension_enabled_names, run_fused_extensions
 from .fused_distance import enabled_names as distance_enabled_names, run_fused_distances
@@ -502,6 +503,11 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
             "artifacts": {str(p): _check_artifact(p) for p in summary_paths},
         })
         stage_timings.append({"stage": "summary", "seconds": perf_counter() - t0})
+    density_runs = missing_membrane_density_runs(repout, cfg)
+    if density_runs:
+        t0 = perf_counter()
+        complete_membrane_density(rep, cfg, repout, density_runs)
+        stage_timings.append({"stage": "membrane-density", "seconds": perf_counter() - t0})
     if stage_timings:
         atomic_json(repout / "stage_timings.json", {
             "system": rep.system, "replicate": rep.label,
@@ -530,6 +536,8 @@ def _validate_replica_products(cfg, root, replicates):
                 missing.append(f"{rep.system}/{rep.label}: invalid time_ps")
             for entry in analysis_output_plan(cfg, repout):
                 _validate_analysis_output(entry, cfg)
+            if missing_membrane_density_runs(repout, cfg):
+                raise ValueError("missing membrane-relative density; run MDscope with this config")
             msd = cfg.get("analyses", {}).get("membrane", {}).get("msd", {})
             if msd.get("enabled") and msd.get("multi_origin"):
                 for name in ("multi_origin_diffusion.parquet", "multi_origin_msd.parquet"):

@@ -71,7 +71,7 @@ def _inventory(statistics_dir, manifest, comparison_sources):
     files = {
         path for root in roots for path in root.rglob("*")
         if path.suffix in {".parquet", ".npz", ".npy", ".json"}
-        and path.name not in _REPORT_FILES and path.parent.name != "frames"
+        and path.name not in _REPORT_FILES and path.parent.name not in {"frames", "replayed_frames"}
     }
     rows = []
     for path in sorted(files):

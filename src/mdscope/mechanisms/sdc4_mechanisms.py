@@ -22,7 +22,7 @@ import pandas as pd
 from MDAnalysis.lib.distances import capped_distance, minimize_vectors, calc_dihedrals, distance_array
 
 from ..config import DEFAULTS, atomic_json, atomic_parquet, ensure_dir, profile_dir, time_ps
-from ..core.lipid_geometry import anchor_groups, aligned_leaflets, periodic_center, accessible_area_grid
+from ..core.lipid_geometry import anchor_groups, aligned_leaflets, periodic_center, accessible_area_grid, circular_axis_mean
 from .mechanistic_common import AA3, heavy, nearest, selected, sequence_matches, unit
 from ..observables.membrane_order import _candidate_sites, _fixed_ch_pairs, _atomic_npz
 from ..pipeline.progress import track
@@ -168,12 +168,6 @@ def _contacts(a, b, cutoff, box):
         a.positions, b.positions, max_cutoff=float(cutoff),
         box=box, return_distances=False,
     )
-
-
-def _zmean(z, length):
-    theta = np.asarray(z, float) * (2. * np.pi / length)
-    return (np.arctan2(np.sin(theta).mean(), np.cos(theta).mean())
-            * length / (2. * np.pi)) % length
 
 
 def _local_surface(xy, z, minimum=8):
@@ -587,8 +581,8 @@ class SDC4Mechanisms:
             self.map_baselines[j] += int(mask.sum()) / area_A2
         self.map_frames += 1
         row = {"time_ps": t, "sdc4_lipid_leaflet_changes": changed}
-        upper_z = _zmean(anchors[leaf & self.surface_mask, 2], box[2])
-        lower_z = _zmean(anchors[~leaf & self.surface_mask, 2], box[2])
+        upper_z = circular_axis_mean(anchors[leaf & self.surface_mask, 2], box[2])
+        lower_z = circular_axis_mean(anchors[~leaf & self.surface_mask, 2], box[2])
         mid_z = lower_z + .5 * _vector(
             [0., 0., lower_z], [0., 0., upper_z], box
         )[2]

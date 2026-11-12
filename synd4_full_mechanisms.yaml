@@ -82,8 +82,10 @@ analyses:
     enabled: true
     axis: z
     bin_width_A: 1.0
-    # Appropriate if whole_system_*.xtc is already centered in the box.
-    center_selection: null
+    runs:
+      membrane_relative:
+        membrane_center_selection: "resname POPC DPPC POPE POPI POPS PSM DOPC and name P"
+        half_width_A: 100.0
     selections:
       water_oxygen:
         label: "Water oxygen"

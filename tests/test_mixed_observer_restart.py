@@ -345,3 +345,41 @@ def test_run_adds_missing_occlusion_and_reuses_completed_replica(tmp_path, monke
     monkeypatch.setattr(mda, "Universe", forbidden)
     runner.run_replicate(rep, cfg, root, state)
     assert _bytes_snapshot(repout) == after
+
+
+def test_run_adds_membrane_density_and_keeps_the_completed_stream(tmp_path, monkeypatch):
+    from mdscope.observables.density_1d import temporal_density_profiles
+
+    rep, cfg = make_project(tmp_path, 2)
+    root = tmp_path / "results"
+    repout = root / "test/rep1"
+    state = runner.RunState(root)
+    runner.run_replicate(rep, cfg, root, state)
+    before = _bytes_snapshot(repout)
+    cfg["analyses"]["density_1d"]["runs"]["membrane"] = {
+        "membrane_center_selection": "resname POPC and name P",
+        "half_width_A": 20.0,
+        "bin_width_A": 1.0,
+        "selections": {"phosphate": "resname POPC and name P"},
+    }
+
+    with pytest.raises(RuntimeError, match="missing membrane-relative density"):
+        runner.finalize_project(tmp_path / "unused.yaml", cfg=cfg, root=root, state=state,
+                                phase="statistics")
+    assert _bytes_snapshot(repout) == before
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("completed observers were called again")
+
+    monkeypatch.setattr(runner, "run_streaming_pass", forbidden)
+    monkeypatch.setattr(runner, "summarize_replicate", forbidden)
+    runner.run_replicate(rep, cfg, root, state)
+    profiles = temporal_density_profiles(repout, cfg)
+    relative = profiles["density_1d__membrane__phosphate"]
+    np.testing.assert_allclose(relative["times"], [0., 2., 4., 6.], rtol=1e-6)
+    assert relative["values"].shape == (4, 40)
+    after = _bytes_snapshot(repout)
+    assert all(after[key] == value for key, value in before.items() if key != "stage_timings.json")
+    monkeypatch.setattr(mda, "Universe", forbidden)
+    runner.run_replicate(rep, cfg, root, state)
+    assert _bytes_snapshot(repout) == after
