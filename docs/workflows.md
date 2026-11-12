@@ -207,6 +207,35 @@ interactions, RDF shells and multi-origin diffusion. The review bundle
 also exports the CSV. An interval excluding zero is distinct from a
 multiple-testing-adjusted permutation result.
 
+### Discovering contiguous protein changes
+
+Profile statistics write `project_summary/statistics/profiles/residue_regions.parquet`.
+To scan an older completed statistics export directly, run:
+
+```bash
+mdscope scan-residue-regions /path/to/project_summary/statistics
+```
+
+The scan reads saved replica profiles and their statistics manifest. It
+compares the DSSP, RMSF, SASA, and residue–membrane-distance profiles already
+present in the export. Rerun the statistics phase to include named SASA runs
+and environmental buried area from saved per-replica SASA files.
+
+A region contains at least three consecutively numbered residues on the
+same labeled chain. At each residue every expected replica must have a
+finite value and the two replica ranges must be strictly separated in the
+same direction throughout the region. Each condition needs at least two
+replicas. Gaps, ambiguous residue numbering, overlap and direction changes
+break regions. Within a profile and system pair, the table ranks regions by
+the absolute mean residue contrast and reports the smallest separation of
+the two replica ranges in the region. Positive contrasts mean system 2 is
+higher. SASA contrasts are per-residue mean differences in nm².
+
+The table is exploratory. Absence from it can reflect overlapping replica
+ranges or incomplete data. Region boundaries and ranks are descriptive
+and do not carry confidence intervals. Pointwise confidence intervals
+remain in the profile comparison table.
+
 RDF shell contrasts use the shell-volume-weighted mean of the saved
 normalized RDF up to the configured water or ion cutoff. Diffusion
 contrasts refit all replica curves on the same supported physical lags,

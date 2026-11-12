@@ -22,6 +22,8 @@ from ..observables.rmsf import temporal_rmsf_profiles
 
 
 from .common import _temporal, _block_bootstrap, _block_weights, _hierarchical, _hierarchical_difference, _ci, _describe, _direction, _permutation, _fdr, _range_meta, _regular_times, _point_difference
+from .residue_regions import scan_residue_regions
+
 
 def _rmsf_profile(
     coords: np.ndarray,
@@ -420,8 +422,17 @@ def analyze_profiles(
                     "ci_level": level,
                 })
 
+    if rep_points:
+        replicate_profiles = pd.DataFrame(rep_points)
+        atomic_parquet(outdir / "replicate_profiles.parquet", replicate_profiles)
+        replicas = {
+            system: [repout.name for repout in repouts]
+            for system, repouts in system_repouts.items()
+        }
+        atomic_parquet(outdir / "residue_regions.parquet",
+                       scan_residue_regions(replicate_profiles, replicas))
+
     outputs = [
-        ("replicate_profiles.parquet", rep_points),
         ("replicate_profile_statistics.parquet", rep_summary),
         ("system_profiles.parquet", sys_points),
         ("system_profile_statistics.parquet", sys_summary),

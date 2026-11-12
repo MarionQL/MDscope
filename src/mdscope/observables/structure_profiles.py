@@ -4,7 +4,7 @@ from pathlib import Path
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-from ..config import analysis_groups,atomic_parquet,ensure_dir
+from ..config import analysis_groups, analysis_runs, atomic_parquet, ensure_dir
 from .dssp import _run_dssp
 from .sasa import _run_sasa
 def run_structure_profiles(rep, cfg: dict, repout: Path):
@@ -179,26 +179,31 @@ def temporal_structure_profiles(repout: Path, cfg: dict) -> dict[str, dict]:
     profiles.
     """
     out = {}
-    sasa_file = Path(repout) / "profiles" / "sasa" / "residue_sasa.parquet"
-    if sasa_file.exists():
-        data = pd.read_parquet(sasa_file)
-        if not data.empty:
-            residues = data[[
-                "topology_residue_index",
-                "residue"
-            ]].drop_duplicates().sort_values("topology_residue_index")
-            pivot = data.pivot(
-                index="time_ps",
-                columns="topology_residue_index",
-                values="sasa_nm2"
-            ).reindex(columns=residues.topology_residue_index)
-            out["sasa_mean"] = {
-                "times": pivot.index.to_numpy(float), "values": pivot.to_numpy(float),
-                "positions": np.arange(
-                    len(residues),
-                    dtype=float
-                ), "labels": residues.residue.to_numpy(str), "reducer": "mean",
-            }
+    sasa_root = Path(repout) / "profiles" / "sasa"
+    sasa_profiles = {"sasa_mean": (sasa_root / "residue_sasa.parquet", "sasa_nm2")}
+    for run in analysis_runs(cfg, "sasa"):
+        if run.run_id == "default":
+            continue
+        directory = sasa_root / run.run_id
+        sasa_profiles[f"sasa_mean__{run.run_id}"] = (directory / "residue_sasa.parquet", "sasa_nm2")
+        if run.spec.get("reference_run"):
+            sasa_profiles[f"sasa_buried_nm2__{run.run_id}"] = (
+                directory / "residue_burial.parquet", "buried_sasa_nm2",
+            )
+    for profile, (path, column) in sasa_profiles.items():
+        if not path.exists():
+            continue
+        data = pd.read_parquet(path)
+        if data.empty:
+            continue
+        residues = data[["topology_residue_index", "residue"]].drop_duplicates()
+        labels = residues.set_index("topology_residue_index")["residue"]
+        pivot = data.pivot(index="time_ps", columns="topology_residue_index", values=column)
+        out[profile] = {
+            "times": pivot.index.to_numpy(float), "values": pivot.to_numpy(float),
+            "positions": np.arange(len(pivot.columns), dtype=float),
+            "labels": labels.loc[pivot.columns].to_numpy(str), "reducer": "mean",
+        }
     dssp_file = Path(repout) / "profiles" / "dssp" / "assignments.parquet"
     if dssp_file.exists():
         data = pd.read_parquet(dssp_file)

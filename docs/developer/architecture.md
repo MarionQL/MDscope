@@ -356,7 +356,7 @@ record the actual commands and outcomes.
 
 ---
 
-## Output completeness and difference-discovery design (proposal; not implemented)
+## Output completeness and difference-discovery design
 
 **Scope:** This is a plan for making saved scientific data discoverable **without
 changing observable collection, existing persisted formats or statistical
@@ -373,7 +373,7 @@ every enabled raw observable or every specialized offline derivative.
 | Persisted scientific product | Current uncertainty / contrast path | Gap to surface |
 | --- | --- | --- |
 | `summary/timeseries.parquet`, `summary/group_timeseries.parquet` and selected extension scalar series | `statistics/time_series.py`: replica, system and mean/median **difference** CIs where temporal support is valid | A user-friendly catalog is missing; values saved outside `collect_time_series` are not guaranteed a comparison. |
-| Density, RMSF, SASA/DSSP, membrane-order and residue-distance temporal profiles | `statistics/profiles.py`: per-position comparisons and pointwise CIs | Potentially very many rows; no unified *whole-profile* effect ranking or predefined contiguous-region discovery. Pointwise CIs should not be read as simultaneous confidence bands. |
+| Density, RMSF, SASA/DSSP, membrane-order and residue-distance temporal profiles | `statistics/profiles.py`: per-position comparisons and pointwise CIs | A [residue-region scan](../workflows.md#discovering-contiguous-protein-changes) ranks contiguous changes with complete, separated replica ranges. Unified whole-profile ranking remains proposed. Pointwise CIs should not be read as simultaneous confidence bands. |
 | Contact, H-bond and salt-bridge events | `statistics/interactions.py`: per-identity occupancy, event-rate and lifetime contrasts when supported | High cardinality; default production `interaction_min_occupancy: 0.20` filters identities with <20% occupancy in every replica. Suppressed, disabled and unobserved identities need explicit statuses distinct from physical zero. |
 | Solvation RDF curves | `statistics/solvation.py`: per-bin replica mean±SD (descriptive) and shell-integrated replica-level difference CIs | Whole RDF curve shape and peak-location differences do **not** currently have registered comparison intervals. |
 | Multi-origin diffusion curves | `statistics/diffusion.py`: common-lag refitted replica slopes and difference CIs | Single-origin `project_summary/diffusion/` coefficients are currently descriptive only; report distinction and fit support. |
