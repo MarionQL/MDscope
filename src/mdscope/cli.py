@@ -12,6 +12,7 @@ import yaml
 
 from .config import iter_replicates, load_config
 from .core.validation import validate_selections
+from .mechanisms.sdc4_mechanisms import backfill_residue_occlusion
 from .pipeline.runner import finalize_project, run_all, run_one, project_root
 from .reporting.report import generate_report
 from .statistics.residue_regions import scan_saved_residue_regions
@@ -61,6 +62,17 @@ def cmd_validate(args):
     validate_selections(cfg, Path(args.config).resolve().parent, emit=print)
 
 
+def cmd_backfill_residue_occlusion(args):
+    cfg = load_config(args.config)
+    reps = list(iter_replicates(cfg, args.config))
+    if args.index < 0 or args.index >= len(reps):
+        raise IndexError(f"replicate index {args.index} is out of range 0..{len(reps) - 1}")
+    rep = reps[args.index]
+    print(backfill_residue_occlusion(
+        rep, cfg, project_root(cfg, args.config) / rep.system / rep.label,
+    ))
+
+
 def main():
     parser = argparse.ArgumentParser(prog="mdscope")
     sub = parser.add_subparsers(required=True)
@@ -84,6 +96,10 @@ def main():
         p = sub.add_parser(phase, help=f"Run only the {phase} finalization phase")
         p.add_argument("config")
         p.set_defaults(func=lambda a, phase=phase: print(finalize_project(a.config, phase=phase)))
+    p = sub.add_parser("backfill-residue-occlusion", help="Compute residue occlusion for one completed replica")
+    p.add_argument("config")
+    p.add_argument("--index", type=int, required=True)
+    p.set_defaults(func=cmd_backfill_residue_occlusion)
     p = sub.add_parser("scan-residue-regions", help="Find contiguous changes in saved residue profiles")
     p.add_argument("statistics_dir", type=Path)
     p.set_defaults(func=lambda a: print(scan_saved_residue_regions(a.statistics_dir)))

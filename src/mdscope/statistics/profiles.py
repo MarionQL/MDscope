@@ -19,6 +19,7 @@ from ..observables.density_1d import align_density_profiles, temporal_density_pr
 from ..observables.residue_membrane_distance import temporal_residue_membrane_profiles
 from ..observables.structure_profiles import temporal_structure_profiles
 from ..observables.rmsf import temporal_rmsf_profiles
+from ..mechanisms.residue_occlusion import temporal_residue_occlusion_profiles
 
 
 from .common import _temporal, _block_bootstrap, _block_weights, _hierarchical, _hierarchical_difference, _ci, _describe, _direction, _permutation, _fdr, _range_meta, _regular_times, _point_difference
@@ -140,6 +141,7 @@ def collect_temporal_profiles(repout: Path, cfg: dict) -> dict[str, dict]:
     out = temporal_rmsf_profiles(repout, cfg)
     out.update(temporal_density_profiles(repout, cfg))
     out.update(temporal_structure_profiles(repout, cfg))
+    out.update(temporal_residue_occlusion_profiles(repout, cfg))
     out.update(temporal_residue_membrane_profiles(repout, cfg))
     out.update(temporal_membrane_order_profiles(repout, cfg))
     return out

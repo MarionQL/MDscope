@@ -196,6 +196,9 @@ def required_artifacts(entry: FusedOutput, cfg: dict) -> tuple[Path, ...]:
             paths.append(directory/'atom_sasa.parquet')
         if spec.get('reference_run') is not None:
             paths.extend(directory/f for f in ('residue_burial.parquet', 'residue_burial_summary.parquet'))
+    if name == 'sdc4_mechanisms' and spec.get('residue_occlusion', False):
+        from .mechanisms.residue_occlusion import OCCLUSION_FILE
+        paths.append(directory / OCCLUSION_FILE)
     if name == 'sdc4_mechanisms' and spec.get('motif_lipid_residence', False):
         paths.extend(directory/f for f in ('motif_lipid_contact_events.parquet',
             'motif_lipid_residence.parquet', 'motif_lipid_residence_intermittent.parquet',

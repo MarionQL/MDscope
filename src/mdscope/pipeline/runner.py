@@ -45,6 +45,7 @@ from .fused_extensions import enabled_names as extension_enabled_names, run_fuse
 from .fused_distance import enabled_names as distance_enabled_names, run_fused_distances
 from .fused_all import run_fused_only
 from ..mechanisms.sdc4_mechanisms import enabled as sdc4_enabled, run_sdc4_mechanisms
+from ..mechanisms.residue_occlusion import OCCLUSION_FILE, IDENTITY_COLUMNS, FRACTION_COLUMNS
 from ..mechanisms.shared_states import fit_shared_states
 from ..reporting.sdc4_figures import plot_sdc4_mechanisms
 from ..reporting.report import generate_report
@@ -105,6 +106,11 @@ def _validate_analysis_output(entry, cfg):
                     if not {"time_ps", "values", "positions", "labels"} <= set(profile.files):
                         raise ValueError(f"{path}: missing order-profile arrays")
         if entry.name == "sdc4_mechanisms":
+            if cfg["analyses"]["sdc4_mechanisms"].get("residue_occlusion"):
+                path = entry.path.parent / OCCLUSION_FILE
+                columns = set(read_schema(path).names)
+                if not set((*IDENTITY_COLUMNS, *FRACTION_COLUMNS)) <= columns:
+                    raise ValueError(f"{path}: missing residue occlusion columns")
             path = entry.path.parent / "lipid_density_maps.npz"
             with np.load(path, allow_pickle=False) as maps:
                 expected = {"counts", "density_per_nm2", "enrichment_fold",

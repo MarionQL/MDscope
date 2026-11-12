@@ -11,6 +11,8 @@ from MDAnalysis.coordinates.memory import MemoryReader
 
 from mdscope.mechanisms.sdc4_mechanisms import SDC4Mechanisms, _contacts, _angle, _backbone_axis, _local_surface, _normal_order_setup, _order_by_residue
 from mdscope.mechanisms.shared_states import fit_shared_states
+from mdscope.mechanisms.residue_occlusion import ResidueOcclusion
+from mdscope.statistics.profiles import collect_temporal_profiles
 
 
 def _synthetic():
@@ -105,8 +107,9 @@ def _cfg():
     }
 
 
-def _run(out, resume=False, lipid=False):
+def _run(out, resume=False, lipid=False, occlusion=False):
     u, cfg = _synthetic(), _cfg()
+    cfg["analyses"]["sdc4_mechanisms"]["residue_occlusion"] = occlusion
     if lipid:
         u.add_TopologyAttr("bonds", [])
         cfg["analyses"]["sdc4_mechanisms"]["motif_lipid_residence"] = True
@@ -118,6 +121,7 @@ def _run(out, resume=False, lipid=False):
                 obs.flush(0)
         obs.flush(1)
         u, cfg = _synthetic(), _cfg()
+        cfg["analyses"]["sdc4_mechanisms"]["residue_occlusion"] = occlusion
         if lipid:
             u.add_TopologyAttr("bonds", [])
             cfg["analyses"]["sdc4_mechanisms"]["motif_lipid_residence"] = True
@@ -138,8 +142,8 @@ def _run(out, resume=False, lipid=False):
 
 @pytest.mark.parametrize("lipid", [False, True])
 def test_sdc4_observer_and_checkpoint_recovery(tmp_path, lipid):
-    _run(tmp_path / "clean", lipid=lipid)
-    _run(tmp_path / "resume", resume=True, lipid=lipid)
+    _run(tmp_path / "clean", lipid=lipid, occlusion=True)
+    _run(tmp_path / "resume", resume=True, lipid=lipid, occlusion=True)
     for folder in ("clean", "resume"):
         out = tmp_path / folder / "extensions/sdc4_mechanisms"
         data = pd.read_parquet(out / "timeseries.parquet")
@@ -163,6 +167,8 @@ def test_sdc4_observer_and_checkpoint_recovery(tmp_path, lipid):
     b = tmp_path / "resume/extensions/sdc4_mechanisms"
     pd.testing.assert_frame_equal(pd.read_parquet(a / "timeseries.parquet"),
                                   pd.read_parquet(b / "timeseries.parquet"))
+    pd.testing.assert_frame_equal(pd.read_parquet(a / "residue_occlusion.parquet"),
+                                  pd.read_parquet(b / "residue_occlusion.parquet"))
     if lipid:
         for name in ("lipid_region_specificity", "motif_lipid_residence",
                      "motif_lipid_residence_intermittent", "lipid_residue_contacts"):
@@ -170,6 +176,57 @@ def test_sdc4_observer_and_checkpoint_recovery(tmp_path, lipid):
                                           pd.read_parquet(b / f"{name}.parquet"))
     with np.load(a / "lipid_density_maps.npz") as left, np.load(b / "lipid_density_maps.npz") as right:
         np.testing.assert_array_equal(left["counts"], right["counts"])
+
+
+def test_residue_occlusion_counts_target_atoms_and_periodic_partners():
+    u = mda.Universe.empty(
+        9, n_residues=7, atom_resindex=[0, 0, 1, 2, 3, 4, 5, 5, 6],
+        trajectory=True,
+    )
+    u.add_TopologyAttr("resnames", ["ALA"] * 7)
+    u.add_TopologyAttr("resids", [1, 2, 3, 4, 1, 1, 1])
+    u.add_TopologyAttr("chainIDs", ["A"] * 5 + ["B", "HS", "HS", "L"])
+    u.atoms.positions = [
+        [1, 0, 0], [10, 0, 0], [10, 1, 0], [10, 2, 0], [50, 0, 0],
+        [99, 0, 0], [1, 0, 1], [1, 0, 2], [10, 0, 1],
+    ]
+    observer = ResidueOcclusion(u.atoms[:6], u.atoms[6:8], u.atoms[8:], 5.)
+    frame = observer.frame([100., 100., 100., 90., 90., 90.])
+    # A1's first atom contacts B1 across PBC and two HS atoms. Its second
+    # atom contacts the lipid and only excluded same-chain protein neighbors.
+    np.testing.assert_array_equal(frame[0], [.5, .5, .5, 1.])
+    np.testing.assert_array_equal(frame[1], [0., 0., 1., 1.])
+    np.testing.assert_array_equal(frame[3], [0., 0., 0., 0.])
+    np.testing.assert_array_equal(frame[4], [1., 1., 0., 1.])
+
+
+def test_backfill_matches_fused_occlusion_and_feeds_profile_statistics(tmp_path, monkeypatch):
+    from mdscope.mechanisms import sdc4_mechanisms as mechanisms
+
+    repout = tmp_path / "legacy"
+    cfg = _run(repout)
+    _run(tmp_path / "fused", occlusion=True)
+    folder = repout / "extensions/sdc4_mechanisms"
+    timeseries = folder / "timeseries.parquet"
+    original = timeseries.read_bytes()
+    rep = SimpleNamespace(system="test", label="rep1", topology="top", trajectory="traj")
+    monkeypatch.setattr(mechanisms, "mda", SimpleNamespace(Universe=lambda *args: _synthetic()))
+    cfg["trajectory"]["stride"] = 2
+    with pytest.raises(ValueError, match="frame count"):
+        mechanisms.backfill_residue_occlusion(rep, cfg, repout)
+    assert not (folder / "residue_occlusion.parquet").exists()
+    cfg["trajectory"]["stride"] = 1
+    path = mechanisms.backfill_residue_occlusion(rep, cfg, repout)
+    fused = tmp_path / "fused/extensions/sdc4_mechanisms" / path.name
+    pd.testing.assert_frame_equal(pd.read_parquet(path), pd.read_parquet(fused))
+    assert timeseries.read_bytes() == original
+    # Read through the collector used by profile statistics with an old config.
+    cfg["analyses"]["rmsf"] = {"enabled": False}
+    profiles = collect_temporal_profiles(repout, cfg)
+    assert set(profiles) == {f"residue_occlusion__{key}" for key in ("protein", "hs", "lipid", "any")}
+    profile = profiles["residue_occlusion__hs"]
+    assert profile["values"].shape == (4, 24)
+    np.testing.assert_array_equal(profile["times"], [0., 10., 20., 30.])
 
 
 def test_missing_ggivg_fails_with_tm_sequence(tmp_path):

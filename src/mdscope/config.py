@@ -127,7 +127,7 @@ DEFAULTS = {
                                  "update_selections": False},
         "sdc4_mechanisms": {
             "enabled": False, "axis": "z",
-            "protein_selection": None,
+            "protein_selection": None, "residue_occlusion": False,
             "tm_chains": {}, "ectodomains": {},
             "hs_chains": {}, "hs_attachment_sites": {},
             "hs_auto": {"enabled": False, "glycan_selection": None,
@@ -775,6 +775,8 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
             raise ValueError("solvation shell cutoffs must be positive and <= search radius")
 
     mechanisms = cfg["analyses"].get("sdc4_mechanisms", {})
+    if not isinstance(mechanisms.get("residue_occlusion", False), bool):
+        raise ValueError("sdc4_mechanisms.residue_occlusion must be a boolean")
     surface_sites = mechanisms.get("residue_surface_sites", {})
     if not isinstance(surface_sites, dict) or any(
             not isinstance(name, str) or not name.strip()

@@ -23,6 +23,8 @@ def _final_tables(root):
 @pytest.mark.parametrize("chunk,failure", [(1, "during_frame"), (2, "after_write"), (2, "before_checkpoint")])
 def test_mixed_restart_and_offline_finalization(tmp_path, monkeypatch, chunk, failure):
     rep, cfg = make_project(tmp_path, chunk)
+    cfg["analyses"]["sdc4_mechanisms"]["residue_occlusion"] = True
+    cfg["statistics"]["families"]["profiles"] = True
     clean, resumed = tmp_path/"clean", tmp_path/"resumed"
     reference_cfg = deepcopy(cfg)
     reference_cfg["trajectory"]["chunk_frames"] = 3
@@ -58,7 +60,12 @@ def test_mixed_restart_and_offline_finalization(tmp_path, monkeypatch, chunk, fa
     assert expected.keys() == actual.keys()
     assert any("density_1d/protein" in path for path in actual)
     assert any("density_1d/lipid" in path for path in actual)
-    assert any("sdc4_mechanisms" in path for path in actual)
+    assert "test/rep1/extensions/sdc4_mechanisms/residue_occlusion.parquet" in actual
+    profiles = actual["project_summary/statistics/profiles/replicate_profiles.parquet"]
+    assert set(profiles.loc[profiles.profile.str.startswith("residue_occlusion__"), "profile"]) == {
+        "residue_occlusion__protein", "residue_occlusion__hs",
+        "residue_occlusion__lipid", "residue_occlusion__any",
+    }
     assert any("solvation" in path for path in actual)
     for path in expected:
         if path.endswith("extensions/solvation/shell_stability.parquet"):

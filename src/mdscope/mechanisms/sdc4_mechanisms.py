@@ -27,6 +27,7 @@ from .mechanistic_common import AA3, heavy, nearest, selected, sequence_matches,
 from ..observables.membrane_order import _candidate_sites, _fixed_ch_pairs, _atomic_npz
 from ..pipeline.progress import track
 from .hs_topology import discover_covalent_hs
+from .residue_occlusion import OCCLUSION_FILE, ResidueOcclusion
 
 
 def _leaflet_plane_height(position, anchors, box, side, radius, minimum):
@@ -400,6 +401,14 @@ class SDC4Mechanisms:
             universe, s.get("protein_selection") or cfg["selections"]["protein"],
             required=True,
         ))
+        self.residue_occlusion = None
+        if s.get("residue_occlusion", False):
+            hs_atoms = self.u.atoms[np.unique(np.concatenate([
+                group.indices for group in self.hs.values()
+            ]))] if self.hs else self.u.atoms[[]]
+            self.residue_occlusion = ResidueOcclusion(
+                self.protein, hs_atoms, self.lipid_contact, s.get("contact_cutoff_A", 5.),
+            )
         self.water = selected(universe, s.get("water_oxygen_selection"), required=bool(self.hs))
         self.ions = { _id(k): selected(universe, v, required=True)
                       for k, v in (s.get("ion_selections") or {}).items() }
@@ -550,6 +559,8 @@ class SDC4Mechanisms:
         start = time.perf_counter()
         box = _box(self.u)
         t = time_ps(ts, frame_index, self.cfg)
+        if self.residue_occlusion is not None:
+            self.rows["residue_occlusion"].append(self.residue_occlusion.frame(box))
         anchors = self.tracker.positions()
         leaf, changed = aligned_leaflets(anchors[:, 2], box[2], self.initial_leaf)
         tm_centers = {k: _center(g, box) for k, g in self.tm.items()}
@@ -1009,6 +1020,15 @@ class SDC4Mechanisms:
 
     def flush(self, part):
         start = time.perf_counter()
+        if self.rows["residue_occlusion"]:
+            atomic_parquet(
+                self.cache / f"residue-occlusion-{part:06d}.parquet",
+                self.residue_occlusion.table(
+                    [row["time_ps"] for row in self.rows["timeseries"]],
+                    self.rows["residue_occlusion"],
+                ),
+            )
+            self.rows["residue_occlusion"].clear()
         if self.rows["timeseries"]:
             atomic_parquet(
                 self.cache / f"part-{part:06d}.parquet",
@@ -1056,7 +1076,7 @@ class SDC4Mechanisms:
 
     def prune_from(self, part):
         for path in self.cache.glob("*"):
-            match = re.match(r"(?:part|map|residence|specificity|residue-contacts)-(\d+)\.(?:parquet|npz)$", path.name)
+            match = re.match(r"(?:part|map|residence|specificity|residue-contacts|residue-occlusion)-(\d+)\.(?:parquet|npz)$", path.name)
             if match and int(match.group(1)) >= part:
                 path.unlink()
 
@@ -1067,6 +1087,23 @@ class SDC4Mechanisms:
             raise ValueError("No SDC4 mechanism frames were processed")
         df = pd.concat((pd.read_parquet(p) for p in parts), ignore_index=True)
         df = df.sort_values("time_ps").reset_index(drop=True)
+        if self.residue_occlusion is not None:
+            occlusion_parts = [
+                part.with_name(f"residue-occlusion-{part.name.removeprefix('part-')}")
+                for part in parts
+            ]
+            if not all(part.is_file() for part in occlusion_parts):
+                raise ValueError("Committed SDC4 chunks lack residue occlusion. "
+                                 "Finish with the original options, then backfill residue occlusion.")
+            occlusion = pd.concat((pd.read_parquet(part) for part in occlusion_parts),
+                                  ignore_index=True)
+            expected_times = np.repeat(df["time_ps"].to_numpy(), len(self.residue_occlusion.resindices))
+            expected_residues = np.tile(self.residue_occlusion.resindices, len(df))
+            if (not np.array_equal(occlusion["time_ps"].to_numpy(), expected_times)
+                    or not np.array_equal(occlusion["topology_residue_index"], expected_residues)
+                    or not occlusion["contact_cutoff_A"].eq(self.residue_occlusion.cutoff).all()):
+                raise ValueError("Residue occlusion chunks disagree on frames, residues or cutoff")
+            atomic_parquet(self.repout / "extensions/sdc4_mechanisms" / OCCLUSION_FILE, occlusion)
         # Optional direct motif SASA endpoint, using the *existing*
         # FreeSASA calculation instead of recomputing SASA or reading XTC.
         # Interpretation follows the atom selection used for global SASA.
@@ -1259,3 +1296,33 @@ def run_sdc4_mechanisms(rep, cfg, repout):
         observer.flush(count // chunk)
     return observer.finalize()
 
+
+
+def backfill_residue_occlusion(rep, cfg, repout):
+    """Replay the saved SDC4 frame grid for the new observable only."""
+    if not enabled(cfg):
+        raise ValueError("Residue occlusion requires an enabled sdc4_mechanisms configuration")
+    out = Path(repout) / "extensions/sdc4_mechanisms"
+    path = out / OCCLUSION_FILE
+    if path.exists():
+        raise FileExistsError(f"Residue occlusion already exists: {path}")
+    expected = pd.read_parquet(out / "timeseries.parquet", columns=["time_ps"])["time_ps"]
+    spec = {**cfg["analyses"]["sdc4_mechanisms"], "residue_occlusion": True}
+    cfg = {**cfg, "analyses": {**cfg["analyses"], "sdc4_mechanisms": spec}}
+    u = mda.Universe(str(rep.topology), str(rep.trajectory))
+    tr = cfg["trajectory"]
+    frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr["stride"]))]
+    if not len(frames) or len(frames) != len(expected):
+        raise ValueError("Trajectory frame count does not match the saved SDC4 timeseries")
+    frames[0]
+    observer = SDC4Mechanisms(u, cfg, repout).residue_occlusion
+    fractions = []
+    for index, ts in enumerate(track(
+        frames, total=len(frames), desc=f"{rep.system}/{rep.label}: residue occlusion",
+        enabled=cfg.get("progress", {}).get("enabled", True),
+    )):
+        if time_ps(ts, index, cfg) != expected.iat[index]:
+            raise ValueError("Trajectory times do not match the saved SDC4 timeseries")
+        fractions.append(observer.frame(_box(u)))
+    atomic_parquet(path, observer.table(expected, fractions))
+    return path
