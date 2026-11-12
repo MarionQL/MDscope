@@ -1094,7 +1094,7 @@ class SDC4Mechanisms:
             ]
             if not all(part.is_file() for part in occlusion_parts):
                 raise ValueError("Committed SDC4 chunks lack residue occlusion. "
-                                 "Finish with the original options, then backfill residue occlusion.")
+                                 "Finish with the original options, then enable residue occlusion and rerun MDscope.")
             occlusion = pd.concat((pd.read_parquet(part) for part in occlusion_parts),
                                   ignore_index=True)
             expected_times = np.repeat(df["time_ps"].to_numpy(), len(self.residue_occlusion.resindices))
@@ -1298,7 +1298,7 @@ def run_sdc4_mechanisms(rep, cfg, repout):
 
 
 
-def backfill_residue_occlusion(rep, cfg, repout):
+def complete_residue_occlusion(rep, cfg, repout):
     """Replay the saved SDC4 frame grid for the new observable only."""
     if not enabled(cfg):
         raise ValueError("Residue occlusion requires an enabled sdc4_mechanisms configuration")

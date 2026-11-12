@@ -311,3 +311,37 @@ def test_older_completed_replica_is_reused_without_archiving_or_reading_trajecto
     runner.run_replicate(rep, cfg, root, state)
     assert _bytes_snapshot(repout) == before
     assert not (root / ".archives/replicates").exists()
+
+
+def test_run_adds_missing_occlusion_and_reuses_completed_replica(tmp_path, monkeypatch):
+    rep, cfg = make_project(tmp_path, 2)
+    root = tmp_path / "results"
+    repout = root / "test/rep1"
+    state = runner.RunState(root)
+    runner.run_replicate(rep, cfg, root, state)
+    cfg["analyses"]["sdc4_mechanisms"]["residue_occlusion"] = True
+    before = _bytes_snapshot(repout)
+    with pytest.raises(RuntimeError, match="residue_occlusion.parquet"):
+        runner.finalize_project(tmp_path / "unused.yaml", cfg=cfg, root=root,
+                                state=state, phase="statistics")
+    assert _bytes_snapshot(repout) == before
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("already completed work was called")
+
+    monkeypatch.setattr(runner, "run_streaming_pass", forbidden)
+    monkeypatch.setattr(runner, "run_sdc4_mechanisms", forbidden)
+    monkeypatch.setattr(runner, "summarize_replicate", forbidden)
+    runner.run_replicate(rep, cfg, root, state)
+
+    path = repout / "extensions/sdc4_mechanisms/residue_occlusion.parquet"
+    table = pd.read_parquet(path)
+    assert table.time_ps.nunique() == 4
+    assert table.groupby("time_ps").size().eq(24).all()
+    after = _bytes_snapshot(repout)
+    assert after.keys() - before.keys() == {str(path.relative_to(repout))}
+    assert all(after[key] == value for key, value in before.items() if key != "stage_timings.json")
+
+    monkeypatch.setattr(mda, "Universe", forbidden)
+    runner.run_replicate(rep, cfg, root, state)
+    assert _bytes_snapshot(repout) == after

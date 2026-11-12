@@ -344,8 +344,7 @@ area. Curvature is a local quadratic height-field approximation.
 
 ### Per-residue occlusion by contact partner
 
-Set `analyses.sdc4_mechanisms.residue_occlusion: true` in a new run to
-collect this during streaming. Each frame records the fraction of each
+Set `analyses.sdc4_mechanisms.residue_occlusion: true` to enable collection. Each frame records the fraction of each
 protein residue's heavy atoms within `contact_cutoff_A` of nonlocal protein,
 HS, or lipid heavy atoms, plus the union across partners. The protein
 fraction excludes the same residue and residue numbers within two positions
@@ -355,20 +354,13 @@ mechanism outputs. The partner fractions can overlap. The union counts
 each contacted atom once. HS contacts may include atoms near the covalent
 attachment site. These are distance-based contact fractions.
 
-To add the observable to completed outputs, use the same selections and
-sampling as the original run. The command below takes one zero-based
-system-by-replica index, like `mdscope replicate`.
-
-```bash
-mdscope backfill-residue-occlusion analysis.yaml --index 0
-```
-
-It reads the trajectory for that replica and writes only
-`extensions/sdc4_mechanisms/residue_occlusion.parquet`, after checking
-the saved SDC4 frame count and timestamps. Backfill every replica and
-rerun `mdscope statistics analysis.yaml` for the profile comparisons
-and residue-region scan. Statistics discover existing occlusion tables
-even if collection was off in the original configuration.
+Run `mdscope run analysis.yaml` or use the usual per-replica command.
+New replicas collect occlusion during streaming. For completed replicas,
+MDscope reuses the existing outputs and reads the trajectory only if the
+occlusion table is missing. It checks the saved SDC4 frame count and
+timestamps before adding `extensions/sdc4_mechanisms/residue_occlusion.parquet`.
+Use the same selections and sampling as the original run. The statistics
+phase uses that table for per-residue comparisons and the region scan.
 
 The selected TM GXXXG motif was detected in PROA but **not** PROB in the
 audited older topology. The analysis therefore also reports generic

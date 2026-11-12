@@ -44,7 +44,7 @@ from .fused_membrane import enabled_names as fused_enabled_names, run_fused_memb
 from .fused_extensions import enabled_names as extension_enabled_names, run_fused_extensions
 from .fused_distance import enabled_names as distance_enabled_names, run_fused_distances
 from .fused_all import run_fused_only
-from ..mechanisms.sdc4_mechanisms import enabled as sdc4_enabled, run_sdc4_mechanisms
+from ..mechanisms.sdc4_mechanisms import enabled as sdc4_enabled, run_sdc4_mechanisms, complete_residue_occlusion
 from ..mechanisms.residue_occlusion import OCCLUSION_FILE, IDENTITY_COLUMNS, FRACTION_COLUMNS
 from ..mechanisms.shared_states import fit_shared_states
 from ..reporting.sdc4_figures import plot_sdc4_mechanisms
@@ -78,10 +78,16 @@ def _check_artifact(path: Path) -> int:
     return size
 
 
-def _validate_analysis_output(entry, cfg):
+def _validate_analysis_output(entry, cfg, *, allow_missing_occlusion=False):
     """Check enabled primary/companion products before reuse or finalization."""
     try:
+        occlusion = entry.path.parent / OCCLUSION_FILE
+        may_add_occlusion = (
+            entry.name == "sdc4_mechanisms" and allow_missing_occlusion and not occlusion.exists()
+        )
         for path in required_artifacts(entry, cfg):
+            if may_add_occlusion and path == occlusion:
+                continue
             _check_artifact(path)
         if entry.path.suffix == ".parquet":
             from pyarrow.parquet import read_schema
@@ -106,11 +112,10 @@ def _validate_analysis_output(entry, cfg):
                     if not {"time_ps", "values", "positions", "labels"} <= set(profile.files):
                         raise ValueError(f"{path}: missing order-profile arrays")
         if entry.name == "sdc4_mechanisms":
-            if cfg["analyses"]["sdc4_mechanisms"].get("residue_occlusion"):
-                path = entry.path.parent / OCCLUSION_FILE
-                columns = set(read_schema(path).names)
+            if not may_add_occlusion and cfg["analyses"]["sdc4_mechanisms"].get("residue_occlusion"):
+                columns = set(read_schema(occlusion).names)
                 if not set((*IDENTITY_COLUMNS, *FRACTION_COLUMNS)) <= columns:
-                    raise ValueError(f"{path}: missing residue occlusion columns")
+                    raise ValueError(f"{occlusion}: missing residue occlusion columns")
             path = entry.path.parent / "lipid_density_maps.npz"
             with np.load(path, allow_pickle=False) as maps:
                 expected = {"counts", "density_per_nm2", "enrichment_fold",
@@ -311,11 +316,11 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     prefix = _replicate_state_prefix(rep)
     repout = ensure_dir(root / rep.system / rep.label)
     stage_timings = []
-    # Reject incomplete existing products before any reader or fallback can
-    # overwrite them. Missing primary outputs retain existing restart behavior.
+    # Reject damaged existing products before a reader can overwrite them.
+    # The new occlusion companion can be calculated independently if absent.
     for entry in analysis_output_plan(cfg, repout):
         if entry.path.exists():
-            _validate_analysis_output(entry, cfg)
+            _validate_analysis_output(entry, cfg, allow_missing_occlusion=True)
     streaming_analyses = [
         "rmsd",
         "rmsf",
@@ -470,6 +475,14 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
                 **result, "artifacts": {str(p): _check_artifact(p) for p in targets},
             })
             stage_timings.append({"stage": "multi-origin-msd", "seconds": perf_counter() - t0})
+    summary_inputs_changed = bool(stage_timings)
+    if sdc4_enabled(cfg) and cfg["analyses"]["sdc4_mechanisms"].get("residue_occlusion"):
+        entry = fused_output(repout, "sdc4_mechanisms")
+        if not (entry.path.parent / OCCLUSION_FILE).is_file():
+            t0 = perf_counter()
+            complete_residue_occlusion(rep, cfg, repout)
+            stage_timings.append({"stage": "residue-occlusion", "seconds": perf_counter() - t0})
+
     for entry in analysis_output_plan(cfg, repout):
         _validate_analysis_output(entry, cfg)
     whole = repout / "summary" / "timeseries.parquet"
@@ -485,7 +498,7 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     # exist and have valid Parquet footers. Do not infer completion from
     # the marker or from one plausible file alone.
     summary_reusable = state.complete(prefix + "-summary", required_artifacts=summary_paths)
-    if stage_timings or not summary_reusable:
+    if summary_inputs_changed or not summary_reusable:
         t0 = perf_counter()
         summary_paths = summarize_replicate(repout, cfg)
         if streaming_required and repout / "summary" / "timeseries.parquet" not in summary_paths:

@@ -213,10 +213,10 @@ def test_backfill_matches_fused_occlusion_and_feeds_profile_statistics(tmp_path,
     monkeypatch.setattr(mechanisms, "mda", SimpleNamespace(Universe=lambda *args: _synthetic()))
     cfg["trajectory"]["stride"] = 2
     with pytest.raises(ValueError, match="frame count"):
-        mechanisms.backfill_residue_occlusion(rep, cfg, repout)
+        mechanisms.complete_residue_occlusion(rep, cfg, repout)
     assert not (folder / "residue_occlusion.parquet").exists()
     cfg["trajectory"]["stride"] = 1
-    path = mechanisms.backfill_residue_occlusion(rep, cfg, repout)
+    path = mechanisms.complete_residue_occlusion(rep, cfg, repout)
     fused = tmp_path / "fused/extensions/sdc4_mechanisms" / path.name
     pd.testing.assert_frame_equal(pd.read_parquet(path), pd.read_parquet(fused))
     assert timeseries.read_bytes() == original
