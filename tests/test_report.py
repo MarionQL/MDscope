@@ -1,162 +1,64 @@
-"""End-to-end PDF/ZIP export tests with small persisted MDscope-style tables."""
-from __future__ import annotations
-
+"""Findings include only valid CI exclusions and preserve saved evidence."""
 import json
-import zipfile
 
-import numpy as np
 import pandas as pd
+import pytest
 
-from mdscope.reporting.report import generate_report, _sample_frame_table
+from mdscope.reporting.report import generate_report
+from mdscope.statistics.coverage import COLUMNS
 
 
-def test_report_pdf_and_review_bundle(tmp_path):
-    root = tmp_path / "results"
-    summary = root / "project_summary"
-    stats = summary / "statistics/time_series"
-    stats.mkdir(parents=True)
-    cfg = {
-        "project": {"name": "synthetic_sdc4", "output": str(root)},
-        "trajectory": {"start": 1000, "stop": None, "stride": 10},
-        "systems": {
-            "carb": {"replicates": [{"label": "rep1"}]},
-            "nocarb": {"replicates": [{"label": "rep1"}]},
-        },
-        "plots": {"enabled": False},
-        "report": {
-            "enabled": True, "bundle_enabled": True,
-            "max_metrics_per_section": 3,
-            "sample_frames_per_replicate": 5,
-            "include_lipid_maps": False,
-        },
-    }
-    (root / "run_metadata.json").write_text(json.dumps({
-        "mdscope_version": "test", "config_hash": "abc123"
-    }))
-    (root / "resolved_config.yaml").write_text("project:\n  name: synthetic_sdc4\n")
-    system_paths = {}
-    for system, shift in (("carb", 0.), ("nocarb", 3.)):
-        folder = root / system / "rep1"
-        (folder / "summary").mkdir(parents=True)
-        mechanism = folder / "extensions/sdc4_mechanisms"
-        mechanism.mkdir(parents=True)
-        pd.DataFrame({
-            "time_ps": np.arange(12, dtype=float) * 100,
-            "sdc4_ectodomain_A_height_A": np.arange(12, dtype=float) + shift,
-        }).to_parquet(folder / "summary/timeseries.parquet", index=False)
-        (mechanism / "selection_audit.json").write_text(json.dumps({
-            "hs_atom_counts": {"HS_A": 12},
-            "motif_resindices": {"NxIP_A": [1, 2, 3, 4]},
-            "gxxxg_resindices": {"A": [5, 6, 7, 8, 9]},
-            "lipid_counts": {"POPC": 12, "CHL1": 7},
-        }))
-        system_paths[system] = [folder]
-    for system, shift in (("carb",0.),("nocarb",1.)):
-        sol=system_paths[system][0]/"extensions"/"solvation"
-        sol.mkdir(parents=True)
-        pd.DataFrame({
-            "time_ps":np.arange(12,dtype=float)*100,
-            "solvent":"water","target_class":"protein","site_class":"acidic",
-            "mean_n_solvent":np.arange(12)*.1+shift,
-            "hydrated_fraction":.5
-        }).to_parquet(sol/"species_timeseries.parquet")
-        pd.DataFrame({
-            "solvent":["water"],"target_id":["acidic_1"],
-            "target_class":["protein"],"site_class":["acidic"],
-            "n_frames":[12],"mean_n_solvent":[2.+shift],
-            "sd_n_solvent":[.2],"hydrated_fraction":[.5]
-        }).to_parquet(sol/"target_summary.parquet")
-        pd.DataFrame({"frame":np.arange(12),"time_ps":np.arange(12)*100.,
-            "solvent":"water","target_id":"acidic_1","solvent_id":np.arange(12)}
-        ).to_parquet(sol/"events.parquet")
-    rdfdir=summary/"statistics"/"solvation"
-    rdfdir.mkdir(parents=True)
-    pd.DataFrame([
-        {"system":system,"solvent":"water","target_class":"protein",
-         "site_class":"acidic","r_inner_A":float(i),
-         "r_outer_A":float(i+1),"mean_g_bulk":1.+shift+.1*i,
-         "sd_g_bulk":.2,"n_replicates":3}
-        for system,shift in (("carb",0.),("nocarb",1.))
-        for i in range(5)
-    ]).to_parquet(rdfdir/"system_rdf.parquet")
-    shared = summary / "shared_states"
+def test_findings_from_saved_coverage_and_shared_states_are_deterministic(tmp_path):
+    project_summary = tmp_path / "project_summary"
+    stats = project_summary / "statistics"
+    (stats / "coverage").mkdir(parents=True)
+    manifest = stats / "manifest.json"
+    manifest.write_text(json.dumps({"status": "complete", "replicate_paths": ["a/rep1"]}))
+    base = dict(family="profiles", estimator="saved", system_1="a", system_2="b",
+                source_table="profiles/system_comparisons.parquet", ci_level=.90)
+    rows = []
+    for name, diff, low, high, status in [
+        ("strict_positive", .4, .2, .6, "above_zero"),
+        ("strict_negative", -.4, -.6, -.2, "below_zero"),
+        ("at_zero", .1, 0., .2, "includes_zero"),
+        ("missing", .1, None, None, "incomplete_replica_coverage"),
+        ("invalid", .4, .5, .3, "above_zero"),
+    ]:
+        rows.append(dict(base, observable=json.dumps({"profile": name}),
+                         difference_system2_minus_system1=diff, ci_low=low, ci_high=high,
+                         status=status))
+    coverage = stats / "coverage/contrast_coverage.parquet"
+    pd.DataFrame(rows, columns=COLUMNS).to_parquet(coverage)
+    original = coverage.read_bytes()
+    source = stats / base["source_table"]
+    source.parent.mkdir()
+    pd.DataFrame({"position": [1, 2]}).to_parquet(source)
+    replica_dir = tmp_path / "a/rep1/profiles"
+    replica_dir.mkdir(parents=True)
+    pd.DataFrame({"value": [2.]}).to_parquet(replica_dir / "saved.parquet")
+
+    shared = project_summary / "shared_states"
     shared.mkdir()
-    pd.DataFrame([{
-        "system": "carb", "region": "TM_A", "species": "GM1a", "leaflet": "upper",
-        "measure": "mean_matched_local_enrichment", "replicate_mean": 1.5,
-        "replicate_bootstrap_ci_low": 1., "replicate_bootstrap_ci_high": 2.,
-        "n_replicates": 3,
-    }]).to_parquet(shared / "lipid_specificity_system_statistics.parquet")
-    metric = "sdc4_ectodomain_A_height_A"
-    pd.DataFrame([
-        {"system": system, "group": None, "metric": metric,
-         "n_replicates": 1, "mean": shift + 5.5,
-         "mean_ci_low": shift + 4., "mean_ci_high": shift + 7.}
-        for system, shift in (("carb", 0.), ("nocarb", 3.))
-    ]).to_parquet(stats / "system_statistics.parquet", index=False)
-    pd.DataFrame([{
-        "system_1": "carb", "system_2": "nocarb",
-        "group": None, "metric": metric,
-        "mean_difference_system2_minus_system1": 3.,
-        "mean_difference_ci_low": 2., "mean_difference_ci_high": 4.,
-        "mean_p_value": .05, "mean_q_value": .07,
-    }]).to_parquet(stats / "system_comparisons.parquet", index=False)
-    pd.DataFrame([
-        {"system": system, "replicate": "rep1", "group": None,
-         "metric": metric, "mean": shift+5.5,
-         "mean_ci_low": shift+4., "mean_ci_high": shift+7.}
-        for system, shift in (("carb", 0.), ("nocarb", 3.))
-    ]).to_parquet(stats / "replicate_statistics.parquet", index=False)
+    pd.DataFrame([dict(chain="A", state=1, endpoint="hs_contacts", system_0="a", system_1="b",
+                       difference_system1_minus_system0=.25, replicate_bootstrap_ci_low=.1,
+                       replicate_bootstrap_ci_high=.4)]).to_parquet(
+        shared / "state_conditioned_nxip_comparisons.parquet",
+    )
+    result = generate_report(stats)
+    first = result.read_bytes()
+    assert b"strict_positive" in first and b"strict_negative" in first
+    assert b"at_zero" not in first and b"profile=invalid" not in first
+    assert b"incomplete_replica_coverage" in first and b"90% [0.2, 0.6]" in first
+    findings = pd.read_parquet(stats / "findings.parquet")
+    assert len(findings) == 3
+    assert set(findings.system_2) == {"b"}
+    inventory = pd.read_parquet(stats / "output_inventory.parquet").set_index("path")
+    assert inventory.loc[base["source_table"], "role"] == "comparison source"
+    assert inventory.loc["../../a/rep1/profiles/saved.parquet", "rows"] == 1
+    assert generate_report(stats).read_bytes() == first
+    assert coverage.read_bytes() == original
 
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    cfg['plots']['enabled'] = True
-    figdir=summary/"figures"/"time_series"
-    figdir.mkdir(parents=True)
-    fig,ax=plt.subplots(figsize=(4,2))
-    ax.plot([0,1,2],[1,2,1])
-    ax.set_xlabel("Time (ns)")
-    fig.savefig(figdir/"rmsd_A__timeseries.png")
-    plt.close(fig)
-    from mdscope.reporting.figure_inventory import record_generated_figures
-    record_generated_figures(cfg, root, system_paths, {})
-    output = generate_report(cfg, root, system_paths)
-    pdf = summary / "report/MDscope_evidence_report.pdf"
-    bundle = summary / "report/MDscope_review_bundle.zip"
-    assert output["pdf"] == str(pdf)
-    assert output["bundle"] == str(bundle)
-    assert pdf.read_bytes().startswith(b"%PDF-")
-    assert pdf.stat().st_size > 3000
-    with zipfile.ZipFile(bundle) as z:
-        names = set(z.namelist())
-        assert "MDscope_evidence_report.pdf" in names
-        assert "project_summary/statistics/time_series/system_comparisons.csv" in names
-        assert "carb/rep1/summary/timeseries_sample.csv" in names
-        assert "carb/rep1/extensions/sdc4_mechanisms/selection_audit.json" in names
-        assert "resolved_config.yaml" in names
-        assert "carb/rep1/extensions/solvation/events.parquet" in names
-        assert "carb/rep1/extensions/solvation/target_summary.csv" in names
-        assert "project_summary/statistics/solvation/system_rdf.csv" in names
-        assert "project_summary/figures/time_series/rmsd_A__timeseries.png" in names
-        assert "project_summary/report/figure_manifest.csv" in names
-        assert "project_summary/report/figure_coverage.csv" in names
-        manifest=pd.read_csv(z.open("project_summary/report/figure_manifest.csv"))
-        assert "project_summary/figures/time_series/rmsd_A__timeseries.png" in manifest.figure.tolist()
-
-        sampled = pd.read_csv(z.open("carb/rep1/summary/timeseries_sample.csv"))
-        assert len(sampled) == 5
-        assert "sdc4_ectodomain_A_height_A" in sampled
-        assert not any(name.endswith(".xtc") for name in names)
-    # The command must be safely repeatable without archiving or rerunning.
-    again = generate_report(cfg, root, system_paths, force=True)
-    assert again["pdf"] == output["pdf"]
-
-
-def test_bounded_sample_preserves_endpoints():
-    df = pd.DataFrame({"time_ps": np.arange(100), "value": np.arange(100)})
-    sampled = _sample_frame_table(df, 7)
-    assert len(sampled) == 7
-    assert sampled.iloc[0].time_ps == 0
-    assert sampled.iloc[-1].time_ps == 99
-
+    manifest.write_text(json.dumps({"status": "running"}))
+    with pytest.raises(ValueError, match="completed statistics"):
+        generate_report(stats)
+    assert result.read_bytes() == first

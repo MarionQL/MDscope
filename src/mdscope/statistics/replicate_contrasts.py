@@ -23,6 +23,7 @@ def replicate_mean_contrasts(values, keys, system_repouts, stats):
     bootstrap = (draws > 0 and stats.get("bootstrap", True)
                  and hierarchy.get("enabled", True) and hierarchy.get("resample_replicates", True))
     rows = []
+    resamples = {}
     for identity, group in values.groupby(keys, sort=True):
         identity = identity if isinstance(identity, tuple) else (identity,)
         by_system = {
@@ -56,11 +57,14 @@ def replicate_mean_contrasts(values, keys, system_repouts, stats):
             else:
                 # Use the same replica resamples for each observable with
                 # these system/replica keys so correlated outputs stay aligned.
-                label = repr((first, second, tuple(a.index), tuple(b.index))).encode()
-                salt = int.from_bytes(sha256(label).digest()[:8], "little")
-                rng = np.random.default_rng(np.random.SeedSequence([seed, salt]))
-                i = rng.integers(len(left), size=(draws, len(left)))
-                j = i if paired else rng.integers(len(right), size=(draws, len(right)))
+                key = (first, second, tuple(a.index), tuple(b.index))
+                if key not in resamples:
+                    salt = int.from_bytes(sha256(repr(key).encode()).digest()[:8], "little")
+                    rng = np.random.default_rng(np.random.SeedSequence([seed, salt]))
+                    i = rng.integers(len(left), size=(draws, len(left)))
+                    j = i if paired else rng.integers(len(right), size=(draws, len(right)))
+                    resamples[key] = i, j
+                i, j = resamples[key]
                 boot = right[j].mean(axis=1) - left[i].mean(axis=1)
                 alpha = (1 - level) / 2
                 row["difference_ci_low"], row["difference_ci_high"] = np.quantile(boot, [alpha, 1 - alpha])

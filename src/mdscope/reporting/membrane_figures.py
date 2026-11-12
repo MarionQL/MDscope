@@ -8,14 +8,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from ..config import ensure_dir, presentation_enabled
+from ..config import ensure_dir, plot_enabled
 from .figure_inventory import current_statistics
 
 def plot_lipid_enrichment_matrix(cfg,root):
     if not current_statistics(cfg, root, 'time_series'):
         return
     source=Path(root)/"project_summary"/"statistics"/"time_series"/"replicate_statistics.parquet"
-    if not source.exists() or not presentation_enabled(cfg,"plots","lipid_enrichment"):return
+    if not source.exists() or not plot_enabled(cfg, "lipid_enrichment"):return
     frame=pd.read_parquet(source)
     if not {"system","metric","mean"}.issubset(frame):return
     for suffix, title, filename in (
@@ -59,8 +59,7 @@ def plot_lipid_enrichment_matrix(cfg,root):
 
 def plot_lipid_contacts(cfg, root, system_repouts):
     """Offline equal-replica mean neighbor matrices, distinct from H-bonds."""
-    if (not cfg.get('plots', {}).get('enabled', True)
-            or not cfg.get('plots', {}).get('families', {}).get('lipid_contacts', True)
+    if (not plot_enabled(cfg, "lipid_contacts")
             or not cfg.get('analyses', {}).get('lipid_contacts', {}).get('enabled', False)):
         return
     indices = ['leaflet', 'species_a', 'species_b']
@@ -124,3 +123,29 @@ def plot_lipid_contacts(cfg, root, system_repouts):
                     draw(values, f'{first} minus {second} / {leaflet}', metric,
                          f'lipid_contact_difference_{first}__{second}_{leaflet}_{metric}.png',
                          difference=True)
+
+def plot_project_diffusion(cfg, root):
+    """Render independent replica estimates from the saved numerical summary."""
+    if not plot_enabled(cfg, "diffusion"):
+        return
+    out = Path(root) / "project_summary" / "diffusion"
+    source = out / "replicate_coefficients.parquet"
+    if not source.is_file():
+        return
+    data = pd.read_parquet(source)
+    groups = data.groupby(["system", "metric"], sort=True)
+    fig, ax = plt.subplots(figsize=(max(6, 1.4 * groups.ngroups), 4.8))
+    labels, ticks = [], []
+    for i, ((system, metric), rows) in enumerate(groups):
+        values = rows["diffusion_nm2_ns"].dropna().to_numpy(float)
+        if len(values):
+            ax.scatter(np.full(len(values), i), values, s=45, alpha=.85)
+            ax.plot([i - .22, i + .22], [values.mean()] * 2, lw=2.5, color="black")
+            labels.append(f"{system}\n{metric}")
+            ticks.append(i)
+    ax.set_xticks(ticks, labels, rotation=25, ha="right")
+    ax.set_ylabel("Lateral diffusion coefficient (nm²/ns)")
+    ax.set_title("Single-origin MSD replicate estimates")
+    fig.tight_layout()
+    fig.savefig(out / "diffusion_coefficients.png", dpi=int(cfg.get("plots", {}).get("dpi", 250)))
+    plt.close(fig)

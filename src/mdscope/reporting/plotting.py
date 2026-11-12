@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from ..config import presentation_enabled, ensure_dir, replicate_label, replicate_specs, system_label
+from ..config import plot_enabled, ensure_dir, replicate_label, replicate_specs, system_label
 from ..interactions import interaction_tables
 from ..statistics import collect_time_series, finite
 from .figure_inventory import current_statistics
@@ -111,7 +111,7 @@ def _table_figure(title: str, dataframe: pd.DataFrame, path: Path, cfg: dict, ma
 
 
 def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
-    if not presentation_enabled(cfg, 'plots', 'time_series'):
+    if not plot_enabled(cfg, 'time_series'):
         return
     if not cfg.get("plots", {}).get("enabled", True):
         return
@@ -333,7 +333,7 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
 
 
 def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
-    if not presentation_enabled(cfg, 'plots', 'profiles'):
+    if not plot_enabled(cfg, 'profiles'):
         return
     stats_allowed = current_statistics(cfg, root, 'profiles')
     if not stats_allowed:
@@ -596,7 +596,7 @@ def _interaction_key(data: pd.DataFrame) -> pd.Series:
 
 
 def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
-    if not presentation_enabled(cfg, 'plots', 'interactions'):
+    if not plot_enabled(cfg, 'interactions'):
         return
     stats_allowed = current_statistics(cfg, root, 'interactions')
     out = ensure_dir(root / "project_summary" / "figures" / "interactions")
@@ -785,11 +785,11 @@ def plot_all(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
     if not cfg.get("plots", {}).get("enabled", True):
         return
     configure_plot_style(cfg)
-    if presentation_enabled(cfg, "plots", "time_series"):
+    if plot_enabled(cfg, "time_series"):
         plot_time_series(cfg, root, system_repouts)
-    if presentation_enabled(cfg, "plots", "profiles"):
+    if plot_enabled(cfg, "profiles"):
         plot_profiles(cfg, root, system_repouts)
         _plot_residue_distance_heatmaps(cfg, root, system_repouts)
-    if presentation_enabled(cfg, "plots", "interactions"):
+    if plot_enabled(cfg, "interactions"):
         plot_interactions(cfg, root, system_repouts)
 

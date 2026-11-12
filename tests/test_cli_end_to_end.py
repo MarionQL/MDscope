@@ -55,7 +55,7 @@ def project(tmp_path):
             universe.dimensions = np.array([50., 50., 50., 90., 90., 90.])
             writer.write(universe.atoms)
 
-    def config(label="results", report=False):
+    def config(label="results", statistics=False):
         analyses = {
             name: {"enabled": False}
             for name in (
@@ -87,9 +87,8 @@ def project(tmp_path):
                 },
             },
             "analyses": analyses,
-            "statistics": {"enabled": False},
+            "statistics": {"enabled": statistics, "bootstrap_draws": 100},
             "plots": {"enabled": False},
-            "report": {"enabled": report, "bundle_enabled": report},
         }
         path = tmp_path / f"{label}.yaml"
         path.write_text(yaml.safe_dump(specification, sort_keys=False))
@@ -123,17 +122,26 @@ def test_init_and_validate_cli(tmp_path, project):
 
 
 def test_replicate_finalize_and_report_cli(tmp_path, project):
-    cfg, root = project("separate", report=True)
+    cfg, root = project("separate", statistics=True)
     invoke(tmp_path, "replicate", cfg, "--index", "0")
     assert (root / "tiny" / "rep1" / "summary" / "timeseries.parquet").is_file()
     invoke(tmp_path, "finalize", cfg)
     assert_summary(root)
-    pdf = root / "project_summary" / "report" / "MDscope_evidence_report.pdf"
-    bundle = root / "project_summary" / "report" / "MDscope_review_bundle.zip"
-    assert pdf.read_bytes().startswith(b"%PDF-")
-    assert bundle.stat().st_size > 0
-    invoke(tmp_path, "report", cfg)
-    assert pdf.read_bytes().startswith(b"%PDF-")
+    statistics_dir = root / "project_summary" / "statistics"
+    findings = statistics_dir / "findings.md"
+    content = findings.read_bytes()
+    assert b"MDscope findings" in content
+    assert not list(root.rglob("*.png"))
+    invoke(tmp_path, "report", statistics_dir)
+    assert findings.read_bytes() == content
+    resolved = (root / "resolved_config.yaml").read_bytes()
+    options = yaml.safe_load(cfg.read_text())
+    options["plots"] = {"enabled": True, "families": {"profiles": False, "interactions": False}}
+    cfg.write_text(yaml.safe_dump(options))
+    invoke(tmp_path, "plotting", cfg)
+    assert list((root / "project_summary" / "figures").rglob("*__timeseries.png"))
+    assert (root / "resolved_config.yaml").read_bytes() == resolved
+    assert findings.read_bytes() == content
 
 
 def test_run_cli(tmp_path, project):

@@ -161,14 +161,6 @@ SASA additionally requires FreeSASA:
 pip install freesasa
 ```
 
-To create a self-contained PDF evidence report and a compact review ZIP:
-
-```bash
-pip install reportlab pillow
-```
-
-`pyarrow` is recommended as the Parquet backend. `fastparquet` can also satisfy pandas Parquet output.
-
 ## Basic use
 
 From the directory containing the `mdscope` package:
@@ -187,37 +179,30 @@ python -m mdscope.cli init --output analysis.yaml
 # Check files/selections and catch obvious configuration problems.
 python -m mdscope.cli validate analysis.yaml
 
-# Run every configured replicate, consolidate results, calculate statistics, and plot.
+# Run every configured replicate and generate statistics and a findings report.
 python -m mdscope.cli run analysis.yaml
 
 # Run one zero-based systemxreplicate entry (for example from a job array).
 python -m mdscope.cli replicate analysis.yaml --index 0
 
-# Re-run only project-level statistics/plots from already persisted replicate outputs.
+# Recompute project statistics and findings from saved replica outputs.
 python -m mdscope.cli finalize analysis.yaml
 ```
 
 The project output directory contains the resolved configuration and environment metadata so a completed analysis can be audited later.
 
-For the full two-condition, six-replicate SDC4 mechanism analysis, see
-[`synd4_full_mechanisms.yaml`](synd4_full_mechanisms.yaml) and
-[`REPORT.md`](docs/workflows.md). The original system/trajectory paths are
-unchanged; the expanded analysis writes to a separate results directory.
+For the full six-replica SDC4 workflow, use
+[`synd4_full_mechanisms.yaml`](synd4_full_mechanisms.yaml) and the
+[execution guide](docs/workflows.md).
 
-When `report.enabled: true`, finalization creates:
-
-```text
-project_summary/report/MDscope_evidence_report.pdf
-project_summary/report/MDscope_review_bundle.zip
-```
-
-To regenerate just these files from existing finalized outputs (no XTC
-re-read, no project summary archiving):
+Open `project_summary/statistics/findings.md` for the review. The accompanying
+Parquet lists all saved between-condition bootstrap intervals that exclude
+zero. The coverage table records the status of the remaining comparisons.
+Rebuild the review without rerunning statistics:
 
 ```bash
-python -m mdscope.cli report synd4_full_mechanisms.yaml
+mdscope report /path/to/project_summary/statistics
 ```
-
 
 # YAML configuration
 
@@ -748,15 +733,17 @@ cache:
 
 ---
 
-# Plots
+# Optional diagnostic plots
+
+Set `plots.enabled: true` and run `mdscope plotting analysis.yaml` after statistics.
 
 ```yaml
 plots:
   enabled: true
   time_series: true
-  distributions: true
-  autocorrelation: true
-  bootstrap_tables: true
+  distributions: false
+  autocorrelation: false
+  bootstrap_tables: false
   profiles: true
   interactions: true
   min_occupancy: 0.05
@@ -856,16 +843,16 @@ For production MD comparisons:
 
 ## Modular architecture and diffusion fits (experimental branch)
 
-RMSD and RMSF live in `src/mdscope/observables/rmsd.py` and `src/mdscope/observables/rmsf.py`. Other structural and interaction analyses are similarly split into single-purpose modules while `src/mdscope/pipeline/streaming.py` reads the XTC once for inexpensive framewise measurements. `src/mdscope/registry.py` is the extension point for restartable specialized analyses. The existing statistics and plotting backends are **shared by output data structure**, not duplicated in individual analysis scripts. See [NEURONAL_EXTENSION.md](docs/analyses.md) for a module map and contribution contract.
+RMSD and RMSF live in `src/mdscope/observables/rmsd.py` and `src/mdscope/observables/rmsf.py`. Other structural and interaction analyses are similarly split into single-purpose modules while `src/mdscope/pipeline/streaming.py` reads the XTC once for inexpensive framewise measurements. `src/mdscope/registry.py` is the extension point for restartable specialized analyses. The existing statistics and plotting backends are **shared by output data structure**, not duplicated in individual analysis scripts. See [scientific analyses](docs/analyses.md) for a module map and contribution contract.
 
 The existing `membrane.msd` code is retained in `src/mdscope/observables/msd.py` and now optionally produces **replicate-level diffusion coefficients** as well. Configure `analyses.membrane.msd.slope_start_fraction` (default `0.2`) and `slope_end_fraction` (default `0.8`). This is a descriptive **single-origin MSD** slope fit; it does not claim species-resolved or multi-origin diffusion, and it does not treat time-correlated frames as independent replicates.
 
 Older outputs remain reusable when their required files and formats are compatible. Use a separate `project.output` when you intend to recompute results with different scientific settings.
 
 
-## Lipid analyses from issues #1–#5
+## Lipid analyses
 
-The optional membrane extensions include leaflet-resolved C–H order profiles, terminal/Slurm progress indicators, local bilayer-normal deviation, protein-centered lipid enrichment/depletion, and lipid–lipid hydrogen-bond events grouped by lipid type. See [ISSUE_ANALYSES.md](docs/analyses.md) for YAML examples, precise definitions, saved tables and limitations. They use the existing MDscope replicate-aware statistical engine and plot conventions.
+The optional membrane extensions include leaflet-resolved C–H order profiles, terminal/Slurm progress indicators, local bilayer-normal deviation, protein-centered lipid enrichment/depletion, and lipid–lipid hydrogen-bond events grouped by lipid type. See [scientific analyses](docs/analyses.md) for YAML examples, precise definitions, saved tables and limitations. They use the existing MDscope replicate-aware statistical engine and plot conventions.
 
 
 ### Monitoring progress in Slurm

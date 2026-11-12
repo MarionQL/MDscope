@@ -35,12 +35,6 @@ The main raw-coordinate frame loop now computes all of these analyses
 - Local-environment protein/lipid/HS/ion contacts and motif distances
 - All named residue-to-membrane minimum-distance analyses
 
-For the two published test systems, the initial baseline required **five**
-passes, PR #11 reduced that to **two**, and this revision reduces production
-to **one** (main streaming, three lipid observables, lipid H-bonds and
-residue-to-membrane distances). The independent reference readers in CI are
-deliberate and are *not* production passes.
-
 For configurations with no regular protein streaming, all optional observers
 share a single observer-only fallback traversal. A non-serial DSSP backend
 remains an intentional separate analysis, because its multiprocessing
@@ -104,7 +98,7 @@ an assessment of sampling convergence or statistical significance.
 
 ---
 
-### MDscope full SDC4 analysis + shareable evidence report
+### Full SDC4 analysis
 
 ### Configuration
 
@@ -128,7 +122,7 @@ The new YAML enables:
   and two carboxylate-centered 3D hydration maps
 - Acidic-patch/HS bridge occupancy, water hydrogen-bond bridges and K spatial
   references, plus a separate topology, RDF peak, shared-water and steric audit
-- Local environment contacts and the descriptive coupling screen
+- Local environment contacts and matched-window coupling comparisons
 - Ectodomain height, tilt and membrane-contact states
 - Sequence-derived NxIP occlusion and direct motif SASA (protein-only)
 - **Six individual covalently attached HS chains** with orientation, direct
@@ -136,8 +130,7 @@ The new YAML enables:
 - TM crossing, generic helix-helix interface and per-chain GXXXG contacts
 - Local membrane thickness, quadratic curvature and C-H order
 - One shared conformational-state model across all six replicates
-- Hierarchical statistics, replicate-aware comparisons and figures
-- A PDF evidence report and a review ZIP containing the full audit tables
+- Hierarchical statistics, replicate-aware comparisons and a findings report
 
 Solvent identity tracking is limited to the acidic patches and HS anionic
 sites. Other charged protein sites and lipid phosphates contribute counts
@@ -145,8 +138,10 @@ and RDFs. Environment SASA uses whole, centered coordinates because the
 dimer exceeds the compact-target limit of periodic SASA. Interpret this
 burial metric only while the target is clear of the periodic faces.
 Ligand contacts require a designated ligand. The finalization-fast
-variant consumes the same outputs with atom-identity lipid H-bond statistics
-omitted and a relaxed shared-state completeness threshold.
+variant targets the earlier saved replica products. It omits the later
+shared-phosphate distance profile and additional motif atom SASA inputs,
+skips atom-identity lipid H-bond statistics, and uses a lower shared-state
+completeness threshold.
 
 ### HS chains: actual TPR bond audit
 
@@ -175,7 +170,7 @@ residue numbering and glycosylation may differ.
 On Tinkercliffs or another host with the original topology/trajectory paths:
 
 ```bash
-python -m pip install reportlab pillow freesasa
+python -m pip install freesasa
 python -m mdscope.cli validate synd4_full_mechanisms.yaml
 python -m mdscope.cli run synd4_full_mechanisms.yaml
 ```
@@ -187,9 +182,9 @@ After all six replicates have completed, run:
 python -m mdscope.cli finalize synd4_full_mechanisms.yaml
 ```
 
-**Note:** `finalize` recomputes and archives the previous project-level
-summary, whereas `report` below only regenerates the PDF/ZIP from
-existing tables. The full `run` command already finalizes automatically.
+`finalize` and `statistics` recompute derived numerical outputs and
+archive the previous project summary. `run` also performs this phase
+after processing replicas.
 
 For 1D density comparisons, MDscope rebins offset replica frame caches to
 shared physical slabs before bootstrapping. The target width is
@@ -203,9 +198,37 @@ Existing frame caches can be reused by rerunning project statistics
 Project statistics write `statistics/coverage/contrast_coverage.parquet`
 under `project_summary`. The audit records valid intervals and missing
 comparisons by observable and system pair for time series, profiles,
-interactions, RDF shells and multi-origin diffusion. The review bundle
-also exports the CSV. An interval excluding zero is distinct from a
-multiple-testing-adjusted permutation result.
+interactions, RDF shells, diffusion and coupling. An interval excluding
+zero is distinct from a multiple-testing-adjusted permutation result.
+
+### Discovering contiguous protein changes
+
+Profile statistics write `project_summary/statistics/profiles/residue_regions.parquet`.
+To scan an older completed statistics export directly, run:
+
+```bash
+mdscope scan-residue-regions /path/to/project_summary/statistics
+```
+
+The scan reads saved replica profiles and their statistics manifest. It
+compares the DSSP, RMSF, SASA, and residue–membrane-distance profiles already
+present in the export. Rerun the statistics phase to include named SASA runs
+and environmental buried area from saved per-replica SASA files.
+
+A region contains at least three consecutively numbered residues on the
+same labeled chain. At each residue every expected replica must have a
+finite value and the two replica ranges must be strictly separated in the
+same direction throughout the region. Each condition needs at least two
+replicas. Gaps, ambiguous residue numbering, overlap and direction changes
+break regions. Within a profile and system pair, the table ranks regions by
+the absolute mean residue contrast and reports the smallest separation of
+the two replica ranges in the region. Positive contrasts mean system 2 is
+higher. SASA contrasts are per-residue mean differences in nm².
+
+The table is exploratory. Absence from it can reflect overlapping replica
+ranges or incomplete data. Region boundaries and ranks are descriptive
+and do not carry confidence intervals. Pointwise confidence intervals
+remain in the profile comparison table.
 
 RDF shell contrasts use the shell-volume-weighted mean of the saved
 normalized RDF up to the configured water or ion cutoff. Diffusion
@@ -254,64 +277,53 @@ The new trajectory observables require refreshed replicate products.
 To apply updated statistics to legacy results first, use the configuration
 that generated their existing replicate products.
 
-### Files to send back to ChatGPT
+### Reviewing saved findings
 
-Once all analyses and project-level finalization finish:
+The numerical phase writes the review under `project_summary/statistics/`.
 
-```text
-results_memb_full_analysis/
-  project_summary/
-    report/
-      MDscope_evidence_report.pdf
-      MDscope_review_bundle.zip
-```
+| File | Contents |
+| --- | --- |
+| `findings.md` | Coverage, missing comparisons and representative interval exclusions by family and condition pair |
+| `findings.parquet` | All finite between-condition bootstrap intervals that exclude zero, with exact values and source paths |
+| `output_inventory.parquet` | Saved numerical products and Parquet row counts, including replica outputs when present |
+| `coverage/contrast_coverage.parquet` | Every registered contrast and its interval status |
 
-Upload **`MDscope_evidence_report.pdf`** to request an interpretation
-of the condition differences, state populations, HS/membrane mechanisms,
-and their statistical support.
-
-For deeper independent verification and new plots, upload
-**`MDscope_review_bundle.zip`** too. The ZIP contains:
-
-- Full-precision statistical tables in CSV format
-- Shared-state model, centroids, assignments, populations and diagnostics
-- All replicate HS selection/attachment audits
-- Replicate lipid density/enrichment NPZ maps
-- Conditioned HS hydration/ion summary tables
-- Up to 250 evenly spaced frame-level rows per replicate (configurable)
-- Resolved YAML, environment/run metadata and the PDF itself
-
-It **does not** contain XTC/TPR trajectories, large caches or complete
-per-frame data tables, so it should be far smaller than the original MD
-outputs. The PDF can be reviewed on its own; the ZIP enables a more
-rigorous re-analysis of the underlying statistics.
-
-To regenerate **only** the report after finalization, without opening
-trajectories or archiving the project summary:
+The review includes available shared-state population and conditioned
+NxIP contrasts. Descriptive outputs appear in the inventory, which excludes
+working caches and trajectories. When sharing an export, include
+`statistics/` and its sibling `shared_states/` directory if available.
 
 ```bash
-python -m mdscope.cli report synd4_full_mechanisms.yaml
+mdscope report /path/to/project_summary/statistics
 ```
 
-### Scientific and statistical limitations
+For diagnostic figures, set `plots.enabled: true` and run
+`mdscope plotting analysis.yaml`. Both commands use saved results.
 
-The PDF is a reproducible descriptive evidence report, **not an LLM-written
-results/discussion section**. It displays condition means, hierarchical
-confidence intervals, permutation p-values and FDR q-values, replicate
-consistency, shared-state centroids, population/transition diagnostics,
-selection audits, lipid maps and methodology caveats.
+With three independent replicas per condition, exact permutation tests have
+limited p-value resolution. Inspect temporal stability, shared-state
+populations and replicate agreement before interpreting the contrasts.
+Lipid density maps retain their documented coordinate and area references.
 
-With three independent replicates per condition, exact permutation
-tests have limited p-value resolution. Shared-state populations and
-first/second-half divergence help diagnose sampling, but do not establish
-equilibrium or causal relationships.
+### Per-residue occlusion by contact partner
 
-NxIP occlusion is a steric-contact proxy; direct motif SASA is calculated
-with the configured FreeSASA atom selection and does not account for
-glycan/lipid occlusion unless those atoms are included. HS hydration and
-ion contacts are distance-cutoff observables, not electrostatic binding
-free energies. Lipid density maps are not corrected for protein-excluded
-area. Curvature is a local quadratic height-field approximation.
+Set `analyses.sdc4_mechanisms.residue_occlusion: true` to enable collection. Each frame records the fraction of each
+protein residue's heavy atoms within `contact_cutoff_A` of nonlocal protein,
+HS, or lipid heavy atoms, plus the union across partners. The protein
+fraction excludes the same residue and residue numbers within two positions
+on the same chain. Interchain contacts count even when residue numbers
+match. The HS and lipid selections are the same as in the other SDC4
+mechanism outputs. The partner fractions can overlap. The union counts
+each contacted atom once. HS contacts may include atoms near the covalent
+attachment site. These are distance-based contact fractions.
+
+Run `mdscope run analysis.yaml` or use the usual per-replica command.
+New replicas collect occlusion during streaming. For completed replicas,
+MDscope reuses the existing outputs and reads the trajectory only if the
+occlusion table is missing. It checks the saved SDC4 frame count and
+timestamps before adding `extensions/sdc4_mechanisms/residue_occlusion.parquet`.
+Use the same selections and sampling as the original run. The statistics
+phase uses that table for per-residue comparisons and the region scan.
 
 The selected TM GXXXG motif was detected in PROA but **not** PROB in the
 audited older topology. The analysis therefore also reports generic

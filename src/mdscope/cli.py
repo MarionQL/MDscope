@@ -12,8 +12,9 @@ import yaml
 
 from .config import iter_replicates, load_config
 from .core.validation import validate_selections
-from .pipeline.runner import finalize_project, run_all, run_one, project_root
+from .pipeline.runner import finalize_project, run_all, run_one
 from .reporting.report import generate_report
+from .statistics.residue_regions import scan_saved_residue_regions
 
 
 def interactive_init(output="analysis.yaml"):
@@ -83,18 +84,12 @@ def main():
         p = sub.add_parser(phase, help=f"Run only the {phase} finalization phase")
         p.add_argument("config")
         p.set_defaults(func=lambda a, phase=phase: print(finalize_project(a.config, phase=phase)))
-    p = sub.add_parser("report", help="Rebuild PDF/ZIP from existing finalized tables without re-running or archiving")
-    p.add_argument("config")
-    def _report(args):
-        cfg = load_config(args.config)
-        root = project_root(cfg, args.config)
-        reps = list(iter_replicates(cfg, args.config))
-        outputs = {
-            system: [root / rep.system / rep.label for rep in reps if rep.system == system]
-            for system in cfg["systems"]
-        }
-        print(generate_report(cfg, root, outputs, force=True))
-    p.set_defaults(func=_report)
+    p = sub.add_parser("scan-residue-regions", help="Find contiguous changes in saved residue profiles")
+    p.add_argument("statistics_dir", type=Path)
+    p.set_defaults(func=lambda a: print(scan_saved_residue_regions(a.statistics_dir)))
+    p = sub.add_parser("report", help="Summarize bootstrap findings from a completed statistics directory")
+    p.add_argument("statistics_dir", type=Path)
+    p.set_defaults(func=lambda a: print(generate_report(a.statistics_dir)))
     args = parser.parse_args()
     args.func(args)
 

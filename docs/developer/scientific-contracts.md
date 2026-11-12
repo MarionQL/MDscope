@@ -273,7 +273,7 @@ only. Corrected project summaries are `mean_matched_local_contact_fraction`
 and `mean_matched_local_enrichment`. Old persisted tables lacking corrected
 fields produce missing corrected summaries, never legacy substitutions.
 Figure inventory treats legacy local enrichment as supplementary. Corrected
-figures and replica-averaged numerical summaries enter the PDF and bundle.
+figures are optional and replica-averaged summaries remain available as saved outputs.
 
 The shared numerical routine is `core/residence.py:sampled_episode_durations`.
 For observed contact bounds i,j, span = t_j - t_i. The interval-imputed

@@ -127,7 +127,7 @@ DEFAULTS = {
                                  "update_selections": False},
         "sdc4_mechanisms": {
             "enabled": False, "axis": "z",
-            "protein_selection": None,
+            "protein_selection": None, "residue_occlusion": False,
             "tm_chains": {}, "ectodomains": {},
             "hs_chains": {}, "hs_attachment_sites": {},
             "hs_auto": {"enabled": False, "glycan_selection": None,
@@ -195,19 +195,14 @@ DEFAULTS = {
             "multiple_testing": "fdr_bh",
         },
     },
-    "report": {"enabled": False, "bundle_enabled": True,
-               "max_metrics_per_section": 35, "max_hs_key_metrics": 20,
-               "max_conditioned_rows": 80, "include_lipid_maps": True,
-               "map_species": ["GM1a", "BGAL", "CHL1", "CER160"],
-               "sample_frames_per_replicate": 250},
     "cache": {"aligned_coordinates": True, "dtype": "float32", "keep": True},
     "plots": {
-        "enabled": True,
+        "enabled": False,
         "min_occupancy": 0.05,
         "time_series": True,
-        "distributions": True,
-        "autocorrelation": True,
-        "bootstrap_tables": True,
+        "distributions": False,
+        "autocorrelation": False,
+        "bootstrap_tables": False,
         "profiles": True,
         "interactions": True,
         "replicate_lightness_range": [0.28, 0.72],
@@ -413,21 +408,16 @@ def load_config(path: str | Path) -> dict[str, Any]:
         raw = yaml.safe_load(handle) or {}
     if not isinstance(raw, dict):
         raise ValueError("Configuration YAML must be a mapping")
-    for section in ("project", "trajectory", "time", "selections", "analyses", "statistics", "plots", "report"):
+    for section in ("project", "trajectory", "time", "selections", "analyses", "statistics", "plots"):
         if section in raw and not isinstance(raw[section], dict):
             raise ValueError(f"{section} must be a mapping")
     cfg = merge(DEFAULTS, raw)
-    raw_stats = raw.get("statistics", {}) or {}
-    if "block_scale" in raw_stats and not (isinstance(
-        raw_stats.get("block"),
-        dict
-    ) and "tau_multiplier" in raw_stats["block"]):
-        cfg["statistics"]["block"]["tau_multiplier"] = raw_stats["block_scale"]
-    if "max_acf_lag" in raw_stats and not (isinstance(
-        raw_stats.get("block"),
-        dict
-    ) and "max_acf_lag" in raw_stats["block"]):
-        cfg["statistics"]["block"]["max_acf_lag"] = raw_stats["max_acf_lag"]
+    if "report" in raw:
+        raise ValueError("Remove the retired report section. Statistics now write findings.md.")
+    if {"block_scale", "max_acf_lag"} & raw.get("statistics", {}).keys():
+        raise ValueError("Use statistics.block.tau_multiplier and statistics.block.max_acf_lag.")
+    if {"autocorrelation", "distribution_statistics"} & raw.get("analyses", {}).keys():
+        raise ValueError("Remove retired analyses.autocorrelation or analyses.distribution_statistics.")
     for name, raw_spec in (raw.get("analyses", {}) or {}).items():
         if isinstance(raw_spec, dict) and "runs" in raw_spec and "enabled" not in raw_spec:
             cfg.setdefault("analyses", {}).setdefault(name, {})["enabled"] = True
@@ -436,23 +426,6 @@ def load_config(path: str | Path) -> dict[str, Any]:
             cfg["analyses"][name] = merge(DEFAULTS["analyses"].get(name, {}), {"enabled": value})
         elif not isinstance(value, dict):
             raise ValueError(f"analyses.{name} must be a mapping or boolean")
-    # Removed in 0.8: prose report and the parallel
-    # distribution-statistics framework.
-    # Preserve the useful part of the old autocorrelation block as a
-    # plotting/max-lag alias.
-    old_acf = cfg.get("analyses", {}).pop("autocorrelation", None)
-    if isinstance(old_acf, dict):
-        if old_acf.get("max_lag") is not None and cfg.get(
-            "statistics",
-            {}
-        ).get("block", {}).get("max_acf_lag") is None:
-            cfg.setdefault(
-                "statistics",
-                {}
-            ).setdefault("block", {})["max_acf_lag"] = old_acf["max_lag"]
-        if old_acf.get("enabled") is False:
-            cfg.setdefault("plots", {})["autocorrelation"] = False
-    cfg.get("analyses", {}).pop("distribution_statistics", None)
     validate_config(cfg, Path(path).resolve().parent)
     return cfg
 
@@ -775,6 +748,8 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
             raise ValueError("solvation shell cutoffs must be positive and <= search radius")
 
     mechanisms = cfg["analyses"].get("sdc4_mechanisms", {})
+    if not isinstance(mechanisms.get("residue_occlusion", False), bool):
+        raise ValueError("sdc4_mechanisms.residue_occlusion must be a boolean")
     surface_sites = mechanisms.get("residue_surface_sites", {})
     if not isinstance(surface_sites, dict) or any(
             not isinstance(name, str) or not name.strip()
@@ -827,25 +802,16 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
     shared = cfg["analyses"].get("shared_states", {})
     if shared.get("enabled") and not mechanisms.get("enabled"):
         raise ValueError("shared_states requires sdc4_mechanisms.enabled")
-    allowed = {'time_series','profiles','interactions','solvation','sdc4','shared_states',
-               'diffusion','lipid_enrichment','lipid_contacts','coupling','other','overview','methods','atlas'}
-    for domain, key in (('plots','families'),('report','sections')):
-        controls = cfg.get(domain,{}).get(key,{})
-        if not isinstance(controls,dict) or set(controls)-allowed or any(not isinstance(v,bool) for v in controls.values()):
-            raise ValueError(f'{domain}.{key} must map known families to booleans')
-        excluded = cfg.get(domain,{}).get('interaction_exclude_kinds',[])
-        if not isinstance(excluded,list) or any(not isinstance(v,str) for v in excluded):
-            raise ValueError(f'{domain}.interaction_exclude_kinds must be a list')
-    report = cfg.get("report", {})
-    if report.get("enabled"):
-        for key in ("max_metrics_per_section", "max_hs_key_metrics",
-                    "max_conditioned_rows", "sample_frames_per_replicate"):
-            if int(report.get(key, 1)) < 1:
-                raise ValueError(f"report.{key} must be >= 1")
-        species = report.get("map_species", [])
-        if species is not None and (not isinstance(species, list)
-                                    or any(not isinstance(x, str) for x in species)):
-            raise ValueError("report.map_species must be a list of names")
+    allowed = {"time_series", "profiles", "interactions", "solvation", "sdc4",
+               "shared_states", "diffusion", "lipid_enrichment", "lipid_contacts", "other"}
+    plots = cfg.get("plots", {})
+    families = plots.get("families", {})
+    if (not isinstance(families, dict) or set(families) - allowed
+            or any(not isinstance(value, bool) for value in families.values())):
+        raise ValueError("plots.families must map known families to booleans")
+    excluded = plots.get("interaction_exclude_kinds", [])
+    if not isinstance(excluded, list) or any(not isinstance(value, str) for value in excluded):
+        raise ValueError("plots.interaction_exclude_kinds must be a list")
     stats = cfg.get("statistics", {})
     for field in ("block", "hypothesis_tests"):
         if stats.get(field) is not None and not isinstance(stats[field], dict):
@@ -969,11 +935,13 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
 
 
 
-def presentation_enabled(cfg, domain, family):
-    """Independent plot-family/PDF-section switches; collection is unaffected."""
-    options = cfg.get(domain, {})
-    key = 'families' if domain == 'plots' else 'sections'
-    return (domain != 'plots' or options.get('enabled', True)) and options.get(key, {}).get(family, True) and (domain != 'plots' or options.get(family, True))
+def plot_enabled(cfg, family):
+    """Resolve the master, family and per-plot switches."""
+    options = cfg.get("plots", {})
+    return (options.get("enabled", True) and options.get("families", {}).get(family, True)
+            and options.get(family, True))
+
+
 def statistics_family_config(cfg, family):
     """Resolve one statistics family's explicit overrides without mutating cfg."""
     from copy import deepcopy

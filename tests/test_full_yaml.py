@@ -22,7 +22,7 @@ def test_full_yaml_preserves_all_original_simulations():
         assert full["analyses"][name]["enabled"], name
     hs = full["analyses"]["sdc4_mechanisms"]["hs_auto"]
     assert hs["enabled"] and hs["expected_chains"] == 6
-    assert full["report"]["enabled"] and full["report"]["bundle_enabled"]
+    assert "report" not in full and full["plots"]["enabled"] is False
 
     analyses = full["analyses"]
     assert analyses["membrane"]["msd"]["multi_origin"]
@@ -32,5 +32,14 @@ def test_full_yaml_preserves_all_original_simulations():
     assert not analyses["ligand_contacts"]["enabled"] and full["selections"]["ligand"] is None
     fast = yaml.safe_load((repo / "synd4_full_mechanisms_finalize_fast.yaml").read_text())
     assert fast["project"] == full["project"]
-    fast["analyses"]["shared_states"]["min_complete_fraction"] = 0.90
-    assert fast["analyses"] == analyses
+    assert fast["systems"] == full["systems"]
+    assert fast["trajectory"] == full["trajectory"]
+    assert fast["statistics"]["interaction_exclude_kinds"] == ["lipid_hydrogen_bonds"]
+    assert fast["analyses"]["shared_states"]["min_complete_fraction"] == .80
+    assert "common_phosphate" not in fast["analyses"]["residue_membrane_distance"]["runs"]
+    assert fast["analyses"]["sasa"]["runs"]["isolated"]["atom_sasa_sequences"] == ["VVHPLVPL"]
+    # The smaller finalization config targets older persisted replica products.
+    variant = {"shared_states", "sasa", "sdc4_mechanisms", "residue_membrane_distance"}
+    assert {key: value for key, value in fast["analyses"].items() if key not in variant} == {
+        key: value for key, value in analyses.items() if key not in variant
+    }
