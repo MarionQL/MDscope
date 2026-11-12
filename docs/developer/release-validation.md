@@ -53,7 +53,7 @@ to establish any of these numerical values.
 
 The generated YAML enables the existing fused structural, membrane, SDC4,
 solvation and residue-distance observers, plus scalar statistics. It disables
-plots, PDF, native FreeSASA/DSSP and large optional profile bootstraps. The
+plots, native FreeSASA/DSSP and large optional profile bootstraps. The
 100-draw, seed-2026 statistics exercise finalization; one synthetic replicate
 cannot establish independent-replicate uncertainty or scientific convergence.
 Numerical statistical references live in `test_publication_references.py`,

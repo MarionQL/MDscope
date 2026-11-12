@@ -38,7 +38,7 @@ def test_disabled_statistics_families_never_enter_kernels(tmp_path, monkeypatch)
     monkeypatch.setattr(profiles, 'collect_temporal_profiles', forbidden)
     monkeypatch.setattr(interactions, 'interaction_tables', forbidden)
     monkeypatch.setattr(solvation.pd, 'read_parquet', forbidden)
-    cfg = {'statistics': {'families': {k: False for k in ('time_series','profiles','interactions','solvation_rdfs')}}}
+    cfg = {'statistics': {'families': {k: False for k in ('time_series','profiles','interactions','solvation_rdfs','diffusion','coupling')}}}
     analyze_project(cfg, tmp_path, {'x': [tmp_path/'rep1']})
     import json
     manifest = json.loads((tmp_path/'project_summary/statistics/manifest.json').read_text())

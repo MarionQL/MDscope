@@ -35,12 +35,13 @@ COLUMNS = [
 
 
 def _identity(frame, keys):
+    values = frame.loc[:, list(keys)]
     if "group" in keys:
-        frame["group"] = frame["group"].fillna("")
-    return frame[list(keys)].apply(
-        lambda row: json.dumps(dict(zip(keys, row)), separators=(",", ":"), allow_nan=False),
-        axis=1,
-    )
+        values = values.assign(group=values["group"].fillna(""))
+    return [
+        json.dumps(dict(zip(keys, row)), separators=(",", ":"), allow_nan=False)
+        for row in values.itertuples(index=False, name=None)
+    ]
 
 
 def _interval_status(low, high):
@@ -72,7 +73,10 @@ def write_contrast_coverage(dest: Path, systems, families):
         observed = {}
         lifetime_support = {}
         if enabled and replica_path.is_file():
-            replicas = pd.read_parquet(replica_path)
+            columns = ["system", *keys]
+            if family == "interactions":
+                columns.append("value")
+            replicas = pd.read_parquet(replica_path, columns=columns)
             replicas["observable"] = _identity(replicas, keys)
             observed = replicas.groupby("observable").system.agg(set).to_dict()
             if family == "interactions":

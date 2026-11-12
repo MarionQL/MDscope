@@ -444,7 +444,7 @@ The auto-discovery refuses missing or ambiguous attachments; it does
 not infer attachments from spatial proximity.
 
 See `synd4_full_mechanisms.yaml` for the complete configuration and
-`REPORT.md` for PDF evidence-report generation and upload guidance.
+the [execution guide](workflows.md) for findings review.
 
 ---
 
@@ -1034,7 +1034,7 @@ Difference heatmaps subtract condition means in configuration order and show
 a cell only when both species and a finite estimate are present in every
 configured replica on each side. The companion replicate CSV includes mean
 undirected pair counts and mean leaflet species populations. Raw matrices
-and audits enter the evidence bundle.
+and audits remain available as saved products.
 The optional module is off by default; enabling it adds a necessary neighbor
 query, not a second trajectory pass.
 
@@ -1055,7 +1055,7 @@ not a fixed physical duration. Only observed target pairs enter these outputs;
 an absent pair is not automatically a measured zero. These geometric episodes
 do not establish cooperative binding, contact-ion versus solvent-separated
 mechanisms, or free energies. Null controls and replica-level production
-comparisons for issue #103 remain required.
+comparisons remain necessary to validate these outputs on the full production runs.
 
 HS outputs additionally report equal-heavy-atom Rg, shape anisotropy (0 for
 isotropic, 1 for linear), vertical span/extension and attachment position
@@ -1256,7 +1256,7 @@ The production YAML enables `analyses.potassium_bridge_audit`. MDscope runs
 it once per replicate in a separate pass on the configured frame window and
 time axis. It publishes the completed output directory at
 `extensions/potassium_bridge_audit/` and includes the tables in the review
-bundle. Finalization reads the saved products.
+review. Finalization reads the saved products.
 
 The standalone script also accepts a single topology and trajectory. The
 example uses the glycolipid release pair. A signed-in GitHub CLI

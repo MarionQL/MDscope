@@ -1,8 +1,4 @@
-"""Persisted solvation evidence for the compact PDF report.
-
-Detailed, potentially huge tables remain in the companion review ZIP.
-No trajectory or neighbor-search calculations occur here.
-"""
+"""Optional solvation figures from persisted numerical products."""
 from __future__ import annotations
 
 from io import BytesIO
@@ -10,31 +6,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-
-
-SUMMARY_TABLES = (
-    "target_summary", "shell_candidates", "shell_stability",
-    "survival", "episodes", "bridges", "water_hbond_bridges",
-    "bridge_pair_timeseries", "bridge_pair_shift_reference", "bridge_pair_control_summary", "target_atoms",
-    "hydration_sasa", "water_density_3d",
-)
-
-
-def solvation_inventory(system_repouts):
-    rows = []
-    for system, reps in system_repouts.items():
-        for rep in reps:
-            directory = Path(rep)/"extensions"/"solvation"
-            if not directory.is_dir():
-                continue
-            for path in sorted(directory.glob("*.parquet")):
-                # Inspect Parquet metadata, never materialize huge event files.
-                import pyarrow.parquet as pq
-                rows.append({
-                    "system":system, "replicate":Path(rep).name,
-                    "table":path.stem, "rows":pq.ParquetFile(path).metadata.num_rows,
-                    "path":path})
-    return pd.DataFrame(rows)
 
 
 def solvation_rdf_figure(root, system_repouts, *, max_panels=6):
@@ -113,27 +84,6 @@ def solvation_timeseries_figure(system_repouts, *, max_panels=4):
     return buf,len(selected),len(groups)
 
 
-def solvation_stat_rows(root):
-    base=Path(root)/"project_summary"/"statistics"/"time_series"
-    p=base/"system_statistics.parquet"
-    if not p.exists():
-        return pd.DataFrame()
-    df=pd.read_parquet(p)
-    if "group" not in df:
-        return pd.DataFrame()
-    return df[df.group.fillna("").astype(str).str.startswith(("solvation/", "solvation_bridges/"))]
-
-
-def solvation_comparison_rows(root):
-    p=Path(root)/"project_summary"/"statistics"/"time_series"/"system_comparisons.parquet"
-    if not p.exists():
-        return pd.DataFrame()
-    df=pd.read_parquet(p)
-    if "group" not in df:
-        return pd.DataFrame()
-    return df[df.group.fillna("").astype(str).str.startswith(("solvation/", "solvation_bridges/"))]
-
-
 def solvation_survival_figure(system_repouts, *, max_curves=8):
     """Show descriptive censored contact-survival curves, if recorded."""
     import pyarrow.parquet as pq
@@ -180,3 +130,23 @@ def solvation_survival_figure(system_repouts, *, max_curves=8):
     buf.seek(0)
     return buf,len(curves)
 
+
+
+def plot_solvation(cfg, root, system_repouts):
+    """Render a few solvation diagnostics when explicitly requested."""
+    from ..config import ensure_dir, plot_enabled
+    from .figure_inventory import current_statistics
+
+    if (not cfg.get("plots", {}).get("families", {}).get("solvation", False)
+            or not plot_enabled(cfg, "solvation")):
+        return
+    figures = {
+        "shell_rdf": solvation_rdf_figure(root, system_repouts)
+        if current_statistics(cfg, root, "solvation_rdfs") else None,
+        "water_and_ions": solvation_timeseries_figure(system_repouts),
+        "contact_survival": solvation_survival_figure(system_repouts),
+    }
+    for name, figure in figures.items():
+        if figure is not None:
+            directory = ensure_dir(Path(root) / "project_summary/figures/solvation")
+            (directory / f"{name}.png").write_bytes(figure[0].getvalue())

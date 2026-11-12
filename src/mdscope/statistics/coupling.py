@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from pyarrow.parquet import read_schema
 
 from ..config import atomic_parquet, statistics_family_config
 from .common import _regular_times
@@ -39,12 +40,14 @@ def collect_couplings(cfg, system_repouts):
     if block < 1:
         raise ValueError("block_frames must be positive")
 
+    requested = {"time_ps", *(column for _, x, y in pairs for column in (x, y))}
     sources = {}
     for system, reps in system_repouts.items():
         for rep in reps:
             path = Path(rep) / "summary" / "timeseries.parquet"
             if path.is_file():
-                frame = pd.read_parquet(path)
+                columns = [name for name in read_schema(path).names if name in requested]
+                frame = pd.read_parquet(path, columns=columns)
                 if "time_ps" in frame and _regular_times(frame.time_ps):
                     sources[system, rep.name] = frame.set_index("time_ps")
     common = None
@@ -59,11 +62,14 @@ def collect_couplings(cfg, system_repouts):
     for system, reps in system_repouts.items():
         for rep in reps:
             frame = sources.get((system, rep.name))
+            means = {
+                column: block_means(values.to_numpy(float), block)
+                for column, values in frame.loc[common].items()
+            } if shared_grid and frame is not None else {}
             for name, x, y in pairs:
                 r, n = np.nan, 0
-                if shared_grid and frame is not None and {x, y} <= set(frame):
-                    a, b = (block_means(frame.loc[common, col].to_numpy(float), block)
-                            for col in (x, y))
+                if x in means and y in means:
+                    a, b = means[x], means[y]
                     n = int((np.isfinite(a) & np.isfinite(b)).sum())
                     r = correlation(a, b)
                 rows.append(dict(system=system, replicate=rep.name, mechanism=name, x=x, y=y,

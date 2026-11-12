@@ -1,8 +1,4 @@
-"""Inventory generated scientific figures and audit coverage of reportable analyses.
-
-Only persisted artifacts are inspected; never reopen trajectories. Primary
-figures are selected deterministically, with all figures preserved in the ZIP.
-"""
+"""Inventory and provenance for manually generated scientific figures."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -64,97 +60,6 @@ def figure_inventory(root, system_repouts, cfg=None, include_rejected=False):
     return pd.DataFrame(rows,columns=["figure","figure_id","display_label","section","kind","bytes","family","status","source_metric","units","generated_at","source_files","sampling"])
 
 
-def report_coverage(root, system_repouts, cfg=None):
-    """Audit which statistical analysis families have corresponding figures.
-
-    This checks family-level presence, not scientific correctness or the
-    completeness of every plotted metric.
-    """
-    root=Path(root)
-    fig=figure_inventory(root,system_repouts,cfg)
-    paths=fig.figure.tolist()
-    rows=[]
-    specs=(
-        ("Time series","statistics/time_series/system_statistics.parquet",
-         "project_summary/figures/time_series/"),
-        ("Profiles","statistics/profiles/system_profile_statistics.parquet",
-         "project_summary/figures/profiles/"),
-        ("Interactions","statistics/interactions/",
-         "project_summary/figures/interactions/"),
-    )
-    for family,source,visual in specs:
-        path=root/"project_summary"/source
-        has_data=(path.is_dir() and any(path.rglob("*.parquet"))) if source.endswith("/") else path.exists()
-        has_figure=any(p.startswith(visual) for p in paths)
-        rows.append({"analysis":family,"data_available":bool(has_data),
-                     "figure_available":bool(has_figure),
-                     "status":"covered" if has_data and has_figure else
-                              "missing_figure" if has_data else "not_generated"})
-    for family,filename in (
-        ("Solvation","species_timeseries.parquet"),
-        ("SDC4 mechanisms","timeseries.parquet"),
-    ):
-        folder="solvation" if family=="Solvation" else "sdc4_mechanisms"
-        found=any((Path(rep)/"extensions"/folder/filename).exists()
-                  for reps in system_repouts.values() for rep in reps)
-        has_figure=any("solvation" in p for p in paths) if family=="Solvation" else any(
-            "sdc4" in p or "lipid_" in p or "shared_states" in p for p in paths)
-        rows.append({"analysis":family,"data_available":found,
-                     "figure_available":has_figure,
-                     "status":"covered" if found and has_figure else
-                              "missing_figure" if found else "not_generated"})
-    result = pd.DataFrame(rows)
-    if cfg is not None:
-        from ..config import presentation_enabled
-        names = {'Time series':'time_series','Profiles':'profiles','Interactions':'interactions',
-                 'Solvation':'solvation','SDC4 mechanisms':'sdc4'}
-        rejected = figure_inventory(root,system_repouts,cfg,include_rejected=True)
-        for index, row in result.iterrows():
-            family = names[row.analysis]
-            enabled = presentation_enabled(cfg,'plots',family) and presentation_enabled(cfg,'report',family)
-            result.loc[index,'expected'] = bool(enabled and (row.data_available or cfg.get('analyses',{}).get({'sdc4':'sdc4_mechanisms'}.get(family,family),{}).get('enabled',False)))
-            if not enabled:
-                result.loc[index,'status'] = 'disabled'
-            elif family in {'time_series','profiles','interactions'} and row.data_available and not current_statistics(cfg,root,family):
-                result.loc[index,'status'] = 'invalid_data'
-            elif row.data_available and not row.figure_available and not rejected.loc[rejected.family.eq(family)].empty:
-                result.loc[index,'status'] = 'invalid_figure'
-            elif result.loc[index,'expected'] and not row.data_available:
-                result.loc[index,'status'] = 'missing_data'
-    return result
-
-
-def metric_coverage(root, cfg=None, system_repouts=None):
-    """Check every scalar statistic has a generated standard time-series plot.
-
-    This is exact per (group, metric), not just a family-level presence test.
-    It intentionally reports missing plots instead of silently dropping data.
-    """
-    root=Path(root)
-    source=root/"project_summary"/"statistics"/"time_series"/"system_statistics.parquet"
-    cols=["group","metric","figure","status"]
-    if not source.exists():
-        return pd.DataFrame(columns=cols)
-    table=pd.read_parquet(source,columns=["group","metric"]).drop_duplicates()
-    dest=root/"project_summary"/"figures"/"time_series"
-    records=[]
-    eligible = set(figure_inventory(root,system_repouts or {},cfg).figure) if cfg is not None else None
-    for item in table.itertuples(index=False):
-        group="" if pd.isna(item.group) else str(item.group)
-        metric=str(item.metric)
-        stem=metric+(f"__group_{group}" if group else "")
-        stem="".join(c if c.isalnum() or c in "-_." else "_" for c in stem).strip("_")
-        relative=f"project_summary/figures/time_series/{stem}__timeseries.png"
-        records.append({"group":group,"metric":metric,"figure":relative,
-                        "status":("covered" if relative in eligible else "missing_figure") if eligible is not None
-                        else "covered" if (dest/(stem+"__timeseries.png")).exists() else "missing_figure"})
-    result = pd.DataFrame(records,columns=cols)
-    if cfg is not None and not current_statistics(cfg,root,'time_series'):
-        result['status'] = 'excluded_statistics'
-    return result
-
-
-
 def figure_family(path):
     parts = Path(path).parts
     for token, family in (('shared_states','shared_states'),('sdc4_mechanisms','sdc4'),
@@ -212,11 +117,18 @@ def record_generated_figures(cfg, root, system_repouts, before):
     import json
     from datetime import datetime, timezone
     from ..config import atomic_json
-    from .report_inventory import _summary_inventory
     root = Path(root)
-    dest = root/'project_summary/report/figure_provenance.json'
+    dest = root/'project_summary/figures/figure_provenance.json'
     records = json.loads(dest.read_text()) if dest.exists() else {}
-    sampling = _summary_inventory(root,cfg,system_repouts).to_dict('records')
+    sampling = []
+    for system, reps in system_repouts.items():
+        for rep in reps:
+            path = Path(rep) / "summary/timeseries.parquet"
+            if path.is_file():
+                times = pd.read_parquet(path, columns=["time_ps"])["time_ps"]
+                sampling.append(dict(system=system, replicate=Path(rep).name,
+                                     frames=len(times), first_ps=float(times.min()),
+                                     last_ps=float(times.max())))
     sources = {}
     for path in _figure_paths(root,system_repouts):
         name = str(path.relative_to(root))
@@ -240,18 +152,18 @@ def record_generated_figures(cfg, root, system_repouts, before):
 def figure_status(path, cfg, root, system_repouts, records=None):
     import json
     from PIL import Image
-    from ..config import presentation_enabled
+    from ..config import plot_enabled
     root, path = Path(root), Path(path)
     family = figure_family(path)
-    if not presentation_enabled(cfg,'plots',family) or not presentation_enabled(cfg,'report',family):
+    if not plot_enabled(cfg, family):
         return 'disabled'
     parts = path.parts
     if family == 'interactions':
         kind = parts[parts.index('interactions')+1]
-        if any(kind in cfg.get(domain,{}).get('interaction_exclude_kinds',[]) for domain in ('plots','report')):
+        if kind in cfg.get('plots', {}).get('interaction_exclude_kinds', []):
             return 'disabled'
     if records is None:
-        provenance = root/'project_summary/report/figure_provenance.json'
+        provenance = root/'project_summary/figures/figure_provenance.json'
         records = json.loads(provenance.read_text()) if provenance.exists() else {}
     try:
         with Image.open(path, formats=["PNG"]) as image:
@@ -295,18 +207,3 @@ def statistics_status(cfg, root, family):
 def current_statistics(cfg, root, family):
     """Do not ingest disabled, incomplete, or malformed statistical products."""
     return statistics_status(cfg, root, family) in {'valid', 'legacy_unverified'}
-
-
-def saved_statistics_methods(root):
-    """Read recorded inference settings without substituting render settings."""
-    import json
-
-    path = Path(root) / 'project_summary/statistics/manifest.json'
-    try:
-        record = json.loads(path.read_text())
-        methods = record.get('methods')
-        if record.get('status', 'complete') == 'complete' and isinstance(methods, dict):
-            return methods
-    except (OSError, ValueError, AttributeError):
-        pass
-    return None

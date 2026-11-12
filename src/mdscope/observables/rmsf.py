@@ -26,7 +26,7 @@ class Welford:
 
 def temporal_rmsf_profiles(repout: Path, cfg: dict) -> dict[str, dict]:
     """Load aligned coordinates needed for block-bootstrap RMSF profiles."""
-    if not cfg["analyses"]["rmsf"].get("enabled", True):
+    if not cfg.get("analyses", {}).get("rmsf", {}).get("enabled", True):
         return {}
     cache = Path(repout) / "cache"
     atom_file = cache / "feature_atoms.parquet"

@@ -18,10 +18,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-report = ["reportlab", "pillow"]
 sasa = ["freesasa"]
-test = ["pytest", "reportlab", "pillow", "pypdf"]
-dev = ["pytest", "reportlab", "pillow", "build", "twine"]
+test = ["pytest"]
+dev = ["pytest", "build", "twine"]
 
 [project.scripts]
 mdscope = "mdscope.cli:main"

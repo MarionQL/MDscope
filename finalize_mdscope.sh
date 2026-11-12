@@ -22,7 +22,7 @@ if [[ ! -f "${YAML}" ]]; then
 fi
 
 # Finalization reads completed replicate outputs and generates the
-# cross-replicate statistics and figures; it does not rerun trajectories.
+# cross-replicate statistics and findings; it does not rerun trajectories.
 source /apps/common/software/Miniconda3/24.7.1-0/etc/profile.d/conda.sh
 conda activate mdanalysis
 export PYTHONUNBUFFERED=1

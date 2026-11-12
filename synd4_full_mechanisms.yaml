@@ -505,38 +505,10 @@ statistics:
     multiple_testing: fdr_bh
 
 
-# Automatically created at finalization, after all replicates complete.
-# The PDF is readable on its own; the ZIP adds full-precision tables and
-# bounded per-replicate time-series samples for detailed follow-up.
-report:
-  enabled: true
-  bundle_enabled: true
-  max_metrics_per_section: 35
-  max_hs_key_metrics: 20
-  max_conditioned_rows: 80
-  include_lipid_maps: true
-  map_species: [POPC, DPPC, POPE, POPI, POPS, PSM, DOPC, CHL1, GM1a, BGAL, CER160]
-  sample_frames_per_replicate: 250
-
 cache:
   aligned_coordinates: true
   dtype: float32
   keep: true
 
 plots:
-  enabled: true
-  time_series: true
-  distributions: true
-  autocorrelation: true
-  bootstrap_tables: true
-  profiles: true
-  interactions: true
-  min_occupancy: 0.05
-  replicate_lightness_range: [0.28, 0.72]
-  font_sizes:
-    base: 13
-    title: 16
-    suptitle: 18
-    legend: 10
-    ticks: 11
-  dpi: 250
+  enabled: false

@@ -22,7 +22,7 @@ This document is the single source of truth for structural refactoring.
 - `src/mdscope/interactions/`: hydrogen bonds, salt bridges and molecular contacts
 - `src/mdscope/mechanisms/`: SDC4, glycan/lipid mechanisms and topology-specific analyses
 - `src/mdscope/statistics/`: resampling, statistical summaries and system comparisons
-- `src/mdscope/reporting/`: plots, tables and PDF/report exports
+- `src/mdscope/reporting/`: diagnostic plots and findings reports
 - `src/mdscope/pipeline/`: trajectory streaming, fused observers and run/finalize orchestration
 - `src/mdscope/cli.py`, `src/mdscope/config.py`, `src/mdscope/registry.py`: minimal top-level entry points
 
@@ -36,4 +36,4 @@ For a substantive bug fix, first reproduce the failure with a small fixture or a
 
 At integration boundaries, check identity, shape, units, coordinate frame/PBC, time sampling, absent-versus-zero semantics, and intended missing-data behavior. For persisted products, distinguish existence, integrity, freshness, scientific completeness, and provenance. Decide explicitly whether a missing or corrupted required product must be rebuilt or cause a clear, non-destructive failure. Do not classify optional or deliberately disabled analyses as failures.
 
-Before claiming completion, report the exact tests/checks executed, the behavior they establish, known assumptions and limitations, and any real-trajectory or production-scale validation that remains unperformed. A green CI run, matching hashes, successful PDF export, or a plausible plot is not an independent scientific validation. See [scientific contracts](scientific-contracts.md), [scientific audit](scientific-audit.md), and [validation effectiveness/gaps](validation-gaps.md) rather than restating their domain-specific caveats here.
+Before claiming completion, report the exact tests/checks executed, the behavior they establish, known assumptions and limitations, and any real-trajectory or production-scale validation that remains unperformed. A green CI run, matching hashes, successful report export, or a plausible plot is not an independent scientific validation. See [scientific contracts](scientific-contracts.md), [scientific audit](scientific-audit.md), and [validation effectiveness/gaps](validation-gaps.md) rather than restating their domain-specific caveats here.

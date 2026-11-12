@@ -7,7 +7,7 @@ Current canonical packages:
 - `core/`: geometry, alignment, atom selection, trajectory sources and checkpoints
 - `observables/`: RMSD, RMSF, MSD, radius of gyration, bilayer normals, lipid enrichment,
   membrane order, density, DSSP, SASA, structural profiles and residue distances
-- `reporting/`: PDF/ZIP report, scientific figure rendering and coupling-screen reporting
+- `reporting/`: deterministic findings and optional scientific figures
 - `interactions/`: hydrogen bonds, salt bridges, ligand contacts and interaction tables
 - `mechanisms/`: SDC4, HS topology, local environment and shared states
 - `statistics/`: replicate-aware inference and statistical summaries

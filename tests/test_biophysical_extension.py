@@ -2,7 +2,7 @@
 import numpy as np
 from mdscope.biophysical_common import sequence_motifs
 from mdscope.observables.msd import fit_lateral_diffusion
-from mdscope.reporting.coupling_screen import correlation,block_means
+from mdscope.statistics.coupling import correlation,block_means
 
 class Residue:
     def __init__(self,name,resid,ix,chain):

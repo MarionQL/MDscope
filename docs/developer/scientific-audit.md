@@ -30,7 +30,7 @@ identify the evidence. An unresolved limitation is not an acceptance pass.
 | Medium | APL/thickness/local normals/order, `observables/membrane.py`, `observables/bilayer_normal.py`, `observables/membrane_order.py` | Projected box area/leaflet count; anchor height differences; local height-field slopes; selected C–H orientational order. | These operational membrane metrics assume a resolved, approximately planar membrane with comparable anchors. SDC4 explicitly rejects nonorthorhombic boxes and non-z normals. Circular leaflet observers now consistently permit in-plane lattice shear and reject shear through the configured Cartesian normal on each frame; fixed order cohorts check initialization. Analytic plane/quadratic references cover tilt, local thickness and small-slope curvature. Strong curvature, vesicles and mixed anchor heights need a different surface model; no general membrane-shape claim. |
 | Medium | Structural profiles, `core/alignment.py`, `observables/rmsd.py`, `observables/rmsf.py`, `observables/radius_of_gyration.py`, `observables/dssp.py` | RMSD/RMSF depend on fit selection/reference; Rg is mass-weighted; DSSP is a secondary-structure assignment. | Existing alignment/translation/structure regressions retained. Whole-molecule imaging, correct masses and missing-residue mappings remain input contracts. Proline Ramachandran region labels are local angle bins, not proof of a helix/turn transition. |
 | Medium | Biological mapping, `mechanisms/sdc4_mechanisms.py`, `mechanisms/shared_states.py` | GGIVG/NxIP/VVHPLVPL and A/B-chain interpretation are SDC4-specific; glycolipid chain IDs and CER160 chemistry are topology-specific. | Keep these in mechanism/configuration layers. Numerical geometry, residence, SASA and MSD kernels are reusable. Do not present SDC4 conditionals as generic protein-motif code; some chain/first-match assumptions still limit transfer. |
-| Low | Output/provenance, `pipeline/runner.py:initialize`, `reporting/report.py`, `reporting/figure_inventory.py` | Checkpoint structure and replica identity protect restart; PDF is a bounded presentation with full numerical bundle. | Corrected metrics now reach figures/tables and full bundle; legacy names remain explicit. Missing old fields stay NaN. Figure presence is coverage, not scientific validation. Removed one unused duplicate COM helper from `observables/membrane.py`. |
+| Low | Output/provenance, `pipeline/runner.py:initialize`, `reporting/report.py`, `reporting/figure_inventory.py` | Checkpoint structure and replica identity protect restart; The findings review uses saved comparisons. | Corrected metrics now reach saved figures and tables; legacy names remain explicit. Missing old fields stay NaN. Figure presence is coverage, not scientific validation. Removed one unused duplicate COM helper from `observables/membrane.py`. |
 
 ## Numerical and performance evidence
 
@@ -93,7 +93,7 @@ sbatch --dependency="afterok:${validation_job}" finalize_mdscope.sh synd4_scient
 
 Finalization consumes completed replica outputs for summaries/figures; do not
 substitute the finalize-only YAML when requesting a new estimator recomputation.
-The resolved YAML and available run metadata are part of the evidence bundle.
+The project root retains the resolved YAML and run metadata.
 
 After completion, compare legacy versus matched enrichment within each replica,
 region, leaflet and species, including valid-frame counts and contact-population

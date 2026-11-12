@@ -34,8 +34,6 @@ from ..config import (
 from ..interactions import run_hydrogen_bonds
 from ..interactions import postprocess_interactions
 from ..observables.membrane_order import membrane_order_timeseries, run_membrane_order
-from ..reporting.plotting import plot_all
-from ..reporting.membrane_figures import plot_lipid_enrichment_matrix, plot_lipid_contacts
 from ..observables.residue_membrane_distance import run_residue_membrane_distance
 from ..observables.structure_profiles import postprocess_structure_profiles, run_structure_profiles
 from ..statistics import analyze_project
@@ -47,13 +45,10 @@ from .fused_all import run_fused_only
 from ..mechanisms.sdc4_mechanisms import enabled as sdc4_enabled, run_sdc4_mechanisms, complete_residue_occlusion
 from ..mechanisms.residue_occlusion import OCCLUSION_FILE, IDENTITY_COLUMNS, FRACTION_COLUMNS
 from ..mechanisms.shared_states import fit_shared_states
-from ..reporting.sdc4_figures import plot_sdc4_mechanisms
-from ..reporting.report import generate_report
 from ..registry import specialized_tasks,additional_time_series,fused_output,fused_output_plan,analysis_output_plan,required_artifacts
 from ..observables.lipid_enrichment import summarize_lipid_composition
 from ..observables.msd import summarize_diffusion, summarize_project_diffusion, summarize_project_multi_origin
 from ..observables.multi_origin_pipeline import run_multi_origin_diffusion
-from ..reporting.coupling_screen import screen_couplings
 
 
 def _check_artifact(path: Path) -> int:
@@ -516,13 +511,7 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
             print(f"TIMING {rep.system}/{rep.label} {item['stage']}: {item['seconds']:.3f} s", flush=True)
 
 
-def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, phase="all"):
-    if phase not in {"all", "statistics", "plotting"}:
-        raise ValueError(f"Unknown finalization phase: {phase}")
-    cfg = cfg or load_config(config_path)
-    if root is None or state is None:
-        root, state = initialize(config_path, cfg)
-    replicates = list(iter_replicates(cfg, config_path))
+def _validate_replica_products(cfg, root, replicates):
     # Finalization consumes persisted replica products, not the trajectory.
     # A changed reporting configuration or source revision must not force
     # expensive completed trajectories to be rerun. Validate the actual
@@ -562,6 +551,26 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
             "Cannot finalize: required persisted replicate data are missing or invalid. "
             + "; ".join(missing)
         )
+
+
+def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, phase="statistics"):
+    if phase not in {"statistics", "plotting"}:
+        raise ValueError(f"Unknown finalization phase: {phase}")
+    cfg = cfg or load_config(config_path)
+    if root is None:
+        if phase == "plotting":
+            root = project_root(cfg, config_path)
+        else:
+            root, _ = initialize(config_path, cfg)
+    replicates = list(iter_replicates(cfg, config_path))
+    if phase == "statistics":
+        _validate_replica_products(cfg, root, replicates)
+    else:
+        manifest = root / "project_summary/statistics/manifest.json"
+        if not manifest.is_file() or json.loads(manifest.read_text()).get("status") != "complete":
+            raise RuntimeError("Plotting requires completed statistics")
+        if not cfg.get("plots", {}).get("enabled", False):
+            raise ValueError("Set plots.enabled: true to generate diagnostic plots")
     project_summary = root / "project_summary"
     if phase != "plotting" and project_summary.exists():
         archived=_archive_previous_output(project_summary,root/".archives"/"project_summary","previous")
@@ -600,33 +609,37 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
             })
             print(f"TIMING finalize {stage}: {seconds:.3f} s", flush=True)
 
-    if phase in {"all", "statistics"}:
+    if phase != "plotting":
         if cfg.get("analyses", {}).get("lipid_enrichment", {}).get("enabled"):
             for paths in system_repouts.values():
                 for repout in paths:
                     summarize_lipid_composition(repout)
         timed("statistics", analyze_project, cfg, root, system_repouts)
-    if phase == "statistics":
+        timed("shared_states", fit_shared_states, cfg, root, system_repouts)
+        timed("diffusion_summary", summarize_project_diffusion, root, system_repouts)
+        timed("multi_origin_summary", summarize_project_multi_origin, root, system_repouts, cfg)
+        if cfg.get("statistics", {}).get("enabled", True):
+            from ..reporting.report import generate_report
+            report = timed("findings", generate_report, project_summary / "statistics")
+            print(f"FINDINGS: {report}", flush=True)
         return root
-    if phase == "plotting" and not (project_summary / "statistics").is_dir():
-        raise RuntimeError("Missing project_summary/statistics; run statistics phase first")
+
     from ..reporting.figure_inventory import figure_snapshot, record_generated_figures
+    from ..reporting.plotting import plot_all
+    from ..reporting.membrane_figures import (
+        plot_lipid_enrichment_matrix, plot_lipid_contacts, plot_project_diffusion,
+    )
+    from ..reporting.sdc4_figures import plot_sdc4_mechanisms
+    from ..reporting.solvation_figures import plot_solvation
+
     figure_before = figure_snapshot(root, system_repouts)
     timed("standard_plots", plot_all, cfg, root, system_repouts)
     timed("lipid_enrichment_plots", plot_lipid_enrichment_matrix, cfg, root)
-    timed("shared_states", fit_shared_states, cfg, root, system_repouts)
     timed("sdc4_plots", plot_sdc4_mechanisms, cfg, root, system_repouts)
     timed("lipid_contact_plots", plot_lipid_contacts, cfg, root, system_repouts)
-    timed("diffusion_summary", summarize_project_diffusion, root, system_repouts, cfg)
-    timed("multi_origin_summary", summarize_project_multi_origin, root, system_repouts, cfg)
-    if cfg.get('analyses',{}).get('coupling_screen',{}).get('enabled',False):
-        timed("coupling_screen", screen_couplings, cfg, root, system_repouts)
+    timed("diffusion_plot", plot_project_diffusion, cfg, root)
+    timed("solvation_plots", plot_solvation, cfg, root, system_repouts)
     record_generated_figures(cfg, root, system_repouts, figure_before)
-    report_result = timed("pdf_and_bundle", generate_report, cfg, root, system_repouts)
-    if report_result:
-        print(f"REPORT PDF: {report_result['pdf']}", flush=True)
-        if report_result.get('bundle'):
-            print(f"REPORT BUNDLE: {report_result['bundle']}", flush=True)
     return root
 
 

@@ -106,58 +106,23 @@ reader. Always benchmark and compare with a full-occluder reference frame
 before using a new topology/radius convention in production.
 
 
-### Plot families, PDF sections and figure freshness
+### Optional plot families
 
-Plot generation and PDF inclusion are independent from raw collection and
-statistics. Omitted controls retain enabled behavior:
+Plots run through `mdscope plotting`. Enable the families you want to inspect.
 
 ```yaml
 plots:
   enabled: true
   families:
-    time_series: true
-    profiles: false
-    interactions: true
-    sdc4: true
-    shared_states: true
-    lipid_enrichment: true
-    diffusion: true
-  interaction_exclude_kinds: [lipid_hydrogen_bonds]
-report:
-  enabled: true
-  sections:
-    overview: true
-    time_series: true
-    shared_states: true
+    time_series: false
+    interactions: false
     solvation: true
-    sdc4: true
-    lipid_enrichment: true
-    methods: true
-    atlas: true
   interaction_exclude_kinds: [lipid_hydrogen_bonds]
 ```
 
-A false plot family prevents its plot entry point from reading inputs;
-interaction kinds are excluded before raw identity tables are read. Existing
-broad `plots.time_series`, `profiles`, `interactions`, and `enabled` switches
-remain honored. Diffusion summaries still compute persisted coefficients when
-only their *plot* is disabled. Shared-state numerical modeling remains governed
-by its analysis setting, independently of SDC4/shared-state plot switches.
+Figure provenance is saved under `project_summary/figures/`. Remove the
+retired `report` YAML section when updating an older configuration.
 
-Plotting records source paths, sampling, units and generation time for newly
-written PNGs in `project_summary/report/figure_provenance.json`. Offline PDF
-and ZIP export can use readable older PNGs and marks unknown provenance as
-`legacy_unverified`. It excludes disabled families, corrupt PNGs and figures
-whose recorded sources are missing. Changing code or render settings does
-not force regeneration. A readable figure and available sources do not prove
-that the figure was made from the current versions of those sources.
-
-PDF tables use readable SDC4 labels and units while the bundle preserves raw
-identifiers. `Unavailable` denotes missing/nonfinite data; physical zeros stay
-zero. Scalar comparison labels use adjusted q-values for support, never the
-sign of a bootstrap interval. Disabled PDF sections do not leave separator-only
-pages. `report_provenance.json` and `figure_manifest.csv` support offline review;
-no trajectory is reopened to regenerate the report.
 ### Independent statistics families
 
 `statistics.families` accepts `time_series`, `profiles`, `interactions`, and
@@ -298,36 +263,13 @@ progression compared with the old compressed-time behavior. Complete regular
 data retains its draw ordering; the interaction grouping optimization and its
 RNG sequence are unaffected by this scientific correction.
 
-### Offline evidence export integrity and layout
+### Findings inputs
 
-`mdscope report` retains the existing PDF/ZIP filenames and does not rerun
-trajectory analyses or statistics. Report orchestration, persisted-table
-inventory, PDF presentation and ZIP export now have separate modules. ReportLab
-is imported only when rendering a PDF; label formatting and bundle code do not
-import plotting or trajectory readers merely to load those modules.
+`mdscope report STATISTICS_DIR` requires a completed manifest and contrast
+coverage table. It preserves saved interval levels and adjusted q-values.
+Recompute statistics when the estimators or settings change.
 
-Statistics manifests record completion, enabled families and methods. Offline
-reports use readable persisted tables and the methods recorded with them.
-Missing method metadata is labeled unverified, and an unrecorded confidence
-level is left unspecified. Incomplete or malformed manifests are excluded.
-To apply new statistical settings, explicitly rerun statistics. A software
-upgrade or changed report configuration does not require that rerun.
-
-`table_manifest.csv` records numerical table eligibility;
-`report_content.json` records displayed file-backed figures and project tables.
-The figure manifest also identifies byte-identical duplicate PNGs. The PDF
-and ZIP use the same eligibility policy, and the ZIP contains this export's
-manifests, original eligible project Parquet tables and CSV exports (CSV
-materialization is skipped above 50 MB; the Parquet is still preserved).
-A PDF or bundle construction failure preserves the previous successful
-PDF/ZIP and report sidecars. Publication is staged locally; interruption during
-the final individual file replacements is not a multi-file transaction.
-
-Scalar tables separate scientific labels from units, keep raw identifiers in
-companion data, show the configured CI level, and place estimate, interval,
-p/q and inference status on separate lines. The font is 8 pt with controlled
-columns and no midword splitting. The contrast names the actual ordered
-systems; support still depends on adjusted q, never interval sign. Unequal
-replica windows/frame counts are flagged in the sampling section. Original
-six-replica production pages and all plot families still require human review;
-a synthetic layout check does not close that scientific QA requirement.
+Use `statistics.block.tau_multiplier` and `statistics.block.max_acf_lag`
+for block settings. The top-level aliases and the old
+`analyses.autocorrelation` and `analyses.distribution_statistics` sections
+have been retired.

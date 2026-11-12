@@ -107,7 +107,7 @@ def _write_shell_contrasts(reps, dest, cfg, system_repouts):
         return
     shell_values = pd.DataFrame(rows)
     comparisons = replicate_mean_contrasts(
-        shell_values, [*keys, "normalization", "shell_cutoff_A"], system_repouts, cfg["statistics"]
+        shell_values, [*keys, "normalization", "shell_cutoff_A"], system_repouts, cfg.get("statistics", {})
     )
     atomic_parquet(dest / "replicate_rdf_shells.parquet", shell_values)
     if not comparisons.empty:

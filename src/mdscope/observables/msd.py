@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from ..core.geometry import minimum_image_displacements
 from MDAnalysis.exceptions import NoDataError
-from ..config import atomic_parquet, presentation_enabled
+from ..config import atomic_parquet
 from .multi_origin_msd import diffusion_fit_sensitivity
 
 def _residue_centers(atoms):
@@ -122,7 +122,7 @@ def summarize_diffusion(repout:Path,cfg):
                          "fit_end_fraction":end,**stats})
     if rows:atomic_parquet(Path(repout)/"summary"/"diffusion_coefficients.parquet",pd.DataFrame(rows))
 
-def summarize_project_diffusion(root:Path,system_repouts:dict,cfg):
+def summarize_project_diffusion(root:Path,system_repouts:dict):
     """Collect independent replica slope estimates and create publication-ready D tables."""
     chunks=[]
     for system,reps in system_repouts.items():
@@ -139,28 +139,6 @@ def summarize_project_diffusion(root:Path,system_repouts:dict,cfg):
              .reset_index())
     grouped["interpretation"]="replicate_level_descriptive_no_significance"
     atomic_parquet(out/"system_coefficients.parquet",grouped)
-    # Coefficients are replicate-derived summaries, unlike framewise observables:
-    # show independent replicate points; never violin-plot frames as replicas.
-    if presentation_enabled(cfg,"plots","diffusion"):
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-        fig,ax=plt.subplots(figsize=(max(6,1.4*len(grouped)),4.8))
-        labels=[];ticks=[]
-        for i,((system,metric),data) in enumerate(all_data.groupby(["system","metric"],sort=True)):
-            vals=data["diffusion_nm2_ns"].dropna().to_numpy(float)
-            if not len(vals):continue
-            ax.scatter(np.full(len(vals),i),vals,s=45,alpha=.85)
-            ax.plot([i-.22,i+.22],[vals.mean(),vals.mean()],lw=2.5,color="black")
-            labels.append(system+"\n"+metric.replace("membrane_msd_lateral","lateral"))
-            ticks.append(i)
-        ax.set_xticks(ticks,labels,rotation=25,ha="right")
-        ax.set_ylabel("Lateral diffusion coefficient (nm²/ns)")
-        ax.set_title("Diffusion from existing single-origin MSD: replicate estimates")
-        fig.tight_layout()
-        fig.savefig(out/"diffusion_coefficients.png",dpi=int(cfg.get("plots",{}).get("dpi",250)))
-        plt.close(fig)
-
 
 
 def summarize_project_multi_origin(root, system_repouts, cfg=None):

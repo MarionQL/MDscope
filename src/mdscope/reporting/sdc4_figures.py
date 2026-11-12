@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from ..config import presentation_enabled
+from ..config import plot_enabled
 
 
 def _plot_sdc4_replica_figures(cfg, root, system_repouts):
@@ -259,7 +259,7 @@ def _plot_shared_state_figures(cfg, root):
 def plot_sdc4_mechanisms(cfg, root, system_repouts):
     if not cfg.get('plots',{}).get('enabled',True) or not cfg.get('analyses',{}).get('sdc4_mechanisms',{}).get('enabled',False):
         return
-    if presentation_enabled(cfg,'plots','sdc4'):
+    if plot_enabled(cfg, 'sdc4'):
         _plot_sdc4_replica_figures(cfg,root,system_repouts)
-    if presentation_enabled(cfg,'plots','shared_states'):
+    if plot_enabled(cfg, 'shared_states'):
         _plot_shared_state_figures(cfg,root)
