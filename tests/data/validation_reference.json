@@ -122,29 +122,29 @@
         ]
       }
     },
-    "extensions/lipid_enrichment/counts.parquet": {
+    "extensions/lipid_footprint/counts.parquet": {
       "rows": 8,
       "atol": 1e-12,
       "columns": {
         "count_local": [
-          7.0,
-          7.0,
-          7.0,
-          7.0,
-          7.0,
-          7.0,
-          7.0,
-          7.0
+          8.0,
+          8.0,
+          8.0,
+          8.0,
+          8.0,
+          8.0,
+          8.0,
+          8.0
         ],
         "n_local": [
-          7.0,
-          7.0,
-          7.0,
-          7.0,
-          7.0,
-          7.0,
-          7.0,
-          7.0
+          8.0,
+          8.0,
+          8.0,
+          8.0,
+          8.0,
+          8.0,
+          8.0,
+          8.0
         ],
         "n_bulk": [
           9.0,

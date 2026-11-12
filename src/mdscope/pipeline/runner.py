@@ -44,10 +44,12 @@ from .fused_extensions import enabled_names as extension_enabled_names, run_fuse
 from .fused_distance import enabled_names as distance_enabled_names, run_fused_distances
 from .fused_all import run_fused_only
 from ..mechanisms.sdc4_mechanisms import enabled as sdc4_enabled, run_sdc4_mechanisms, complete_residue_occlusion
-from ..mechanisms.residue_occlusion import OCCLUSION_FILE, IDENTITY_COLUMNS, FRACTION_COLUMNS
+from ..mechanisms.residue_occlusion import (
+    OCCLUSION_FILE, IDENTITY_COLUMNS, FRACTION_COLUMNS, WATER_COLUMNS, residue_environment_pending,
+)
 from ..mechanisms.shared_states import fit_shared_states
 from ..registry import specialized_tasks,additional_time_series,fused_output,fused_output_plan,analysis_output_plan,required_artifacts
-from ..observables.lipid_enrichment import summarize_lipid_composition
+from ..observables.lipid_enrichment import footprint_pending, summarize_lipid_composition
 from ..observables.msd import summarize_diffusion, summarize_project_diffusion, summarize_project_multi_origin
 from ..observables.multi_origin_pipeline import run_multi_origin_diffusion
 
@@ -78,8 +80,10 @@ def _validate_analysis_output(entry, cfg, *, allow_missing_occlusion=False):
     """Check enabled primary/companion products before reuse or finalization."""
     try:
         occlusion = entry.path.parent / OCCLUSION_FILE
+        spec = cfg["analyses"].get(entry.name, {})
         may_add_occlusion = (
-            entry.name == "sdc4_mechanisms" and allow_missing_occlusion and not occlusion.exists()
+            entry.name == "sdc4_mechanisms" and spec.get("residue_occlusion")
+            and allow_missing_occlusion and residue_environment_pending(occlusion, spec)
         )
         for path in required_artifacts(entry, cfg):
             if may_add_occlusion and path == occlusion:
@@ -110,7 +114,10 @@ def _validate_analysis_output(entry, cfg, *, allow_missing_occlusion=False):
         if entry.name == "sdc4_mechanisms":
             if not may_add_occlusion and cfg["analyses"]["sdc4_mechanisms"].get("residue_occlusion"):
                 columns = set(read_schema(occlusion).names)
-                if not set((*IDENTITY_COLUMNS, *FRACTION_COLUMNS)) <= columns:
+                required = {*IDENTITY_COLUMNS, *FRACTION_COLUMNS}
+                if spec.get("residue_water_cutoff_A") is not None:
+                    required.update(WATER_COLUMNS)
+                if not required <= columns:
                     raise ValueError(f"{occlusion}: missing residue occlusion columns")
             path = entry.path.parent / "lipid_density_maps.npz"
             with np.load(path, allow_pickle=False) as maps:
@@ -315,6 +322,8 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     # Reject damaged existing products before a reader can overwrite them.
     # The new occlusion companion can be calculated independently if absent.
     for entry in analysis_output_plan(cfg, repout):
+        if entry.name == "lipid_enrichment" and not (entry.path.parent / "reference.json").is_file():
+            continue  # An interrupted publication has no committed footprint.
         if entry.path.exists():
             _validate_analysis_output(entry, cfg, allow_missing_occlusion=True)
     streaming_analyses = [
@@ -346,7 +355,8 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     # one shared frame loop instead of three separate fallback traversals.
     if not streaming_required:
         pending_outputs = fused_output_plan(cfg, repout)
-        if any(not entry.path.is_file() for entry in pending_outputs):
+        pending = {entry.name for entry in pending_outputs if not entry.path.is_file()}
+        if pending - {"lipid_enrichment"}:
             t0 = perf_counter()
             run_fused_only(rep, cfg, repout)
             stage_timings.append({"stage": "fused-only", "seconds": perf_counter() - t0})
@@ -360,10 +370,15 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
         # A completed streaming marker guarantees finalized observer outputs.
         # If outputs are missing (or there was no protein streaming pass),
         # rebuild them with exactly one independent shared pass.
-        need_fallback = any(not expected[name].path.is_file() for name in fused_names)
+        pending_names = tuple(
+            name for name in fused_names
+            if (footprint_pending(expected[name].path, cfg["analyses"][name])
+                if name == "lipid_enrichment" else not expected[name].path.is_file())
+        )
+        need_fallback = bool(pending_names)
         if need_fallback:
             t0 = perf_counter()
-            run_fused_membrane(rep, cfg, repout)
+            run_fused_membrane(rep, cfg, repout, names=pending_names)
             stage_timings.append({"stage": "fused-membrane-fallback", "seconds": perf_counter() - t0})
         for name in fused_names:
             if not expected[name].path.is_file():
@@ -474,7 +489,7 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     summary_inputs_changed = bool(stage_timings)
     if sdc4_enabled(cfg) and cfg["analyses"]["sdc4_mechanisms"].get("residue_occlusion"):
         entry = fused_output(repout, "sdc4_mechanisms")
-        if not (entry.path.parent / OCCLUSION_FILE).is_file():
+        if residue_environment_pending(entry.path.parent / OCCLUSION_FILE, cfg["analyses"]["sdc4_mechanisms"]):
             t0 = perf_counter()
             complete_residue_occlusion(rep, cfg, repout)
             stage_timings.append({"stage": "residue-occlusion", "seconds": perf_counter() - t0})
@@ -536,6 +551,10 @@ def _validate_replica_products(cfg, root, replicates):
                 missing.append(f"{rep.system}/{rep.label}: invalid time_ps")
             for entry in analysis_output_plan(cfg, repout):
                 _validate_analysis_output(entry, cfg)
+                if entry.name == "lipid_enrichment" and footprint_pending(
+                    entry.path, cfg["analyses"]["lipid_enrichment"]
+                ):
+                    raise ValueError("lipid footprint settings changed; run MDscope with this config")
             if missing_membrane_density_runs(repout, cfg):
                 raise ValueError("missing membrane-relative density; run MDscope with this config")
             msd = cfg.get("analyses", {}).get("membrane", {}).get("msd", {})

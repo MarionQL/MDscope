@@ -25,7 +25,7 @@ def scan_residue_regions(profiles, system_replicates):
     """
     selected = profiles.profile.str.match(
         r"^(?:dssp_(?:helix|sheet|coil)_occupancy$|rmsf$|sasa_mean(?:__|$)"
-        r"|sasa_buried_nm2__|residue_occlusion__|residue_membrane_distance__(?!.*__group_))", na=False
+        r"|sasa_buried_nm2__|residue_water_coordination__all$|residue_occlusion__|residue_membrane_distance__(?!.*__group_))", na=False
     )
     profiles = profiles.loc[selected]
     rows = []

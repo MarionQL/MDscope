@@ -22,7 +22,7 @@ from MDAnalysis.lib.distances import minimize_vectors
 
 from mdscope.observables.bilayer_normal import fit_local_normals
 from mdscope.config import Replicate
-from mdscope.observables.lipid_enrichment import enrichment_frame
+from mdscope.observables.lipid_enrichment import LipidFootprint
 from mdscope.core.lipid_geometry import (
     aligned_leaflets, anchor_groups, centers, periodic_center,
 )
@@ -64,6 +64,8 @@ def geometry_audit(system, topology, trajectory):
     species, indices, tracker, initial = anchor_groups(u, spec)
     seconds(timer, "anchor_topology_setup_s", start)
     protein = u.select_atoms("protein and name CA")
+    footprint_spec = {**spec, "footprint_selection": "protein and (resid 146:174 or resid 416:444)"}
+    footprint = LipidFootprint(u, footprint_spec, species, indices, 2)
     assert len(protein) > 0
     frame_records = []
     max_wrap_enrichment_diff = 0
@@ -75,7 +77,6 @@ def geometry_audit(system, topology, trajectory):
     previous_leaf = None
     previous_time = None
     sampled = {0, 1, 2, 5, 10, 20, 40, 80, 120, 160, len(u.trajectory)-1}
-    naive_center_disagreement = 0
     for i, ts in enumerate(u.trajectory):
         t0 = time.perf_counter()
         xyz = centers(tracker)
@@ -107,8 +108,7 @@ def geometry_audit(system, topology, trajectory):
         center_delta = float(np.linalg.norm(minimize_vectors(
             (center-naive)[None, :], ts.dimensions)[0]))
         t0 = time.perf_counter()
-        enrichment = enrichment_frame(
-            species, current, xyz, center, ts.dimensions, 0., 25., 2)
+        _, enrichment = footprint.frame(ts.time, xyz, current, changes, ts.dimensions)
         seconds(timer, "enrichment_s", t0)
         t0 = time.perf_counter()
         angles, neighbors = fit_local_normals(
@@ -140,9 +140,15 @@ def geometry_audit(system, topology, trajectory):
             shifted_leaf, _ = aligned_leaflets(
                 shifted_xyz[:, 2], float(ts.dimensions[2]), initial)
             assert np.array_equal(shifted_leaf, current)
-            shifted_enrichment = enrichment_frame(
-                species, shifted_leaf, shifted_xyz, shifted_center,
-                ts.dimensions, 0., 25., 2)
+            footprint_atoms = footprint.protein
+            before = footprint_atoms.positions.copy()
+            try:
+                moved = before.copy()
+                moved[::3, 0] -= ts.dimensions[0]
+                footprint_atoms.positions = moved
+                _, shifted_enrichment = footprint.frame(ts.time, shifted_xyz, shifted_leaf, changes, ts.dimensions)
+            finally:
+                footprint_atoms.positions = before
             count_difference = max(abs(a["count_local"]-b["count_local"])
                                    for a, b in zip(enrichment, shifted_enrichment))
             max_wrap_enrichment_diff = max(max_wrap_enrichment_diff, count_difference)
@@ -151,11 +157,6 @@ def geometry_audit(system, topology, trajectory):
                 min_neighbors=4, normal=2)
             angle_difference = float(np.nanmax(np.abs(angles-shifted_angles)))
             max_wrap_normal_diff = max(max_wrap_normal_diff, angle_difference)
-            naive_enrichment = enrichment_frame(
-                species, current, xyz, naive, ts.dimensions, 0., 25., 2)
-            if any(a["count_local"] != b["count_local"]
-                   for a, b in zip(enrichment, naive_enrichment)):
-                naive_center_disagreement += 1
         frame_records.append({
             "frame": i, "time_ps": float(ts.time),
             "leaflet_changes": changes,
@@ -195,7 +196,6 @@ def geometry_audit(system, topology, trajectory):
         "max_wrap_center_diff_A": max_wrap_center_diff,
         "max_wrap_enrichment_count_diff": max_wrap_enrichment_diff,
         "max_wrap_normal_diff_deg": max_wrap_normal_diff,
-        "naive_center_wrong_on_sampled_frames": naive_center_disagreement,
         "max_naive_center_error_A": float(frames.naive_center_error_A.max()),
         "mean_valid_normal_fraction": float(frames.valid_normal_fraction.mean()),
         "mean_normal_deg": float(frames.normal_mean_deg.mean()),

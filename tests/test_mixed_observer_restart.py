@@ -113,7 +113,7 @@ def _bytes_snapshot(root):
 
 
 @pytest.mark.parametrize("relative,damage", [
-    ("cache/fused_membrane/lipid_enrichment/part-000000.parquet", "delete"),
+    ("cache/fused_membrane/footprint_series/part-000000.parquet", "delete"),
     ("cache/sdc4_mechanisms/part-000000.parquet", "drop_frame"),
     ("cache/sdc4_mechanisms/part-000000.parquet", "duplicate_frame"),
     ("cache/sdc4_mechanisms/map-000000.npz", "corrupt"),
@@ -383,3 +383,29 @@ def test_run_adds_membrane_density_and_keeps_the_completed_stream(tmp_path, monk
     monkeypatch.setattr(mda, "Universe", forbidden)
     runner.run_replicate(rep, cfg, root, state)
     assert _bytes_snapshot(repout) == after
+
+
+def test_completed_run_adds_only_footprint_and_rebuilds_summary(tmp_path, monkeypatch):
+    rep, cfg = make_project(tmp_path, 2)
+    root = tmp_path / "results"
+    repout = root / "test/rep1"
+    state = runner.RunState(root)
+    cfg["analyses"]["lipid_enrichment"]["enabled"] = False
+    runner.run_replicate(rep, cfg, root, state)
+    before = _bytes_snapshot(repout)
+    cfg["analyses"]["lipid_enrichment"]["enabled"] = True
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("completed streaming pass ran again")
+
+    monkeypatch.setattr(runner, "run_streaming_pass", forbidden)
+    runner.run_replicate(rep, cfg, root, state)
+    new_path = repout / "extensions/lipid_footprint/timeseries.parquet"
+    footprint = pd.read_parquet(new_path)
+    summary = pd.read_parquet(repout / "summary/timeseries.parquet")
+    pd.testing.assert_frame_equal(summary[footprint.columns], footprint)
+    normal = "extensions/bilayer_normal/timeseries.parquet"
+    assert _bytes_snapshot(repout)[normal] == before[normal]
+
+    monkeypatch.setattr(mda, "Universe", forbidden)
+    runner.run_replicate(rep, cfg, root, state)

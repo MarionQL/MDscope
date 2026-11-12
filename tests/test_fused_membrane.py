@@ -50,8 +50,8 @@ def _cfg():
             "lipid_enrichment": {
                 "enabled": True, "axis": "z",
                 "species_selections": selections,
-                "protein_selection": "name CA",
-                "inner_radius_A": 0., "outer_radius_A": 30.,
+                "footprint_selection": "name CA",
+                "slab_half_width_A": 25., "shell_edges_A": [0, 15, 30],
             },
         },
     }
@@ -96,9 +96,9 @@ def test_shared_anchor_and_checkpoint_replay(tmp_path):
     assert result_b["lipid_enrichment"]["frames"] == 5
     for path in (
         "extensions/bilayer_normal/timeseries.parquet",
-        "extensions/lipid_enrichment/timeseries.parquet",
-        "extensions/lipid_enrichment/counts.parquet",
-        "extensions/lipid_enrichment/selection_audit.parquet",
+        "extensions/lipid_footprint/timeseries.parquet",
+        "extensions/lipid_footprint/counts.parquet",
+        "extensions/lipid_footprint/selection_audit.parquet",
     ):
         pd.testing.assert_frame_equal(
             pd.read_parquet(root_a / path), pd.read_parquet(root_b / path),

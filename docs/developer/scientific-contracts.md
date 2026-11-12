@@ -385,35 +385,27 @@ sign nor treats the category counts as independent discoveries.
 
 ## Periodic projected protein footprint and lipid area references
 
-`core/lipid_geometry.py:accessible_area_grid` owns the existing SDC4 slab/disk
-area estimator; mechanism and general lipid-enrichment callers share it. The
-nearest-disk query is periodic in both lateral coordinates. Previously a protein
-atom and a grid point on opposite sides of the cell could appear far apart in
-a nonperiodic KD-tree despite being periodic neighbors. A hand-counted two-point
-reference fails against that original implementation (1 Å² instead of 0 Å²).
-The correction may change previously underestimated occlusion at periodic edges;
-ordinary compact local grids away from this boundary case keep their results.
-
-The optional general area adapter evaluates full-plane and annular equal-weight
-quadratures using this same kernel. Annular midpoint sampling is uniform in
-r² and angle. Its density ratio is distinct from composition enrichment, with
-raw counts and both area denominators persisted. Duplicate obstacles cannot
-subtract area twice; atoms outside the normal slab cannot occlude a leaflet.
-Absent species and a fully occluded shell remain unavailable ratios. These
-operational planar areas are not solvent-accessible surfaces, molecular free
-areas or thermodynamic binding constants. Numerical resolution sensitivity is
-separate from trajectory/statistical uncertainty.
+The SDC4 local membrane maps use `core/lipid_geometry.py:accessible_area_grid`.
+The standalone footprint enrichment uses the same geometric disk/slab model
+with leaflet-specific slab membership. It uses one nearest-disk distance
+for lipid anchors and area quadrature samples. The periodic distance is to
+the disk union boundary for points outside the footprint. Raw species
+counts and both area denominators accompany each ratio. Direct 3D lipid
+distances use the complete heavy-atom molecule where topology bonds or
+molecule IDs are available. These are geometric probe definitions. Grid
+resolution is a separate sensitivity from sampling uncertainty.
 
 ## Cross-observer planar geometry contract
 
 `core/lipid_geometry.planar_box` guards Cartesian-height leaflet assignment.
 The two box angles involving the configured normal must be 90 degrees;
-in-plane shear is permitted. Normals, enrichment and molecular lipid contacts
+in-plane shear is permitted for leaflet assignment. Normals and molecular lipid contacts
 validate each current frame, not just initialization. Per-leaflet membrane
 order validates the initial frame used to assign its fixed cohorts. General
 3D minimum-image distances, periodic centers and MSD retain triclinic support;
-this guard does not redefine those kernels. SDC4 height maps and projected
-protein-excluded areas remain orthorhombic-only.
+this guard does not redefine those kernels. SDC4 height maps and leaflet
+footprint enrichment require orthorhombic cells. The area quadrature can show
+small grid-resolution changes under rotation.
 
 The configured axis is a laboratory reference. Rotation about it preserves
 scalar distances, enrichment and normal-deviation angles. Rotating a tilted

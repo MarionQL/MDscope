@@ -5,7 +5,7 @@ import MDAnalysis as mda
 from mdscope.core.lipid_geometry import (
     anchor_groups, aligned_leaflets, classify_leaflets, periodic_center,
 )
-from mdscope.observables.lipid_enrichment import enrichment_frame
+from mdscope.observables.lipid_enrichment import footprint_bands
 from mdscope.observables.bilayer_normal import fit_local_normals
 from mdscope.interactions.lipid_hydrogen_bonds import lipid_molecule_map, tabulate_events
 from mdscope.interactions.interaction_tables import INTERACTION_KEY_COLUMNS
@@ -27,17 +27,17 @@ def test_protein_periodic_center_invariant_to_independent_wrapping():
 
 
 def test_enrichment_invariant_to_lipid_and_protein_wrapping():
-    species = np.array(["POPC", "POPE", "POPC", "POPE", "POPC", "POPE"])
-    upper = np.array([1, 1, 1, 0, 0, 0], bool)
     anchors = np.array([
         [98., 30., 97.], [2., 30., 98.], [60., 30., 96.],
         [99., 31., 7.], [1., 30., 8.], [60., 30., 9.],
     ])
-    protein = np.array([[99., 30., 50.], [1., 30., 50.]])
+    protein = np.array([[99., 30., 97.], [1., 30., 7.]])
     def compute(points, group):
-        result = enrichment_frame(species, upper, points,
-                                  periodic_center(group, BOX), BOX, 0., 8., 2)
-        return [(r["leaflet"], r["species"], r["count_local"], r["n_local"]) for r in result]
+        grid = np.array([[.1, .1], [.5, .5]])
+        return tuple(
+            tuple(footprint_bands(leaf, group, BOX[:3], 2, [0, 2, 8], 1., 5., grid)[0])
+            for leaf in (points[:3], points[3:])
+        )
     expected = compute(anchors, protein)
     anchors2 = anchors.copy()
     anchors2[[0, 3], 0] -= 100

@@ -41,8 +41,8 @@ def make_project(tmp_path, chunk):
     cfg["analyses"]["sdc4_mechanisms"] = partial["analyses"]["sdc4_mechanisms"]
     cfg["analyses"]["sdc4_mechanisms"]["hs_chains"] = {"A1": "chainID H"}
     for name in ("bilayer_normal", "lipid_enrichment"):
-        cfg["analyses"][name].update(enabled=True, species_selections={"POPC": "resname POPC and name P"},
-                                     protein_selection="protein")
+        cfg["analyses"][name].update(enabled=True, species_selections={"POPC": "resname POPC and name P"})
+    cfg["analyses"]["lipid_enrichment"].update(footprint_selection="resindex 5:11 or resindex 17:23", slab_half_width_A=12., shell_edges_A=[0, 20])
     cfg["analyses"]["density_1d"] = {"enabled": True, "runs": {
         "protein": {"selections": {"protein": "protein"}, "axis": "z", "bin_width_A": 5.},
         "lipid": {"selections": {"lipid": "resname POPC"}, "axis": "z", "bin_width_A": 5.},

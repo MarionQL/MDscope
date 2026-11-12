@@ -186,6 +186,16 @@ python -m mdscope.cli finalize synd4_full_mechanisms.yaml
 archive the previous project summary. `run` also performs this phase
 after processing replicas.
 
+### Lipid footprint and residue hydration
+
+With the updated SDC4 YAML, the normal replicate workflow adds the
+`extensions/lipid_footprint/` products and the residue water columns in
+`extensions/sdc4_mechanisms/residue_occlusion.parquet`. Completed replicas
+reuse their other persisted analyses. When residue occlusion is already
+available, the hydration pass reuses its saved contact fractions. Regenerate
+project statistics after all replicas finish so the new footprint metrics
+replace the former centroid-based enrichment in the consolidated results.
+
 ### Membrane-relative density
 
 The SDC4 configurations use the named `membrane_relative` run. At each

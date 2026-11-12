@@ -22,13 +22,15 @@ def plot_lipid_enrichment_matrix(cfg,root):
         ("_fold", "Composition enrichment: local / leaflet mole fraction", "lipid_enrichment_heatmap.png"),
         ("_area_density_ratio", "Density ratio: protein-excluded planar area model", "lipid_area_density_heatmap.png"),
     ):
-        selected=frame[frame["metric"].str.startswith("lipid_enrichment_")
+        selected=frame[frame["metric"].str.startswith("lipid_footprint_")
                        &frame["metric"].str.endswith(suffix)].copy()
         if selected.empty:continue
-        selected["species"]=selected["metric"].str.replace("^lipid_enrichment_","",regex=True).str.replace(rf"_(upper|lower){suffix}$","",regex=True)
-        selected["leaflet"]=selected["metric"].str.extract(rf"_(upper|lower){suffix}$")[0]
-        # Replicate means are averaged equally; not a pooled per-frame average.
-        selected["column"]=selected["system"].astype(str)+" | "+selected["leaflet"].astype(str)
+        selected[["species", "leaflet", "band"]] = selected["metric"].str.extract(
+            rf"^lipid_footprint_(.+)_(upper|lower)_(.+A){suffix}$"
+        )
+        selected["species"] += " | " + selected["band"].str.replace("_", "–", regex=False)
+        # Replicate means are averaged equally.
+        selected["column"] = selected["system"].astype(str) + " | " + selected["leaflet"]
         grouped=selected.groupby(["species","column"],dropna=False)["mean"].mean().reset_index()
         table=grouped.pivot(index="species",columns="column",values="mean")
         if table.empty:continue

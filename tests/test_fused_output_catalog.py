@@ -9,7 +9,7 @@ from mdscope.registry import FUSED_OUTPUTS, fused_output, fused_output_plan
 @pytest.mark.parametrize("name,relative,marker", [
     ("membrane_order", "profiles/membrane_order/timeseries.parquet", "membrane_order"),
     ("bilayer_normal", "extensions/bilayer_normal/timeseries.parquet", "bilayer_normal"),
-    ("lipid_enrichment", "extensions/lipid_enrichment/timeseries.parquet", "lipid_enrichment"),
+    ("lipid_enrichment", "extensions/lipid_footprint/timeseries.parquet", "lipid_enrichment"),
     ("hydrogen_bonds", "interactions/hydrogen_bonds/events.parquet", "hydrogen_bonds"),
     ("lipid_hydrogen_bonds", "interactions/lipid_hydrogen_bonds/events.parquet", "lipid_hydrogen_bonds"),
     ("dssp", "profiles/dssp/assignments.parquet", "dssp"),

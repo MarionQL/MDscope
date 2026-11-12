@@ -117,8 +117,9 @@ DEFAULTS = {
                            "save_lipid_angles": False, "angle_chunk_frames": 100},
         "lipid_enrichment": {"enabled": False, "axis": "z", "species_selections": {},
                              "allow_absent_species": False,
-                             "protein_selection": None,
-                             "inner_radius_A": 0.0, "outer_radius_A": 15.0},
+                             "footprint_selection": None, "shell_edges_A": [0, 5, 10, 20],
+                             "exclusion_radius_A": 3., "slab_half_width_A": 8.,
+                             "area_grid_size": 64, "contact_cutoff_A": 5.},
         "lipid_hydrogen_bonds": {"enabled": False, "lipid_selection": None,
                                  "donors_sel": None, "hydrogens_sel": None, "acceptors_sel": None,
                                  "d_h_cutoff_A": 1.2, "d_a_cutoff_A": 3.0,
@@ -127,7 +128,7 @@ DEFAULTS = {
                                  "update_selections": False},
         "sdc4_mechanisms": {
             "enabled": False, "axis": "z",
-            "protein_selection": None, "residue_occlusion": False,
+            "protein_selection": None, "residue_occlusion": False, "residue_water_cutoff_A": None,
             "tm_chains": {}, "ectodomains": {},
             "hs_chains": {}, "hs_attachment_sites": {},
             "hs_auto": {"enabled": False, "glycan_selection": None,
@@ -692,17 +693,22 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
             if str(ext.get("axis","z")).lower() not in {"x","y","z"}:
                 raise ValueError(f"{analysis_name}.axis must be x, y, or z")
     enrich = cfg["analyses"].get("lipid_enrichment",{})
-    if enrich.get("enabled") and not (0<=float(enrich.get("inner_radius_A",0))<float(enrich.get("outer_radius_A",15))):
-        raise ValueError("lipid_enrichment radii require 0 <= inner < outer")
-    area = enrich.get("area_reference")
-    if enrich.get("enabled") and area is not None:
-        if (not isinstance(area, dict) or "exclusion_radius_A" not in area or "slab_half_width_A" not in area
-                or not np.isfinite(float(area["exclusion_radius_A"]))
-                or float(area["exclusion_radius_A"]) <= 0
-                or not np.isfinite(float(area["slab_half_width_A"])) or float(area["slab_half_width_A"]) <= 0
-                or type(area.get("quadrature_order", 64)) is not int
-                or not 16 <= area.get("quadrature_order", 64) <= 256):
-            raise ValueError("lipid_enrichment.area_reference requires positive exclusion_radius_A/slab_half_width_A and integer quadrature_order 16..256")
+    if enrich.get("enabled"):
+        legacy = {"protein_selection", "inner_radius_A", "outer_radius_A", "area_reference"} & enrich.keys()
+        if legacy:
+            raise ValueError(f"lipid_enrichment uses footprint_selection and shell_edges_A; remove {sorted(legacy)}")
+        if not enrich.get("footprint_selection"):
+            raise ValueError("lipid_enrichment.footprint_selection must select the TM/juxtamembrane atoms")
+        edges = np.asarray(enrich["shell_edges_A"], float)
+        if (edges.ndim != 1 or len(edges) < 2 or edges[0] != 0
+                or not np.isfinite(edges).all() or np.any(np.diff(edges) <= 0)):
+            raise ValueError("lipid_enrichment.shell_edges_A must increase from zero")
+        distances = [float(enrich[key]) for key in ("exclusion_radius_A", "slab_half_width_A", "contact_cutoff_A")]
+        if not np.isfinite(distances).all() or min(distances) <= 0:
+            raise ValueError("lipid_enrichment distances must be finite and positive")
+        grid_size = enrich["area_grid_size"]
+        if type(grid_size) is not int or not 16 <= grid_size <= 256:
+            raise ValueError("lipid_enrichment.area_grid_size must be an integer from 16 to 256")
     normal = cfg["analyses"].get("bilayer_normal",{})
     if normal.get("enabled") and (float(normal.get("neighbor_radius_A",15))<=0 or int(normal.get("min_neighbors",5))<3):
         raise ValueError("bilayer_normal requires positive radius and >=3 neighbors")
@@ -758,6 +764,11 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
             raise ValueError("solvation shell cutoffs must be positive and <= search radius")
 
     mechanisms = cfg["analyses"].get("sdc4_mechanisms", {})
+    water_cutoff = mechanisms.get("residue_water_cutoff_A")
+    if water_cutoff is not None and (not mechanisms.get("residue_occlusion")
+            or not mechanisms.get("water_oxygen_selection")
+            or not np.isfinite(float(water_cutoff)) or float(water_cutoff) <= 0):
+        raise ValueError("sdc4_mechanisms.residue_water_cutoff_A requires residue_occlusion, water_oxygen_selection and a positive cutoff")
     if not isinstance(mechanisms.get("residue_occlusion", False), bool):
         raise ValueError("sdc4_mechanisms.residue_occlusion must be a boolean")
     surface_sites = mechanisms.get("residue_surface_sites", {})

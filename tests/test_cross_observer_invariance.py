@@ -38,7 +38,7 @@ def test_cross_observer_source_geometry(tmp_path, transform):
         np.testing.assert_array_equal(u.trajectory.coordinate_array, before)
         results.append(root)
     for relative in ('extensions/bilayer_normal/timeseries.parquet',
-                     'extensions/lipid_enrichment/counts.parquet',
+                     'extensions/lipid_footprint/counts.parquet',
                      'extensions/lipid_contacts/matrix.parquet',
                      'extensions/solvation/counts.parquet', 'extensions/solvation/rdf.parquet'):
         pd.testing.assert_frame_equal(pd.read_parquet(results[0]/relative),

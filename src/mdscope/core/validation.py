@@ -141,7 +141,7 @@ def validate_selections(cfg, base=Path("."), *, systems=None, emit=None):
                 raise ValueError(f"{system}: {kind} requires >=4 lipid anchors")
             if kind=="lipid_enrichment":
                 protein=universe.select_atoms(str(
-                    extension.get("protein_selection") or cfg["selections"]["protein"]))
+                    extension["footprint_selection"]))
                 if not len(protein):
                     raise ValueError(f"{system}: lipid enrichment protein selection matched no atoms")
         hb=cfg.get("analyses",{}).get("lipid_hydrogen_bonds",{})

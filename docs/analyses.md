@@ -141,9 +141,12 @@ analyses:
   lipid_enrichment:
     enabled: true
     axis: z
-    protein_selection: "protein and name CA and resid 146-170 344-368"
-    inner_radius_A: 0.0
-    outer_radius_A: 15.0
+    footprint_selection: "protein and (resid 146:174 or resid 416:444)"
+    shell_edges_A: [0, 5, 10, 20]
+    exclusion_radius_A: 3.0
+    slab_half_width_A: 8.0
+    area_grid_size: 64
+    contact_cutoff_A: 5.0
     species_selections:
       POPC: "resname POPC and name P"
       POPE: "resname POPE and name P"
@@ -158,24 +161,38 @@ to the lateral lattice vectors. In-plane triclinic shear is supported (for
 example, `alpha=beta=90` with arbitrary valid `gamma` for `axis: z`). Shear
 through that normal fails explicitly, including when it appears in a later
 frame. Fixed initial per-leaflet order profiles use the same geometry check
-when their cohorts are assigned. SDC4 maps and optional accessible-area
-references retain their stricter orthorhombic requirements.
+when their cohorts are assigned. SDC4 maps and
+footprint enrichment retain their stricter orthorhombic requirements.
 
 **Normals**: fit a local plane to neighboring anchor atoms within the same leaflet using periodic coordinates and report its angular deviation from the configured global axis in degrees. This measures **local interfacial tilt/undulation**, not a lipid acyl-chain order parameter or a mechanical modulus. Lipids with insufficient neighbors are recorded as missing.
 
-**Enrichment**: use a cylindrical (projected lateral) annulus about the protein selection. In each leaflet and frame, compute
+**Footprint enrichment** uses the minimum lateral distance to the edge of
+the projected TM and juxtamembrane heavy-atom disks. Each leaflet has its own
+disk union, built from protein atoms within the configured slab of its circular
+mean anchor height. A single representative lipid anchor assigns its molecule to
+a band. The same distance function assigns periodic grid samples to bands and
+gives the accessible area of each band and leaflet. Anchors inside the disk union
+are excluded from the local bands. The bulk population includes all anchors in the
+same leaflet.
 
-```
-fold enrichment = (N_species,local / N_all,local) /
-                  (N_species,bulk  / N_all,bulk)
-```
+The composition fold is the band mole fraction divided by the same-leaflet mole
+fraction. The area-density ratio is the species count per accessible band area
+divided by its count per accessible leaflet area. Empty or undefined denominators
+produce missing ratios. Direct proximity is reported separately as the fraction
+of each leaflet/species population within the 3D heavy-atom contact cutoff and
+the mean and closest of the per-molecule minimum 3D distances to the selected
+protein atoms.
+Bonded lipid fragments include linked sugars for the 3D measurement. A bondless
+topology is suitable only for single-residue lipids.
 
-where bulk means all selected lipids in the same leaflet, not an external experimental bulk sample. Values above 1 indicate enrichment; below 1 indicate depletion. A zero observed count yields fold 0, while an empty local annulus yields NaN. Outputs preserve numerator and denominator for audit. Local and bulk populations overlap by design, so this is a **compositional** enrichment, not a binding free energy.
+- `extensions/bilayer_normal/timeseries.parquet` and optional chunked `per_lipid/angles_part_*.parquet`
+- `extensions/lipid_footprint/` contains framewise metrics, counts, selection audit and reference settings
 
-- `extensions/bilayer_normal/timeseries.parquet` and optional chunked `per_lipid/angles_part_*.parquet` (enable `save_lipid_angles`)
-- `extensions/lipid_enrichment/timeseries.parquet`, `counts.parquet`, `selection_audit.parquet`
-
-Scalar metrics automatically enter the existing `summary/timeseries.parquet`, project statistics and standard time-series figures.
+The offline `composition_summary.parquet` inventories the sampled species
+population and availability by leaflet and band. Scalar metrics enter the
+ordinary replicate and bootstrap statistics. Grid
+resolution, disk radius, slab width and lipid anchor chemistry define the model.
+Validate their sensitivity before interpreting a small compositional difference.
 
 ### Issue #5: lipid–lipid H bonds
 
@@ -1181,59 +1198,6 @@ pair fails rather than becoming zero. Occupancy is sampled-frame based,
 not time-weighted; it does not establish a chemical bridge or cooperativity.
 Existing per-ion episode tables and censoring conventions remain distinct.
 
-### Optional protein-excluded planar area for lipid enrichment
-
-Composition enrichment and area-density ratios answer different questions.
-`enrichment_fold` remains the local mole fraction divided by the same species'
-whole-leaflet mole fraction. It is unchanged by this option. To assess geometric
-crowding separately, enable the existing SDC4 protein-disk/slab model for general
-lipid enrichment:
-
-```yaml
-analyses:
-  lipid_enrichment:
-    area_reference:
-      exclusion_radius_A: 3.0
-      slab_half_width_A: 5.0
-      quadrature_order: 64
-```
-
-The example radii illustrate the model; choose and test them for the actual
-anchor selection. Heavy atoms in `protein_selection` are projected onto each
-leaflet's circular-mean anchor plane when their periodic normal offset is at
-most `slab_half_width_A`. Their uniform exclusion disks form a periodic union.
-This deliberately reuses the SDC4 disk/slab definition; it is neither an
-atom-specific van der Waals surface nor a spherical cross-section model.
-
-Equal-weight midpoint samples integrate the full periodic plane and annulus
-separately. The annular grid is uniform in squared radius and angle. Per-frame
-areas/fractions in `counts.parquet` are named `leaflet_accessible_area_A2`,
-`shell_accessible_area_A2`, `leaflet_accessible_fraction` and
-`shell_accessible_fraction`. `area_density_ratio` is
-`(count_local / shell_area) / (count_bulk / leaflet_area)`, using the same
-molecular anchors and instantaneous leaflet population as the composition
-counts. An absent species or zero accessible area gives NaN and an explicit
-`area_reference_status`; it never gives an infinite ratio or inferred binding.
-`area_reference.json` records the selection, model and numerical resolution.
-
-The optional ratio enters the existing scalar replicate/block/hierarchical
-statistics and a separate `lipid_area_density_heatmap.png`. The historical
-composition heatmap remains separate. A ratio near one is the uniform accessible
-anchor-density null under this model, not evidence of equal chemical affinity.
-Validate disk radius, slab width, resolution, anchor chemistry and membrane
-planarity before interpretation. Only axis-aligned orthorhombic boxes are
-supported; annuli must fit within half the shortest lateral box length.
-`quadrature_order` is an integer from 16 to 256; memory scales with its square,
-not the trajectory length. This adds no trajectory pass and is off by default.
-
-Offline statistics finalization also derives `composition_summary.parquet`
-from saved lipid-enrichment counts: per-replicate species/leaflet populations,
-minimum/maximum counts, mean mole fractions, and the fraction of sampled frames
-in which each configured species is available. Configured absent species retain
-zero populations and undefined enrichment. This table can be regenerated from
-compatible legacy counts without reopening trajectories; it is not a new reuse
-requirement for old results.
-
 Set `solvation.options.bridge_spatial_ion: ions/K` to additionally evaluate an
 in-plane spatial reference for that explicitly selected species. For each
 sampled frame and eligible target pair, eight fixed nonzero fractional cell
@@ -1249,6 +1213,25 @@ summarize that contrast across frames and replicas. The translations may put
 ions inside excluded volume, so treat this as a descriptive geometry and
 crowding reference. Chemical assignments, RDF peak boundaries and sensitivity
 to steric exclusion still require separate evidence.
+
+### Per-residue water coordination
+
+Set `residue_occlusion: true` and `residue_water_cutoff_A: 3.5` under
+`sdc4_mechanisms`. The observer counts distinct water oxygens from
+`water_oxygen_selection` within the cutoff of any protein N or O in each
+residue. It stores the water count and the number of eligible polar atoms
+alongside framewise protein, HS and lipid contact fractions in
+`extensions/sdc4_mechanisms/residue_occlusion.parquet`.
+
+Profile statistics report overall coordination, the fraction of sampled frames
+in each partner state, and mean coordination during protein, HS, lipid and
+no-partner contact states. The first three states can overlap. Conditional
+confidence intervals resample the original time grid and require observations
+in multiple blocks. Residues without a selected polar atom have no hydration
+estimate. Protein contact states exclude same-chain neighbors within two
+sequence positions. The count describes a geometric hydration shell and depends on the
+number and arrangement of polar atoms in a residue.
+
 
 ### Potassium bridge audit for the Syndecan-4 release
 
