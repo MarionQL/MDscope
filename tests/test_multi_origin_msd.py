@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from mdscope.observables.multi_origin_msd import (
-    multi_origin_msd, multi_origin_diffusion,
+    multi_origin_msd, multi_origin_diffusion, fit_multi_origin_curve,
 )
 
 
@@ -122,3 +122,9 @@ def test_project_msd_diagnostics_uses_saved_curves_and_preserves_default(tmp_pat
     pd.testing.assert_frame_equal(previous, pd.read_parquet(dest / "multi_origin_replicates.parquet"))
     summarize_project_multi_origin(tmp_path, reps)
     assert not output.exists()
+
+
+def test_invalid_fit_window_fails():
+    with pytest.raises(ValueError, match="at least four"):
+        fit_multi_origin_curve(np.arange(8.), np.arange(8.),
+                               fit_start_fraction=.9, fit_end_fraction=1.0)
