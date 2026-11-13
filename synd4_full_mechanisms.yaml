@@ -238,6 +238,7 @@ analyses:
     protein_selection: "protein"
     residue_occlusion: true
     residue_water_cutoff_A: 3.5
+    hs_sugar_water_cutoff_A: 3.5
     tm_chains:
       A: "protein and chainID PROA and resid 150:170 and name CA"
       B: "protein and chainID PROB and resid 420:440 and name CA"

@@ -48,6 +48,7 @@ from ..mechanisms.residue_occlusion import (
     OCCLUSION_FILE, IDENTITY_COLUMNS, FRACTION_COLUMNS, WATER_COLUMNS, residue_environment_pending,
 )
 from ..mechanisms.shared_states import fit_shared_states
+from ..mechanisms.hs_hydration import OUTPUT as HS_HYDRATION_OUTPUT, run_hs_hydration, temporal_hs_hydration_profiles
 from ..registry import specialized_tasks,additional_time_series,fused_output,fused_output_plan,analysis_output_plan,required_artifacts
 from ..observables.lipid_enrichment import footprint_pending, summarize_lipid_composition
 from ..observables.msd import summarize_diffusion, summarize_project_diffusion, summarize_project_multi_origin
@@ -523,6 +524,14 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
         t0 = perf_counter()
         complete_membrane_density(rep, cfg, repout, density_runs)
         stage_timings.append({"stage": "membrane-density", "seconds": perf_counter() - t0})
+    if cfg["analyses"].get("sdc4_mechanisms", {}).get("hs_sugar_water_cutoff_A") is not None:
+        t0 = perf_counter()
+        times = pd.read_parquet(whole, columns=["time_ps"]).time_ps.to_numpy(float)
+        if not (repout / HS_HYDRATION_OUTPUT).is_file():
+            run_hs_hydration(rep, cfg, repout, times)
+            stage_timings.append({"stage": "hs-sugar-hydration", "seconds": perf_counter() - t0})
+        else:
+            temporal_hs_hydration_profiles(repout, cfg, times)
     if stage_timings:
         atomic_json(repout / "stage_timings.json", {
             "system": rep.system, "replicate": rep.label,
@@ -555,6 +564,7 @@ def _validate_replica_products(cfg, root, replicates):
                     entry.path, cfg["analyses"]["lipid_enrichment"]
                 ):
                     raise ValueError("lipid footprint settings changed; run MDscope with this config")
+            temporal_hs_hydration_profiles(repout, cfg, times.to_numpy(float))
             if missing_membrane_density_runs(repout, cfg):
                 raise ValueError("missing membrane-relative density; run MDscope with this config")
             msd = cfg.get("analyses", {}).get("membrane", {}).get("msd", {})

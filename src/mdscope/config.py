@@ -129,6 +129,7 @@ DEFAULTS = {
         "sdc4_mechanisms": {
             "enabled": False, "axis": "z",
             "protein_selection": None, "residue_occlusion": False, "residue_water_cutoff_A": None,
+            "hs_sugar_water_cutoff_A": None,
             "tm_chains": {}, "ectodomains": {},
             "hs_chains": {}, "hs_attachment_sites": {},
             "hs_auto": {"enabled": False, "glycan_selection": None,
@@ -764,6 +765,12 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
             raise ValueError("solvation shell cutoffs must be positive and <= search radius")
 
     mechanisms = cfg["analyses"].get("sdc4_mechanisms", {})
+    sugar_cutoff = mechanisms.get("hs_sugar_water_cutoff_A")
+    if sugar_cutoff is not None and (
+            not mechanisms.get("enabled") or not (mechanisms.get("hs_auto") or {}).get("enabled")
+            or not mechanisms.get("water_oxygen_selection")
+            or not np.isfinite(float(sugar_cutoff)) or float(sugar_cutoff) <= 0):
+        raise ValueError("sdc4_mechanisms.hs_sugar_water_cutoff_A requires enabled SDC4 and hs_auto, water_oxygen_selection and a positive cutoff")
     water_cutoff = mechanisms.get("residue_water_cutoff_A")
     if water_cutoff is not None and (not mechanisms.get("residue_occlusion")
             or not mechanisms.get("water_oxygen_selection")
