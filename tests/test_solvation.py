@@ -7,21 +7,7 @@ from MDAnalysis.coordinates.memory import MemoryReader
 
 from mdscope.observables.solvation import (SolvationObserver, contact_episodes,
                                            rdf_from_counts)
-
-
-def _universe():
-    u = mda.Universe.empty(5, n_residues=4, atom_resindex=[0, 0, 1, 2, 3],
-                           trajectory=True)
-    u.add_TopologyAttr("names", ["OE1", "OE2", "OW", "OW", "SOD"])
-    u.add_TopologyAttr("resnames", ["GLU", "SOL", "SOL", "SOD"])
-    u.add_TopologyAttr("resids", [7, 1, 2, 3])
-    xyz = np.array([[1, 1, 1], [1.5, 1, 1], [3, 1, 1],
-                    [19.5, 1, 1], [3, 1, 2]], np.float32)
-    shifted = xyz.copy()
-    shifted[2] = [12, 1, 1]
-    u.load_new(np.array([xyz, shifted]), format=MemoryReader,
-               dimensions=np.tile([20, 20, 20, 90, 90, 90], (2, 1)))
-    return u
+from mdscope_test_support import solvation_universe as _universe
 
 
 def test_bulk_rdf_formula():

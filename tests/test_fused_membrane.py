@@ -1,89 +1,14 @@
 """Shared-trajectory observer tests including crash/replay semantics."""
 import json
 
-import MDAnalysis as mda
-import numpy as np
 import pandas as pd
-from MDAnalysis.coordinates.memory import MemoryReader
 
-from mdscope.pipeline.fused_membrane import FusedMembrane, enabled_names
-from mdscope.core.lipid_geometry import anchor_groups
-
-
-def _universe():
-    u = mda.Universe.empty(
-        10, n_residues=10, atom_resindex=np.arange(10), trajectory=True
-    )
-    u.add_TopologyAttr("names", ["P"] * 8 + ["CA", "CA"])
-    u.add_TopologyAttr("resnames", ["POPC"] * 8 + ["ALA"] * 2)
-    u.add_TopologyAttr("resids", list(range(1, 11)))
-    x = np.array([10., 25., 10., 25., 10., 25., 10., 25.])
-    y = np.array([10., 10., 25., 25., 10., 10., 25., 25.])
-    z = np.array([20., 20., 20., 20., 60., 60., 60., 60.])
-    first = np.column_stack([x, y, z])
-    protein = np.array([[99., 15., 40.], [1., 15., 40.]])
-    coordinates = []
-    for i in range(5):
-        frame = np.vstack([first + [i * .1, 0, 0], protein])
-        frame[8, 0] -= 100. if i % 2 else 0.
-        coordinates.append(frame)
-    boxes = np.tile([100., 100., 100., 90., 90., 90.], (5, 1))
-    u.load_new(np.asarray(coordinates, dtype=np.float32),
-               format=MemoryReader, dimensions=boxes)
-    return u
-
-
-def _cfg():
-    selections = {"POPC": "resname POPC and name P"}
-    return {
-        "trajectory": {"start": 0, "stop": 5, "stride": 1, "chunk_frames": 2},
-        "time": {"dt_ps": None, "origin_ps": 0.},
-        "selections": {"protein": "name CA"},
-        "analyses": {
-            "membrane_order": {"enabled": False},
-            "bilayer_normal": {
-                "enabled": True, "axis": "z",
-                "species_selections": selections,
-                "neighbor_radius_A": 30., "min_neighbors": 3,
-                "save_lipid_angles": True,
-            },
-            "lipid_enrichment": {
-                "enabled": True, "axis": "z",
-                "species_selections": selections,
-                "footprint_selection": "name CA",
-                "slab_half_width_A": 25., "shell_edges_A": [0, 15, 30],
-            },
-        },
-    }
-
-
-def _execute(u, cfg, root, resume=False):
-    u.trajectory[0]
-    observer = FusedMembrane(u, cfg, root)
-    if resume:
-        for k in range(3):
-            observer.update(u.trajectory[k], k)
-            if k == 1:
-                observer.flush(0)
-        observer.flush(1)  # simulate uncommitted part written before crash
-        del observer
-        u.trajectory[0]
-        observer = FusedMembrane(u, cfg, root)
-        observer.prune_from(1)
-        start = 2
-        next_part = 1
-    else:
-        observer.prune_from(0)
-        start = 0
-        next_part = 0
-    for k in range(start, 5):
-        observer.update(u.trajectory[k], k)
-        if (k + 1) % 2 == 0:
-            observer.flush(next_part)
-            next_part += 1
-    if observer.frame_count % 2:
-        observer.flush(next_part)
-    return observer.finalize()
+from mdscope.pipeline.fused_membrane import enabled_names
+from mdscope_test_support import (
+    membrane_universe as _universe,
+    membrane_config as _cfg,
+    execute_membrane as _execute,
+)
 
 
 def test_shared_anchor_and_checkpoint_replay(tmp_path):

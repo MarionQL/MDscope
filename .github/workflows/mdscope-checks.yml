@@ -54,7 +54,7 @@ jobs:
           (cd /tmp && /tmp/mdscope-sdist/bin/python -c "import mdscope.cli, mdscope.pipeline.runner")
       - name: Run synthetic regression tests
         run: |
-          pytest -q tests
+          pytest -q --durations=20 tests
       - name: Profile representative numerical kernels (manual only)
         if: github.event_name == 'workflow_dispatch' && matrix.python-version == '3.11'
         run: |

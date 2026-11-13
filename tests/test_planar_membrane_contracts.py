@@ -8,7 +8,7 @@ from mdscope.core.lipid_geometry import anchor_groups, aligned_leaflets
 from mdscope.pipeline.fused_membrane import FusedMembrane
 from mdscope.observables.solvation import SolvationObserver
 from mdscope.observables.bilayer_normal import fit_local_normals
-from test_fused_membrane import _universe, _cfg
+from mdscope_test_support import membrane_universe as _universe, membrane_config as _cfg
 
 
 @pytest.mark.parametrize('axis,angles', [

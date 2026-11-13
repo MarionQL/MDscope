@@ -7,7 +7,7 @@ import yaml
 from mdscope.config import load_config
 from mdscope.core.validation import validate_selections
 from mdscope.pipeline.runner import run_one
-from test_cli_end_to_end import project, invoke
+from mdscope_test_support import invoke_cli as invoke
 
 
 def _set(cfg, keys, value):
