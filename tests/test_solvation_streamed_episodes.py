@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from mdscope.observables.solvation import SolvationObserver, contact_episodes
-from test_solvation import _universe
+from mdscope_test_support import solvation_universe as _universe
 
 
 def test_finalization_never_materializes_the_full_event_table(tmp_path, monkeypatch):

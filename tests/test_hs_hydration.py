@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
+import pytest
 
 from mdscope.mechanisms import hs_hydration
 
@@ -40,3 +41,19 @@ def test_sugar_hydration_with_reversed_residue_ids_and_shared_water(tmp_path, mo
     assert list(by_position["labels"]) == ["1:BXYL", "2:BGAL", "3:BGAL"]
     assert list(by_type["labels"]) == ["BGAL (2,3)", "BXYL (1)"]
     np.testing.assert_array_equal(by_type["values"], [[.5, 1.]])
+
+
+@pytest.mark.parametrize("cfg", [
+    {},
+    {"statistics": {"bootstrap_draws": 32}},
+    {"analyses": {"sdc4_mechanisms": {"hs_sugar_water_cutoff_A": None}}},
+])
+def test_optional_hs_hydration_is_ignored_without_a_cutoff(tmp_path, cfg):
+    # Other profile statistics must not require the optional hydration analysis.
+    assert hs_hydration.temporal_hs_hydration_profiles(tmp_path, cfg) == {}
+
+
+def test_configured_hs_hydration_requires_saved_data(tmp_path):
+    cfg = {"analyses": {"sdc4_mechanisms": {"hs_sugar_water_cutoff_A": 4.5}}}
+    with pytest.raises(ValueError, match="Missing HS sugar hydration"):
+        hs_hydration.temporal_hs_hydration_profiles(tmp_path, cfg)

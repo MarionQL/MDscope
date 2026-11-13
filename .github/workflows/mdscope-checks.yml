@@ -7,6 +7,7 @@ on:
       - fix/scientific-data-integrity-20261028
       - recovery/missing-refactors-20261029
   pull_request:
+  workflow_dispatch:
 
 jobs:
   python-checks:
@@ -32,6 +33,7 @@ jobs:
         if: matrix.python-version == '3.11'
         run: python -m pip install freesasa
       - name: Build and validate distribution metadata
+        if: matrix.python-version == '3.11'
         run: |
           python -m build
           python -m twine check dist/*
@@ -41,6 +43,7 @@ jobs:
           python -c "import mdscope; import mdscope.cli; print(mdscope.__version__)"
           mdscope --help
       - name: Verify wheel and sdist in isolated installations
+        if: matrix.python-version == '3.11'
         run: |
           python -m venv /tmp/mdscope-wheel
           /tmp/mdscope-wheel/bin/pip install dist/*.whl
@@ -51,8 +54,9 @@ jobs:
           (cd /tmp && /tmp/mdscope-sdist/bin/python -c "import mdscope.cli, mdscope.pipeline.runner")
       - name: Run synthetic regression tests
         run: |
-          pytest -q tests
-      - name: Profile representative numerical kernels
+          pytest -q --durations=20 tests
+      - name: Profile representative numerical kernels (manual only)
+        if: github.event_name == 'workflow_dispatch' && matrix.python-version == '3.11'
         run: |
           pytest -q -s -m benchmark tests/test_performance_benchmarks.py
 

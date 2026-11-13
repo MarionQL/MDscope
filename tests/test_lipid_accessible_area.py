@@ -6,7 +6,9 @@ import pandas as pd
 import pytest
 
 from mdscope.observables.lipid_enrichment import footprint_bands, summarize_lipid_composition
-from test_fused_membrane import _cfg, _universe, _execute
+from mdscope_test_support import (
+    membrane_config as _cfg, membrane_universe as _universe, execute_membrane as _execute,
+)
 
 
 def test_periodic_footprint_uses_the_same_geometry_for_lipids_and_area():

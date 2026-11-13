@@ -95,7 +95,7 @@ def run_hs_hydration(rep, cfg, repout, expected_times):
 
 
 def temporal_hs_hydration_profiles(repout, cfg, expected_times=None):
-    cutoff = cfg["analyses"].get("sdc4_mechanisms", {}).get("hs_sugar_water_cutoff_A")
+    cutoff = cfg.get("analyses", {}).get("sdc4_mechanisms", {}).get("hs_sugar_water_cutoff_A")
     if cutoff is None:
         return {}
     path = repout / OUTPUT

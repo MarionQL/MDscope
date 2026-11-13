@@ -5,7 +5,7 @@ import MDAnalysis as mda
 import pandas as pd
 import pytest
 
-from test_cli_end_to_end import invoke
+from mdscope_test_support import invoke_cli as invoke
 from validation_fixture import write_project, verify_project
 
 

@@ -31,6 +31,18 @@ COVERAGE_FILE=/tmp/mdscope-coverage python -m coverage run --branch --source=src
 COVERAGE_FILE=/tmp/mdscope-coverage python -m coverage report
 ```
 
+**Test organization update (2026-11-13):** The issue #31 geometry and
+cross-module semantic test modules were consolidated into
+`test_core_geometry_contracts.py`. Distinct triclinic, periodic-center,
+pairwise-versus-pointwise, and invalid-geometry checks remain. The duplicate
+multi-origin FFT/fit integration fixture was removed; the direct-sum oracle,
+end-to-end fit reference, and explicit invalid-window test remain in
+`test_multi_origin_msd.py`. This is a structural change, not a new coverage
+measurement; the 409-test figure above is historical. Standard PR CI still
+runs Python 3.11/3.13 synthetic checks and validates wheel/sdist once on 3.11;
+optional profiling is available through manual workflow dispatch. The separate
+real-trajectory checks remain unchanged.
+
 ## Hand-reviewed scientific mutants
 
 Six isolated temporary **copies** of the current package were tested in fresh
@@ -104,11 +116,11 @@ were not replaced by zeros to obtain parity.
    triclinic and explicit unsupported-box references (see scientific contracts).
    Six-production-replica recomputation/convergence (#98–#109) remains unverified;
    branch coverage and analytic fixtures do not establish their sampling.
-5. Historical issue-prefixed suites retain distinct topology, geometry,
-   contact/mass and semantic references. Renaming them alone would add churn
-   without removing duplication, so they remain discoverable and intact.
-   No suite was dropped on the basis of a coverage percentage. New tests are
-   grouped by scientific controls/validation responsibility, not issue number.
+5. Historical issue-prefixed topology, contact/mass and glycolipid fixtures
+   retain distinct numerical contracts. The overlapping issue #31 geometry
+   and semantic checks were integrated into the geometry test module without
+   discarding their distinct edge cases. No suite was dropped on the basis
+   of a coverage percentage. New tests are grouped by scientific responsibility.
 
 ## Targeted AI-assisted failure-mode review (2026-11-03)
 

@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from mdscope.observables.solvation import aqueous_slab_density, SolvationObserver, rdf_from_counts
-from test_solvation import _universe
+from mdscope_test_support import solvation_universe as _universe
 
 
 def test_slab_density_periodic_variable_volume_and_excluded_hemisphere():
