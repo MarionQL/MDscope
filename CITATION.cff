@@ -3,5 +3,5 @@ message: "Cite MDscope with the version and commit used for the analysis."
 type: software
 title: MDscope
 authors:
-  - name: MDscope contributors
+  - name: Marion LoPresti
 repository-code: "https://github.com/MarionQL/MDscope"
