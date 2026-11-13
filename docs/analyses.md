@@ -1287,3 +1287,22 @@ including its box. A starting structure supports a geometry check only.
 The release provides one trajectory per condition. Frame–offset samples are
 correlated references, and condition-level inference requires separate
 production replicas.
+
+
+### Water coordination along attached HS
+
+Set `analyses.sdc4_mechanisms.hs_sugar_water_cutoff_A: 3.5` to count distinct water
+oxygens within 3.5 Å of any oxygen on each sugar. A water can contribute once
+to each of several neighboring sugars. MDscope starts at the sugar bonded to
+the protein and numbers along the covalent chain toward the distal end.
+Linker sugars are included. Sugar types are the exact topology residue names.
+
+The replica stage writes `extensions/sdc4_mechanisms/hs_sugar_hydration.parquet`
+with frame, chain, position, sugar type and water count. It adds this output in
+a dedicated trajectory pass and reuses it on subsequent runs with the same
+cutoff and frame grid. To change the cutoff, move that output aside and rerun
+the replica stage. Statistics use the existing profile bootstrap. Profiles
+`hs_water_by_position__*` compare like positions and sugar types within the
+same attachment chain. Profiles `hs_water_by_sugar_type__*` average positions
+of a given type per frame within each chain, then compare the replicas. Type
+averages retain the positions at which that type occurs in the topology.
