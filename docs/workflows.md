@@ -309,10 +309,30 @@ The numerical phase writes the review under `project_summary/statistics/`.
 | `output_inventory.parquet` | Saved numerical products and Parquet row counts, including replica outputs when present |
 | `coverage/contrast_coverage.parquet` | Every registered contrast and its interval status |
 
-The review includes available shared-state population and conditioned
-NxIP contrasts. Descriptive outputs appear in the inventory, which excludes
-working caches and trajectories. When sharing an export, include
-`statistics/` and its sibling `shared_states/` directory if available.
+The statistics phase first builds a coverage audit for every condition pair.
+It matches saved contrasts to the observables seen in replica outputs. For
+example, a lipid measured in only one condition is marked unavailable, as is
+a lifetime without enough observed episodes to estimate it. A saved interval
+that spans or touches zero is counted separately from unavailable comparisons.
+
+The report reads the completed audit and adds saved shared-state population
+and conditioned NxIP contrasts when present. A comparison becomes a finding
+when its estimated difference and interval bounds are finite and its valid
+bootstrap interval lies entirely above or below zero. Differences are
+condition 2 minus condition 1, in the source units. Adjusted permutation
+q-values are shown where available. They are separate from the pointwise
+bootstrap rule used to select findings.
+
+For each analysis family and condition pair, the Markdown shows up to eight
+examples. It ranks candidates by the magnitude of the interval endpoint
+closer to zero divided by the magnitude of the endpoint farther from zero.
+This gives a unitless ranking of interval separation. It keeps at most one
+example per profile or interaction type within a section. The full findings
+table retains every qualifying row.
+
+The inventory lists available numerical products, including descriptive
+outputs, and excludes working caches and trajectories. When sharing an export,
+include `statistics/` and its sibling `shared_states/` directory if available.
 
 ```bash
 mdscope report /path/to/project_summary/statistics
