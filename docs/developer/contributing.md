@@ -1,39 +1,31 @@
-# Contributing and repository rules
+# Contributing
 
-This document is the single source of truth for structural refactoring.
+**Rule:** one implementation per operation; preserve scientifically different contracts even when code looks similar. Prefer net simplification.
 
-1. **No backward compatibility for superseded internal modules.** Migrate consumers and delete old paths in the same PR.
-2. **Minimize code and complexity.** Remove redundant functions, wrappers, unused configuration and unnecessary classes.
-3. **Organize by responsibility.** Keep geometry, selections and trajectory infrastructure under `core/`; scientific metrics under `observables/`; molecular contacts under `interactions/`; system-specific mechanisms under `mechanisms/`; inference and comparisons under `statistics/`; figures and exports under `reporting/`; streaming and orchestration under `pipeline/`.
-4. **One documentation source of truth.** Delete or rewrite stale guides rather than retaining contradictory instructions.
-5. **One implementation per operation.** Distinct scientific semantics must stay distinct; do not consolidate merely because names resemble one another.
-6. **Preserve scientific correctness.** A structural move must not silently alter algorithms, units, mass weighting, PBC handling, atom selection, frames or outputs.
-7. **Tests follow current architecture.** Update current tests, remove tests for deleted APIs and retain valuable numerical/integration coverage. Avoid adding tests just to check wrappers.
-8. **No speculative abstractions.** Introduce helpers/classes only when they remove real duplication.
-9. **Minimize trajectory passes, memory and I/O.** Preserve fused processing, streaming and sparse distance calculations.
-10. **Separate execution from analysis.** HPC orchestration, trajectory processing and scientific statistics must have clear boundaries.
-11. **Require meaningful CI.** Run existing Python 3.11/3.13 checks and real-GROMACS workflows for changed paths.
-12. **Prefer net simplification.** Explain what a cleanup PR removes, and avoid mass formatting.
+## Where code belongs
 
-## Package ownership
+| Module | Owns |
+|---|---|
+| `core/` | Geometry, atom selections, trajectory sources, persistence, checkpoints |
+| `observables/` | RMSD/RMSF/MSD, membrane/lipid/structural observables |
+| `interactions/` | Molecular contacts and H bonds |
+| `mechanisms/` | SDC4 and other system-specific analyses |
+| `statistics/` | Replicate-level inference and comparisons |
+| `reporting/` | Findings, scientific figures and exports |
+| `pipeline/` | Shared streaming, orchestration, finalization |
+| `cli.py`, `config.py`, `registry.py` | CLI, YAML and task discovery |
 
-- `src/mdscope/core/`: geometry, coordinate and topology contracts, selections, trajectory inputs, persistence and checkpoints
-- `src/mdscope/observables/`: RMSD, RMSF, MSD, radius of gyration, membrane and protein observables
-- `src/mdscope/interactions/`: hydrogen bonds, salt bridges and molecular contacts
-- `src/mdscope/mechanisms/`: SDC4, glycan/lipid mechanisms and topology-specific analyses
-- `src/mdscope/statistics/`: resampling, statistical summaries and system comparisons
-- `src/mdscope/reporting/`: diagnostic plots and findings reports
-- `src/mdscope/pipeline/`: trajectory streaming, fused observers and run/finalize orchestration
-- `src/mdscope/cli.py`, `src/mdscope/config.py`, `src/mdscope/registry.py`: minimal top-level entry points
+## Change checklist
 
-Move one coherent group at a time, migrate all imports, and confirm CI before proceeding. These are ownership boundaries, not a requirement to invent additional wrappers.
+- **Scope:** inspect callers, relevant contracts, tests and docs. Change one coherent responsibility at a time; avoid speculative abstractions.
+- **Compatibility:** migrate consumers and remove superseded *internal* modules in the same PR; preserve public CLI/YAML/output contracts unless explicitly changed.
+- **Scientific invariants:** retain units, populations, coordinate frame, PBC, mass weighting, selection chemistry, time sampling, missing-vs-zero semantics and results.
+- **Performance:** minimize trajectory traversals, memory, I/O and dense atom-pair materialization. Preserve fused and sparse processing.
+- **Testing:** use independent numerical oracles for mathematical claims; check integration through the actual entry point. A successful run or two agreeing implementations may share the same bug.
+- **Failure safety:** test invalid inputs and checkpoint corruption without destroying valid existing outputs. Verify artifact identity, integrity, completeness and provenance—not just existence.
+- **Validation:** run relevant targeted tests, Python 3.11/3.13 CI, and real GROMACS checks when affected. Document what ran and what remains unverified.
+- **Documentation:** one authoritative location per concept. Prefer short tables and bullets; remove stale guides and avoid mass formatting.
 
-## AI-assisted implementation and review
+See [Scientific contracts](scientific-contracts.md), [Scientific audit](scientific-audit.md) and [Validation gaps](validation-gaps.md) for the detailed acceptance criteria.
 
-AI-generated changes are reviewed against the **behavioral and scientific contract**, not judged by whether the code runs or the agent reports success. Before editing, identify the intended observable, units and populations, input/outputs and provenance, mutable/persisted state, failure outcomes, and affected call sites. Keep the review proportional to the change: a typo does not need an adversarial test suite; an estimator, restart, or reporting change does.
-
-For a substantive bug fix, first reproduce the failure with a small fixture or a previously failing case. Add a test that checks the required outcome **through the actual affected entry point**, not a tautology about the test fixture. Where practical, show that the test fails on the original behavior and passes with the correction (or use a targeted mutation/fault injection). Prefer analytical or independent reference calculations for scientific claims; comparing two paths that reuse the same implementation cannot establish their shared correctness. Avoid redundant tests that only duplicate implementation details.
-
-At integration boundaries, check identity, shape, units, coordinate frame/PBC, time sampling, absent-versus-zero semantics, and intended missing-data behavior. For persisted products, distinguish existence, integrity, freshness, scientific completeness, and provenance. Decide explicitly whether a missing or corrupted required product must be rebuilt or cause a clear, non-destructive failure. Do not classify optional or deliberately disabled analyses as failures.
-
-Before claiming completion, report the exact tests/checks executed, the behavior they establish, known assumptions and limitations, and any real-trajectory or production-scale validation that remains unperformed. A green CI run, matching hashes, successful report export, or a plausible plot is not an independent scientific validation. See [scientific contracts](scientific-contracts.md), [scientific audit](scientific-audit.md), and [validation effectiveness/gaps](validation-gaps.md) rather than restating their domain-specific caveats here.
+**AI-assisted changes:** review behavior and scientific evidence, not the origin of the code. For substantive fixes, demonstrate the prior failure or a targeted fault-injection/mutation detection where practical. A green CI run is not evidence of physical convergence.

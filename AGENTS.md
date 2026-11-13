@@ -1,23 +1,22 @@
-# MDscope agent instructions
+# MDscope agent checklist
 
-Use the existing project documentation as the source of truth. Read the files relevant to the change **before** editing; do not duplicate their contents here.
+Read only the guides relevant to the change; do not duplicate them here.
 
-- [Contributing and engineering rules](docs/developer/contributing.md): ownership, minimal architecture, implementation and review expectations.
-- [Architecture](docs/developer/architecture.md): module boundaries, data flow and packaging.
-- [Scientific contracts](docs/developer/scientific-contracts.md): coordinate/PBC conventions, estimator semantics, units and reference expectations.
-- [Scientific methodology audit](docs/developer/scientific-audit.md): established limitations and unresolved scientific questions; do not turn caveats into validated claims.
-- [Validation effectiveness and gaps](docs/developer/validation-gaps.md): independent oracles, mutation evidence, known coverage and production-validation limits.
-- [Configuration](docs/configuration.md), [analyses](docs/analyses.md), and [workflows](docs/workflows.md): user-facing YAML, scientific options, execution, finalization and outputs.
-- [SDC4 reference fixtures](docs/developer/sdc4-fixtures.md): system-specific test contracts, when touching SDC4 mechanisms.
-- [Repository documentation index](docs/README.md): navigation to other maintained material.
+| Task | Source of truth |
+|---|---|
+| Ownership, minimal changes, reviews | [Contributing](docs/developer/contributing.md) |
+| Module boundaries, persisted flow | [Architecture](docs/developer/architecture.md) |
+| Coordinate frames, PBC, units, numerical semantics | [Scientific contracts](docs/developer/scientific-contracts.md) |
+| Known scientific limitations | [Scientific audit](docs/developer/scientific-audit.md) |
+| Test effectiveness, remaining coverage | [Validation gaps](docs/developer/validation-gaps.md) |
+| SDC4-specific reference cases | [SDC4 fixtures](docs/developer/sdc4-fixtures.md) |
+| YAML, observable options, workflows | [Configuration](docs/configuration.md) · [Analyses](docs/analyses.md) · [Workflows](docs/workflows.md) |
 
-## Working agreement
+## Before merging
 
-1. Inspect existing callers, contracts, tests and relevant docs; state the intended change and its acceptance criteria. Preserve the distinction between **numerically correct** and **physically interpretable**.
-2. Prefer the smallest coherent change to existing infrastructure. Do not add compatibility wrappers, duplicated helpers, frameworks or tests without a demonstrated need. Follow the public-versus-internal compatibility policy in contributing.md.
-3. Explicitly consider the six failure modes: wrong requirements/assumptions, scientific mathematics, state/data flow, integration contracts, inadequate verification, and failure/recovery handling.
-4. For meaningful bug fixes, reproduce the behavior and use a regression test that would fail on the original implementation. Prefer independent analytical or alternative-implementation oracles for numerical claims. Do not weaken a failing assertion merely to make CI pass.
-5. Check required output identity, completeness and provenance where the changed workflow relies on persisted files. A file's existence or a passing test is not sufficient evidence of correctness.
-6. Run the smallest relevant tests first, then the applicable repository CI or real-trajectory checks. Report what was **actually executed**, what was not, and any unresolved limitations. Do not claim full production validation from short fixtures or synthetic tests.
-
-For current module and scientific specifics, follow the linked documentation rather than expanding this file into a second policy manual.
+1. Identify intended behavior, inputs/outputs, units, populations, provenance and failure outcomes. Separate **numerical correctness** from **physical interpretation**.
+2. Review six risks: assumptions, mathematical errors, state/data flow, integration, insufficient verification, and failure/recovery.
+3. Prefer the smallest fix. Delete superseded internal paths; do not add wrappers or duplicate tests without a need.
+4. For substantive bugs, reproduce failure and test the affected entry point. Prefer independent analytical references; never weaken assertions to pass CI.
+5. Validate identity, frame/time alignment, PBC, missing-vs-zero and persisted-product completeness. Existing output files are not automatically valid.
+6. Run targeted tests then applicable Python 3.11/3.13 and real-trajectory checks. Report **executed** evidence, remaining gaps and production limits. Short fixtures do not prove convergence.

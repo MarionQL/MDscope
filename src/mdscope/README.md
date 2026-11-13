@@ -1,22 +1,16 @@
-# MDscope analysis package
+# Package map
 
-See [the current architecture](../../docs/developer/architecture.md) and
-[repository rules](../../docs/developer/contributing.md).
+| Path | Responsibility |
+|---|---|
+| `core/` | Geometry, selections, alignment, coordinate sources, checkpoints |
+| `observables/` | Structure, membrane, lipid, SASA, DSSP, MSD and density metrics |
+| `interactions/` | H bonds, salt bridges, ligand/lipid contacts |
+| `mechanisms/` | SDC4, HS topology, local environments, shared states |
+| `statistics/` | Autocorrelation, replicate bootstrap, contrasts |
+| `reporting/` | Saved findings and optional figures |
+| `pipeline/` | Fused streaming, restart, orchestration and finalization |
+| `cli.py`, `config.py`, `registry.py` | CLI, configuration and task registration |
 
-Current canonical packages:
-- `core/`: geometry, alignment, atom selection, trajectory sources and checkpoints
-- `observables/`: RMSD, RMSF, MSD, radius of gyration, bilayer normals, lipid enrichment,
-  membrane order, density, DSSP, SASA, structural profiles and residue distances
-- `reporting/`: deterministic findings and optional scientific figures
-- `interactions/`: hydrogen bonds, salt bridges, ligand contacts and interaction tables
-- `mechanisms/`: SDC4, HS topology, local environment and shared states
-- `statistics/`: replicate-aware inference and statistical summaries
+**Coordinate rule:** Membrane observables use source coordinates **before** protein fitting; optional `msd_trajectory` is separately synchronized. Do not rotate or recenter the shared input frames. Old internal Python aliases are unsupported.
 
-The `pipeline/` package owns streaming, fused processing, orchestration,
-finalization and progress handling.
-`cli.py`, `config.py` and `registry.py` remain top-level entry points.
-
-Membrane observers consume physical coordinates before protein-only fitting.
-For raw MSD, a separate `msd_trajectory` source can be synchronized with
-the primary trajectory. Do not rotate or center the underlying shared frames.
-Old Python module aliases are **not** supported.
+[Architecture](../../docs/developer/architecture.md) · [Scientific contracts](../../docs/developer/scientific-contracts.md) · [Contributing](../../docs/developer/contributing.md)
