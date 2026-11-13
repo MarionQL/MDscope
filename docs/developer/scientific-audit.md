@@ -1,111 +1,73 @@
-# Scientific methodology audit — 2026-11-02
+# Scientific audit
 
-This is a code-level methodology audit with independent numerical references,
-release-backed CI evidence and targeted corrections. It is **not** validation
-of equilibrium sampling or biological conclusions across the six production
-replicas. Source paths below are relative to `src/mdscope/`; function names
-identify the evidence. An unresolved limitation is not an acceptance pass.
+**2026-11-02 checkpoint:** numerical oracles and short release tests exist; **six-production-replica convergence and biological conclusions remain unverified**. A passing numerical test is not evidence of physical mechanism.
 
-## Prioritized findings and disposition
+## Priority findings
 
-| Severity | Observable / source evidence | Definition and assumption | Disposition / scientific impact |
-|---|---|---|---|
-| High | Lipid specificity, `mechanisms/sdc4_mechanisms.py:update/finalize` | Unique contacting molecules versus anchor-in-disk availability; ratios are dimensionless. Numerator and denominator originally had different membership. | Corrected in PR #117; matched numerator cannot exceed availability. Whole-leaflet and legacy local outputs remain distinct. Four-frame real examples change other species' contact shares even when only POPC/cholesterol membership changes. Full production effect remains unknown. |
-| High | Lipid/water/ion residence, `core/residence.py`, `mechanisms/motif_residence.py`, `observables/solvation.py:contact_episodes` | Contact spans in ps, interval-imputed estimates, frame occupancy and boundary censoring are different quantities. Irregular sampling does not make frame occupancy a time fraction. | Shared duration convention and explicit columns; backward-compatible historical durations. Batched time-axis processing removes repeated scans. Continuous/intermittent oracles pass. Interval-censored microscopic on/off times remain unresolved; no physical binding lifetime claim. |
-| High | Solvation RDF and 3D density, `observables/solvation.py:update/finalize` | Pair counts divided by spherical shell volume and sum of target-atom count × selected-solvent count / instantaneous cell volume. It is a *full-cell average* reference, not measured aqueous bulk. | Corrected metadata, documentation and figure labels; historical `g_bulk` values/names preserved. Independent hemisphere example shows excluded volume and reference-density bias can cancel. An optional frame-specific geometric aqueous-region density is now persisted separately from historical g_bulk, with variable-volume and empty-region references. The independent hemisphere oracle establishes that changing density alone leaves shell exclusion uncorrected; a physical bulk plateau and protein/HS accessible shell volume remain unverified. Do not rank intrinsic hydration preference from g(r) alone. |
-| High | Native SASA, `observables/sasa.py:sasa_residue_rows` | Probe-inflated sphere union; areas in nm². Isolated spheres have exact area 4π(r+probe)². | A real FreeSASA 2.2.1 Shrake–Rupley crash was reproduced for isolated atoms, including isolated+connected mixtures. Isolated atoms are now evaluated analytically and removed from native input; connected atoms still use the configured algorithm. Real sphere/cap references run in Python 3.11 CI. |
-| High | Missing state-feature frames, `mechanisms/shared_states.py:fit_shared_states` | State populations condition on finite feature vectors; removed rows are unknown, not adjacent observations. | Report input/complete counts and missing fractions; exclude transitions across missing gaps. Suppress temporal block intervals and circular-shift nulls for incomplete or irregular traces. Population bias from nonrandom missingness remains unresolved; means and replica intervals are explicitly conditional. |
-| High | Shared conformational model, `mechanisms/shared_states.py:_lloyd/fit_shared_states` | Global replica-balanced k-means of standardized geometric features; geometric clusters, not proven metastable states. k, scaling and feature choice define the partition. | Existing deterministic fit and replica weighting retained. Transition/half-window diagnostics and conditional samples are available. Multi-seed, feature-subset, k-sensitivity and lagged persistence analysis on production data remain required. No mechanistic or causal conclusion from state-conditioned contacts. |
-| High | General temporal statistics, `statistics/time_series.py:analyze_time_series`, `statistics/common.py:finite/autocorrelation/_temporal` | Nonfinite observations are removed before ACF/block resampling. Retained rows can bridge missing times. Automatic positive-sequence ACF uses a finite lag window. | The scalar finalizer checks complete finite observations and regular timestamps before computing temporal bootstrap intervals; invalid traces suppress ACF/tau/effective-N and propagate unavailable intervals through systems and comparisons. Finite-observation descriptive means and replica-level permutation tests remain distinct; nonrandom missingness can still bias them. Low-level ACF assumes regular finite input and is not a gap-aware estimator. Independent references establish only their stated regular-data contracts. |
-| High | Long-run solvation finalization, `observables/solvation.py:finalize`, `observables/solvation_postprocess.py:kaplan_meier` | Frame updates/chunk writes stream. Episode extraction now batches frame-ordered contact identities; survival uses duration multiplicities and reverse risk sums. Other derivatives still load episodes/bridge tables. | Contact-event extraction and quadratic survival rescans are corrected and independently checked. **Remaining scaling limit**: episode survival input, bridge residence and SASA joins still materialize tables. Release/synthetic benchmarks do not establish six-production-replica peak RAM. Continue class-restricted tracking and production resource measurement. |
-| Medium | Replica RDF coverage, `statistics/solvation.py:analyze_solvation_rdfs` | Equal-weight replica mean and SD at each radial bin, not independent-bin inference. | Corrected coverage denominator to include every requested replica, including an entirely missing file/class. New independent missing-replica regression. Class absent for physical reasons remains distinguishable from complete data coverage only through selections/metadata. |
-| Medium | Redundant contact queries, `mechanisms/sdc4_mechanisms.py:update` | Motif occupancy, occlusion and specificity use identical motif/lipid atoms, box and cutoff in the same frame. | Reuse the sparse motif pairs/distances for specificity, chemistry and residence. TM, HS, hydration and protein-interface searches retain their different selections/definitions. Seven synthetic observer Parquet outputs are numerically unchanged versus the pre-reuse code. |
-| Medium | Leaflets, `observables/membrane.py:initialize_membrane`, `core/lipid_geometry.py:classify_leaflets/aligned_leaflets` | Legacy APL/MSD uses fixed initial median cohorts; enrichment/SDC4 uses circular instantaneous labels aligned to initial labels. | These are intentionally different populations. Released control data include a cholesterol leaflet change; never equate initial-cohort diffusion with instantaneous-leaflet diffusion. Median initialization assumes a centered, resolved bilayer and can fail for asymmetric/wrapped systems. General cohort and surface configuration remains unresolved. |
-| Medium | Diffusion, `observables/msd.py`, `observables/multi_origin_msd.py`, `observables/multi_origin_pipeline.py` | Lateral MSD in Å²; D = slope × 2.5 in nm²/ns. FFT sums average overlapping origins; source coordinates are not protein-fitted. | Existing direct-sum, drift, PBC and source-reader references retained; new exact linear-curve unit oracle. Minimum-image intersample reconstruction assumes displacements are unaliased at the saved stride; intra-residue COM also assumes whole selected residues. Long-lag fit stability, collective drift choices and hydrodynamic finite-size bias remain production interpretation limits. Origins are not independent replicas. |
-| Medium | SASA chemistry and environment, `observables/sasa.py:sasa_instances/sasa_residue_rows` | Explicit elemental radii/probe/occluders; periodic mode requires a compact whole target. Heterogeneous elemental radii are a geometric model. | Target/reference compatibility and exact topology/time joins already enforced. Real isolated-sphere and two-sphere cap tests added. CHARMM-name element inference is not a universal chemistry classifier; validate topology elements/radii before cross-force-field use. Reuse only when selections and radii/probe/sampling match. |
-| Medium | Projected accessible area, `core/lipid_geometry.py:accessible_area_grid` | Count free xy grid cells after protein-disc exclusion inside a leaflet slab; nm² after conversion. | Analytic grid/PBC oracles retained. The shared toroidal KD-tree fixes opposite-edge sample distances; general lipid enrichment optionally records separate shell/cell area-density ratios and raw areas. This is not exact lipid free area or solvent-accessible area. Grid spacing, exclusion radius and slab width require sensitivity checks. Matched composition uses molecular counts, not this area as an affinity correction. |
-| Medium | Hydrogen bonds, `interactions/hydrogen_bonds.py`, `interactions/lipid_hydrogen_bonds.py`, `observables/solvation.py:water_donor_hbonds` | Donor–acceptor distance and donor–hydrogen–acceptor angle thresholds. Lipid identity follows bonded molecules; same-molecule events are excluded for intermolecular statistics. | Real topology parity and angular/PBC tests retained. Protonation, charge-based guessed chemistry and explicit donor/acceptor selections remain force-field inputs. Water bridge mode tests water-donor geometry; it is not a general all-direction H-bond bridge detector. Coordination bridges are proximity only. |
-| Medium | Solvation counts/shells, `observables/solvation.py:unique_target_solvent_pairs/_targets`, `observables/solvation_postprocess.py:suggest_shell_boundaries` | Unique solvent entities per target within nearest selected-site cutoff. RDF pools atom-site pairs and is a different weighting. | Existing unique-count, overlap, ion-species and RDF-minimum tests retained. Cutoffs are explicit, minimum suggestions are not automatically imposed, and atom-count/target-size differences affect cross-species comparisons. Compare counts with target size, SASA and shell sensitivity. |
-| Medium | Density profiles, `observables/density_1d.py:DensityProfileAccumulator` | Number or mass per physical slab volume; bins are initialized from the first frame and centering can use arithmetic COM/COG. | **Unresolved** for strongly varying NPT axis lengths, triclinic axis projections or a center group split across PBC. Check integrated density/count conservation and wrapped-center invariance on the intended input. Existing nominal-box tests do not establish these general cases. |
-| Medium | APL/thickness/local normals/order, `observables/membrane.py`, `observables/bilayer_normal.py`, `observables/membrane_order.py` | Projected box area/leaflet count; anchor height differences; local height-field slopes; selected C–H orientational order. | These operational membrane metrics assume a resolved, approximately planar membrane with comparable anchors. SDC4 explicitly rejects nonorthorhombic boxes and non-z normals. Circular leaflet observers now consistently permit in-plane lattice shear and reject shear through the configured Cartesian normal on each frame; fixed order cohorts check initialization. Analytic plane/quadratic references cover tilt, local thickness and small-slope curvature. Strong curvature, vesicles and mixed anchor heights need a different surface model; no general membrane-shape claim. |
-| Medium | Structural profiles, `core/alignment.py`, `observables/rmsd.py`, `observables/rmsf.py`, `observables/radius_of_gyration.py`, `observables/dssp.py` | RMSD/RMSF depend on fit selection/reference; Rg is mass-weighted; DSSP is a secondary-structure assignment. | Existing alignment/translation/structure regressions retained. Whole-molecule imaging, correct masses and missing-residue mappings remain input contracts. Proline Ramachandran region labels are local angle bins, not proof of a helix/turn transition. |
-| Medium | Biological mapping, `mechanisms/sdc4_mechanisms.py`, `mechanisms/shared_states.py` | GGIVG/NxIP/VVHPLVPL and A/B-chain interpretation are SDC4-specific; glycolipid chain IDs and CER160 chemistry are topology-specific. | Keep these in mechanism/configuration layers. Numerical geometry, residence, SASA and MSD kernels are reusable. Do not present SDC4 conditionals as generic protein-motif code; some chain/first-match assumptions still limit transfer. |
-| Low | Output/provenance, `pipeline/runner.py:initialize`, `reporting/report.py`, `reporting/figure_inventory.py` | Checkpoint structure and replica identity protect restart; The findings review uses saved comparisons. | Corrected metrics now reach saved figures and tables; legacy names remain explicit. Missing old fields stay NaN. Figure presence is coverage, not scientific validation. Removed one unused duplicate COM helper from `observables/membrane.py`. |
+| Area | Established | Still unresolved |
+|---|---|---|
+| Lipid specificity | Matched local contact numerator/denominator corrected (PR #117); old unmatched metric retained separately | Six-replica effect and lipid-size/area/cutoff sensitivity |
+| Residence | Observed span, interval-imputed duration, frame occupancy, censoring separated | Microscopic lifetime between saved frames; irregular-time occupancy |
+| Solvation RDF | Correctly labeled **full-cell** reference; optional aqueous-slab reference | Solvent-excluded shell volume, real bulk plateau |
+| SASA | Isolated-atom FreeSASA crash corrected analytically; sphere/cap oracles | Radii, topology element assignment and whole-target PBC |
+| Shared states | Replica-balanced k-means; missing-feature/gap diagnostics | k/seed/feature stability, metastability, causality, nonrandom missingness |
+| Time statistics | Invalid/gapped/irregular traces retain descriptive means but not unsupported temporal CIs | Missingness bias, low independent-replica count |
+| Solvation memory | Event extraction streamed; survival risk-count computation batched | Other bridge/survival/SASA derivatives still materialize tables |
+| Leaflets and MSD | Fixed cohorts distinguished from dynamic leaflets; direct-sum/PBC/drift tests | Flip-flop, stride aliasing, long-lag fit and finite-size effects |
+| Membrane geometry | Planar/PBC reference tests and unsupported-box errors | Strongly curved/tilted cells, headgroup-height mismatch |
+| H bonds and bridges | Bond-verified molecule IDs, geometry thresholds | Protonation/chemical assignments; proximity is not cooperativity |
 
-## Numerical and performance evidence
+## Other model assumptions
 
-- PR #117 historical checkpoint `1110e89`: Python 3.11/3.13, real GROMACS
-  smoke and release solvation benchmark passed. Four mechanism frames per
-  topology support the enrichment impact numbers in [scientific contracts](scientific-contracts.md).
-- PR #117 follow-up `936dfe5`: 257 local tests passed. Release solvation
-  benchmark passed: 120-frame standard runs used 1,074 MiB and 1,056 MiB peak
-  RSS for glycolipid/control topologies (~1.02 million atoms); update rates
-  were 4.857 and 4.854 fps. These measure the solvation subset, not the full
-  production analysis. Native allocation and topology-reader memory dominate.
-- Duration postprocessing: 100,000 episodes over 2,000 observations, 4.714 s
-  before / 0.815 s after, 47.30 / 48.58 MiB Python allocation peak. Numerical
-  output equality checked. This is 5.79x for the timed postprocessing workload.
-- Motif search reuse: deterministic 80,000-atom lipid cloud, eight 40-atom
-  motifs, ten frame evaluations, 5 Å cutoff. 160 searches become 80;
-  2.384 s becomes 1.105 s (2.16x). Python allocation peak grows 0.617 → 0.892
-  MiB because sparse pairs are kept until aggregation. Exact contact/distance
-  checksum retained. Reproduce with `python scripts/benchmark_contact_reuse.py`.
-  This is a query microbenchmark, not a full-trajectory speedup claim.
-- SASA crash protection adds a neighbor query. A connected 1,000-carbon grid,
-  1,000 surface points, one thread: minimum of three evaluations increased
-  0.0245 → 0.0325 s; areas agree to 1e-12 nm². The extra ~8 ms is accepted for
-  exact isolated-atom handling and native-crash prevention. No whole-run RSS
-  or speed claim is made from this small benchmark.
+- **RDF:** per-bin replica mean/SD descriptive; selected solvent divided by full periodic-cell volume, **not** accessible water volume.
+- **SASA:** geometric element radii, not CHARMM LJ; burial is isolated minus environment, nm².
+- **Footprint:** projected free grid area, not molecular free area or affinity; check resolution, exclusion radius, slab width.
+- **Solvation:** unique solvent entities per target, whereas RDFs pool atom-site pairs; site sizes affect counts.
+- **Density:** variable NPT cells, split centers and oblique box axes can violate a nominal slab reference.
+- **Structure:** RMSD/RMSF depend on fitting, Rg on masses, DSSP on geometry; proline regions are angle bins.
+- **SDC4:** NxIP/GGIVG motifs, six HS attachments, GM1a/BGAL `chainID`/CER160 identities are topology-specific.
+- **Legacy outputs:** readable tables can predate numerical corrections. Missing corrected fields remain NaN.
 
-Independent references include minimum-image contacts, chemical moieties,
-matched species shares, irregular residence intervals, right/left censoring,
-hemisphere RDF/reference-density cancellation, real SASA sphere/cap geometry,
-MSD direct sums/unit conversion, analytic order/normal geometry, exact
-permutation enumeration, BH correction and deterministic hierarchical draws.
-Passing these establishes the tested estimators, not adequate trajectory sampling.
+Definitions and numerical contracts: [Scientific contracts](scientific-contracts.md) · [Analyses](../analyses.md).
 
-## Remaining production validation and exact launch commands
+## Historical performance evidence
 
-The six production trajectories at `/projects/bevanlab/...` are unavailable in
-this execution environment. The downloaded CI artifacts contain short results,
-not those trajectories. No production convergence or new biological conclusion
-has been claimed. Issues #100/#101 were closed under the owner's production-validation-only policy; their six-replica evidence remains outstanding. #102 retains remaining method work.
+| Evidence | Observation | Cannot establish |
+|---|---|---|
+| PR #117, `1110e89` | Real release smoke, 4 mechanism frames/topology | Production condition effect |
+| `936dfe5` | 257 local tests; 120-frame solvation, ~1,074/1,056 MiB RSS and ~4.85 fps | Whole MDscope production speed |
+| 100,000 episodes | Postprocessing 4.714 → 0.815 s (5.79×); 47.30 → 48.58 MiB Python allocations | Whole-process RSS, physical lifetimes |
+| Sparse motif search | 160 → 80 queries; 2.384 → 1.105 s (2.16×) | Full-run speedup |
+| 1,000-carbon SASA | 0.0245 → 0.0325 s with crash prevention | Whole-run cost |
 
-On ARC, after the validated changes are merged and installed, create a fresh
-output configuration so historical outputs remain intact:
+References include PBC, contact populations, SASA sphere/cap, sampled residence, RDF excluded-volume counterexamples, MSD and exact permutation/bootstrap arithmetic. Synthetic results do not certify convergence.
+
+## Six-replica acceptance on ARC
+
+Use a **fresh output directory** for changed estimators. Do not replace historical results.
 
 ```bash
 git pull origin main
-python -m pip install -e '.[test,sasa,report]'
+python -m pip install -e '.[test,sasa]'
 python - <<'PY'
 from pathlib import Path
 import yaml
-source = Path('synd4_full_mechanisms.yaml')
-cfg = yaml.safe_load(source.read_text())
-cfg['project']['output'] = 'results_memb_scientific_validation_20261102'
-Path('synd4_scientific_validation.yaml').write_text(yaml.safe_dump(cfg, sort_keys=False))
+cfg = yaml.safe_load(Path("synd4_full_mechanisms.yaml").read_text())
+cfg["project"]["output"] = "results_memb_scientific_validation_20261102"
+Path("synd4_scientific_validation.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
 PY
-python -m mdscope.cli validate synd4_scientific_validation.yaml
+mdscope validate synd4_scientific_validation.yaml
 mkdir -p slurm-out/mdscope
-validation_job=$(sbatch --parsable run_mdscope.sh synd4_scientific_validation.yaml)
-sbatch --dependency="afterok:${validation_job}" finalize_mdscope.sh synd4_scientific_validation.yaml
+sbatch run_mdscope.sh synd4_scientific_validation.yaml
+# Submit finalize_mdscope.sh with an afterok dependency on the returned job ID.
 ```
 
-Finalization consumes completed replica outputs for summaries/figures; do not
-substitute the finalize-only YAML when requesting a new estimator recomputation.
-The project root retains the resolved YAML and run metadata.
+Review across **all six** trajectories:
+1. Matched/legacy enrichment, anchor populations, cutoff/footprint sensitivity and per-replica agreement.
+2. Observed/imputed duration by censor state and physical stride; compare time-based gap limits.
+3. RDF aqueous references, hydration/SASA, K steric/null controls and shell stability.
+4. Shared-state missing fractions, seed/k/feature sensitivity and transitions.
+5. Diffusion lag windows, initial/dynamic leaflets, trajectory provenance.
+6. Full event-table/finalizer peak memory, runtime and interaction scaling.
 
-After completion, compare legacy versus matched enrichment within each replica,
-region, leaflet and species, including valid-frame counts and contact-population
-mismatch frequency. Compare observed-span and imputed durations separately,
-stratified by censor flags. Do not pool frames across replicas. Repeat at
-prespecified reasonable contact cutoffs, local radii and trajectory strides in
-separate output directories. Frame-gap tolerance changes physical gap time
-when stride changes; align tolerances in time before comparing kinetics.
-
-Review first/second-half estimates, missing-feature rates, transition counts,
-condition-specific state support and replica consistency. Repeat k/seed/feature
-choices before mechanistic interpretation. Audit general scalar-series temporal
-intervals on any gapped output, long-event finalization memory and physical
-bulk-water references before treating the remaining high-severity findings as
-resolved. They are explicit research/implementation work, not silently waived.
+Do not pool frames as independent replicas. Historical issue closure does not replace unverified six-replica evidence.

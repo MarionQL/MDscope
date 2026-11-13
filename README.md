@@ -1,27 +1,33 @@
 # MDscope
 
-MDscope analyzes replicated molecular dynamics simulations and compares conditions with replicate-aware bootstrap confidence intervals. It covers protein structure, membrane properties, molecular contacts, and solvation.
+Replicate-aware molecular dynamics (MD) analysis for protein structure, membranes, contacts, solvation, and condition comparisons.
 
-## Quick start
+## Start
 
-From the repository checkout, install MDscope with Python 3.11 or later:
+Requires Python **3.11+**.
 
 ```bash
 python -m pip install -e .
+# Optional FreeSASA support:
+python -m pip install -e '.[sasa]'
+
 mdscope init --output analysis.yaml
 mdscope validate analysis.yaml
 mdscope run analysis.yaml
 ```
 
-Use `python -m pip install -e '.[sasa]'` to enable SASA. See the [baseline YAML](synd4_baseline.yaml) for an example and the [workflow guide](docs/workflows.md) for Slurm, restarting runs, and recomputing statistics from saved outputs.
+- Example configuration: [`synd4_baseline.yaml`](synd4_baseline.yaml); full SDC4 setup: [`synd4_full_mechanisms.yaml`](synd4_full_mechanisms.yaml).
+- **First result to read:** `<output>/project_summary/statistics/findings.md`; inspect the adjacent Parquet tables and individual replicates before drawing conclusions.
+- Restart, Slurm, offline statistics: [Workflows](docs/workflows.md).
 
-Start with `project_summary/statistics/findings.md` inside the configured output directory. It summarizes bootstrap findings and comparison coverage. The underlying numerical tables are stored alongside it.
+## Interpret cautiously
 
-## Limitations
+| Risk | Required check |
+|---|---|
+| Equilibration and sampling | Select production frames explicitly; check stationarity and replica agreement |
+| Statistical power | Three replicas per condition give only 20 exact unpaired assignments; prioritize effect size, CIs and individual replicas |
+| Membrane geometry | Check leaflet/normal assumptions; membrane-relative density does not remove tilt or undulation |
+| Molecular identities | Validate TPR bonds, lipid/HS selections and frame spacing |
+| Contact lifetimes | Boundary-censored episodes and sparse sampling cannot establish continuous residence |
 
-- Choose the production frame range explicitly. MDscope does not detect equilibration, and block-bootstrap intervals depend on adequate sampling and approximate stationarity.
-- With three independent replicas per condition, an exact unpaired permutation test has only 20 possible assignments. Interpret effect sizes and intervals alongside individual replica results.
-- Membrane measurements depend on their geometric assumptions. Membrane-relative density follows translation along a configured global normal and can still broaden with tilt or undulations. Lipid footprint enrichment requires an orthorhombic cell.
-- Interaction results depend on topology, atom selections, and frame spacing. Completed-episode lifetimes exclude contacts that cross the observation boundaries.
-
-See the [documentation index](docs/README.md) for configuration, measurement definitions, and validation details.
+[Documentation index](docs/README.md) · [Scientific analyses](docs/analyses.md) · [Validation limits](docs/developer/scientific-audit.md) · [MIT license](LICENSE)

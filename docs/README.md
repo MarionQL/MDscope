@@ -1,20 +1,17 @@
-# MDscope documentation
+# Documentation
 
-Start with the [repository README](../README.md) for installation, basic usage, and CLI commands. For the production syndecan workflow, see [workflows](workflows.md) and the checked-in `synd4_full_mechanisms.yaml`.
+**Start:** [Installation and CLI](../README.md) · [Full SDC4 YAML](../synd4_full_mechanisms.yaml)
 
-## Using MDscope
+| Goal | Read |
+|---|---|
+| Run/restart/finalize, Slurm, saved outputs | [Workflows](workflows.md) |
+| Configure analyses, runs, plots and statistics | [Configuration](configuration.md) |
+| Understand observables, assumptions and output tables | [Analyses](analyses.md) |
+| Navigate package boundaries and data flow | [Architecture](developer/architecture.md) |
+| Preserve units, PBC and numerical meaning | [Scientific contracts](developer/scientific-contracts.md) |
+| Review scientific caveats and unverified claims | [Scientific audit](developer/scientific-audit.md) |
+| Review test effectiveness and remaining gaps | [Validation gaps](developer/validation-gaps.md) |
+| Validate SDC4 fixtures and release evidence | [SDC4 fixtures](developer/sdc4-fixtures.md) · [Release checklist](developer/release-validation.md) |
+| Contribute or refactor | [Contributing](developer/contributing.md) |
 
-- [Configuration and analysis registration](configuration.md) — YAML options, selection groups and registry behavior.
-- [Scientific analyses and methods](analyses.md) — membrane, lipid, SDC4, solvation, interaction and diffusion methods; assumptions and limitations.
-- [Workflows and reporting](workflows.md) — trajectory streaming, SLURM execution, finalization and report artifacts.
-
-## Developing MDscope
-
-- [Architecture](developer/architecture.md) — package boundaries and installation model.
-- [Scientific audit and outstanding validation](developer/scientific-audit.md) — prioritized methodology findings, corrections, benchmarks and production commands.
-- [Scientific contracts](developer/scientific-contracts.md) — coordinate conventions, geometry, numerical regression and validation.
-- [Numerical reference project and release checklist](developer/release-validation.md) — portable YAML fixture, independent expected outputs, release evidence and citation/license status.
-- [Contributing](developer/contributing.md) — refactoring rules and testing expectations.
-
-Documentation is organized by enduring functionality, not GitHub issue numbers. Historical development discussions remain available in Git history and closed issues.
-
+Historical implementation discussions belong in Git history and issues, not repeated across guides.
