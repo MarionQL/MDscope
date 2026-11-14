@@ -35,7 +35,8 @@ def run_fused_only(rep, cfg, repout, *, only=None):
     if want_membrane:
         observers.append(FusedMembrane(u, cfg, repout))
     if selected_extensions:
-        observers.append(FusedExtensions(u, cfg, repout, names=selected_extensions))
+        observers.append(FusedExtensions(u, cfg, repout) if requested is None
+                         else FusedExtensions(u, cfg, repout, names=selected_extensions))
     if want_distance:
         observers.append(FusedDistances(u, cfg, repout))
     if want_sdc4:
