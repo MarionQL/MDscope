@@ -177,10 +177,17 @@ def analyze_time_series(
     } if adaptive else {})
     outdir = ensure_dir(root / "project_summary" / "statistics" / output_name)
     rep_rows, acf_rows, cache, hs_episodes = [], [], {}, []
+    verbose = cfg.get("progress", {}).get("enabled", True)
     for system, reps in system_repouts.items():
         for repout in reps:
             local_rows, local_acf = [], []
-            for (group, metric), table in collect_time_series(repout).items():
+            if verbose:
+                print(f"Statistics {output_name}: loading {system}/{repout.name}", flush=True)
+            series = collect_time_series(repout)
+            if verbose:
+                print(f"Statistics {output_name}: processing {len(series)} observables "
+                      f"for {system}/{repout.name}", flush=True)
+            for (group, metric), table in series.items():
                 window_covered = True
                 if scalar_window is not None:
                     lower, upper = scalar_window
@@ -288,6 +295,8 @@ def analyze_time_series(
         atomic_parquet(outdir / "hs_contact_episodes.parquet", pd.concat(hs_episodes, ignore_index=True))
     atomic_parquet(outdir / "replicate_statistics.parquet", rep)
     atomic_parquet(outdir / "autocorrelation.parquet", pd.DataFrame(acf_rows))
+    if verbose:
+        print(f"Statistics {output_name}: aggregating systems and contrasts", flush=True)
     sys_rows, sys_boot = [], {}
     for(
         system,
@@ -339,6 +348,14 @@ def analyze_time_series(
             **adaptive_provenance, **precision})
     sys = pd.DataFrame(sys_rows)
     atomic_parquet(outdir / "system_statistics.parquet", sys)
+    point_maps = {}
+    point_groups = rep.groupby(["system", rep["group"].fillna(""), "metric"], sort=False)
+    for key, sub in point_groups:
+        labels = sub["replicate"].astype(str)
+        point_maps[key] = (
+            dict(zip(labels, sub["mean"].astype(float))),
+            dict(zip(labels, sub["median"].astype(float))),
+        )
     comps = []
     for group, metric in sys[["group", "metric"]].drop_duplicates().itertuples(
         index=False,
@@ -347,26 +364,8 @@ def analyze_time_series(
         gid = None if pd.isna(group) else str(group)
         available = [s for s in system_repouts if (s, gid, metric) in sys_boot]
         for s1, s2 in combinations(available, 2):
-            sub = rep[
-                (rep.metric == metric)
-                & (rep.group.fillna("") == (gid or ""))
-            ]
-            amap = {
-                str(row.replicate): float(row.mean)
-                for row in sub[sub.system == s1].itertuples()
-            }
-            bmap = {
-                str(row.replicate): float(row.mean)
-                for row in sub[sub.system == s2].itertuples()
-            }
-            amed = {
-                str(row.replicate): float(row.median)
-                for row in sub[sub.system == s1].itertuples()
-            }
-            bmed = {
-                str(row.replicate): float(row.median)
-                for row in sub[sub.system == s2].itertuples()
-            }
+            amap, amed = point_maps[(s1, gid or "", metric)]
+            bmap, bmed = point_maps[(s2, gid or "", metric)]
             paired = (
                 stats.get("hypothesis_tests", {}).get("design", "independent")
                 == "paired"

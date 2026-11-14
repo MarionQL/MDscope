@@ -238,11 +238,13 @@ def analyze_profiles(
     rng = np.random.default_rng(int(stats.get("seed", 2026)) + 1)
     resample = stats.get("hierarchy", {}).get("resample_replicates", True)
     outdir = ensure_dir(root / "project_summary" / "statistics" / "profiles")
-    sources = {
-        (system, repout.name): collect_temporal_profiles(repout, cfg)
-        for system, reps in system_repouts.items()
-        for repout in reps
-    }
+    verbose = cfg.get("progress", {}).get("enabled", True)
+    sources = {}
+    for system, reps in system_repouts.items():
+        for repout in reps:
+            if verbose:
+                print(f"Statistics profiles: loading {system}/{repout.name}", flush=True)
+            sources[(system, repout.name)] = collect_temporal_profiles(repout, cfg)
     profiles = (
         sorted(set().union(*(set(value) for value in sources.values())))
         if sources
@@ -254,7 +256,11 @@ def analyze_profiles(
     sys_summary = []
     comps = []
 
-    for profile in profiles:
+    if verbose:
+        print(f"Statistics profiles: processing {len(profiles)} profiles", flush=True)
+    for index, profile in enumerate(profiles, 1):
+        if verbose and (index == 1 or index % 25 == 0):
+            print(f"Statistics profiles: {index}/{len(profiles)} {profile}", flush=True)
         profile_sources = {
             key: source[profile] for key, source in sources.items() if profile in source
         }

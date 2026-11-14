@@ -79,3 +79,23 @@ def test_temporary_precision_does_not_stop_after_one_look():
         lambda n: next(batches), .95, {**OPTIONS, "max_draws": 1600})
     assert draws.shape == (2, 1600)
     assert meta["bootstrap_mc_status"] == "not_converged"
+
+
+def test_adaptive_endpoint_bands_match_sorted_rank_reference():
+    from scipy.stats import binom
+
+    rng = np.random.default_rng(41)
+    options = {**OPTIONS, "max_draws": 800}
+    sample = np.column_stack((rng.exponential(size=800), rng.normal(size=800)))
+    level = .95
+    draws, meta = _adaptive_intervals(lambda n: sample, level, options)
+    np.testing.assert_array_equal(draws, sample.T)
+    ordered = np.sort(sample, axis=0)
+    tail = .05 / 8
+    for side, prob in zip(("low", "high"), ((1 - level) / 2, (1 + level) / 2)):
+        lower = int(binom.ppf(tail, len(sample), prob)) - 1
+        upper = int(binom.isf(tail, len(sample), prob))
+        endpoint = np.quantile(sample, prob, axis=0)
+        expected = np.maximum(endpoint - ordered[lower], ordered[upper] - endpoint)
+        for stat, bound in zip(("mean", "median"), expected):
+            assert meta[f"{stat}_ci_{side}_mc_error_bound"] == bound

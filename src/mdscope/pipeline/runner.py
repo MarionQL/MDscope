@@ -37,6 +37,7 @@ from ..observables.membrane_order import membrane_order_timeseries, run_membrane
 from ..observables.residue_membrane_distance import run_residue_membrane_distance
 from ..observables.structure_profiles import postprocess_structure_profiles, run_structure_profiles
 from ..statistics import analyze_project
+from .progress import stage_progress
 from .streaming import run_streaming_pass, validate_stream_inventory, complete_membrane_density
 from ..observables.density_1d import missing_membrane_density_runs
 from .fused_membrane import enabled_names as fused_enabled_names, run_fused_membrane
@@ -547,7 +548,10 @@ def _validate_replica_products(cfg, root, replicates):
     # expensive completed trajectories to be rerun. Validate the actual
     # required input using its persisted structure.
     missing = []
-    for rep in replicates:
+    verbose = cfg.get("progress", {}).get("enabled", True)
+    for index, rep in enumerate(replicates, 1):
+        if verbose:
+            print(f"Validating replica {index}/{len(replicates)} {rep.system}/{rep.label}", flush=True)
         repout = root / rep.system / rep.label
         timeseries = repout / "summary" / "timeseries.parquet"
         if not timeseries.is_file():
@@ -594,14 +598,17 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
     if phase not in {"statistics", "plotting"}:
         raise ValueError(f"Unknown finalization phase: {phase}")
     cfg = cfg or load_config(config_path)
+    verbose = cfg.get("progress", {}).get("enabled", True)
     if root is None:
         if phase == "plotting":
             root = project_root(cfg, config_path)
         else:
-            root, _ = initialize(config_path, cfg)
+            with stage_progress("Statistics project initialization", enabled=verbose):
+                root, _ = initialize(config_path, cfg)
     replicates = list(iter_replicates(cfg, config_path))
     if phase == "statistics":
-        _validate_replica_products(cfg, root, replicates)
+        with stage_progress("Statistics replica validation", enabled=verbose):
+            _validate_replica_products(cfg, root, replicates)
     else:
         manifest = root / "project_summary/statistics/manifest.json"
         if not manifest.is_file() or json.loads(manifest.read_text()).get("status") != "complete":
@@ -636,7 +643,10 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
     def timed(stage, fn, *args):
         started = perf_counter()
         try:
-            return fn(*args)
+            # Statistics reports its own active family and heartbeat.
+            with stage_progress(f"Finalize {stage}", enabled=verbose and phase == "statistics"
+                                and stage != "statistics"):
+                return fn(*args)
         finally:
             seconds = perf_counter() - started
             finalization_timings.append({"stage": stage, "seconds": seconds})
@@ -648,9 +658,10 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
 
     if phase != "plotting":
         if cfg.get("analyses", {}).get("lipid_enrichment", {}).get("enabled"):
-            for paths in system_repouts.values():
-                for repout in paths:
-                    summarize_lipid_composition(repout)
+            with stage_progress("Statistics lipid composition prepass", enabled=verbose):
+                for paths in system_repouts.values():
+                    for repout in paths:
+                        summarize_lipid_composition(repout)
         timed("statistics", analyze_project, cfg, root, system_repouts)
         timed("shared_states", fit_shared_states, cfg, root, system_repouts)
         timed("diffusion_summary", summarize_project_diffusion, root, system_repouts)

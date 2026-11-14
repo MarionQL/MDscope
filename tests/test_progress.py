@@ -1,5 +1,8 @@
 """Batch progress should report completed work, ETA, and bounded cadence."""
 import io
+from threading import Event
+
+import pytest
 
 from mdscope.pipeline import progress as mod
 
@@ -85,3 +88,26 @@ def test_nondefault_percent_cadence_is_monotonic_bounded_and_finishes(monkeypatc
     assert completed[0] == 0 and completed[-1] == 123
     assert completed == sorted(set(completed))
     assert len(completed) <= math.ceil(100/7)+2
+
+
+def test_stage_heartbeat_reports_during_work_and_labels_failure(monkeypatch):
+    heartbeat = Event()
+    messages = []
+
+    def log(message, *, flush):
+        assert flush
+        messages.append(message)
+        if "still running" in message:
+            heartbeat.set()
+
+    monkeypatch.setattr(mod, "print", log, raising=False)
+    with pytest.raises(ValueError, match="failed input"):
+        with mod.stage_progress("Statistics profiles", interval=.01):
+            assert heartbeat.wait(timeout=5)
+            raise ValueError("failed input")
+    assert messages[0] == "Statistics profiles: started"
+    assert any(msg.startswith("Statistics profiles: still running") for msg in messages)
+    assert messages[-1].startswith("Statistics profiles: failed")
+    with mod.stage_progress("disabled", enabled=False):
+        pass
+    assert not any("disabled" in msg for msg in messages)

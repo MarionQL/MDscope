@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 import os
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from itertools import combinations
 from pathlib import Path
 
@@ -74,19 +75,26 @@ def _temporal(values, times, cfg: dict) -> dict:
     }
 
 
+_BOOTSTRAP_BATCH = 32
+
+
+def _block_starts(n, block, draws, rng):
+    nblocks = (n + block - 1) // block
+    return rng.integers(
+        0,
+        n - block + 1,
+        size=(draws, nblocks),
+        dtype=np.int32
+    ) if n > block else np.zeros((draws, nblocks), np.int32)
+
+
 def _block_indices(n: int, block: int, draws: int, rng: np.random.Generator) -> np.ndarray:
     # A pseudo-study is rebuilt from contiguous blocks so bootstrap
     # draws preserve short-range temporal correlation.
     if n < 1:
         return np.empty((draws, 0), np.int32)
     block = min(max(1, int(block)), n)
-    nblocks = int(np.ceil(n / block))
-    starts = rng.integers(
-        0,
-        n - block + 1,
-        size=(draws, nblocks),
-        dtype=np.int32
-    ) if n > block else np.zeros((draws, nblocks), np.int32)
+    starts = _block_starts(n, block, draws, rng)
     return (starts[..., None] + np.arange(block, dtype=np.int32)).reshape(draws, -1)[:, :n]
 
 
@@ -97,8 +105,7 @@ def _bootstrap_workers() -> int:
     return max(1, min(affinity, int(requested))) if requested else max(1, affinity if "SLURM_JOB_ID" in os.environ else 1)
 
 
-def _reduce_bootstrap_batch(values, indices, reducer):
-    reduce = np.nanmedian if reducer == "median" else np.nanmean
+def _reduce_bootstrap_batch(values, indices, reduce):
     return reduce(values[indices], axis=1)
 
 
@@ -112,7 +119,11 @@ def _block_bootstrap(
     values = np.asarray(values, float)
     shape = (draws,) + values.shape[1:]
     out = np.empty(shape, float)
-    batch = 32
+    batch = _BOOTSTRAP_BATCH
+    if np.isfinite(values).all() and values.size:
+        reduce = np.median if reducer == "median" else np.mean
+    else:
+        reduce = np.nanmedian if reducer == "median" else np.nanmean
     workers = min(_bootstrap_workers(), max(1, math.ceil(draws / batch)))
     # Generate indices on the calling thread, in exactly the same order as
     # the serial implementation. Workers only perform deterministic reductions.
@@ -120,7 +131,7 @@ def _block_bootstrap(
         for start in range(0, draws, batch):
             size = min(batch, draws - start)
             out[start:start + size] = _reduce_bootstrap_batch(
-                values, _block_indices(len(values), block, size, rng), reducer
+                values, _block_indices(len(values), block, size, rng), reduce
             )
         return out
 
@@ -130,7 +141,7 @@ def _block_bootstrap(
             size = min(batch, draws - start)
             indices = _block_indices(len(values), block, size, rng)
             pending.append((start, size, pool.submit(
-                _reduce_bootstrap_batch, values, indices, reducer
+                _reduce_bootstrap_batch, values, indices, reduce
             )))
             # Bound outstanding batches to avoid holding the entire bootstrap
             # index tensor in memory.
@@ -146,11 +157,30 @@ def _block_weights(n: int, block: int, draws: int, rng: np.random.Generator) -> 
     # Interaction statistics need event locations as well as occupancy.
     # Frame multiplicities reproduce a block bootstrap without copying
     # binary trajectories.
-    idx = _block_indices(n, block, draws, rng)
-    dtype = np.uint16 if int(np.ceil(n / max(1, block))) < 65535 else np.uint32
+    block = min(max(1, int(block)), max(1, n))
+    dtype = np.uint16 if (n + block - 1) // block < 65535 else np.uint32
     weights = np.empty((draws, n), dtype=dtype)
-    for i, row in enumerate(idx):
-        weights[i] = np.bincount(row, minlength=n)
+    if not n:
+        return weights
+    if block == n:
+        weights.fill(1)
+        return weights
+    for first in range(0, draws, _BOOTSTRAP_BATCH):
+        size = min(_BOOTSTRAP_BATCH, draws - first)
+        starts = _block_starts(n, block, size, rng)
+        batch = weights[first:first + size]
+        if block == 1:
+            for row, indices in zip(batch, starts):
+                row[:] = np.bincount(indices, minlength=n)
+            continue
+        # A start increments multiplicity and its end decrements it. The
+        # last sampled block only contributes enough frames to fill the draw.
+        ends = starts + block
+        ends[:, -1] = starts[:, -1] + (n - (starts.shape[1] - 1) * block)
+        offsets = np.arange(size)[:, None] * (n + 1)
+        counts = np.bincount((starts + offsets).ravel(), minlength=size * (n + 1))
+        counts -= np.bincount((ends + offsets).ravel(), minlength=size * (n + 1))
+        np.cumsum(counts.reshape(size, n + 1)[:, :n], axis=1, out=batch, dtype=dtype)
     return weights
 
 
@@ -223,10 +253,19 @@ def _ci(draws, level: float) -> tuple[float, float]:
     return tuple(map(float, np.quantile(x, [alpha, 1 - alpha])))
 
 
-def _adaptive_intervals(sample, level, options):
-    """Stop jointly for both endpoints of each scalar supplied by sample."""
+@lru_cache(maxsize=128)
+def _endpoint_band_ranks(n, level, tail):
     from scipy.stats import binom
 
+    probabilities = np.array([(1 - level) / 2, (1 + level) / 2])
+    return (
+        binom.ppf(tail, n, probabilities).astype(int) - 1,
+        binom.isf(tail, n, probabilities).astype(int),
+    )
+
+
+def _adaptive_intervals(sample, level, options):
+    """Stop jointly for both endpoints of each scalar supplied by sample."""
     minimum = options["min_draws"]
     maximum = options["max_draws"]
     batch = options["batch_size"]
@@ -254,14 +293,15 @@ def _adaptive_intervals(sample, level, options):
         if tolerance is None:
             tolerance = (options.get("absolute_tolerance", 0.)
                          + options.get("relative_tolerance", 0.) * np.diff(endpoints, axis=0))
-        low = binom.ppf(tail, n, probabilities).astype(int) - 1
-        high = binom.isf(tail, n, probabilities).astype(int)
+        low, high = _endpoint_band_ranks(n, level, tail)
         errors = np.full((2, 2), np.inf)
         valid = (low >= 0) & (high < n)
         if valid.any():
-            ordered = np.sort(result[:n], axis=0)
-            errors[valid] = np.maximum(endpoints[valid] - ordered[low[valid]],
-                                       ordered[high[valid]] - endpoints[valid])
+            # Only the band boundaries need to be in sorted positions.
+            low, high = low[valid], high[valid]
+            ordered = np.partition(result[:n].T, np.unique(np.r_[low, high]), axis=-1)
+            errors[valid] = np.maximum(endpoints[valid] - ordered[:, low].T,
+                                       ordered[:, high].T - endpoints[valid])
         stable = stable + 1 if np.all(errors <= tolerance) else 0
         status = "converged" if stable >= checks else "not_converged"
         if status == "converged":
