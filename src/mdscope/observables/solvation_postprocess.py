@@ -166,54 +166,71 @@ def aggregate_coordination(counts):
     return frame[class_columns], by_target[target_columns]
 
 
-def aggregate_coordination_parts(paths):
-    """Bounded-memory aggregation from atomic count chunks.
+def aggregate_coordination_parts(paths, *, batch_size=65536):
+    """Reduce cached counts in bounded PyArrow record batches.
 
-    All frames within one saved part are complete, so per-class time
-    means can be reduced independently. Per-target sufficient statistics
-    are combined across chunks without ever loading all frames at once.
+    A record batch can split a frame or a target's time history. Recombine
+    sufficient statistics by their full identities before computing means
+    or sample standard deviations. Never interpret summed per-target water
+    counts as unique waters across targets.
     """
+    import pyarrow.parquet as pq
+
     class_keys = ["solvent", "target_class", "site_class"]
     target_keys = class_keys + ["target_id"]
-    class_tables = []
-    partials = []
+    frame_tables = []
+    target_partials = []
+    columns = ["time_ps", "solvent", "target_id", "target_class",
+               "site_class", "n_solvent"]
     for path in paths:
-        counts = pd.read_parquet(path)
-        if counts.empty:
-            continue
-        frame = counts.assign(hydrated=(counts.n_solvent > 0).astype(float)).groupby(
-            class_keys + ["time_ps"], as_index=False).agg(
-            target_count=("target_id", "nunique"),
-            mean_n_solvent=("n_solvent", "mean"),
-            total_target_counts=("n_solvent", "sum"),
-            hydrated_fraction=("hydrated", "mean"))
-        class_tables.append(frame)
-        numeric = counts.assign(
-            positive=(counts["n_solvent"] > 0).astype(np.int64),
-            sum_square=np.square(counts["n_solvent"].to_numpy(dtype=np.int64)))
-        group = numeric.groupby(target_keys, as_index=False).agg(
-            n_frames=("n_solvent", "size"),
-            total=("n_solvent", "sum"),
-            positive=("positive", "sum"),
-            sum_square=("sum_square", "sum"))
-        partials.append(group)
-    empty = aggregate_coordination(pd.DataFrame())[0:2]
-    if not partials:
+        frame_partials = []
+        for batch in pq.ParquetFile(path).iter_batches(
+                batch_size=batch_size, columns=columns):
+            counts = batch.to_pandas()
+            if counts.empty:
+                continue
+            numeric = counts.assign(
+                hydrated=(counts.n_solvent > 0).astype(np.int64),
+                sum_square=np.square(counts.n_solvent.to_numpy(dtype=np.int64)))
+            frame_partials.append(numeric.groupby(
+                class_keys + ["time_ps"], as_index=False).agg(
+                target_count=("target_id", "size"),
+                total=("n_solvent", "sum"),
+                positive=("hydrated", "sum")))
+            target_partials.append(numeric.groupby(
+                target_keys, as_index=False).agg(
+                n_frames=("n_solvent", "size"),
+                total=("n_solvent", "sum"),
+                positive=("hydrated", "sum"),
+                sum_square=("sum_square", "sum")))
+        if frame_partials:
+            frame = pd.concat(frame_partials, ignore_index=True).groupby(
+                class_keys + ["time_ps"], as_index=False).agg(
+                target_count=("target_count", "sum"),
+                total=("total", "sum"),
+                positive=("positive", "sum"))
+            frame["mean_n_solvent"] = frame.total / frame.target_count
+            frame["total_target_counts"] = frame.total
+            frame["hydrated_fraction"] = frame.positive / frame.target_count
+            frame_tables.append(frame[
+                class_keys + ["time_ps", "target_count", "mean_n_solvent",
+                              "total_target_counts", "hydrated_fraction"]])
+    empty = aggregate_coordination(pd.DataFrame())
+    if not target_partials:
         return empty
-    class_frame = pd.concat(class_tables, ignore_index=True)
-    summary = pd.concat(partials, ignore_index=True).groupby(
+    summary = pd.concat(target_partials, ignore_index=True).groupby(
         target_keys, as_index=False).agg(
-            n_frames=("n_frames", "sum"), total=("total", "sum"),
-            positive=("positive", "sum"), sum_square=("sum_square", "sum"))
+        n_frames=("n_frames", "sum"), total=("total", "sum"),
+        positive=("positive", "sum"), sum_square=("sum_square", "sum"))
     n = summary.n_frames.to_numpy(float)
     total = summary.total.to_numpy(float)
-    variance = (summary.sum_square.to_numpy(float)-total**2/n)/np.maximum(1., n-1.)
+    variance = (summary.sum_square.to_numpy(float) - total**2/n) / np.maximum(1., n-1.)
     summary["mean_n_solvent"] = total/n
     summary["sd_n_solvent"] = np.where(n > 1., np.sqrt(np.maximum(variance, 0.)), np.nan)
     summary["hydrated_fraction"] = summary.positive/n
-    return class_frame, summary[
+    return (pd.concat(frame_tables, ignore_index=True), summary[
         ["solvent", "target_id", "target_class", "site_class",
-         "n_frames", "mean_n_solvent", "sd_n_solvent", "hydrated_fraction"]]
+         "n_frames", "mean_n_solvent", "sd_n_solvent", "hydrated_fraction"]])
 
 
 def write_solvation_derivatives(directory, repout, *, sasa_run="default"):
