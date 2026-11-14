@@ -214,7 +214,9 @@ class HydrationObserver:
                 target = self._add("protein", str(res.ix), "", -1, res.resname,
                                    int(res.resid), int(res.ix), atoms.indices, cutoff)
                 self._group("protein", "total", "all", target)
-            membrane_sel = spec.get("membrane_selection")
+            membrane_sel = (spec.get("membrane_selection")
+                            or hs_spec.get("lipid_contact_selection")
+                            or analyses.get("membrane", {}).get("headgroup_selection"))
             if membrane_sel:
                 membrane = universe.select_atoms(membrane_sel).select_atoms("not name H*")
                 if not len(membrane):
