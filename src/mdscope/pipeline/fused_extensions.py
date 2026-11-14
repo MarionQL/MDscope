@@ -26,6 +26,7 @@ from ..interactions.lipid_hydrogen_bonds import (
 )
 from ..observables.sasa import sasa_instances, sasa_residue_rows, write_sasa_burial
 from ..observables.solvation import SolvationObserver
+from ..mechanisms.hs_hydration import HydrationObserver
 from ..core.profiling import _residue_label
 from ..biophysical_common import heavy, box_of, residue_pairs, sequence_motifs
 from MDAnalysis.lib.distances import distance_array
@@ -42,6 +43,9 @@ def enabled_names(cfg):
         if name in {"dssp", "sasa"} and specs.get("dssp", {}).get("enabled", False) and specs["dssp"].get("backend", "serial") != "serial":
             continue
         names.append(name)
+    if (specs.get("hydration", {}).get("enabled", False)
+            or specs.get("sdc4_mechanisms", {}).get("hs_sugar_water_cutoff_A") is not None):
+        names.append("hydration")
     return tuple(names)
 
 
@@ -65,6 +69,7 @@ class FusedExtensions:
         self.sasa = None
         self.local = None
         self.solvation = None
+        self.hydration = None
         self.frames = 0
         self.timings = defaultdict(float)
         if "hydrogen_bonds" in self.names:
@@ -79,6 +84,8 @@ class FusedExtensions:
             self._setup_local()
         if "solvation" in self.names:
             self.solvation = SolvationObserver(universe, cfg, repout)
+        if "hydration" in self.names:
+            self.hydration = HydrationObserver(universe, cfg, repout)
 
     def _setup_protein_hba(self):
         spec = self.cfg["analyses"]["hydrogen_bonds"]
@@ -256,6 +263,10 @@ class FusedExtensions:
             start = time.perf_counter()
             self.solvation.update(ts, frame_index, t)
             self.timings['solvation'] += time.perf_counter() - start
+        if self.hydration is not None:
+            start = time.perf_counter()
+            self.hydration.update(ts, frame_index, t)
+            self.timings['hydration'] += time.perf_counter() - start
         self.frames += 1
 
     def _update_local(self, t):
@@ -344,11 +355,15 @@ class FusedExtensions:
                 rows.clear()
         if self.solvation is not None:
             self.solvation.flush(part)
+        if self.hydration is not None:
+            self.hydration.flush(part)
         self.timings["chunk_write"] += time.perf_counter() - start
 
     def prune_from(self, next_part):
         if self.solvation is not None:
             self.solvation.prune_from(next_part)
+        if self.hydration is not None:
+            self.hydration.prune_from(next_part)
         for path in self.cache.rglob("part-*"):
             match = re.search(r"part-(\d+)", path.name)
             if match and int(match.group(1)) >= next_part and path.is_file():
@@ -414,6 +429,8 @@ class FusedExtensions:
                 )
         if self.solvation is not None:
             results['solvation'] = self.solvation.finalize()
+        if self.hydration is not None:
+            results['hydration'] = self.hydration.finalize()
         self.timings["finalize"] += time.perf_counter() - start
         from ..config import atomic_json
         atomic_json(self.repout / "fused_extensions_timings.json", {
