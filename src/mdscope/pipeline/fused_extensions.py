@@ -59,9 +59,9 @@ def _concat(path):
 
 
 class FusedExtensions:
-    def __init__(self, universe, cfg, repout):
+    def __init__(self, universe, cfg, repout, *, names=None):
         self.u, self.cfg, self.repout = universe, cfg, Path(repout)
-        self.names = enabled_names(cfg)
+        self.names = enabled_names(cfg) if names is None else tuple(names)
         self.cache = ensure_dir(self.repout / "cache" / "fused_extensions")
         self.rows = defaultdict(list)
         self.hb = {}
@@ -440,7 +440,7 @@ class FusedExtensions:
         return results
 
 
-def run_fused_extensions(rep, cfg, repout):
+def run_fused_extensions(rep, cfg, repout, *, names=None):
     """One shared fallback trajectory pass if protein streaming is disabled."""
     if not enabled_names(cfg):
         return {}
@@ -448,7 +448,7 @@ def run_fused_extensions(rep, cfg, repout):
     tr = cfg["trajectory"]
     start = 0 if tr.get("start") is None else int(tr["start"])
     u.trajectory[start]
-    observer = FusedExtensions(u, cfg, repout)
+    observer = FusedExtensions(u, cfg, repout, names=names)
     observer.prune_from(0)
     frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr["stride"]))]
     chunk = max(1, int(tr.get("chunk_frames", 1000)))
