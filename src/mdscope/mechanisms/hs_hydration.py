@@ -147,11 +147,11 @@ class HydrationObserver:
     ]
     COUNT_COLUMNS = [
         "frame", "time_ps", "compartment", "target_id", "water_count",
-        "water_cutoff_A",
+        "water_cutoff_A", "n_sites", "water_per_site",
     ]
     AGGREGATE_COLUMNS = [
         "frame", "time_ps", "compartment", "level", "group_id",
-        "n_targets", "water_count", "water_cutoff_A",
+        "n_targets", "water_count", "water_cutoff_A", "n_sites", "water_per_site",
     ]
     SUGAR_COLUMNS = [
         "hs_chain", "sugar_position", "sugar_type", "sugar_resid",
@@ -279,15 +279,18 @@ class HydrationObserver:
         frame = int(frame_index)
         t = float(time_ps)
         self.rows.extend((frame, t, target["compartment"], target["target_id"],
-                          int(counts[i]), target["water_cutoff_A"])
+                          int(counts[i]), target["water_cutoff_A"], target["n_sites"],
+                          float(counts[i]) / target["n_sites"])
                          for i, target in enumerate(self.targets))
         for (compartment, level, label), indices in self.groups.items():
             # A water shared by two targets belongs to the union only once.
             mask = np.isin(unique_pairs[:, 0], indices)
             n_unique = len(np.unique(unique_pairs[mask, 1]))
+            n_sites = sum(self.targets[i]["n_sites"] for i in indices)
             self.aggregate_rows.append(
                 (frame, t, compartment, level, label, len(indices),
-                 n_unique, float(self.cutoffs[indices[0]])))
+                 n_unique, float(self.cutoffs[indices[0]]), n_sites,
+                 n_unique / n_sites))
         if self.hs_enabled:
             for index, sugar in zip(self.hs_indices, self.sugars.itertuples(index=False)):
                 self.hs_rows.append((
