@@ -107,7 +107,8 @@ def test_chunked_coordination_summary_matches_whole_dataframe(tmp_path):
     # A frame can span chunks only if a caller explicitly splits it;
     # the fused flush machinery always writes entire frames.
     whole_class, whole_target = aggregate_coordination(df)
-    partial_class, partial_target = aggregate_coordination_parts(paths)
+    # Force record-batch boundaries through both frames and target histories.
+    partial_class, partial_target = aggregate_coordination_parts(paths, batch_size=7)
     for actual, expected in (
         (partial_class, whole_class), (partial_target, whole_target)):
         keys = [k for k in ("time_ps", "target_id", "solvent")
