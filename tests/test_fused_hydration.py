@@ -150,10 +150,17 @@ def test_hydration_water_selection_and_box_contract(tmp_path):
     cfg = deepcopy(_cfg())
     u = _universe()
     cfg["analyses"]["hydration"]["water_oxygen_selection"] = "name O1"
-    # HS water selection is overridden by hydration's explicit selection.
+    # Different water oxygen populations must not be silently substituted.
     import pytest
-    with pytest.raises(ValueError, match="overlap"):
+    with pytest.raises(ValueError, match="water selections differ"):
+        FusedExtensions(u, cfg, tmp_path / "mismatch")
+    cfg["analyses"]["sdc4_mechanisms"]["water_oxygen_selection"] = "name O1"
+    with pytest.raises(ValueError, match="targets overlap water selection"):
         FusedExtensions(u, cfg, tmp_path / "overlap")
+    cfg = _cfg()
+    cfg["analyses"]["hydration"]["membrane_selection"] = "resname POPC BGAL"
+    with pytest.raises(ValueError, match="target selections overlap"):
+        FusedExtensions(u, cfg, tmp_path / "membrane_overlap")
     cfg = _cfg()
     observer = FusedExtensions(u, cfg, tmp_path / "bad_box")
     ts = u.trajectory[0]
