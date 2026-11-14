@@ -33,7 +33,7 @@ def test_product_limit_censors_and_known_origin():
     assert km.right_censored.tolist() == [0,1,0]
 
 
-def test_sasa_exact_frame_join_and_missing_residue():
+def test_sasa_exact_frame_join_and_missing_residue(tmp_path):
     counts = pd.DataFrame({"time_ps":[0.,5.],"target_id":["patch","patch"],
                            "n_solvent":[2,4]})
     mapping = pd.DataFrame({"target_id":["patch","patch"],
@@ -45,6 +45,14 @@ def test_sasa_exact_frame_join_and_missing_residue():
     assert result.sasa_nm2.iloc[0] == .5
     assert np.isnan(result.sasa_nm2.iloc[1])
     assert result.sasa_coverage.tolist() == [1.,.5]
+    from mdscope.observables.solvation_postprocess import write_hydration_sasa_batches
+    counts.to_parquet(tmp_path / "counts.parquet", index=False)
+    write_hydration_sasa_batches(
+        tmp_path / "counts.parquet", mapping, sasa,
+        tmp_path / "hydration_sasa.parquet", batch_size=1)
+    pd.testing.assert_frame_equal(
+        pd.read_parquet(tmp_path / "hydration_sasa.parquet"), result,
+        check_dtype=False)
 
 
 def test_chunk_shell_calibration_reports_stable_vs_ambiguous():
