@@ -262,3 +262,49 @@ python scripts/audit_potassium_bridges.py \
 - Test a hand-calculated numerical case, invalid/missingness and required artifact behavior, then real TPR/XTC before production interpretation.
 
 [Workflows](workflows.md) · [Scientific contracts](developer/scientific-contracts.md) · [Validation gaps](developer/validation-gaps.md)
+
+
+## Fused hydration by HS sugar, protein residue and membrane residue
+
+`analyses.hydration` shares the existing fused frame loop and unique-water
+counting kernel. It does **not** fit coordinates or reread the trajectory.
+The configured water selection must contain exactly one oxygen per water
+molecule; each selected target is measured against that water population.
+
+```yaml
+analyses:
+  hydration:
+    enabled: true
+    water_oxygen_selection: "resname TIP3 and name OH2"
+    cutoff_A: 3.5
+    protein_selection: "protein"   # entire protein, not only the ectodomain
+    membrane_selection: "resname POPC POPE POPS DOPC PSM and name O*"
+  sdc4_mechanisms:
+    hs_sugar_water_cutoff_A: 3.5   # existing opt-in, with hs_auto configured
+```
+
+`membrane_selection` selects the **hydration sites**, not merely the lipid
+species. Prefer an explicitly audited chemistry-specific selection; avoid
+comparing different oxygen/site populations as if they were identical.
+When omitted, an existing `sdc4_mechanisms.lipid_contact_selection` or
+`membrane.headgroup_selection` is reused if configured. HS sugar hydration
+can be enabled independently through the existing
+`sdc4_mechanisms.hs_sugar_water_cutoff_A` setting even when generic
+hydration is disabled.
+
+| Output | Scope |
+|---|---|
+| `extensions/hydration/counts.parquet` | Water counts by frame, compartment, protein residue, HS sugar or selected membrane residue |
+| `extensions/hydration/aggregate_counts.parquet` | Unique water unions by HS chain, whole HS, whole protein, whole membrane and membrane residue name |
+| `extensions/hydration/target_metadata.parquet` | Topology residue index, HS chain and attachment-relative position, residue chemistry, site count and cutoff |
+| `extensions/sdc4_mechanisms/hs_sugar_hydration.parquet` | Unchanged HS per-sugar schema for the existing position/type statistics |
+
+A water shared by two sugars contributes one count to **each** sugar, but
+only one to their HS-chain union. Thus aggregate counts cannot be computed
+by summing per-residue counts. Membrane targets are topology residues;
+a multi-residue glycolipid is **not** automatically a single lipid molecule
+in this table. For direct molecule-level lipid contacts, use the bonded
+lipid-specific analyses. Raw coordination counts scale with the number
+and chemistry of selected sites; compare matched selections and use
+`n_sites` from metadata for site-normalized analyses. Times are ps,
+cutoffs Å, and all measurements use source coordinates with PBC.
