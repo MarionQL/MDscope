@@ -112,6 +112,14 @@ def test_hydration_fused_unique_water_aggregation_and_time_grid(tmp_path):
         profiles["hs_water_by_position__PROA_S39"]["values"],
         [[2., 1., 0.], [1., 1., 0.]])
 
+    from mdscope.statistics.time_series import collect_time_series
+    series = collect_time_series(tmp_path)
+    assert series[("hydration/hs/chain/PROA_S39", "unique_water_count")].value.tolist() == [2, 1]
+    assert series[("hydration/protein/total/all", "unique_water_count")].value.tolist() == [2, 1]
+    assert series[("hydration/membrane/total/all", "unique_water_count")].value.tolist() == [1, 1]
+    assert np.isfinite(series[("hydration/protein/total/all",
+                               "unique_water_per_site")].value).all()
+
     entry = fused_output(tmp_path, "hydration")
     assert all(path.is_file() for path in required_artifacts(entry, cfg))
 
