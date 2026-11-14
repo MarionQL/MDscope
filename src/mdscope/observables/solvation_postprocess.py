@@ -98,6 +98,50 @@ def join_existing_sasa(counts, target_residues, sasa):
 
 
 
+
+def write_hydration_sasa_batches(counts_path, target_residues, sasa, destination,
+                                 *, batch_size=65536):
+    """Join existing per-frame SASA without materializing full solvation counts.
+
+    Each count row is independent, even when a batch boundary splits one
+    frame. The complete target-to-residue mapping is retained for every batch.
+    """
+    import os
+    import tempfile
+    from pathlib import Path
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+            dir=destination.parent, suffix=".parquet", delete=False) as handle:
+        temporary = Path(handle.name)
+    writer = None
+    try:
+        reader = pq.ParquetFile(counts_path)
+        for batch in reader.iter_batches(batch_size=batch_size):
+            joined = join_existing_sasa(batch.to_pandas(), target_residues, sasa)
+            table = pa.Table.from_pandas(joined, preserve_index=False)
+            if writer is None:
+                writer = pq.ParquetWriter(temporary, table.schema)
+            writer.write_table(table)
+        if writer is None:
+            # Produce a complete, typed empty artifact for an empty source.
+            joined = join_existing_sasa(pd.read_parquet(counts_path),
+                                        target_residues, sasa)
+            table = pa.Table.from_pandas(joined, preserve_index=False)
+            writer = pq.ParquetWriter(temporary, table.schema)
+            writer.write_table(table)
+        writer.close()
+        writer = None
+        os.replace(temporary, destination)
+    finally:
+        if writer is not None:
+            writer.close()
+        temporary.unlink(missing_ok=True)
+
+
 def calibration_stability(chunk_histograms, edges, *, min_chunks=4, tolerance_A=0.5):
     """Check RDF minimum consistency across chunk-level persisted histograms.
 
@@ -275,11 +319,11 @@ def write_solvation_derivatives(directory, repout, *, sasa_run="default"):
     sasa = sasa / "residue_sasa.parquet"
     if all(p.exists() for p in (directory/"counts.parquet",
                                 directory/"target_residues.parquet", sasa)):
-        atomic_parquet(directory / "hydration_sasa.parquet",
-            join_existing_sasa(
-                pd.read_parquet(directory/"counts.parquet"),
-                pd.read_parquet(directory/"target_residues.parquet"),
-                pd.read_parquet(sasa)))
+        write_hydration_sasa_batches(
+            directory / "counts.parquet",
+            pd.read_parquet(directory / "target_residues.parquet"),
+            pd.read_parquet(sasa),
+            directory / "hydration_sasa.parquet")
 
 
 
