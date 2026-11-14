@@ -11,22 +11,35 @@ from ..mechanisms.sdc4_mechanisms import SDC4Mechanisms, enabled as sdc4_enabled
 from .progress import track
 
 
-def run_fused_only(rep, cfg, repout):
-    """Share the same Universe/frame for *all* optional observer families."""
-    if not (membrane_enabled(cfg) or extension_enabled(cfg) or distance_enabled(cfg) or sdc4_enabled(cfg)):
+def run_fused_only(rep, cfg, repout, *, only=None):
+    """Share source frames among requested observer families only.
+
+    A missing new companion must not rewrite unrelated completed analyses.
+    """
+    requested = set(only) if only is not None else None
+    membrane = membrane_enabled(cfg)
+    extensions = extension_enabled(cfg)
+    distance = distance_enabled(cfg)
+    want_membrane = bool(membrane and (requested is None or set(membrane) & requested))
+    selected_extensions = tuple(name for name in extensions
+                                if requested is None or name in requested)
+    want_distance = bool(distance and (requested is None or "residue_membrane_distance" in requested))
+    want_sdc4 = sdc4_enabled(cfg) and (requested is None or "sdc4_mechanisms" in requested)
+    if not (want_membrane or selected_extensions or want_distance or want_sdc4):
         return {}
     u = mda.Universe(str(rep.topology), str(rep.trajectory))
     tr = cfg["trajectory"]
     start = 0 if tr.get("start") is None else int(tr["start"])
     u.trajectory[start]
     observers = []
-    if membrane_enabled(cfg):
+    if want_membrane:
         observers.append(FusedMembrane(u, cfg, repout))
-    if extension_enabled(cfg):
-        observers.append(FusedExtensions(u, cfg, repout))
-    if distance_enabled(cfg):
+    if selected_extensions:
+        observers.append(FusedExtensions(u, cfg, repout) if requested is None
+                         else FusedExtensions(u, cfg, repout, names=selected_extensions))
+    if want_distance:
         observers.append(FusedDistances(u, cfg, repout))
-    if sdc4_enabled(cfg):
+    if want_sdc4:
         observers.append(SDC4Mechanisms(u, cfg, repout))
     for observer in observers:
         observer.prune_from(0)

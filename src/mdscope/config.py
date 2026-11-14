@@ -171,6 +171,9 @@ DEFAULTS = {
                       "search_radius_A": 8.0, "rdf_bin_width_A": 0.2,
                       "shell_cutoffs_A": {"water": 3.5, "ions": 4.0},
                       "options": {}},
+        "hydration": {"enabled": False, "water_oxygen_selection": None,
+                      "protein_selection": None, "membrane_selection": None,
+                      "cutoff_A": 3.5},
         "lifetimes": {"enabled": True, "gap_factor": 1.5},
     },
     "statistics": {
@@ -764,6 +767,15 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
                for value in (solvation.get("shell_cutoffs_A") or {}).values()):
             raise ValueError("solvation shell cutoffs must be positive and <= search radius")
 
+    hydration = cfg["analyses"].get("hydration", {})
+    if hydration.get("enabled"):
+        if not (hydration.get("water_oxygen_selection")
+                or cfg["analyses"].get("sdc4_mechanisms", {}).get("water_oxygen_selection")
+                or solvation.get("water_selection")):
+            raise ValueError("hydration requires a water oxygen selection")
+        if (not np.isfinite(float(hydration.get("cutoff_A", 3.5)))
+                or float(hydration.get("cutoff_A", 3.5)) <= 0):
+            raise ValueError("hydration.cutoff_A must be finite and positive")
     mechanisms = cfg["analyses"].get("sdc4_mechanisms", {})
     sugar_cutoff = mechanisms.get("hs_sugar_water_cutoff_A")
     if sugar_cutoff is not None and (

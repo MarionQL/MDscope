@@ -49,7 +49,7 @@ from ..mechanisms.residue_occlusion import (
     OCCLUSION_FILE, IDENTITY_COLUMNS, FRACTION_COLUMNS, WATER_COLUMNS, residue_environment_pending,
 )
 from ..mechanisms.shared_states import fit_shared_states
-from ..mechanisms.hs_hydration import OUTPUT as HS_HYDRATION_OUTPUT, run_hs_hydration, temporal_hs_hydration_profiles
+from ..mechanisms.hs_hydration import temporal_hs_hydration_profiles
 from ..registry import specialized_tasks,additional_time_series,fused_output,fused_output_plan,analysis_output_plan,required_artifacts
 from ..observables.lipid_enrichment import footprint_pending, summarize_lipid_composition
 from ..observables.msd import summarize_diffusion, summarize_project_diffusion, summarize_project_multi_origin
@@ -360,7 +360,7 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
         pending = {entry.name for entry in pending_outputs if not entry.path.is_file()}
         if pending - {"lipid_enrichment"}:
             t0 = perf_counter()
-            run_fused_only(rep, cfg, repout)
+            run_fused_only(rep, cfg, repout, only=pending)
             stage_timings.append({"stage": "fused-only", "seconds": perf_counter() - t0})
 
     # These analyses are observers of the existing streaming frames, not
@@ -405,7 +405,8 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
                    if not entry.path.is_file()]
         if missing:
             t0 = perf_counter()
-            run_fused_extensions(rep, cfg, repout)
+            run_fused_extensions(rep, cfg, repout,
+                                 names=tuple(name.split("-", 1)[0] for name in missing))
             stage_timings.append({"stage": "fused-extensions-fallback", "seconds": perf_counter() - t0})
         for name in extension_outputs:
             if not extension_outputs[name].path.is_file():
@@ -526,13 +527,8 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
         complete_membrane_density(rep, cfg, repout, density_runs)
         stage_timings.append({"stage": "membrane-density", "seconds": perf_counter() - t0})
     if cfg["analyses"].get("sdc4_mechanisms", {}).get("hs_sugar_water_cutoff_A") is not None:
-        t0 = perf_counter()
         times = pd.read_parquet(whole, columns=["time_ps"]).time_ps.to_numpy(float)
-        if not (repout / HS_HYDRATION_OUTPUT).is_file():
-            run_hs_hydration(rep, cfg, repout, times)
-            stage_timings.append({"stage": "hs-sugar-hydration", "seconds": perf_counter() - t0})
-        else:
-            temporal_hs_hydration_profiles(repout, cfg, times)
+        temporal_hs_hydration_profiles(repout, cfg, times)
     if stage_timings:
         atomic_json(repout / "stage_timings.json", {
             "system": rep.system, "replicate": rep.label,

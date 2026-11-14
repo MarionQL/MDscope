@@ -83,6 +83,7 @@ FUSED_OUTPUTS = {
     "sasa": "profiles/sasa/residue_sasa.parquet",
     "local_environment": "extensions/local_environment/timeseries.parquet",
     "solvation": "extensions/solvation/counts.parquet",
+    "hydration": "extensions/hydration/counts.parquet",
     "sdc4_mechanisms": "extensions/sdc4_mechanisms/timeseries.parquet",
     "potassium_bridge_audit": "extensions/potassium_bridge_audit/topology_audit.json",
 }
@@ -175,6 +176,7 @@ def required_artifacts(entry: FusedOutput, cfg: dict) -> tuple[Path, ...]:
         'residue_membrane_distance': ('time_ps.npy', 'residues.parquet',
                                     'median_profile.parquet', 'selection_audit.parquet',
                                     'membrane_atom_indices.npy'),
+        'hydration': ('aggregate_counts.parquet', 'target_metadata.parquet'),
         'solvation': ('rdf.parquet', 'target_residues.parquet', 'metadata.json',
                       'species_timeseries.parquet', 'target_summary.parquet',
                       'shell_candidates.parquet'),
@@ -200,6 +202,9 @@ def required_artifacts(entry: FusedOutput, cfg: dict) -> tuple[Path, ...]:
         paths.extend(directory/f for f in ('motif_lipid_contact_events.parquet',
             'motif_lipid_residence.parquet', 'motif_lipid_residence_intermittent.parquet',
             'lipid_region_specificity.parquet', 'lipid_residue_contacts.parquet'))
+    if name == 'hydration' and cfg['analyses'].get('sdc4_mechanisms', {}).get('hs_sugar_water_cutoff_A') is not None:
+        from .mechanisms.hs_hydration import OUTPUT
+        paths.append(Path(entry.path).parents[2] / OUTPUT)
     if name == 'solvation':
         options = spec.get('options') or {}
         bridges = options.get('bridges', spec.get('preset', 'standard') != 'standard')

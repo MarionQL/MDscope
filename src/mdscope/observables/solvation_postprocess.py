@@ -98,6 +98,50 @@ def join_existing_sasa(counts, target_residues, sasa):
 
 
 
+
+def write_hydration_sasa_batches(counts_path, target_residues, sasa, destination,
+                                 *, batch_size=65536):
+    """Join existing per-frame SASA without materializing full solvation counts.
+
+    Each count row is independent, even when a batch boundary splits one
+    frame. The complete target-to-residue mapping is retained for every batch.
+    """
+    import os
+    import tempfile
+    from pathlib import Path
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+            dir=destination.parent, suffix=".parquet", delete=False) as handle:
+        temporary = Path(handle.name)
+    writer = None
+    try:
+        reader = pq.ParquetFile(counts_path)
+        for batch in reader.iter_batches(batch_size=batch_size):
+            joined = join_existing_sasa(batch.to_pandas(), target_residues, sasa)
+            table = pa.Table.from_pandas(joined, preserve_index=False)
+            if writer is None:
+                writer = pq.ParquetWriter(temporary, table.schema)
+            writer.write_table(table)
+        if writer is None:
+            # Produce a complete, typed empty artifact for an empty source.
+            joined = join_existing_sasa(pd.read_parquet(counts_path),
+                                        target_residues, sasa)
+            table = pa.Table.from_pandas(joined, preserve_index=False)
+            writer = pq.ParquetWriter(temporary, table.schema)
+            writer.write_table(table)
+        writer.close()
+        writer = None
+        os.replace(temporary, destination)
+    finally:
+        if writer is not None:
+            writer.close()
+        temporary.unlink(missing_ok=True)
+
+
 def calibration_stability(chunk_histograms, edges, *, min_chunks=4, tolerance_A=0.5):
     """Check RDF minimum consistency across chunk-level persisted histograms.
 
@@ -166,54 +210,71 @@ def aggregate_coordination(counts):
     return frame[class_columns], by_target[target_columns]
 
 
-def aggregate_coordination_parts(paths):
-    """Bounded-memory aggregation from atomic count chunks.
+def aggregate_coordination_parts(paths, *, batch_size=65536):
+    """Reduce cached counts in bounded PyArrow record batches.
 
-    All frames within one saved part are complete, so per-class time
-    means can be reduced independently. Per-target sufficient statistics
-    are combined across chunks without ever loading all frames at once.
+    A record batch can split a frame or a target's time history. Recombine
+    sufficient statistics by their full identities before computing means
+    or sample standard deviations. Never interpret summed per-target water
+    counts as unique waters across targets.
     """
+    import pyarrow.parquet as pq
+
     class_keys = ["solvent", "target_class", "site_class"]
     target_keys = class_keys + ["target_id"]
-    class_tables = []
-    partials = []
+    frame_tables = []
+    target_partials = []
+    columns = ["time_ps", "solvent", "target_id", "target_class",
+               "site_class", "n_solvent"]
     for path in paths:
-        counts = pd.read_parquet(path)
-        if counts.empty:
-            continue
-        frame = counts.assign(hydrated=(counts.n_solvent > 0).astype(float)).groupby(
-            class_keys + ["time_ps"], as_index=False).agg(
-            target_count=("target_id", "nunique"),
-            mean_n_solvent=("n_solvent", "mean"),
-            total_target_counts=("n_solvent", "sum"),
-            hydrated_fraction=("hydrated", "mean"))
-        class_tables.append(frame)
-        numeric = counts.assign(
-            positive=(counts["n_solvent"] > 0).astype(np.int64),
-            sum_square=np.square(counts["n_solvent"].to_numpy(dtype=np.int64)))
-        group = numeric.groupby(target_keys, as_index=False).agg(
-            n_frames=("n_solvent", "size"),
-            total=("n_solvent", "sum"),
-            positive=("positive", "sum"),
-            sum_square=("sum_square", "sum"))
-        partials.append(group)
-    empty = aggregate_coordination(pd.DataFrame())[0:2]
-    if not partials:
+        frame_partials = []
+        for batch in pq.ParquetFile(path).iter_batches(
+                batch_size=batch_size, columns=columns):
+            counts = batch.to_pandas()
+            if counts.empty:
+                continue
+            numeric = counts.assign(
+                hydrated=(counts.n_solvent > 0).astype(np.int64),
+                sum_square=np.square(counts.n_solvent.to_numpy(dtype=np.int64)))
+            frame_partials.append(numeric.groupby(
+                class_keys + ["time_ps"], as_index=False).agg(
+                target_count=("target_id", "size"),
+                total=("n_solvent", "sum"),
+                positive=("hydrated", "sum")))
+            target_partials.append(numeric.groupby(
+                target_keys, as_index=False).agg(
+                n_frames=("n_solvent", "size"),
+                total=("n_solvent", "sum"),
+                positive=("hydrated", "sum"),
+                sum_square=("sum_square", "sum")))
+        if frame_partials:
+            frame = pd.concat(frame_partials, ignore_index=True).groupby(
+                class_keys + ["time_ps"], as_index=False).agg(
+                target_count=("target_count", "sum"),
+                total=("total", "sum"),
+                positive=("positive", "sum"))
+            frame["mean_n_solvent"] = frame.total / frame.target_count
+            frame["total_target_counts"] = frame.total
+            frame["hydrated_fraction"] = frame.positive / frame.target_count
+            frame_tables.append(frame[
+                class_keys + ["time_ps", "target_count", "mean_n_solvent",
+                              "total_target_counts", "hydrated_fraction"]])
+    empty = aggregate_coordination(pd.DataFrame())
+    if not target_partials:
         return empty
-    class_frame = pd.concat(class_tables, ignore_index=True)
-    summary = pd.concat(partials, ignore_index=True).groupby(
+    summary = pd.concat(target_partials, ignore_index=True).groupby(
         target_keys, as_index=False).agg(
-            n_frames=("n_frames", "sum"), total=("total", "sum"),
-            positive=("positive", "sum"), sum_square=("sum_square", "sum"))
+        n_frames=("n_frames", "sum"), total=("total", "sum"),
+        positive=("positive", "sum"), sum_square=("sum_square", "sum"))
     n = summary.n_frames.to_numpy(float)
     total = summary.total.to_numpy(float)
-    variance = (summary.sum_square.to_numpy(float)-total**2/n)/np.maximum(1., n-1.)
+    variance = (summary.sum_square.to_numpy(float) - total**2/n) / np.maximum(1., n-1.)
     summary["mean_n_solvent"] = total/n
     summary["sd_n_solvent"] = np.where(n > 1., np.sqrt(np.maximum(variance, 0.)), np.nan)
     summary["hydrated_fraction"] = summary.positive/n
-    return class_frame, summary[
+    return (pd.concat(frame_tables, ignore_index=True), summary[
         ["solvent", "target_id", "target_class", "site_class",
-         "n_frames", "mean_n_solvent", "sd_n_solvent", "hydrated_fraction"]]
+         "n_frames", "mean_n_solvent", "sd_n_solvent", "hydrated_fraction"]])
 
 
 def write_solvation_derivatives(directory, repout, *, sasa_run="default"):
@@ -258,11 +319,11 @@ def write_solvation_derivatives(directory, repout, *, sasa_run="default"):
     sasa = sasa / "residue_sasa.parquet"
     if all(p.exists() for p in (directory/"counts.parquet",
                                 directory/"target_residues.parquet", sasa)):
-        atomic_parquet(directory / "hydration_sasa.parquet",
-            join_existing_sasa(
-                pd.read_parquet(directory/"counts.parquet"),
-                pd.read_parquet(directory/"target_residues.parquet"),
-                pd.read_parquet(sasa)))
+        write_hydration_sasa_batches(
+            directory / "counts.parquet",
+            pd.read_parquet(directory / "target_residues.parquet"),
+            pd.read_parquet(sasa),
+            directory / "hydration_sasa.parquet")
 
 
 
