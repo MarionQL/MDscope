@@ -128,6 +128,32 @@ def collect_time_series(repout: Path) -> dict[tuple[str | None, str], pd.DataFra
                 if metric in group and len(finite(group[metric])):
                     out[(group_id, metric)] = group[["time_ps", metric]].rename(
                         columns={metric: "value"})
+    hydration = Path(repout) / "extensions" / "hydration" / "aggregate_counts.parquet"
+    if hydration.exists():
+        data = pd.read_parquet(hydration)
+        required = {"time_ps", "compartment", "level", "group_id",
+                    "water_count", "water_per_site"}
+        if not required <= set(data):
+            raise ValueError(f"Incomplete hydration aggregate time series: {hydration}")
+        reference_times = None
+        for (compartment, level, label), group in data.groupby(
+                ["compartment", "level", "group_id"], sort=False):
+            group = group.sort_values("time_ps")
+            times = group.time_ps.to_numpy(float)
+            if (not len(times) or not np.isfinite(times).all()
+                    or np.any(np.diff(times) <= 0)):
+                raise ValueError(f"Invalid hydration aggregate time grid: {hydration}")
+            if reference_times is None:
+                reference_times = times
+            elif not np.array_equal(reference_times, times):
+                raise ValueError(f"Inconsistent hydration aggregate time grids: {hydration}")
+            identity = f"hydration/{compartment}/{level}/{label}"
+            for column, metric in (
+                ("water_count", "unique_water_count"),
+                ("water_per_site", "unique_water_per_site"),
+            ):
+                out[(identity, metric)] = group[["time_ps", column]].rename(
+                    columns={column: "value"})
     bridges = Path(repout)/"extensions/solvation/bridge_pair_timeseries.parquet"
     if bridges.exists():
         import json
