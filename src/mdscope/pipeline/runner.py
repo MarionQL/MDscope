@@ -360,7 +360,7 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
         pending = {entry.name for entry in pending_outputs if not entry.path.is_file()}
         if pending - {"lipid_enrichment"}:
             t0 = perf_counter()
-            run_fused_only(rep, cfg, repout)
+            run_fused_only(rep, cfg, repout, only=pending)
             stage_timings.append({"stage": "fused-only", "seconds": perf_counter() - t0})
 
     # These analyses are observers of the existing streaming frames, not
@@ -405,7 +405,8 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
                    if not entry.path.is_file()]
         if missing:
             t0 = perf_counter()
-            run_fused_extensions(rep, cfg, repout)
+            run_fused_extensions(rep, cfg, repout,
+                                 names=tuple(name.split("-", 1)[0] for name in missing))
             stage_timings.append({"stage": "fused-extensions-fallback", "seconds": perf_counter() - t0})
         for name in extension_outputs:
             if not extension_outputs[name].path.is_file():
