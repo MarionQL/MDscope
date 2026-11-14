@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import sys
 from contextlib import contextmanager
+from threading import Event, Thread
 from time import perf_counter
 
 
@@ -101,3 +102,33 @@ def track(iterable, *, total=None, desc="", enabled=True):
     """Generator wrapper for existing loops without changing body indentation."""
     with progress(iterable, total=total, desc=desc, enabled=enabled) as wrapped:
         yield from wrapped
+
+
+@contextmanager
+def stage_progress(label, *, enabled=True, interval=60):
+    """Report the active batch stage even while a single operation is running."""
+    if not enabled:
+        yield
+        return
+
+    started = perf_counter()
+    finished = Event()
+
+    def heartbeat():
+        while not finished.wait(interval):
+            elapsed = _duration(perf_counter() - started)
+            print(f"{label}: still running | elapsed {elapsed}", flush=True)
+
+    print(f"{label}: started", flush=True)
+    thread = Thread(target=heartbeat, daemon=True)
+    thread.start()
+    status = "finished"
+    try:
+        yield
+    except BaseException:
+        status = "failed"
+        raise
+    finally:
+        finished.set()
+        thread.join()
+        print(f"{label}: {status} | elapsed {perf_counter() - started:.2f} s", flush=True)

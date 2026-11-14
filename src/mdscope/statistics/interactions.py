@@ -135,8 +135,11 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
     outdir = ensure_dir(root / "project_summary" / "statistics" / "interactions")
     sources, kinds = {}, set()
     excluded_kinds = set(stats.get('interaction_exclude_kinds', []))
+    verbose = cfg.get("progress", {}).get("enabled", True)
     for system, reps in system_repouts.items():
         for repout in reps:
+            if verbose:
+                print(f"Interaction statistics: loading {system}/{repout.name}", flush=True)
             tables = interaction_tables(
                 repout,
                 exclude_kinds=excluded_kinds,
@@ -146,15 +149,16 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
             )
             path = repout / "summary" / "timeseries.parquet"
             times = (
-                pd.read_parquet(
-                    path
-                )["time_ps"].to_numpy(float) if path.exists() else np.array([], float)
+                pd.read_parquet(path, columns=["time_ps"])["time_ps"].to_numpy(float)
+                if path.exists() else np.array([], float)
             )
             sources[(system, repout.name)] = (times, tables)
             kinds.update(tables)
     rep_rows, sys_rows, comps = [], [], []
     weight_cache = {}
     for kind in sorted(kinds - excluded_kinds):
+        if verbose:
+            print(f"Interaction statistics {kind}: grouping input records", flush=True)
         interactions, retained, prepared = set(), set(), {}
         for key, (times, tables) in sources.items():
             tab = tables.get(kind, {})
@@ -193,7 +197,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
             )
             prepared[key] = (times, presence_groups, life_groups)
         if min_occupancy:
-            if cfg.get("progress", {}).get("enabled", False):
+            if verbose:
                 print(
                     f"Interaction statistics {kind}: retaining {len(retained)}/{len(interactions)} "
                     f"identities with occupancy >= {min_occupancy:.1%} in at least one replicate",
@@ -203,8 +207,10 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
         kind_started = perf_counter()
         log_every = int(stats.get("interaction_progress_every", 1000))
         for completed, interaction in enumerate(sorted(interactions), 1):
-            if cfg.get("progress", {}).get("enabled", False) and (completed == 1 or completed % log_every == 0):
-                print(f"Interaction statistics {kind}: {completed}/{len(interactions)} identities; elapsed {perf_counter()-kind_started:.1f} s", flush=True)
+            if verbose and (completed == 1 or completed % log_every == 0):
+                print(f"Interaction statistics {kind}: processing identity "
+                      f"{completed}/{len(interactions)} | elapsed {perf_counter()-kind_started:.1f} s",
+                      flush=True)
             repdata = {}
             for system, reps in system_repouts.items():
                 for repout in reps:

@@ -1,4 +1,5 @@
 """Replicate-aware MDscope statistics with explicit functional ownership."""
+from ..pipeline.progress import stage_progress
 from .common import finite, autocorrelation, _temporal, _block_indices, _block_bootstrap, _block_weights, _hierarchical, _hierarchical_difference, _ci, _describe, _direction, _permutation, _fdr, _range_meta
 from .time_series import collect_time_series, analyze_time_series
 from .profiles import collect_temporal_profiles, analyze_profiles
@@ -46,16 +47,18 @@ def analyze_project(cfg, root, system_repouts):
         "replicate_paths": [os.path.relpath(rep, root)
                             for reps in system_repouts.values() for rep in reps],
     }
-    matched = cfg.get("statistics", {}).get("matched_window_ps") is not None
-    bounds = None
-    if matched:
-        manifest["families"]["matched_time_series"] = manifest["families"]["time_series"]
-        if manifest["families"]["matched_time_series"] == "enabled":
-            grid = matched_grid(cfg, system_repouts)
-            bounds = [float(grid[0]), float(grid[-1])]
-            manifest["matched_scalar_window_ps"] = bounds
-    inputs_before = _input_snapshot(root, manifest['replicate_paths'])
-    atomic_json(dest / "manifest.json", manifest)
+    verbose = cfg.get("progress", {}).get("enabled", True)
+    with stage_progress("Statistics input inventory", enabled=verbose):
+        matched = cfg.get("statistics", {}).get("matched_window_ps") is not None
+        bounds = None
+        if matched:
+            manifest["families"]["matched_time_series"] = manifest["families"]["time_series"]
+            if manifest["families"]["matched_time_series"] == "enabled":
+                grid = matched_grid(cfg, system_repouts)
+                bounds = [float(grid[0]), float(grid[-1])]
+                manifest["matched_scalar_window_ps"] = bounds
+        inputs_before = _input_snapshot(root, manifest['replicate_paths'])
+        atomic_json(dest / "manifest.json", manifest)
     for family, folder, analyze in (
         ("time_series", "time_series", analyze_time_series),
         ("profiles", "profiles", analyze_profiles),
@@ -67,18 +70,26 @@ def analyze_project(cfg, root, system_repouts):
         if (dest / folder).exists():
             archive_output(dest / folder, Path(root) / ".archives/statistics" / folder,
                            "previous")
-        analyze(cfg, root, system_repouts)
+        if manifest["families"][family] == "disabled":
+            if verbose:
+                print(f"Statistics {family}: skipped (disabled)", flush=True)
+            continue
+        with stage_progress(f"Statistics {family}", enabled=verbose):
+            analyze(cfg, root, system_repouts)
     matched_folder = dest / "matched_time_series"
     if matched_folder.exists():
         archive_output(matched_folder, Path(root) / ".archives/statistics/matched_time_series", "previous")
     if bounds is not None:
         matched_cfg = {**cfg, "statistics": {**cfg["statistics"], "scalar_window_ps": bounds}}
-        analyze_time_series(matched_cfg, root, system_repouts, output_name="matched_time_series")
+        with stage_progress("Statistics matched_time_series", enabled=verbose):
+            analyze_time_series(matched_cfg, root, system_repouts, output_name="matched_time_series")
     coverage_folder = dest / "coverage"
     if coverage_folder.exists():
         archive_output(coverage_folder, Path(root) / ".archives/statistics/coverage", "previous")
-    write_contrast_coverage(dest, system_repouts, manifest["families"])
-    if inputs_before != _input_snapshot(root, manifest['replicate_paths']):
-        raise RuntimeError('Persisted statistics inputs changed during finalization; retry on stable outputs')
+    with stage_progress("Statistics contrast coverage", enabled=verbose):
+        write_contrast_coverage(dest, system_repouts, manifest["families"])
+    with stage_progress("Statistics input verification", enabled=verbose):
+        if inputs_before != _input_snapshot(root, manifest['replicate_paths']):
+            raise RuntimeError('Persisted statistics inputs changed during finalization; retry on stable outputs')
     manifest["status"] = "complete"
     atomic_json(dest / "manifest.json", manifest)

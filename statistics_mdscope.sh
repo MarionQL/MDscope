@@ -13,6 +13,7 @@ set -euo pipefail
 ROOT="${SLURM_SUBMIT_DIR:-$(pwd)}"
 YAML="${1:-${ROOT}/synd4_full_mechanisms_finalize_fast.yaml}"
 cd "${ROOT}"
+echo "Statistics setup started: $(date) | config: ${YAML} | requested CPUs: ${MDSCOPE_STATS_WORKERS:-${SLURM_CPUS_PER_TASK:-default}}"
 if [[ ! -f "${YAML}" ]]; then
   echo "Missing config: ${YAML}" >&2
   exit 2
