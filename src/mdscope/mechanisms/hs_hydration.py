@@ -176,6 +176,11 @@ class HydrationObserver:
         self.water = universe.select_atoms(water_sel)
         if not len(self.water) or len(np.unique(self.water.resindices)) != len(self.water):
             raise ValueError("Hydration requires exactly one oxygen per water molecule")
+        if self.hs_enabled and hs_spec.get("water_oxygen_selection"):
+            hs_water = universe.select_atoms(hs_spec["water_oxygen_selection"])
+            if not np.array_equal(self.water.indices, hs_water.indices):
+                raise ValueError(
+                    "Hydration and HS water selections differ; use the same oxygen population")
 
         self.targets = []
         self.site_indices = []
@@ -229,6 +234,15 @@ class HydrationObserver:
                     self._group("membrane", "total", "all", target)
         if not self.targets:
             raise ValueError("Hydration selected no targets")
+        # Selecting HS glycans as membrane residues would silently corrupt
+        # per-compartment totals. Cross-compartment target atoms must be disjoint.
+        compartment_of_atom = {}
+        for atom, owner in zip(self.site_indices, self.site_owner):
+            compartment = self.targets[owner]["compartment"]
+            previous = compartment_of_atom.setdefault(atom, compartment)
+            if previous != compartment:
+                raise ValueError(
+                    "Hydration protein, HS and membrane target selections overlap")
         if set(self.water.indices).intersection(self.site_indices):
             raise ValueError("Hydration targets overlap water selection")
         self.sites = universe.atoms[self.site_indices]
