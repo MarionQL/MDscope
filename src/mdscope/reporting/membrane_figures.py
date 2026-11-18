@@ -84,9 +84,12 @@ def plot_lipid_contacts(cfg, root, system_repouts):
         return
     replicas = pd.concat(tables, ignore_index=True)
     dest = ensure_dir(Path(root) / 'project_summary/figures/lipid_contacts')
-    replicas.to_csv(dest / 'replicate_matrices.csv', index=False)
+    if cfg.get("plots", {}).get("include") is None:
+        replicas.to_csv(dest / 'replicate_matrices.csv', index=False)
 
     def draw(values, title, metric, filename, *, difference=False):
+        if not figure_enabled(cfg, f"lipid_contacts:{Path(filename).stem}"):
+            return
         fig, ax = plt.subplots(figsize=(7, 6))
         cmap = plt.get_cmap('RdBu_r' if difference else 'viridis').with_extremes(bad='lightgrey')
         scale = {}
