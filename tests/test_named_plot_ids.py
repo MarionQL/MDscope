@@ -115,7 +115,7 @@ def test_solvation_not_selected_never_opens_rdf(tmp_path, monkeypatch):
     module.plot_solvation(cfg, tmp_path, {"condition": []})
 
 
-def test_sdc4_replica_selection_does_not_open_unselected_maps(tmp_path):
+def test_sdc4_condition_selection_does_not_open_unselected_maps(tmp_path):
     import numpy as np
     import pandas as pd
     from mdscope.reporting.sdc4_figures import plot_sdc4_mechanisms
@@ -136,14 +136,16 @@ def test_sdc4_replica_selection_does_not_open_unselected_maps(tmp_path):
     }).to_parquet(folder / "timeseries.parquet")
     cfg = {
         "plots": {"enabled": True,
-                  "include": ["sdc4:condition:rep1:nxip_height_occlusion_joint"]},
+                  "include": ["sdc4:condition:nxip_height_occlusion_joint"]},
         "analyses": {"sdc4_mechanisms": {"enabled": True}},
     }
     plot_sdc4_mechanisms(cfg, tmp_path, {"condition": [rep]})
-    assert (folder / "nxip_height_occlusion_joint.png").is_file()
-    assert not (folder / "vvhplvpl_proline_ramachandran.png").exists()
-    assert id_from_figure_path(folder / "nxip_height_occlusion_joint.png") == (
-        "sdc4:condition:rep1:nxip_height_occlusion_joint")
+    output = tmp_path / "project_summary/figures/sdc4/condition"
+    assert (output / "nxip_height_occlusion_joint.png").is_file()
+    assert not (output / "vvhplvpl_proline_ramachandran.png").exists()
+    assert not list(folder.glob("*.png"))
+    assert id_from_figure_path(output / "nxip_height_occlusion_joint.png") == (
+        "sdc4:condition:nxip_height_occlusion_joint")
 
 
 def test_shared_state_sampling_only_does_not_require_populations(tmp_path):
@@ -194,15 +196,15 @@ def test_lipid_contact_include_one_exact_heatmap(tmp_path):
 
 def test_specialized_figure_ids_are_validated():
     for item in [
-        "sdc4:condition:rep1:nxip_height_occlusion_joint",
-        "sdc4:condition:rep1:lipid_density_maps",
+        "sdc4:condition:nxip_height_occlusion_joint",
+        "sdc4:condition:lipid_density_maps",
         "shared_states:state_sampling_diagnostics",
         "lipid_contacts:lipid_contact_matrix_condition_upper_enrichment",
         "lipid_contacts:lipid_contact_difference_first__second_upper_neighbors_per_molecule",
     ]:
         validate_plot_ids([item])
     for item in [
-        "sdc4:condition:rep1:unknown",
+        "sdc4:condition:unknown",
         "lipid_contacts:other.png", "shared_states:some_chart",
     ]:
         with pytest.raises(ValueError, match="unsupported plot ID"):
@@ -295,7 +297,7 @@ def test_describe_plot_uses_declared_renderers_and_saved_input_contracts():
         ("interactions:salt_bridges:occupancy_heatmap", "occupancy.parquet"),
         ("solvation:shell_rdf", "system_rdf.parquet"),
         ("shared_states:state_populations", "replicate_populations.parquet"),
-        ("sdc4:condition_A:rep1:nxip_height_occlusion_joint", "timeseries.parquet"),
+        ("sdc4:condition_A:nxip_height_occlusion_joint", "timeseries.parquet"),
         ("lipid_contacts:lipid_contact_matrix_condition_A_upper_enrichment", "matrix.parquet"),
         ("diffusion:diffusion_coefficients", "replicate_coefficients.parquet"),
     ):
@@ -306,9 +308,11 @@ def test_describe_plot_uses_declared_renderers_and_saved_input_contracts():
         assert record["status"] == "conditional_on_saved_data"
         assert "dpi" in record["available_overrides"]
         assert any(expected in source for source in record["source_candidates"])
+        if identifier.startswith("sdc4:"):
+            assert record["destination"].startswith("project_summary/figures/sdc4/")
 
     with pytest.raises(ValueError, match="unsupported plot ID"):
-        describe_plot("sdc4:condition_A:rep1:unsupported")
+        describe_plot("sdc4:condition_A:unsupported")
 
 
 def test_figure_preview_manifest_can_describe_exact_output_ids(tmp_path):
