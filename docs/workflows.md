@@ -21,7 +21,7 @@ Use `run_mdscope.sh`, `statistics_mdscope.sh`, `plotting_mdscope.sh` and `finali
 
 The statistics job reports its current stage and elapsed time in `slurm-out/mdscope/mdscope_statistics-<jobid>.out`. Long stages print a heartbeat every minute. Set `progress.enabled: false` to suppress progress messages.
 
-## Selective time-series inference (issue #179, first slice)
+## Selective time-series and interaction inference (issue #179)
 
 Existing YAML without `statistics.metric_selection` retains all enabled
 family-level inference. An explicit `time_series: []` computes **no**
@@ -40,13 +40,38 @@ statistics:
 Omit `group` for the ungrouped summary series. The lipid-contact group uses
 the exact saved `lipid_contacts/<leaflet>/<species_a>/<species_b>` identity.
 `mdscope plan` reports the requested identities and marks dynamic identities
-as saved-data-dependent. Unsupported selector families currently fail
-configuration validation; this first stage does **not** claim that profiles,
-interactions, RDFs, diffusion or coupling implement metric-level selection.
-Plot IDs remain independently controlled by `plots.include`.
+as saved-data-dependent. Interaction inference uses the **canonical saved** label built from
+`interaction_key_columns`, not a new ID. Select an entire interaction kind,
+one exact identity, or one metric on that identity:
+
+```yaml
+statistics:
+  metric_selection:
+    interactions:
+      - {kind: salt_bridges, interaction: "PROA:ASP12 | PROB:LYS7 | interchain", metric: occupancy}
+      - {kind: lipid_hydrogen_bonds, metric: event_rate_per_ns}
+```
+
+The interaction string shown is illustrative, **not** a guaranteed identity
+for any saved dataset. Allowed metrics are `occupancy`,
+`event_rate_per_ns`, `mean_lifetime_ps`, `median_lifetime_ps` and
+`total_lifetime_ps`. Omitting `interaction` means all identities of that
+kind; omitting `metric` selects all five metrics. An explicit
+`interactions: []` computes no interaction statistics. Missing saved
+identities fail before statistical outputs are written. The existing
+`interaction_min_occupancy` filter still applies to selected identities.
+
+Unsupported selector families currently fail configuration validation;
+profiles, RDFs, diffusion and coupling remain family-controlled. Plot IDs
+remain independently controlled by `plots.include`.
 
 Selections filter before temporal bootstrap/CI/permutation calculations and
 avoid reading irrelevant top-level saved source tables where possible.
+Interaction selection skips unrelated kinds and interaction identities before
+the expensive per-identity loop. For a selected identity, the shared temporal
+bootstrap kernel still prepares all five summary arrays; unselected metrics
+skip CI, hierarchy, comparisons, and persistence. This is not yet full
+metric-specific kernel factorization (see #156).
 Statistical products are regenerated with the existing archive/manifest
 contract; previous results are not silently reused after selection changes.
 
