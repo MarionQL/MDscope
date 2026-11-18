@@ -34,6 +34,52 @@ STATISTICS_DIRS = {
 }
 
 
+# Per-analysis semantics describe *eligibility*, never promise supported CIs.
+# Output file names and companions remain owned by registry.py.
+ANALYSIS_METADATA = {
+    "alignment": ("Coordinate alignment control", (), ()),
+    "rmsd": ("Fitted-structure displacement", ("time_series",), ("time_series",)),
+    "rmsf": ("Fitted-structure atom/residue fluctuation", ("profiles",), ("profiles",)),
+    "radius_of_gyration": ("Structure radius of gyration", ("time_series",), ("time_series",)),
+    "density_1d": ("Selected-atom density along one axis", ("profiles",), ("profiles",)),
+    "membrane": ("Bilayer area, thickness and lipid MSD", ("time_series", "diffusion"), ("time_series", "diffusion")),
+    "membrane_order": ("Lipid-tail C-H orientational order", ("profiles", "time_series"), ("profiles",)),
+    "residue_membrane_distance": ("Residue-to-membrane minimum distance", ("profiles",), ("profiles",)),
+    "dssp": ("Per-residue secondary structure", ("profiles",), ("profiles",)),
+    "sasa": ("Surface accessibility with explicit occluders", ("profiles",), ("profiles",)),
+    "salt_bridges": ("Protein salt-bridge contact events", ("interactions",), ("interactions",)),
+    "hydrogen_bonds": ("Hydrogen-bond contact events", ("interactions",), ("interactions",)),
+    "ligand_contacts": ("Ligand–protein contact events", ("interactions",), ("interactions",)),
+    "lipid_hydrogen_bonds": ("Lipid-associated hydrogen-bond events", ("interactions",), ("interactions",)),
+    "lifetimes": ("Contact persistence postprocessing", ("interactions",), ("interactions",)),
+    "bilayer_normal": ("Local lipid normal orientations", ("time_series",), ("time_series",)),
+    "lipid_enrichment": ("Protein footprint / leaflet lipid enrichment", ("time_series",), ("lipid_enrichment",)),
+    "lipid_contacts": ("Per-molecule lipid neighborhood contacts", ("time_series",), ("lipid_contacts",)),
+    "local_environment": ("Protein–lipid/glycan neighborhood observables", ("time_series",), ("time_series",)),
+    "coupling_screen": ("Saved-feature coupling diagnostics", ("coupling",), ()),
+    "sdc4_mechanisms": ("SDC4-specific motif, domain and membrane mechanisms", ("time_series", "profiles"), ("sdc4",)),
+    "potassium_bridge_audit": ("SDC4 acidic-patch–potassium–HS audit", (), ()),
+    "solvation": ("Site-resolved water and ion coordination", ("solvation_rdfs", "time_series"), ("solvation",)),
+    "hydration": ("Unique-water hydration per sugar/residue/group", ("profiles", "time_series"), ("profiles",)),
+    "shared_states": ("Replicate-balanced shared-state inference", (), ("shared_states",)),
+}
+REQUIRED_TOPOLOGY = {
+    "rmsd": ("alignment atom set",),
+    "rmsf": ("alignment atom set",),
+    "membrane": ("lipid headgroup selection and valid box",),
+    "membrane_order": ("lipid-tail C-H sites; bond connectivity where available",),
+    "sasa": ("target/occluder atoms and radii; optional FreeSASA backend",),
+    "solvation": ("target chemical sites and water/ion identities",),
+    "sdc4_mechanisms": ("SDC4 domain identities; topology bonds for hs_auto",),
+    "hydration": ("water oxygens, target identities, topology bonds for glycans",),
+    "residue_membrane_distance": ("query residues and membrane atom selection",),
+    "bilayer_normal": ("lipid anchor selections and sufficient neighbors",),
+    "lipid_enrichment": ("footprint and lipid anchor selections",),
+    "hydrogen_bonds": ("donor/hydrogen/acceptor topology chemistry",),
+    "lipid_hydrogen_bonds": ("lipid molecules and H-bond donor chemistry",),
+}
+
+
 def _format(path: str) -> str:
     """Identify the *storage container*, not an invented column schema."""
     return {
@@ -118,12 +164,31 @@ def build_plan(cfg: dict, config_path: str | Path, *,
                       else "saved_data_stage" if name in SAVED_DATA_ANALYSES
                       else "control" if name in CONTROL_ANALYSES
                       else "primary_artifact_not_registered")
+            meta = ANALYSIS_METADATA.get(name)
+            candidate_statistics = meta[1] if meta else ()
+            candidate_figures = meta[2] if meta else ()
             selected.append({
+                "id": f"{name}:{run.run_id}",
                 "analysis": name,
                 "run_id": run.run_id,
                 "label": run.label,
+                "purpose": meta[0] if meta else "Not cataloged",
                 "coordinate_source": _source(name, cfg),
                 "selection_inputs": _selection_inputs(run.spec),
+                "required_topology": list(REQUIRED_TOPOLOGY.get(name, ())),
+                "topology_requirements_status": ("partial_contract" if name in REQUIRED_TOPOLOGY
+                                                 else "not_registered"),
+                "statistics_eligibility": [
+                    {"family": family,
+                     "status": ("enabled_conditional" if statistics_family_config(cfg, family)
+                                is not None else "disabled")}
+                    for family in candidate_statistics
+                ],
+                "plot_family_eligibility": [
+                    {"family": family,
+                     "status": "enabled_conditional" if plot_enabled(cfg, family) else "disabled"}
+                    for family in candidate_figures
+                ],
                 "artifact_catalog_status": status,
             })
 
@@ -131,6 +196,7 @@ def build_plan(cfg: dict, config_path: str | Path, *,
     if "hydration" in registered_by_name and not any(
             item["analysis"] == "hydration" for item in selected):
         selected.append({
+            "id": "hydration:default",
             "analysis": "hydration", "run_id": "default",
             "label": "Hydration (required by SDC4)",
             "coordinate_source": "source",
