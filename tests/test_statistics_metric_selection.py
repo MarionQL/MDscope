@@ -7,7 +7,7 @@ import pytest
 
 from mdscope.config import DEFAULTS, statistics_family_config, validate_config
 from mdscope.statistics.time_series import analyze_time_series
-from mdscope.statistics.selection import validate_metric_selection
+from mdscope.statistics_selection import validate_metric_selection
 
 
 def _data(root):
