@@ -16,8 +16,9 @@ def build_gallery(base: Path, head: Path, output: Path):
     for label, directory in (("base", base), ("head", head)):
         if not (directory / "preview_manifest.json").is_file():
             raise FileNotFoundError(f"{label} missing preview_manifest.json: {directory}")
-    base_paths = json.loads((base / "preview_manifest.json").read_text())["plots"]
-    head_paths = json.loads((head / "preview_manifest.json").read_text())["plots"]
+    base_manifest = json.loads((base / "preview_manifest.json").read_text())
+    head_manifest = json.loads((head / "preview_manifest.json").read_text())
+    base_paths, head_paths = base_manifest["plots"], head_manifest["plots"]
     all_paths = sorted(set(base_paths) | set(head_paths))
     if not all_paths:
         raise ValueError("No preview plots to compare")
@@ -42,6 +43,11 @@ def build_gallery(base: Path, head: Path, output: Path):
                 panels.append(f'<div class="panel"><strong>{label}</strong>'
                               '<p>Not generated</p></div>')
         diff = ""
+        status = ("Added in head" if right.is_file() and not left.is_file() else
+                  "Removed in head" if left.is_file() and not right.is_file() else
+                  "Both revisions")
+        plot_id = (head_manifest.get("plot_ids", {}).get(name) or
+                   base_manifest.get("plot_ids", {}).get(name))
         if left.is_file() and right.is_file():
             with Image.open(left) as a, Image.open(right) as b:
                 if a.size == b.size:
@@ -56,7 +62,8 @@ def build_gallery(base: Path, head: Path, output: Path):
                         diff = '<div class="panel"><strong>Unchanged pixels</strong></div>'
                 else:
                     diff = '<div class="panel"><strong>Different image dimensions</strong></div>'
-        rows.append(f'<section><h2>{escape(name)}</h2><div class="row">'
+        metadata = f'<p>{escape(status)}' + (f' · Plot ID: {escape(plot_id)}' if plot_id else '') + '</p>'
+        rows.append(f'<section><h2>{escape(name)}</h2>{metadata}<div class="row">'
                     f'{"".join(panels)}{diff}</div></section>')
 
     html = '''<!doctype html>
