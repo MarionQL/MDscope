@@ -117,7 +117,7 @@ def test_unknown_rdf_identity_fails_without_products(tmp_path):
 
 def test_coupling_selection_filters_before_collecting_unrelated_columns(tmp_path, monkeypatch):
     cfg = deepcopy(DEFAULTS)
-    cfg["analyses"]["coupling_screen"]["enabled"] = True
+    cfg["analyses"]["coupling_screen"] = {"enabled": True, "block_frames": 50}
     cfg["statistics"]["metric_selection"] = {"coupling": [
         {"mechanism": "membrane_coupling"}]}
     rep = tmp_path / "s/rep1"
@@ -137,7 +137,7 @@ def test_coupling_selection_filters_before_collecting_unrelated_columns(tmp_path
 
 def test_missing_coupling_is_rejected_before_read(tmp_path, monkeypatch):
     cfg = deepcopy(DEFAULTS)
-    cfg["analyses"]["coupling_screen"]["enabled"] = True
+    cfg["analyses"]["coupling_screen"] = {"enabled": True, "block_frames": 50}
     cfg["statistics"]["metric_selection"] = {"coupling": [
         {"mechanism": "nonexistent"}]}
     with pytest.raises(ValueError, match="Unknown configured coupling"):
