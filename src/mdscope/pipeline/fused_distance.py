@@ -6,13 +6,14 @@ algorithm; only trajectory iteration and checkpoint storage are changed.
 from __future__ import annotations
 
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import re
 import time
 
 import MDAnalysis as mda
 import numpy as np
 
-from ..config import analysis_runs, time_ps
+from ..config import analysis_runs, ensure_dir, time_ps
 from ..observables.membrane_order import _atomic_npz
 from .progress import track
 from ..observables.residue_membrane_distance import (
@@ -127,24 +128,25 @@ class FusedDistances:
 
 
 def run_fused_distances(rep, cfg, repout, *, run_ids=None):
-    """Fallback for systems with no regular streaming stage."""
+    """Compute selected distance runs using disposable scratch chunks."""
     if not enabled_names(cfg) or (run_ids is not None and not run_ids):
         return {}
     tr = cfg["trajectory"]
     u = mda.Universe(str(rep.topology), str(rep.trajectory))
     start = 0 if tr.get("start") is None else int(tr["start"])
     u.trajectory[start]
-    observer = FusedDistances(u, cfg, repout, run_ids=run_ids)
-    observer.prune_from(0)
-    frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr["stride"]))]
     chunk = max(1, int(tr.get("chunk_frames", 1000)))
-    for i, ts in enumerate(track(
-        frames, total=len(frames), desc=f"{rep.system}/{rep.label}: fused distances",
-        enabled=cfg.get("progress", {}).get("enabled", True),
-    )):
-        observer.update(ts, i)
-        if (i + 1) % chunk == 0:
-            observer.flush(i // chunk)
-    if observer.frames % chunk:
-        observer.flush(observer.frames // chunk)
-    return observer.finalize(rep)
+    with TemporaryDirectory(dir=ensure_dir(Path(repout)), prefix=".distance-recovery-") as scratch:
+        observer = FusedDistances(u, cfg, repout, run_ids=run_ids, cache_dir=scratch)
+        observer.prune_from(0)
+        frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr["stride"]))]
+        for i, ts in enumerate(track(
+            frames, total=len(frames), desc=f"{rep.system}/{rep.label}: fused distances",
+            enabled=cfg.get("progress", {}).get("enabled", True),
+        )):
+            observer.update(ts, i)
+            if (i + 1) % chunk == 0:
+                observer.flush(i // chunk)
+        if observer.frames % chunk:
+            observer.flush(observer.frames // chunk)
+        return observer.finalize(rep)
