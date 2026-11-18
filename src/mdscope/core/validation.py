@@ -12,6 +12,7 @@ from ..observables.sasa import sasa_instances
 def validate_selections(cfg, base=Path("."), *, systems=None, emit=None):
     emit = emit or (lambda *args, **kwargs: None)
     base = Path(base)
+    resolved = {}
     for system, spec in cfg["systems"].items():
         if systems is not None and system not in systems:
             continue
@@ -19,6 +20,7 @@ def validate_selections(cfg, base=Path("."), *, systems=None, emit=None):
         topology = topology if topology.is_absolute() else (base / topology).resolve()
         universe = mda.Universe(str(topology))
         counts = resolved_selection_counts(universe, cfg)
+        resolved[system] = counts
         emit(
             f"  {system}: protein={counts['protein']}, "
             f"alignment={counts['alignment']}, features={counts['features']}"
@@ -171,4 +173,4 @@ def validate_selections(cfg, base=Path("."), *, systems=None, emit=None):
                 f"    residue-membrane {run.run_id}: "
                 f"{len(membrane)} membrane atoms"
             )
-
+    return resolved
