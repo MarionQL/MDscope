@@ -18,6 +18,7 @@ def test_import_and_call_maps_on_known_small_package(tmp_path):
     (package / "alpha.py").write_text(
         "from .beta import helper\n"
         "def entry():\n    return helper()\n"
+        "def later():\n    from .beta import helper\n    return helper()\n"
         "class Engine:\n"
         "    def prepare(self):\n        return self.finish()\n"
         "    def finish(self):\n        return 1\n"
@@ -41,6 +42,12 @@ def test_import_and_call_maps_on_known_small_package(tmp_path):
     assert ("samplemd.alpha.entry", "samplemd.beta.helper") in calls
     assert ("samplemd.alpha.Engine.prepare", "samplemd.alpha.Engine.finish") in calls
     assert ("samplemd.nested.worker.execute", "samplemd.beta.helper") in calls
+    assert any(site["source"] == "samplemd.alpha" and
+               site["target"] == "samplemd.beta" and
+               site["phase"] == "deferred" for site in graph["import_sites"])
+    assert any(site["source"] == "samplemd.alpha" and
+               site["target"] == "samplemd.beta" and
+               site["phase"] == "module_load" for site in graph["import_sites"])
 
 
 def test_command_writes_metadata_and_both_graphs(tmp_path):
