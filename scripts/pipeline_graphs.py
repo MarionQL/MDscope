@@ -167,7 +167,7 @@ def write_recovery(path: Path) -> None:
         attrs = f' [label={quote(decision)}]' if decision else ""
         lines.append(f'  {quote(source)} -> {quote(target)}{attrs};')
     lines.append("}")
-    path.write_text("\\n".join(lines) + "\\n", encoding="utf-8")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def write_imports(path: Path, inventory: dict, focused: bool) -> None:
