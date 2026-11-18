@@ -71,9 +71,13 @@ class FusedExtensions:
         if "local_environment" in self.names:
             self._setup_local()
         if "solvation" in self.names:
-            self.solvation = SolvationObserver(universe, cfg, repout)
+            opts = ({"cache_dir": self.cache / "solvation"}
+                    if cache_dir is not None else {})
+            self.solvation = SolvationObserver(universe, cfg, repout, **opts)
         if "hydration" in self.names:
-            self.hydration = HydrationObserver(universe, cfg, repout)
+            opts = ({"cache_dir": self.cache / "hydration"}
+                    if cache_dir is not None else {})
+            self.hydration = HydrationObserver(universe, cfg, repout, **opts)
 
     def _setup_protein_hba(self):
         spec = self.cfg["analyses"]["hydrogen_bonds"]
