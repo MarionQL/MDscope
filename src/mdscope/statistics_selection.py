@@ -20,6 +20,31 @@ SIMPLE_FAMILY_KEYS = {
 # All families have descriptive point summaries. Whether to compute additional
 # inferential products can be configured independently for each selected metric.
 # The default remains True, so older selectors keep their original behavior.
+# Capabilities reflect writer outputs, not GUI assumptions.
+ESTIMATOR_FLAGS = {
+    "time_series": frozenset({"ci", "hypothesis_tests"}),
+    "profiles": frozenset({"ci", "hypothesis_tests"}),
+    "interactions": frozenset({"ci", "hypothesis_tests"}),
+    "solvation_rdfs": frozenset({"ci"}),
+    "diffusion": frozenset({"ci"}),
+    "coupling": frozenset({"ci"}),
+}
+
+
+def _valid_estimator_flags(family, entry):
+    for key in ("inference", "ci", "hypothesis_tests"):
+        if key in entry and not isinstance(entry[key], bool):
+            return False
+    if any(key in entry and key not in ESTIMATOR_FLAGS[family]
+           for key in ("ci", "hypothesis_tests")):
+        return False
+    if entry.get("inference") is False and (
+        entry.get("ci") is True or entry.get("hypothesis_tests") is True
+    ):
+        return False
+    return True
+
+
 INTERACTION_METRICS = frozenset({
     "occupancy", "event_rate_per_ns", "mean_lifetime_ps",
     "median_lifetime_ps", "total_lifetime_ps",
@@ -39,9 +64,9 @@ def validate_metric_selection(stats):
         if family in SIMPLE_FAMILY_KEYS:
             keys = SIMPLE_FAMILY_KEYS[family]
             for entry in entries:
-                if (not isinstance(entry, dict) or set(entry) - (set(keys) | {"inference"})
+                if (not isinstance(entry, dict) or set(entry) - (set(keys) | {"inference", "ci", "hypothesis_tests"})
                         or any(key not in entry for key in keys)
-                        or not isinstance(entry.get("inference", True), bool)
+                        or not _valid_estimator_flags(family, entry)
                         or any(not isinstance(entry.get(key), str) or not entry[key].strip()
                                for key in keys)):
                     raise ValueError(
@@ -55,7 +80,7 @@ def validate_metric_selection(stats):
             continue
         if family == "interactions":
             for entry in entries:
-                if (not isinstance(entry, dict) or set(entry) - {"kind", "interaction", "metric", "inference"}
+                if (not isinstance(entry, dict) or set(entry) - {"kind", "interaction", "metric", "inference", "ci", "hypothesis_tests"}
                         or not isinstance(entry.get("inference", True), bool)
                         or not isinstance(entry.get("kind"), str) or not entry["kind"].strip()
                         or ("interaction" in entry and
@@ -73,7 +98,7 @@ def validate_metric_selection(stats):
                 seen.add(key)
             continue
         for entry in entries:
-            if (not isinstance(entry, dict) or set(entry) - {"metric", "group", "inference"}
+            if (not isinstance(entry, dict) or set(entry) - {"metric", "group", "inference", "ci", "hypothesis_tests"}
                     or not isinstance(entry.get("inference", True), bool)
                     or not isinstance(entry.get("metric"), str)
                     or not entry["metric"].strip()
@@ -178,3 +203,31 @@ def metric_inference(cfg, family, identity):
         and item.get("inference", True)
         for item in entries
     )
+
+
+def metric_estimator_enabled(cfg, family, identity, estimator):
+    """Resolve exact-identity estimator toggles without changing legacy mode.
+
+    For listed metrics, explicit ci/hypothesis_tests settings override
+    inference (default True). Broad interaction selectors are OR-combined.
+    """
+    if estimator not in ESTIMATOR_FLAGS[family]:
+        raise ValueError(f"{family} does not support estimator {estimator}")
+    selectors = cfg.get("statistics", {}).get("metric_selection")
+    if selectors is None or family not in selectors:
+        return True
+    if family == "interactions":
+        kind, interaction, metric = identity
+        matches = [
+            row for row in selectors[family]
+            if row["kind"] == kind
+            and (row.get("interaction") is None or row["interaction"] == interaction)
+            and (row.get("metric") is None or row["metric"] == metric)
+        ]
+    else:
+        keys = ("group", "metric") if family == "time_series" else SIMPLE_FAMILY_KEYS[family]
+        matches = [
+            row for row in selectors[family]
+            if tuple(row.get(key) for key in keys) == tuple(identity)
+        ]
+    return any(row.get(estimator, row.get("inference", True)) for row in matches)
