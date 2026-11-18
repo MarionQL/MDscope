@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config
+from ..statistics_selection import simple_family_selection
 from ..core.persistence import atomic_parquet, ensure_dir
 from ..observables.membrane_order import temporal_membrane_order_profiles
 from ..observables.density_1d import align_density_profiles, temporal_density_profiles
@@ -231,12 +232,15 @@ def analyze_profiles(
     if not cfg.get("statistics", {}).get("enabled", True):
         return
     stats = cfg["statistics"]
+    selected = simple_family_selection(cfg, "profiles")
+    if selected is not None and not selected:
+        return
     draws = int(stats.get("bootstrap_draws", 2000))
     system_draws = draws if stats.get("hierarchy", {}).get("enabled", True) else 0
     level = float(stats.get("ci", 0.95))
     rng = np.random.default_rng(int(stats.get("seed", 2026)) + 1)
     resample = stats.get("hierarchy", {}).get("resample_replicates", True)
-    outdir = ensure_dir(root / "project_summary" / "statistics" / "profiles")
+    outdir = root / "project_summary" / "statistics" / "profiles"
     verbose = cfg.get("progress", {}).get("enabled", True)
     sources = {}
     for system, reps in system_repouts.items():
@@ -249,6 +253,13 @@ def analyze_profiles(
         if sources
         else []
     )
+    if selected is not None:
+        discovered = {(profile,) for profile in profiles}
+        unknown = selected - discovered
+        if unknown:
+            raise ValueError(f"Unknown saved profile identities: {sorted(unknown)}")
+        profiles = [profile for profile in profiles if (profile,) in selected]
+    ensure_dir(outdir)
     rep_points = []
     rep_summary = []
     sys_points = []
