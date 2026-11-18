@@ -249,3 +249,67 @@ def test_merged_temporal_cache_and_selective_rng_can_execute_together():
     assert len(zeros) == 1
     for metric in one:
         np.testing.assert_array_equal(one[metric], two[metric])
+
+
+def test_descriptive_only_time_series_retains_points_without_bootstrapping(tmp_path, monkeypatch):
+    paths = _data(tmp_path / "inputs")
+    cfg = deepcopy(DEFAULTS)
+    cfg["statistics"]["bootstrap_draws"] = 50
+    cfg["statistics"]["metric_selection"] = {"time_series": [
+        {"group": "PROA", "metric": "rmsd_A", "inference": False},
+        {"metric": "membrane_thickness_A", "inference": True},
+    ]}
+    import mdscope.statistics.time_series as module
+    original = module._block_bootstrap
+    calls = []
+    def observed(*args, **kwargs):
+        calls.append(args[2])
+        return original(*args, **kwargs)
+    monkeypatch.setattr(module, "_block_bootstrap", observed)
+    analyze_time_series(cfg, tmp_path, paths)
+    folder = tmp_path / "project_summary/statistics/time_series"
+    rows = pd.read_parquet(folder / "replicate_statistics.parquet")
+    descriptive = rows.loc[rows.metric == "rmsd_A"]
+    infer = rows.loc[rows.metric == "membrane_thickness_A"]
+    assert descriptive.bootstrap_draws.eq(0).all()
+    assert descriptive.mean_ci_low.isna().all()
+    assert descriptive["mean"].notna().all()
+    assert infer.bootstrap_draws.eq(50).all()
+    assert infer.mean_ci_low.notna().all()
+    assert len(calls) == len(infer) * 2
+    systems = pd.read_parquet(folder / "system_statistics.parquet")
+    assert systems.loc[systems.metric.eq("rmsd_A"), "mean_ci_low"].isna().all()
+    contrasts = pd.read_parquet(folder / "system_comparisons.parquet")
+    assert contrasts.loc[contrasts.metric.eq("rmsd_A"), "mean_p_value"].isna().all()
+
+
+def test_descriptive_only_interaction_has_no_ci_or_p_value(tmp_path):
+    from test_interaction_statistics_reference import fixture
+    from mdscope.statistics.interactions import analyze_interactions
+    cfg, reps = fixture(tmp_path / "inputs")
+    cfg["statistics"]["metric_selection"] = {"interactions": [
+        {"kind": "salt_bridges", "interaction": "ASP0 | LYS7 | interchain",
+         "metric": "occupancy", "inference": False},
+    ]}
+    analyze_interactions(cfg, tmp_path, reps)
+    folder = tmp_path / "project_summary/statistics/interactions"
+    rows = pd.read_parquet(folder / "replicate_interaction_metrics.parquet")
+    assert set(rows.metric) == {"occupancy"}
+    assert rows.bootstrap_draws.eq(0).all()
+    assert rows.ci_low.isna().all()
+    assert rows.value.notna().any()
+    comparisons = pd.read_parquet(folder / "system_interaction_comparisons.parquet")
+    assert comparisons.p_value.isna().all()
+    assert comparisons.difference_ci_low.isna().all()
+
+
+@pytest.mark.parametrize("family,entry", [
+    ("time_series", {"metric": "rmsd_A", "inference": "yes"}),
+    ("interactions", {"kind": "salt_bridges", "inference": None}),
+    ("profiles", {"profile": "rmsf", "inference": 1}),
+    ("diffusion", {"metric": "DOPC", "inference": []}),
+])
+def test_per_metric_inference_flag_must_be_boolean(family, entry):
+    from mdscope.statistics_selection import validate_metric_selection
+    with pytest.raises(ValueError, match="metric_selection"):
+        validate_metric_selection({"metric_selection": {family: [entry]}})
