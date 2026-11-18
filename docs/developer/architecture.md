@@ -32,6 +32,73 @@ flowchart TD
 
 Key interfaces: `cli.py`, `config.py` (`analysis_runs`, `iter_replicates`), `registry.py` (`analysis_output_plan`, `required_artifacts`), `pipeline/runner.py`, `pipeline/streaming.py`.
 
+## Inspect the current module and call graph
+
+Run from a checkout with Python 3.11+ (and optionally an installed `mdscope`
+distribution):
+
+```bash
+python scripts/architecture_map.py --output /tmp/mdscope-architecture
+# Optional: Graphviz turns DOT graphs into browsable SVGs:
+dot -Tsvg /tmp/mdscope-architecture/modules.dot -o /tmp/mdscope-architecture/modules.svg
+dot -Tsvg /tmp/mdscope-architecture/calls.dot -o /tmp/mdscope-architecture/calls.svg
+```
+
+`architecture.json` contains sorted module dependencies, statically resolved
+function calls, multi-module strongly connected components (SCCs), source
+revision, Python version, platform and installed distribution version.
+The corresponding `modules.dot` and `calls.dot` are generated from
+**the current `src/mdscope/` tree**. The CI checks also publish these
+files as an `mdscope-architecture-map` artifact. Do not review the old
+`analysis/` pyan3 graph as though it represented the current package.
+
+**Static limitations:** imports within conditionals/functions count as
+*possible* dependencies, not observed execution; calls are only recognized
+when they resolve to a known function or direct method. Decorators, callbacks,
+dynamic imports, aliased attributes and reexports can be missed or misleading.
+SCCs flag places to inspect; they do **not** prove a runtime circular-import
+failure. No trajectory, checkpoint or scientific calculation is executed.
+
+| Responsibility | Canonical owner | Avoid |
+|---|---|---|
+| YAML defaults, schema, user selection configuration | `config.py`, `config_schema.py` | Another Studio-only configuration engine |
+| Topology/selection checks | `core/validation.py`, `core/atom_selection.py` | GUI parsing MDAnalysis expressions independently |
+| Atomic writes, archiving, checkpoints | `core/persistence.py`, `core/checkpoints.py` | New output writers inside scientific kernels |
+| Numeric observables and interaction identity | `observables/`, `interactions/interaction_tables.py` | Re-implementing measurements in the planner |
+| Streaming, scheduling, restart and project finalization | `pipeline/streaming.py`, `pipeline/runner.py` | An extra trajectory pass for each observer |
+| Replica-aware inference, resampling, comparisons | `statistics/` | Treating frames as independent replicates |
+| Figure generation and provenance | `reporting/` | Synthetic-preview-only rendering code |
+| Run/output introspection | `planning.py` over `registry.py` | Duplicate expected-output filename lists |
+
+### Follow an RMSD group from YAML to figure
+
+1. In YAML, define a named `selections.groups.acidic_patch` containing an
+   **MDAnalysis** selection such as `segid PROA and resid 35:62`, with optional
+   independent `alignment_selection`. Enable `analyses.rmsd` and choose the
+   group using its ID. This example requires a matching user topology.
+2. `mdscope plan analysis.yaml --format json --check-topology` calls the
+   existing configuration/planning and topology preflight; no XTC is read.
+3. `mdscope replicate analysis.yaml --index 0` validates the topology before
+   `pipeline/streaming.py::run_streaming_pass`. Membrane observers see
+   **source coordinates before fitting**. RMSD uses fitted features when
+   alignment is enabled (otherwise source positions); individual groups may
+   have separate fitting atoms. Sharing this loop avoids redundant XTC reads.
+4. The streaming pass commits chunked raw data. `pipeline/runner.py` merges
+   these into the replica's `summary/group_timeseries.parquet`, including
+   `group`, `time_ps` and `rmsd_A` among supported columns. Atomic writes
+   and checkpoint inventory support safe resume.
+5. Offline `statistics/time_series.py` can estimate replica-aware summaries
+   and condition comparisons from saved products. It does **not** revisit XTC.
+   `reporting/plotting.py` can also render a selected descriptive RMSD
+   time-series PNG directly from saved replica data; inferential plots require
+   their corresponding completed statistical products.
+
+**Import cleanup rule:** `core.persistence` owns filesystem utilities, but
+`config.py` currently reexports some of them. Keep compatibility until all
+consumers have been audited; prefer direct canonical imports in *new* code.
+`interactions/__init__.py` likewise retains a legacy export surface.
+Neither is justification for introducing a second implementation.
+
 ## Files and lifecycle
 
 | `project.output` path | Purpose | Keep? |
