@@ -91,8 +91,17 @@ def test_named_run_registered_products_reuse_actual_registry(tmp_path, project):
         for item in plan["registered_replica_outputs"]
     })
     assert actual == expected
-    assert all(item["columns_status"] == "not_registered"
-               for item in plan["registered_replica_outputs"])
+    sasa = [item for item in plan["registered_replica_outputs"]
+            if item["analysis"] == "sasa" and item["path_within_replica"].endswith("residue_sasa.parquet")]
+    assert len(sasa) == 2
+    assert all(item["columns"] == ["time_ps", "topology_residue_index",
+                                    "residue", "sasa_nm2"] for item in sasa)
+    distance = next(item for item in plan["registered_replica_outputs"]
+                    if item["path_within_replica"].endswith("distance_matrix_A.npy"))
+    assert distance["shape_axes"] == ["sampled_frames", "selected_residues"]
+    assert distance["dtype"] == "float32"
+    assert distance["units"] == "angstrom"
+    assert plan["coverage"]["partial_verified_column_schemas"] is True
     assert {item["run_id"] for item in plan["analyses"]
             if item["analysis"] == "sasa"} == {"isolated", "environment"}
     assert any(item["path_within_replica"].endswith("residue_burial.parquet")
