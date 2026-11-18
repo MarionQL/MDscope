@@ -21,140 +21,62 @@ Use `run_mdscope.sh`, `statistics_mdscope.sh`, `plotting_mdscope.sh` and `finali
 
 The statistics job reports its current stage and elapsed time in `slurm-out/mdscope/mdscope_statistics-<jobid>.out`. Long stages print a heartbeat every minute. Set `progress.enabled: false` to suppress progress messages.
 
-## Selective time-series and interaction inference (issue #179)
+## Selective statistics (issue #179)
 
-Existing YAML without `statistics.metric_selection` retains all enabled
-family-level inference. An explicit `time_series: []` computes **no**
-time-series inference, even when raw RMSD, lipid and membrane analyses remain
-enabled. Match the persisted `(group, metric)` identity exactly:
-
-```yaml
-statistics:
-  metric_selection:
-    time_series:
-      - {group: PROA, metric: rmsd_A}
-      - {metric: membrane_thickness_A}
-      - {group: lipid_contacts/upper/DOPC/GM1a, metric: enrichment}
-```
-
-Omit `group` for the ungrouped summary series. The lipid-contact group uses
-the exact saved `lipid_contacts/<leaflet>/<species_a>/<species_b>` identity.
-`mdscope plan` reports the requested identities and marks dynamic identities
-as saved-data-dependent. Interaction inference uses the **canonical saved** label built from
-`interaction_key_columns`, not a new ID. Select an entire interaction kind,
-one exact identity, or one metric on that identity:
-
-```yaml
-statistics:
-  metric_selection:
-    interactions:
-      - {kind: salt_bridges, interaction: "PROA:ASP12 | PROB:LYS7 | interchain", metric: occupancy}
-      - {kind: lipid_hydrogen_bonds, metric: event_rate_per_ns}
-```
-
-The interaction string shown is illustrative, **not** a guaranteed identity
-for any saved dataset. Allowed metrics are `occupancy`,
-`event_rate_per_ns`, `mean_lifetime_ps`, `median_lifetime_ps` and
-`total_lifetime_ps`. Omitting `interaction` means all identities of that
-kind; omitting `metric` selects all five metrics. An explicit
-`interactions: []` computes no interaction statistics. Missing saved
-identities fail before statistical outputs are written. The existing
-`interaction_min_occupancy` filter still applies to selected identities.
-
-The same optional `metric_selection` contract now supports all statistics
-families. Each selector uses the scientific identity actually persisted by its
-writer; no inferred residue/site IDs or RDF-bin pseudo-replicates are created:
-
-```yaml
-statistics:
-  metric_selection:
-    profiles:
-      - {profile: rmsf}
-    solvation_rdfs:
-      - {solvent: water, target_class: protein, site_class: carboxylate}
-    diffusion:
-      - {metric: DOPC}
-    coupling:
-      - {mechanism: membrane_coupling}
-```
-
-Profile names and diffusion metric strings above are illustrative: check the
-saved outputs or `mdscope plan` and use the exact names in your data. An
-empty list for any family disables that family's statistical work. Every
-selected metric defaults to `inference: true`; set `inference: false`
-to retain descriptive point estimates without computing block-bootstrap or
-hierarchical CIs, permutation p-values, or other inferential contrasts:
-
-```yaml
-statistics:
-  metric_selection:
-    time_series:
-      - {group: PROA, metric: rmsd_A, inference: true}
-      - {metric: membrane_thickness_A, inference: false}
-    interactions:
-      - {kind: salt_bridges, metric: occupancy, inference: false}
-plots:
-  # Statistical figures are independently controlled by explicit plot IDs.
-  include:
-    - "time_series:rmsd_A:bootstrap_table"
-```
-
-An inference-disabled metric cannot produce a valid interval or p-value;
-columns retained for output compatibility are null, with zero bootstrap draws.
-The `inference` flag is shorthand for both estimators. To request only
-one, set `ci` and `hypothesis_tests` independently on a selected time-series,
-profile or interaction metric:
+Use exact **saved** metric identities. Omitting `statistics.metric_selection`
+preserves legacy inference; a family set to `[]` skips its statistics without
+disabling raw analyses.
 
 ```yaml
 statistics:
   metric_selection:
     time_series:
       - {group: PROA, metric: rmsd_A, ci: true, hypothesis_tests: false}
-      - {metric: membrane_thickness_A, ci: false, hypothesis_tests: true}
+      - {metric: membrane_thickness_A, inference: false}
+    interactions:
+      - {kind: salt_bridges, metric: occupancy}
+    profiles:
+      - {profile: rmsf}
+    solvation_rdfs:
+      - {solvent: water, target_class: protein, site_class: acidic}
+    diffusion:
+      - {metric: DOPC}
+    coupling:
+      - {mechanism: membrane_coupling}
+plots:
+  include: ["time_series:rmsd_A:bootstrap_table"]
 ```
 
-The first produces point summaries and bootstrap CIs without permutation
-tests or q-values. The second produces point summaries and permutation
-tests without bootstrap CIs. RDF, diffusion and coupling writers support
-`ci` (replica or first-shell contrasts), but **not**
-`hypothesis_tests`; unsupported requests fail YAML validation. A
-contradictory `inference: false, ci: true` is invalid. Omitted
-`inference` and estimator flags preserve the original calculation.
+| Family | Identity | Selectable inference |
+|---|---|---|
+| `time_series` | `group`, `metric` | CI, hypothesis tests |
+| `interactions` | `kind`, optional `interaction`, optional `metric` | CI, hypothesis tests |
+| `profiles` | `profile` | CI, hypothesis tests |
+| `solvation_rdfs` | `solvent`, `target_class`, `site_class` | Shell contrast |
+| `diffusion` | `metric` | Replicate contrast |
+| `coupling` | `mechanism` | Replicate contrast |
 
-For whole-curve RDF selectors, `inference: false` retains descriptive
-g(r) and replicate dispersion but disables first-shell contrasts. For
-diffusion and coupling it retains per-replica estimates without
-between-condition inferential contrasts. Missing selectors preserve the
-original numerical behavior. Unknown
-saved identities are rejected before numerical outputs are written. RDF
-selection includes all radial bins for the selected chemical class, preserving
-shell integration and replica-level inference; diffusion selection includes
-its full lag grid. Coupling names are checked against configured pairs.
-Raw analyses and `plots.include` remain independently controlled.
+Selectors default to `inference: true`. Use `inference: false` for
+descriptive-only statistics; for the first three families, `ci` and
+`hypothesis_tests` can be toggled separately. Unsupported estimator
+combinations fail validation. All requested identities must exist in saved
+data; example IDs above are illustrative. An omitted interaction identity
+selects every identity of that kind, and an omitted interaction metric
+selects all five supported interaction statistics. The existing occupancy
+threshold still applies.
 
-`mdscope plan` exposes each family's identity fields, supported estimators,
-conditional output paths and figure-ID patterns. After a completed
-statistics run, `mdscope.planning.inspect_saved_statistics(output_root)`
-provides the **actual** Parquet column schemas and saved metric identities
-in a read-only, bounded catalog (`max_identities` defaults to 256;
-`identities_truncated` flags incomplete identity lists). This is intended
-for Studio's data-backed metric card; it does not open trajectories.
- Most concrete identities
-are **saved-data-dependent**; the plan does not fabricate them.
+`mdscope plan` exposes analysis/run candidates, identity fields, estimator
+eligibility, conditional files, and figure-ID patterns without reading XTCs.
+For completed outputs, `mdscope.planning.inspect_saved_statistics(root)`
+reads actual Parquet schemas and saved IDs with a bounded identity limit.
+Dynamic IDs are never invented.
 
-Selections filter before temporal bootstrap/CI/permutation calculations and
-avoid reading irrelevant top-level saved source tables where possible.
-Interaction selection skips unrelated kinds and interaction identities before
-the expensive per-identity loop. Selective inference uses identity-keyed
-Monte Carlo streams so changing the selection does not shift existing selected
-identities' bootstrap and permutation results. **BH q-values may change**
-when the selected hypothesis family changes; this is mathematically required,
-not RNG instability. The legacy no-selector RNG sequence remains unchanged. For a selected identity, the shared temporal
-bootstrap kernel still prepares all five summary arrays; unselected metrics
-skip CI, hierarchy, comparisons, and persistence. This is not yet full
-metric-specific kernel factorization (see #156).
-Statistical products are regenerated with the existing archive/manifest
-contract; previous results are not silently reused after selection changes.
+Raw analyses, metric inference, and `plots.include` are independently
+controlled. CIs and p/q-values are null when inference is disabled; paired
+design and replica-level uncertainty rules are unchanged. Selective
+Monte Carlo streams are identity-stable; BH q-values may change when the
+hypothesis family changes. Statistics reruns archive previous products.
+See #156 for deeper per-metric bootstrap-kernel factorization.
 
 ## Data flow
 
