@@ -253,6 +253,19 @@ def build_plan(cfg: dict, config_path: str | Path, *,
                       for file in STATISTICS_CANDIDATES[family]],
             "files_status": "conditional_candidates_from_statistics_writers",
             "independent_condition_units": "simulation_replicates",
+            "metric_selection": (
+                cfg.get("statistics", {}).get("metric_selection", {}).get("time_series")
+                if family == "time_series" and
+                cfg.get("statistics", {}).get("metric_selection") is not None
+                else None
+            ),
+            "metric_identity": (
+                ["group", "metric"] if family == "time_series" else None
+            ),
+            "metric_identity_status": (
+                "saved_data_dependent; no dynamic identities invented"
+                if family == "time_series" else "not_yet_registered"
+            ),
         })
     if (cfg.get("statistics", {}).get("matched_window_ps") is not None and
             statistics_family_config(cfg, "time_series") is not None):
