@@ -96,8 +96,9 @@ failure. No trajectory, checkpoint or scientific calculation is executed.
 **Import cleanup rule:** `core.persistence` owns filesystem utilities, but
 `config.py` currently reexports some of them. Keep compatibility until all
 consumers have been audited; prefer direct canonical imports in *new* code.
-`interactions/__init__.py` likewise retains a legacy export surface.
-Neither is justification for introducing a second implementation.
+`interactions/__init__.py` explicitly reexports the existing interaction
+function API rather than using `import *`; new consumers should import from
+the owning submodule directly. Neither boundary justifies a second implementation.
 
 ## Files and lifecycle
 
