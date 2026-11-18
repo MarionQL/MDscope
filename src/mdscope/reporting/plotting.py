@@ -676,7 +676,8 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
             elif variant == "lifetime_distribution":
                 needed.add("lifetimes")
         table_names = tuple(sorted(needed))
-        kinds.update(selected_kinds or ())
+        kinds.update((selected_kinds or set()) - set(
+            cfg.get("plots", {}).get("interaction_exclude_kinds", [])))
     for system, reps in system_repouts.items():
         for repout in reps:
             tables[(system, repout.name)] = (
@@ -693,8 +694,8 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
         / "system_interaction_metrics.parquet"
     )
     needs_stats = selected is None or any(
-        item.startswith("interactions:") and item.endswith(":bootstrap_table")
-        for item in selected)
+        item.startswith("interactions:") and item.rsplit(":", 1)[-1] in
+        {"bootstrap_table", "comparison_table"} for item in selected)
     needs_comp = selected is None or any(
         item.startswith("interactions:") and item.endswith(":comparison_table")
         for item in selected)
