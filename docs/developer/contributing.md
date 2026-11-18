@@ -22,7 +22,7 @@ python scripts/plot_preview.py --output /tmp/mdscope-preview
 # Open PNGs under /tmp/mdscope-preview/project_summary/figures in VS Code
 ```
 
-Previews call the **production** time-series plotter using deterministic fake Parquet data (no TPR/XTC or statistics). Every PNG is marked **SYNTHETIC – NOT MD RESULTS**. Plotting-related PRs run the `MDscope figure review` GitHub Action, which renders identical fixture data with base/head code and uploads `mdscope-figure-review` containing an `index.html` before/after gallery and pixel differences. Inspect labels, legends, axes, units and clipping; the gallery is not an automatic scientific-validity gate. Add fixture schemas for other renderers as they are refactored, rather than building substitute drawing implementations.
+Previews call the **production** figure renderers using deterministic fake saved tables and arrays (no TPR/XTC or statistical inference). They include time series, profiles, condition contrasts, interaction occupancy/lifetimes, RDFs, survival curves, lipid enrichment/contacts, diffusion, and SDC4 maps/states. Every PNG carries a prominent **SYNTHETIC EXAMPLE — NOT MD RESULTS** header outside the plotting area. Plotting PRs run the `MDscope figure review` GitHub Action; its `mdscope-figure-review` artifact contains `index.html` (all figures), `selection/index.html` (single-plot selection comparison), and baseline/head PNG differences. Inspect labels, legends, axes, units and clipping. The gallery is not an automatic scientific-validity gate; when adding a new renderer, extend the saved-data fixture rather than build a substitute plotting function.
 
 ## Change checklist
 
