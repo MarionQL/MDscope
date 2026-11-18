@@ -203,6 +203,7 @@ DEFAULTS = {
     "cache": {"aligned_coordinates": True, "dtype": "float32", "keep": True},
     "plots": {
         "enabled": False,
+        "include": None,
         "min_occupancy": 0.05,
         "time_series": True,
         "distributions": False,
@@ -851,6 +852,8 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
     if (not isinstance(families, dict) or set(families) - allowed
             or any(not isinstance(value, bool) for value in families.values())):
         raise ValueError("plots.families must map known families to booleans")
+    from .reporting.plot_ids import validate_plot_ids
+    validate_plot_ids(plots.get("include"))
     excluded = plots.get("interaction_exclude_kinds", [])
     if not isinstance(excluded, list) or any(not isinstance(value, str) for value in excluded):
         raise ValueError("plots.interaction_exclude_kinds must be a list")
@@ -978,10 +981,22 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
 
 
 def plot_enabled(cfg, family):
-    """Resolve the master, family and per-plot switches."""
+    """Resolve master/family switches; skip entirely unselected families."""
     options = cfg.get("plots", {})
-    return (options.get("enabled", True) and options.get("families", {}).get(family, True)
-            and options.get(family, True))
+    if (not options.get("enabled", True)
+            or not options.get("families", {}).get(family, True)
+            or not options.get(family, True)):
+        return False
+    selected = options.get("include")
+    return selected is None or any(item.startswith(f"{family}:") for item in selected)
+
+
+def figure_enabled(cfg, plot_id):
+    """A specific figure is eligible only when all its switches allow it."""
+    if not plot_enabled(cfg, plot_id.split(":", 1)[0]):
+        return False
+    selected = cfg.get("plots", {}).get("include")
+    return selected is None or plot_id in selected
 
 
 def statistics_family_config(cfg, family):
