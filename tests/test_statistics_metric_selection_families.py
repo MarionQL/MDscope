@@ -295,3 +295,32 @@ def test_descriptive_only_coupling_skips_replica_contrasts(tmp_path):
     folder = tmp_path / "project_summary/statistics/coupling"
     assert (folder / "replicate_correlations.parquet").exists()
     assert not (folder / "system_comparisons.parquet").exists()
+
+
+def test_profile_selected_rng_stable_under_extra_profiles(tmp_path, monkeypatch):
+    cfg, reps = fixture(tmp_path / "input")
+    cfg["statistics"]["bootstrap_draws"] = 30
+    import mdscope.statistics.profiles as module
+    profiles = _profiles(reps)
+    for rep in profiles:
+        profiles[rep]["other"] = profiles[rep]["profile"]
+    monkeypatch.setattr(module, "collect_temporal_profiles",
+                        lambda rep, config: profiles[rep])
+    cfg["statistics"]["metric_selection"] = {"profiles": [{"profile": "profile"}]}
+    analyze_profiles(cfg, tmp_path / "first", reps)
+    cfg["statistics"]["metric_selection"]["profiles"].append({"profile": "other"})
+    analyze_profiles(cfg, tmp_path / "second", reps)
+    folder = "project_summary/statistics/profiles"
+    for file in ("replicate_profile_statistics.parquet",
+                 "system_profiles.parquet", "system_comparisons.parquet"):
+        path_a = tmp_path / "first" / folder / file
+        if not path_a.is_file():
+            continue
+        a = pd.read_parquet(path_a)
+        b = pd.read_parquet(tmp_path / "second" / folder / file)
+        a = a.loc[a.profile == "profile"].reset_index(drop=True)
+        b = b.loc[b.profile == "profile"].reset_index(drop=True)
+        if "q_value" in a.columns:
+            a = a.drop(columns=["q_value"])
+            b = b.drop(columns=["q_value"])
+        pd.testing.assert_frame_equal(a, b, check_exact=True)
