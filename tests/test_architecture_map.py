@@ -116,7 +116,8 @@ def test_pipeline_graphs_reuse_live_architecture_inventory(tmp_path):
     assert "mdscope.pipeline.streaming" in inventory["modules"]
     execution = (output / "execution.dot").read_text()
     assert "streaming: shared primary frame pass" in execution
-    assert "fused_all: observer-only shared frame loop" in execution
+    assert '"fusedonly" [' in execution
+    assert '"choice" -> "fusedonly"' in execution
     assert "FusedMembrane" in execution and "FusedExtensions" in execution
     focused = (output / "imports_focused.dot").read_text()
     assert '"mdscope.pipeline.runner"' in focused
