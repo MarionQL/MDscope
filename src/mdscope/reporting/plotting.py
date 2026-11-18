@@ -18,7 +18,7 @@ from ..config import plot_enabled, figure_enabled, ensure_dir, replicate_label, 
 from ..interactions import interaction_tables
 from ..statistics import collect_time_series, finite
 from .figure_inventory import current_statistics
-from .plot_ids import id_from_figure_path
+from .plot_ids import id_from_figure_path, figure_dpi
 
 
 from .labels import METRIC_LABELS, _metric_meta
@@ -43,7 +43,8 @@ def _safe(text) -> str:
 def _save(fig, path: Path, cfg: dict):
     ensure_dir(path.parent)
     fig.tight_layout()
-    fig.savefig(path, dpi=int(cfg.get("plots", {}).get("dpi", 250)), bbox_inches="tight")
+    dpi = figure_dpi(cfg, id_from_figure_path(path), cfg.get("plots", {}).get("dpi", 250))
+    fig.savefig(path, dpi=int(dpi), bbox_inches="tight")
     plt.close(fig)
 
 
