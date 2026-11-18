@@ -447,7 +447,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                         "interaction_type": kind,
                         "interaction": interaction,
                         "metric": metric,
-                                  "difference_system2_minus_system1": (float(np.nanmean(delta)) if system_draws
+                                  "difference_system2_minus_system1": (float(np.nanmean(delta)) if local_system_draws and metric_infer[metric] and len(delta)
                                       else _point_difference(amap, bmap, paired,
                                             "median" if metric == "median_lifetime_ps" else "mean")),
                                   "difference_ci_low": lo, "difference_ci_high": hi,
