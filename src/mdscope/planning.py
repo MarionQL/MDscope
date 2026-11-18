@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import analysis_runs, iter_replicates, plot_enabled, statistics_family_config
-from .registry import analysis_output_plan, required_artifacts
+from .registry import analysis_output_plan, required_artifacts, artifact_schema
 from .statistics import STATISTICS_FAMILIES
 
 
@@ -107,9 +107,7 @@ def build_plan(cfg: dict, config_path: str | Path, *,
                 "format": _format(path),
                 "role": "primary" if index == 0 else "required_companion",
                 "status": "registered_required",
-                "columns": None,  # Not all producers register a column schema.
-                "columns_status": "not_registered",
-                "units": None,
+                **artifact_schema(entry, Path(path)),
                 "rows": None,  # No trajectory sampling has been inspected.
             })
 
@@ -225,6 +223,7 @@ def build_plan(cfg: dict, config_path: str | Path, *,
             "registered_artifact_contracts": True,
             "all_generated_files_cataloged": False,
             "parquet_and_npz_schemas_cataloged": False,
+            "partial_verified_column_schemas": True,
             "individual_figure_ids_cataloged": False,
             "unregistered_analysis_names": sorted({
                 item["analysis"] for item in selected
@@ -234,6 +233,7 @@ def build_plan(cfg: dict, config_path: str | Path, *,
         "notes": [
             "Registered artifact paths are per-replica relative paths, not completed files.",
             "Some optional raw/cache/profiles and specialized statistics products are not yet cataloged.",
+            "Fixed-column schemas are described for verified producer paths only; dynamic columns remain unregistered.",
             "Enabled statistics/figures are conditional on supported saved inputs, not guaranteed results.",
             "Coordinate-frame labels describe input streams, not PBC or reference-model suitability.",
             "Missing/unavailable numerical values must not be silently treated as measured zeros.",
