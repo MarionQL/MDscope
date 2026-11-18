@@ -227,3 +227,71 @@ def test_selected_coupling_requires_analysis_enabled(tmp_path):
         {"mechanism": "membrane_coupling"}]}
     with pytest.raises(ValueError, match="coupling_screen.enabled"):
         analyze_coupling(cfg, tmp_path, {"a": []})
+
+
+def test_descriptive_only_profile_retains_position_points_without_ci(tmp_path, monkeypatch):
+    cfg, reps = fixture(tmp_path / "input")
+    import mdscope.statistics.profiles as module
+    sources = _profiles(reps)
+    monkeypatch.setattr(module, "collect_temporal_profiles",
+                        lambda rep, config: sources[rep])
+    cfg["statistics"]["metric_selection"] = {
+        "profiles": [{"profile": "profile", "inference": False}]
+    }
+    monkeypatch.setattr(module, "_block_bootstrap",
+                        lambda *args, **kwargs: (_ for _ in ()).throw(
+                            AssertionError("No bootstrap expected")))
+    analyze_profiles(cfg, tmp_path, reps)
+    folder = tmp_path / "project_summary/statistics/profiles"
+    result = pd.read_parquet(folder / "system_profiles.parquet")
+    assert result.bootstrap_draws.eq(0).all()
+    assert result.mean.notna().all()
+    assert result.mean_ci_low.isna().all()
+    if (folder / "system_comparisons.parquet").exists():
+        comparisons = pd.read_parquet(folder / "system_comparisons.parquet")
+        assert comparisons.p_value.isna().all()
+
+
+def test_descriptive_only_rdf_skips_shell_comparison(tmp_path):
+    rep = tmp_path / "s/rep1"
+    path = rep / "extensions/solvation/rdf.parquet"
+    path.parent.mkdir(parents=True)
+    pd.DataFrame({
+        "solvent": ["water", "water"],
+        "target_class": ["protein", "protein"],
+        "site_class": ["acidic", "acidic"],
+        "r_inner_A": [0., 1.], "r_outer_A": [1., 2.],
+        "g_bulk": [1.2, 1.4],
+    }).to_parquet(path)
+    cfg = deepcopy(DEFAULTS)
+    cfg["statistics"]["metric_selection"] = {"solvation_rdfs": [
+        {"solvent": "water", "target_class": "protein",
+         "site_class": "acidic", "inference": False}
+    ]}
+    analyze_solvation_rdfs(cfg, tmp_path, {"s": [rep]})
+    directory = tmp_path / "project_summary/statistics/solvation"
+    assert (directory / "system_rdf.parquet").is_file()
+    assert not (directory / "rdf_shell_comparisons.parquet").exists()
+
+
+def test_descriptive_only_coupling_skips_replica_contrasts(tmp_path):
+    cfg = deepcopy(DEFAULTS)
+    cfg["analyses"]["coupling_screen"] = {"enabled": True, "block_frames": 20}
+    cfg["statistics"]["metric_selection"] = {"coupling": [
+        {"mechanism": "membrane_coupling", "inference": False}
+    ]}
+    paths = {"s": []}
+    for i in range(2):
+        rep = tmp_path / "s" / f"rep{i}"
+        path = rep / "summary/timeseries.parquet"
+        path.parent.mkdir(parents=True)
+        pd.DataFrame({
+            "time_ps": np.arange(200, dtype=float),
+            "local_protein_lipid_contact_residues_count": np.arange(200, dtype=float) + i,
+            "membrane_thickness_A": np.linspace(30, 33, 200),
+        }).to_parquet(path)
+        paths["s"].append(rep)
+    analyze_coupling(cfg, tmp_path, paths)
+    folder = tmp_path / "project_summary/statistics/coupling"
+    assert (folder / "replicate_correlations.parquet").exists()
+    assert not (folder / "system_comparisons.parquet").exists()
