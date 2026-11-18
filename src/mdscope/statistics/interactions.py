@@ -75,7 +75,7 @@ def _interaction_bootstrap(
         meta = _temporal(presence, times, cfg)
         if absent and zero_meta_cache is not None:
             zero_meta_cache[rep_key] = meta
-    key = (rep_key, n, meta["block_length_frames"])
+    key = (rep_key, n, meta["block_length_frames"], draws)
     # Reuse the same block weights for all interactions from one
     # replicate/block length; this is a major speed/memory win when
     # thousands of pairs are present.
