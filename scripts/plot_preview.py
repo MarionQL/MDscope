@@ -247,13 +247,23 @@ def create_fixture(root: Path):
 
 
 def mark_synthetic(path: Path):
-    """Mark the preview copy, not the underlying production renderer."""
+    """Add a visible caption *outside* the renderer's axes and title."""
+    from PIL import ImageFont
+
     with Image.open(path) as original:
-        frame = original.convert("RGB")
-    draw = ImageDraw.Draw(frame)
-    draw.rectangle((7, 7, 273, 27), fill="white", outline="black", width=1)
-    draw.text((12, 12), "SYNTHETIC - NOT MD RESULTS", fill="black")
-    frame.save(path)
+        figure = original.convert("RGB")
+    caption_height = 40
+    captioned = Image.new("RGB", (figure.width, figure.height + caption_height), "white")
+    captioned.paste(figure, (0, caption_height))
+    draw = ImageDraw.Draw(captioned)
+    try:
+        font = ImageFont.truetype("DejaVuSans.ttf", 17)
+    except OSError:
+        font = ImageFont.load_default()
+    draw.text((12, 9), STAMP, fill="black", font=font)
+    draw.line((0, caption_height - 1, figure.width, caption_height - 1),
+              fill=(140, 140, 140), width=1)
+    captioned.save(path)
 
 
 def render_preview(root: Path):
