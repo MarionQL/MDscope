@@ -81,7 +81,7 @@ def validate_metric_selection(stats):
         if family == "interactions":
             for entry in entries:
                 if (not isinstance(entry, dict) or set(entry) - {"kind", "interaction", "metric", "inference", "ci", "hypothesis_tests"}
-                        or not isinstance(entry.get("inference", True), bool)
+                        or not _valid_estimator_flags(family, entry)
                         or not isinstance(entry.get("kind"), str) or not entry["kind"].strip()
                         or ("interaction" in entry and
                             (not isinstance(entry["interaction"], str) or not entry["interaction"].strip()))
@@ -99,7 +99,7 @@ def validate_metric_selection(stats):
             continue
         for entry in entries:
             if (not isinstance(entry, dict) or set(entry) - {"metric", "group", "inference", "ci", "hypothesis_tests"}
-                    or not isinstance(entry.get("inference", True), bool)
+                    or not _valid_estimator_flags(family, entry)
                     or not isinstance(entry.get("metric"), str)
                     or not entry["metric"].strip()
                     or (entry.get("group") is not None
