@@ -160,12 +160,24 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
     sys_stats_path = (
         root / "project_summary" / "statistics" / "time_series" / "system_statistics.parquet"
     )
-    rep_stats = pd.read_parquet(rep_stats_path) if rep_stats_path.exists() and stats_allowed else pd.DataFrame()
-    sys_stats = pd.read_parquet(sys_stats_path) if sys_stats_path.exists() and stats_allowed else pd.DataFrame()
+    needs_replicate_stats = (include is None or any(
+        item.startswith("time_series:") and item.rsplit(":", 1)[-1] in
+        {"autocorrelation", "bootstrap_table"} for item in include))
+    needs_system_stats = (include is None or any(
+        item.startswith("time_series:") and item.endswith(":bootstrap_table")
+        for item in include))
+    needs_comparisons = (include is None or any(
+        item.startswith("time_series:") and item.endswith(":comparison_table")
+        for item in include))
+    rep_stats = (pd.read_parquet(rep_stats_path) if rep_stats_path.exists()
+                 and stats_allowed and needs_replicate_stats else pd.DataFrame())
+    sys_stats = (pd.read_parquet(sys_stats_path) if sys_stats_path.exists()
+                 and stats_allowed and needs_system_stats else pd.DataFrame())
     comp_stats_path = (
         root / "project_summary" / "statistics" / "time_series" / "system_comparisons.parquet"
     )
-    comp_stats = pd.read_parquet(comp_stats_path) if comp_stats_path.exists() and stats_allowed else pd.DataFrame()
+    comp_stats = (pd.read_parquet(comp_stats_path) if comp_stats_path.exists()
+                  and stats_allowed and needs_comparisons else pd.DataFrame())
 
     for group_id, metric in sorted(keys, key=lambda x: (str(x[0]), x[1])):
         title, ylabel = _metric_meta(metric)
@@ -386,15 +398,20 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
         return
     reps, systems_df = pd.read_parquet(replicate_path), pd.read_parquet(system_path)
     comparisons_path = stats_dir / "system_comparisons.parquet"
-    comparisons = (
-        pd.read_parquet(comparisons_path) if comparisons_path.exists() else pd.DataFrame()
-    )
+    needs_contrasts = (selected is None or any(
+        item.startswith("profiles:") and item.rsplit(":", 1)[-1] in
+        {"system_difference", "comparison_table"} for item in selected))
+    needs_bootstrap_tables = (selected is None or any(
+        item.startswith("profiles:") and item.endswith(":bootstrap_table")
+        for item in selected))
+    comparisons = (pd.read_parquet(comparisons_path)
+                   if needs_contrasts and comparisons_path.exists() else pd.DataFrame())
     global_path = stats_dir / "system_profile_statistics.parquet"
-    global_stats = pd.read_parquet(global_path) if global_path.exists() else pd.DataFrame()
+    global_stats = (pd.read_parquet(global_path) if needs_bootstrap_tables
+                    and global_path.exists() else pd.DataFrame())
     rep_summary_path = stats_dir / "replicate_profile_statistics.parquet"
-    rep_summary = (
-        pd.read_parquet(rep_summary_path) if rep_summary_path.exists() else pd.DataFrame()
-    )
+    rep_summary = (pd.read_parquet(rep_summary_path) if needs_bootstrap_tables
+                   and rep_summary_path.exists() else pd.DataFrame())
     systems = list(system_repouts)
 
     for profile_id in reps["profile"].drop_duplicates():
@@ -646,11 +663,27 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
         identifier.split(":")[1] for identifier in selected
         if identifier.startswith("interactions:")
     })
+    if selected is None:
+        table_names = ("presence", "occupancy", "lifetimes", "summary")
+    else:
+        needed = set()
+        for item in selected:
+            if not item.startswith("interactions:"):
+                continue
+            variant = item.rsplit(":", 1)[-1]
+            if variant == "occupancy_heatmap":
+                needed.add("occupancy")
+            elif variant == "lifetime_distribution":
+                needed.add("lifetimes")
+        table_names = tuple(sorted(needed))
+        kinds.update(selected_kinds or ())
     for system, reps in system_repouts.items():
         for repout in reps:
-            tables[(system, repout.name)] = interaction_tables(repout,
-                exclude_kinds=set(cfg.get('plots',{}).get('interaction_exclude_kinds',[])),
-                include_kinds=selected_kinds)
+            tables[(system, repout.name)] = (
+                interaction_tables(repout,
+                    exclude_kinds=set(cfg.get('plots',{}).get('interaction_exclude_kinds',[])),
+                    include_kinds=selected_kinds, table_names=table_names)
+                if table_names else {})
             kinds.update(tables[(system, repout.name)])
     stats_path = (
         root
@@ -659,7 +692,14 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
         / "interactions"
         / "system_interaction_metrics.parquet"
     )
-    stats = pd.read_parquet(stats_path) if stats_path.exists() and stats_allowed else pd.DataFrame()
+    needs_stats = selected is None or any(
+        item.startswith("interactions:") and item.endswith(":bootstrap_table")
+        for item in selected)
+    needs_comp = selected is None or any(
+        item.startswith("interactions:") and item.endswith(":comparison_table")
+        for item in selected)
+    stats = (pd.read_parquet(stats_path) if stats_path.exists()
+             and stats_allowed and needs_stats else pd.DataFrame())
     comp_path = (
         root
         / "project_summary"
@@ -667,7 +707,8 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
         / "interactions"
         / "system_interaction_comparisons.parquet"
     )
-    comp_stats = pd.read_parquet(comp_path) if comp_path.exists() and stats_allowed else pd.DataFrame()
+    comp_stats = (pd.read_parquet(comp_path) if comp_path.exists()
+                  and stats_allowed and needs_comp else pd.DataFrame())
 
     for kind in sorted(kinds):
         if selected is not None and not any(
