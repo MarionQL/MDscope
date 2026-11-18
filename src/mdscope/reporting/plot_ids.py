@@ -21,7 +21,7 @@ DYNAMIC_VARIANTS = {
         "bootstrap_table", "comparison_table",
     }),
 }
-SDC4_REPLICA_STEMS = frozenset({
+SDC4_CONDITION_STEMS = frozenset({
     "lipid_region_moiety_contact_fraction",
     "lipid_region_mean_contact_fraction",
     "lipid_region_mean_local_enrichment",
@@ -54,8 +54,8 @@ def validate_plot_ids(include):
         if identifier in STATIC_IDS:
             continue
         parts = identifier.split(":")
-        if (len(parts) == 4 and parts[0] == "sdc4" and parts[1] and parts[2]
-                and parts[3] in SDC4_REPLICA_STEMS):
+        if (len(parts) == 3 and parts[0] == "sdc4" and parts[1]
+                and parts[2] in SDC4_CONDITION_STEMS):
             continue
         if (len(parts) == 2 and parts[0] == "lipid_contacts" and
                 parts[1].startswith(("lipid_contact_matrix_", "lipid_contact_difference_"))
@@ -164,14 +164,14 @@ def describe_plot(identifier: str) -> dict:
             else "sampling_diagnostics.parquet")]
         destination = f"project_summary/shared_states/{stem}.png"
     elif family == "sdc4":
-        stem = parts[3]
+        stem = parts[2]
         filename = (
             "lipid_region_specificity.parquet" if stem.startswith("lipid_region_") else
             "lipid_density_maps.npz" if stem.startswith("lipid_") else
             "timeseries.parquet"
         )
-        source = [f"{parts[1]}/{parts[2]}/extensions/sdc4_mechanisms/{filename}"]
-        destination = f"{parts[1]}/{parts[2]}/extensions/sdc4_mechanisms/{stem}.png"
+        source = [f"{parts[1]}/{{replicate}}/extensions/sdc4_mechanisms/{filename}"]
+        destination = f"project_summary/figures/sdc4/{parts[1]}/{stem}.png"
     return {
         "id": identifier, "family": family,
         "renderer": {
@@ -225,9 +225,9 @@ def id_from_figure_path(path: Path) -> str | None:
         identifier = f"lipid_contacts:{name}"
         if name.startswith(("lipid_contact_matrix_", "lipid_contact_difference_")):
             return identifier
-    if (len(parts) >= 5 and parts[-2] == "sdc4_mechanisms"
-            and parts[-3] == "extensions" and name in SDC4_REPLICA_STEMS):
-        return f"sdc4:{parts[-5]}:{parts[-4]}:{name}"
+    if (len(parts) >= 5 and parts[-3] == "sdc4" and
+            parts[-4] == "figures" and name in SDC4_CONDITION_STEMS):
+        return f"sdc4:{parts[-2]}:{name}"
     for family in ("solvation", "diffusion", "lipid_enrichment"):
         identifier = f"{family}:{name}"
         if identifier in STATIC_IDS:
