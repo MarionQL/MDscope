@@ -178,14 +178,14 @@ def create_fixture(root: Path):
             t = np.linspace(0, 6*np.pi, len(times))
             pd.DataFrame({
                 "time_ps": times,
-                "sdc4_ectodomain_A_height_A": 18 + 2*np.sin(t),
-                "sdc4_ectodomain_B_height_A": 20 + 2*np.cos(t),
+                "sdc4_ectodomain_A_height_A": 18 + 2*np.sin(t + .35*rep_index),
+                "sdc4_ectodomain_B_height_A": 20 + 2*np.cos(t + .30*rep_index),
                 "sdc4_motif_NxIP_PROA_1_steric_occlusion_fraction": np.clip(
-                    .45 + .3*np.sin(t+.5), 0, 1),
+                    .45 + .05*rep_index + .3*np.sin(t+.5+.2*rep_index), 0, 1),
                 "sdc4_motif_NxIP_PROB_1_steric_occlusion_fraction": np.clip(
-                    .55 + .2*np.cos(t+.3), 0, 1),
-                "sdc4_proline_A_1_phi_deg": -90 + 40*np.sin(t),
-                "sdc4_proline_A_1_psi_deg": 110 + 35*np.cos(t),
+                    .55 - .05*rep_index + .2*np.cos(t+.3+.2*rep_index), 0, 1),
+                "sdc4_proline_A_1_phi_deg": -90 + 10*rep_index + 40*np.sin(t),
+                "sdc4_proline_A_1_psi_deg": 110 - 9*rep_index + 35*np.cos(t),
             }).to_parquet(mechanism_dir / "timeseries.parquet", index=False)
 
             grid = np.linspace(-24., 24., 13)
@@ -194,10 +194,10 @@ def create_fixture(root: Path):
                 (grid[:-1] + grid[1:]) / 2, indexing="ij"
             )
             layer = np.exp(-(mesh_x**2 + mesh_y**2) / 240)
-            density = np.stack([0.13 + layer / 8,
-                                0.10 + layer / 12]).astype(np.float32)
-            fold = np.stack([0.85 + 0.4*layer,
-                             0.95 + 0.3*layer]).astype(np.float32)
+            density = np.stack([0.13 + .016*rep_index + layer / 8,
+                                0.10 + .012*rep_index + layer / 12]).astype(np.float32)
+            fold = np.stack([0.85 + .07*rep_index + 0.4*layer,
+                             0.95 + .05*rep_index + 0.3*layer]).astype(np.float32)
             np.savez_compressed(
                 mechanism_dir / "lipid_density_maps.npz",
                 species=np.array(["POPC", "DOPC"]),
@@ -210,10 +210,10 @@ def create_fixture(root: Path):
                 {
                     "region": region, "species": lipid, "leaflet": "upper",
                     "moiety": moiety, "contact_fraction": 0.12 + 0.05*ridx
-                    + 0.07*lidx + 0.01*system_index,
-                    "local_composition_enrichment": 0.8 + 0.1*ridx + .15*lidx,
-                    "matched_local_contact_fraction": 0.09 + .06*ridx,
-                    "matched_local_composition_enrichment": 0.7 + .14*ridx,
+                    + 0.07*lidx + 0.025*rep_index + 0.01*system_index,
+                    "local_composition_enrichment": 0.8 + 0.1*ridx + .15*lidx + .05*rep_index,
+                    "matched_local_contact_fraction": 0.09 + .06*ridx + .025*rep_index,
+                    "matched_local_composition_enrichment": 0.7 + .14*ridx + .065*rep_index,
                 }
                 for ridx, region in enumerate(("TM helix", "Acidic motif", "PRM"))
                 for lidx, lipid in enumerate(("POPC", "DOPC"))
