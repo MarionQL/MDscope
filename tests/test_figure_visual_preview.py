@@ -141,3 +141,20 @@ def test_preview_gallery_groups_condition_figures_without_confusing_revisions(tm
     a = html.split('<section id="condition_A">')[1].split("</section>")[0]
     assert "condition_B/rep2/extensions" not in a
 
+
+def test_single_plot_developer_review_summarizes_extras_without_repeating_them(tmp_path):
+    preview, gallery = _scripts()
+    base, head = tmp_path / "before", tmp_path / "after"
+    before = preview["render_preview"](base)
+    after = preview["render_preview"](head, include=["time_series:rmsd_A:timeseries"])
+    output = tmp_path / "review/selection/index.html"
+    count = gallery["build_gallery"](
+        base, head, output, only_name="rmsd_A__timeseries.png")
+    html = output.read_text()
+    assert count == 1
+    assert f"Previous code generated {len(before['plots']) - 1} other figure(s)" in html
+    assert f"updated code generated {len(after['plots']) - 1} other figure(s)" in html
+    assert html.count("<section>") == 1
+    assert "rmsd_A__timeseries.png" in html
+    assert "<h2>project_summary/figures/solvation/" not in html
+
