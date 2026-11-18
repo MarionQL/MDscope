@@ -50,7 +50,7 @@ def test_scheduler_preserves_task_order_keys_and_scalar_contracts(project):
     tasks = list(specialized_tasks(cfg))
     assert [task.key for task in tasks] == [
         "residue-membrane-phosphate", "residue-membrane-lipids",
-        "membrane-order", "profiles", "hydrogen-bonds", "local_environment",
+        "membrane-order", "profiles", "hydrogen-bonds",
         "potassium_bridge_audit", "bilayer_normal",
         "lipid_hydrogen_bonds",
     ]
