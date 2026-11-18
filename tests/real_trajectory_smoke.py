@@ -10,6 +10,7 @@ import json
 import os
 import traceback
 from pathlib import Path
+from functools import partial
 
 import MDAnalysis as mda
 import numpy as np
@@ -20,7 +21,7 @@ from mdscope.pipeline.runner import run_one
 from mdscope.config import Replicate, load_config
 from mdscope.observables.membrane_order import run_membrane_order
 from mdscope.observables.bilayer_normal import run_bilayer_normal
-from mdscope.observables.lipid_enrichment import run_lipid_enrichment
+from mdscope.pipeline.fused_membrane import run_fused_membrane
 from mdscope.interactions.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
 from mdscope.observables.residue_membrane_distance import run_residue_membrane_distance
 
@@ -201,10 +202,12 @@ def check_outputs(system: str):
 
 
 def compare_fused_to_independent(system, config, topology, trajectory):
-    """Scientific parity: fused production outputs vs original three readers.
+    """Compare production fused output with dedicated observer passes.
 
-    The reference computations intentionally reopen the XTC *only in CI*.
-    Production never calls them after the fused streaming stage.
+    Membrane order and bilayer normal use standalone runners. Lipid enrichment
+    uses the same fused implementation in a dedicated membrane-only pass:
+    this checks scheduling parity, not an independent scientific oracle.
+    These passes reopen XTC only in the opt-in real-data CI workflow.
     """
     cfg = load_config(config)
     rep = Replicate(system, 1, topology, trajectory, "rep1")
@@ -215,7 +218,8 @@ def compare_fused_to_independent(system, config, topology, trajectory):
     for name, fn, path in (
         ("membrane_order", run_membrane_order, "profiles/membrane_order"),
         ("bilayer_normal", run_bilayer_normal, "extensions/bilayer_normal"),
-        ("lipid_enrichment", run_lipid_enrichment, "extensions/lipid_footprint"),
+        ("lipid_enrichment", partial(run_fused_membrane, names=("lipid_enrichment",)),
+         "extensions/lipid_footprint"),
     ):
         fn(rep, cfg, independent)
         left = fused / path
