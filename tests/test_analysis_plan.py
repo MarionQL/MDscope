@@ -192,3 +192,21 @@ def test_plan_provenance_follows_alignment_toggle(tmp_path, project):
     descriptors = {item["analysis"]: item for item in fitted["analyses"]}
     for metric in ("rmsd", "rmsf"):
         assert descriptors[metric]["coordinate_source"] == "fitted"
+
+
+def test_implicit_hydration_uses_complete_analysis_descriptor(tmp_path, project):
+    """GUI consumers can iterate every selected analysis without missing keys."""
+    path, _ = project("plan_implicit_hydration")
+    cfg = load_config(path)
+    cfg["analyses"]["sdc4_mechanisms"]["enabled"] = True
+    cfg["analyses"]["sdc4_mechanisms"]["hs_sugar_water_cutoff_A"] = 3.5
+    plan = build_plan(cfg, path)
+    hydration = next(item for item in plan["analyses"]
+                     if item["analysis"] == "hydration")
+    assert hydration["artifact_catalog_status"] == "registered_implicit"
+    assert hydration["purpose"]
+    assert hydration["required_topology"]
+    assert hydration["statistics_eligibility"]
+    assert hydration["plot_family_eligibility"]
+    assert set(hydration) == set(next(
+        item for item in plan["analyses"] if item["analysis"] == "rmsd"))
