@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from ..config import plot_enabled, ensure_dir, replicate_label, replicate_specs, system_label
+from ..config import plot_enabled, figure_enabled, ensure_dir, replicate_label, replicate_specs, system_label
 from ..interactions import interaction_tables
 from ..statistics import collect_time_series, finite
 from .figure_inventory import current_statistics
@@ -44,6 +44,13 @@ def _save(fig, path: Path, cfg: dict):
     fig.tight_layout()
     fig.savefig(path, dpi=int(cfg.get("plots", {}).get("dpi", 250)), bbox_inches="tight")
     plt.close(fig)
+
+
+def _save_selected(fig, path: Path, cfg: dict, plot_id: str):
+    if figure_enabled(cfg, plot_id):
+        _save(fig, path, cfg)
+    else:
+        plt.close(fig)
 
 
 def _system_colors(cfg: dict) -> dict[str, tuple]:
@@ -84,7 +91,10 @@ def _subplot_grid(n: int):
     return fig, axes.ravel()
 
 
-def _table_figure(title: str, dataframe: pd.DataFrame, path: Path, cfg: dict, max_rows: int = 16):
+def _table_figure(title: str, dataframe: pd.DataFrame, path: Path, cfg: dict,
+                  max_rows: int = 16, plot_id: str | None = None):
+    if plot_id is not None and not figure_enabled(cfg, plot_id):
+        return
     # Statistical tables are figures on purpose: they travel with the
     # plot set and are easy to drop directly into slides/manuscripts.
     if dataframe.empty:
@@ -141,6 +151,10 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
         title, ylabel = _metric_meta(metric)
         suffix = f"__group_{group_id}" if group_id is not None else ""
         stem = _safe(metric + suffix)
+        selected = cfg.get("plots", {}).get("include")
+        if selected is not None and not any(
+                identifier.startswith(f"time_series:{stem}:") for identifier in selected):
+            continue
         fig, axes = _subplot_grid(len(systems))
         distribution_values, distribution_labels, distribution_colors = [], [], []
         for ax, system in zip(axes, systems):
@@ -171,7 +185,7 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
         for ax in axes[len(systems):]:
             ax.remove()
         fig.suptitle(title + (f" - {group_id}" if group_id is not None else ""))
-        _save(fig, out / f"{stem}__timeseries.png", cfg)
+        _save_selected(fig, out / f"{stem}__timeseries.png", cfg, f"time_series:{stem}:timeseries")
 
         if cfg.get("plots", {}).get("distributions", True) and distribution_values:
             fig, (
@@ -213,7 +227,7 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
             )
             ax_violin.set_ylabel(ylabel)
             fig.suptitle(f"{title} distribution")
-            _save(fig, out / f"{stem}__distribution.png", cfg)
+            _save_selected(fig, out / f"{stem}__distribution.png", cfg, f"time_series:{stem}:distribution")
 
         if cfg.get("plots", {}).get("autocorrelation", True) and not rep_stats.empty:
             acf_path = (
@@ -246,7 +260,7 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
                     for ax in axes[len(systems):]:
                         ax.remove()
                     fig.suptitle(f"{title} autocorrelation")
-                    _save(fig, out / f"{stem}__autocorrelation.png", cfg)
+                    _save_selected(fig, out / f"{stem}__autocorrelation.png", cfg, f"time_series:{stem}:autocorrelation")
 
         if cfg.get("plots", {}).get("bootstrap_tables", True) and not rep_stats.empty:
             r = (
@@ -335,6 +349,11 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
 def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
     if not plot_enabled(cfg, 'profiles'):
         return
+    selected = cfg.get("plots", {}).get("include")
+    if selected is not None and not any(
+            identifier.startswith("profiles:") and not identifier.endswith(":distance_heatmap")
+            for identifier in selected):
+        return
     stats_allowed = current_statistics(cfg, root, 'profiles')
     if not stats_allowed:
         return
@@ -403,7 +422,7 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
         for ax in axes[len(systems):]:
             ax.remove()
         fig.suptitle(profile_title)
-        _save(fig, out / f"{stem}__profile.png", cfg)
+        _save_selected(fig, out / f"{stem}__profile.png", cfg, f"profiles:{stem}:profile")
 
         if distributions:
             fig, ax = plt.subplots(figsize=(max(8, 1.1 * len(distributions)), 5))
@@ -414,7 +433,7 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
             ax.set_xticks(np.arange(1, len(labels) + 1), labels, rotation=25, ha="right")
             ax.set_ylabel(ylabel)
             ax.set_title(f"{profile_title}: value distribution")
-            _save(fig, out / f"{stem}__distribution.png", cfg)
+            _save_selected(fig, out / f"{stem}__distribution.png", cfg, f"profiles:{stem}:distribution")
 
         comp = (
             comparisons[
@@ -444,7 +463,7 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
             ax.set_ylabel(f"Difference in {ylabel}")
             ax.set_title(f"{profile_title}: system differences")
             ax.legend(frameon=False)
-            _save(fig, out / f"{stem}__system_difference.png", cfg)
+            _save_selected(fig, out / f"{stem}__system_difference.png", cfg, f"profiles:{stem}:system_difference")
             rank_col = "q_value" if "q_value" in comp else "p_value"
             ranked = comp.sort_values(rank_col, na_position="last").head(16)
             shown = pd.DataFrame({
@@ -521,16 +540,12 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
 def _plot_residue_distance_heatmaps(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
     from ..config import analysis_runs, profile_dir
     for run in analysis_runs(cfg, "residue_membrane_distance"):
-        run_out = (
-            ensure_dir(
-                root
-                / "project_summary"
-                / "figures"
-                / "profiles"
-                / _safe(f"residue_membrane_distance__{run.run_id}")
-            )
-        )
+        run_out = (root / "project_summary" / "figures" / "profiles"
+                   / _safe(f"residue_membrane_distance__{run.run_id}"))
         for system, repouts in system_repouts.items():
+            plot_id = f"profiles:{run_out.name}:{_safe(system)}:distance_heatmap"
+            if not figure_enabled(cfg, plot_id):
+                continue
             available = []
             for repout in repouts:
                 directory = profile_dir(repout, "residue_membrane_distance", run.run_id)
@@ -602,10 +617,16 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
     out = ensure_dir(root / "project_summary" / "figures" / "interactions")
     kinds = set()
     tables = {}
+    selected = cfg.get("plots", {}).get("include")
+    selected_kinds = (None if selected is None else {
+        identifier.split(":")[1] for identifier in selected
+        if identifier.startswith("interactions:")
+    })
     for system, reps in system_repouts.items():
         for repout in reps:
             tables[(system, repout.name)] = interaction_tables(repout,
-                exclude_kinds=set(cfg.get('plots',{}).get('interaction_exclude_kinds',[])))
+                exclude_kinds=set(cfg.get('plots',{}).get('interaction_exclude_kinds',[])),
+                include_kinds=selected_kinds)
             kinds.update(tables[(system, repout.name)])
     stats_path = (
         root
@@ -625,6 +646,9 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
     comp_stats = pd.read_parquet(comp_path) if comp_path.exists() and stats_allowed else pd.DataFrame()
 
     for kind in sorted(kinds):
+        if selected is not None and not any(
+                identifier.startswith(f"interactions:{_safe(kind)}:") for identifier in selected):
+            continue
         kind_out = ensure_dir(out / _safe(kind))
         columns, occupancy_series, lifetime_sets, lifetime_labels = [], [], [], []
         for system, reps in system_repouts.items():
@@ -676,7 +700,8 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
                 ax.set_yticks(np.arange(len(labels)), labels)
                 ax.set_title(f"{kind.replace('_', ' ').title()} occupancy")
                 fig.colorbar(image, ax=ax, label="Occupancy")
-                _save(fig, kind_out / "occupancy_heatmap.png", cfg)
+                _save_selected(fig, kind_out / "occupancy_heatmap.png", cfg,
+                               f"interactions:{_safe(kind)}:occupancy_heatmap")
 
         if lifetime_sets:
             fig, ax = plt.subplots(figsize=(max(8, 1.1 * len(lifetime_sets)), 5))
@@ -689,7 +714,8 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
             )
             ax.set_ylabel("Lifetime (ns)")
             ax.set_title(f"{kind.replace('_', ' ').title()} lifetime distribution")
-            _save(fig, kind_out / "lifetime_distribution.png", cfg)
+            _save_selected(fig, kind_out / "lifetime_distribution.png", cfg,
+                           f"interactions:{_safe(kind)}:lifetime_distribution")
 
         if not stats.empty:
             subset = stats[stats.interaction_type == kind]
