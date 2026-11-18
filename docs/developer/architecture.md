@@ -30,7 +30,7 @@ flowchart TD
 | `mdscope plotting X.yaml` | Optional saved-data figures |
 | `mdscope report STATISTICS_DIR` | Regenerate findings from a completed statistics export |
 
-Key interfaces: `cli.py`, `config.py` (`analysis_runs`, `iter_replicates`), `registry.py` (`analysis_output_plan`, `required_artifacts`), `output_paths.py` (shared immutable path contracts), `pipeline/analysis_selection.py` (shared enabled-analysis predicates), `pipeline/replica_tasks.py` (`specialized_tasks`, `additional_time_series`), `pipeline/runner.py`, `pipeline/streaming.py`.
+Read-only `cli.py` commands import the runner, statistical estimators, and topology preflight only when their selected command requires them. `statistics_families.py` owns the lightweight family identifier list consumed by planning and the statistics dispatcher.\n\nKey interfaces: `cli.py`, `config.py` (`analysis_runs`, `iter_replicates`), `registry.py` (`analysis_output_plan`, `required_artifacts`), `output_paths.py` (shared immutable path contracts), `pipeline/analysis_selection.py` (shared enabled-analysis predicates), `pipeline/replica_tasks.py` (`specialized_tasks`, `additional_time_series`), `pipeline/runner.py`, `pipeline/streaming.py`.
 
 ## Inspect the current module and call graph
 
@@ -118,6 +118,13 @@ consumers have been audited; prefer direct canonical imports in *new* code.
 `interactions/__init__.py` explicitly reexports the existing interaction
 function API rather than using `import *`; new consumers should import from
 the owning submodule directly. Neither boundary justifies a second implementation.
+
+### Specialized task and lipid-enrichment boundaries
+
+- `pipeline/replica_tasks.py` is **execution-only**: it assembles specialized callable tasks, preserves legacy checkpoint keys and collects optional saved scalar tables. The runner uses it for specialized fallbacks after fused scheduling. Do not merge those callable imports into the read-only registry.
+- `observables/lipid_enrichment.py` owns the `LipidFootprint` scientific estimator and saved composition summary; `pipeline/fused_membrane.py` coordinates its execution with other membrane observers in a shared source-frame pass.
+- The `run_lipid_enrichment` convenience entry point delegates to the fused runner through a function-local import. That deferred edge forms a static SCC, but is not evidence of an eager circular import. Remove the wrapper only after auditing all fallback and external callers, retaining output and restart parity.
+- `additional_time_series` currently derives scalar paths from specialized task records. A future cleanup may separate scalar discovery from executable callbacks, but must keep ordering and missing-file semantics unchanged.
 
 ## Files and lifecycle
 
