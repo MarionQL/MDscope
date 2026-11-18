@@ -105,7 +105,7 @@ class FusedDistances:
     def prune_from(self, next_part):
         for run_id in self.runs:
             for path in (self.cache / run_id).glob("part-*.npz"):
-                match = re.search(r"part-(\\d+)", path.name)
+                match = re.search(r"part-(\d+)", path.name)
                 if match and int(match.group(1)) >= next_part:
                     path.unlink()
 
