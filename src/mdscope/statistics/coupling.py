@@ -90,9 +90,15 @@ def collect_couplings(cfg, system_repouts):
 
 def analyze_coupling(cfg, root, system_repouts):
     cfg = statistics_family_config(cfg, "coupling")
-    if cfg is None or not cfg.get("analyses", {}).get("coupling_screen", {}).get("enabled", False):
+    if cfg is None:
         return
     selected = simple_family_selection(cfg, "coupling")
+    if not cfg.get("analyses", {}).get("coupling_screen", {}).get("enabled", False):
+        if selected:
+            raise ValueError(
+                "Selected coupling statistics require analyses.coupling_screen.enabled"
+            )
+        return
     if selected is not None and not selected:
         return
     frame = collect_couplings(cfg, system_repouts)
