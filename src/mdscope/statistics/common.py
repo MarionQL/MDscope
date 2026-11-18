@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import math
 import os
+import hashlib
+import json
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from itertools import combinations
@@ -15,6 +17,13 @@ import numpy as np
 import pandas as pd
 
 from ..interactions.interaction_tables import sample_dt
+
+
+def selected_rng(seed: int, *identity):
+    """Deterministic Monte Carlo stream independent of unrelated selected metrics."""
+    payload = json.dumps([int(seed), *identity], separators=(",", ":"), ensure_ascii=True)
+    entropy = int.from_bytes(hashlib.blake2b(payload.encode(), digest_size=8).digest(), "little")
+    return np.random.default_rng(entropy)
 
 
 def finite(values) -> np.ndarray:
