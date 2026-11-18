@@ -212,3 +212,18 @@ def test_studio_metric_selection_defaults_are_not_shared_mutable_lists():
     selection = studio_metric_selection_defaults()
     selection["profiles"].append({"profile": "test"})
     assert studio_metric_selection_defaults()["profiles"] == []
+
+
+def test_selected_diffusion_requires_multi_origin_enabled(tmp_path):
+    cfg = deepcopy(DEFAULTS)
+    cfg["statistics"]["metric_selection"] = {"diffusion": [{"metric": "DOPC"}]}
+    with pytest.raises(ValueError, match="multi_origin"):
+        analyze_multi_origin_diffusion(cfg, tmp_path, {"a": []})
+
+
+def test_selected_coupling_requires_analysis_enabled(tmp_path):
+    cfg = deepcopy(DEFAULTS)
+    cfg["statistics"]["metric_selection"] = {"coupling": [
+        {"mechanism": "membrane_coupling"}]}
+    with pytest.raises(ValueError, match="coupling_screen.enabled"):
+        analyze_coupling(cfg, tmp_path, {"a": []})
