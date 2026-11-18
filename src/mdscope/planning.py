@@ -13,6 +13,7 @@ from typing import Any
 from .config import analysis_runs, iter_replicates, plot_enabled, statistics_family_config
 from .registry import analysis_output_plan, required_artifacts, artifact_schema
 from .statistics_families import STATISTICS_FAMILIES
+from .statistics_selection import ESTIMATOR_FLAGS
 
 
 # Interpretation of coordinates, not a claim about PBC or bulk density.
@@ -300,6 +301,9 @@ def build_plan(cfg: dict, config_path: str | Path, *,
                 "figure_selection_independent": True,
                 "descriptive_selection": "included_identity",
                 "inferential_selection": "per_entry_inference_boolean_default_true",
+                "independent_estimator_toggles": sorted(ESTIMATOR_FLAGS[family]),
+                "estimator_flag_default": "inference:true (legacy); specific flags override",
+                "unsupported_estimator_policy": "reject_before_execution",
                 "unavailable_estimate_policy": "nullable_ci_p_and_q_not_fabricated",
                 "eligibility_requirements": {
                     "replicate_independence": "simulation_replicates",
