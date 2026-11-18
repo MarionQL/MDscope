@@ -224,6 +224,19 @@ def analyze_time_series(
     selected = time_series_selection(cfg)
     if selected is not None and not selected:
         return
+    # Selected identities are discovered from actual saved products before
+    # allocating bootstrap draws or writing statistics. Reject typos rather
+    # than silently publishing an incomplete selection.
+    selected_series = None
+    if selected is not None:
+        selected_series = {
+            (system, repout): collect_time_series(repout, selected=selected)
+            for system, reps in system_repouts.items() for repout in reps
+        }
+        discovered = set().union(*(series.keys() for series in selected_series.values()))
+        unknown = selected - discovered
+        if unknown:
+            raise ValueError(f"Unknown saved time-series metric identities: {sorted(unknown, key=str)}")
     scalar_window = stats.get("scalar_window_ps")
     draws, level = int(stats.get("bootstrap_draws", 2000)), float(stats.get("ci", 0.95))
     system_draws = draws if stats.get("hierarchy", {}).get("enabled", True) else 0
@@ -245,7 +258,8 @@ def analyze_time_series(
             local_rows, local_acf = [], []
             if verbose:
                 print(f"Statistics {output_name}: loading {system}/{repout.name}", flush=True)
-            series = collect_time_series(repout, selected=selected)
+            series = (selected_series[(system, repout)] if selected_series is not None
+                      else collect_time_series(repout))
             if verbose:
                 print(f"Statistics {output_name}: processing {len(series)} observables "
                       f"for {system}/{repout.name}", flush=True)
