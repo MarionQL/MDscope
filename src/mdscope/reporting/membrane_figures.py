@@ -8,10 +8,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from ..config import ensure_dir, plot_enabled
+from ..config import ensure_dir, plot_enabled, figure_enabled
 from .figure_inventory import current_statistics
 
 def plot_lipid_enrichment_matrix(cfg,root):
+    if not any(figure_enabled(cfg, "lipid_enrichment:" + name)
+               for name in ("lipid_enrichment_heatmap", "lipid_area_density_heatmap")):
+        return
     if not current_statistics(cfg, root, 'time_series'):
         return
     source=Path(root)/"project_summary"/"statistics"/"time_series"/"replicate_statistics.parquet"
@@ -22,6 +25,8 @@ def plot_lipid_enrichment_matrix(cfg,root):
         ("_fold", "Composition enrichment: local / leaflet mole fraction", "lipid_enrichment_heatmap.png"),
         ("_area_density_ratio", "Density ratio: protein-excluded planar area model", "lipid_area_density_heatmap.png"),
     ):
+        if not figure_enabled(cfg, f"lipid_enrichment:{Path(filename).stem}"):
+            continue
         selected=frame[frame["metric"].str.startswith("lipid_footprint_")
                        &frame["metric"].str.endswith(suffix)].copy()
         if selected.empty:continue
@@ -128,7 +133,7 @@ def plot_lipid_contacts(cfg, root, system_repouts):
 
 def plot_project_diffusion(cfg, root):
     """Render independent replica estimates from the saved numerical summary."""
-    if not plot_enabled(cfg, "diffusion"):
+    if not figure_enabled(cfg, "diffusion:diffusion_coefficients"):
         return
     out = Path(root) / "project_summary" / "diffusion"
     source = out / "replicate_coefficients.parquet"
