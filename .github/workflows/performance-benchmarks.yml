@@ -1,0 +1,66 @@
+name: MDscope pipeline and statistics performance benchmark
+
+# On-demand in general; run on PRs changing this instrumentation.
+# Real test-data-v1 files are large (~1.6 GB). This is not a fast PR check.
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "tests/performance_pipeline_benchmark.py"
+      - "src/mdscope/statistics/**"
+      - "src/mdscope/core/profiling.py"
+      - ".github/workflows/performance-benchmarks.yml"
+
+concurrency:
+  group: mdscope-benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      PYTHONUNBUFFERED: "1"
+      MDSCOPE_REAL_DATA: real_test_data
+      MDSCOPE_REAL_OUTPUT: real_benchmark_results
+      MDSCOPE_PROFILE: "1"
+      MDSCOPE_STATS_WORKERS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install analysis dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+      - name: Download published real trajectories
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p real_test_data
+          gh release download test-data-v1 --repo MarionQL/MDscope --dir real_test_data
+      - name: Benchmark cold trajectory and saved-data statistics
+        run: |
+          python tests/performance_pipeline_benchmark.py --frames 40 160 --draws 100 500
+      - name: Upload benchmark results and profiles
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mdscope-pipeline-performance
+          path: |
+            real_benchmark_results/performance_benchmark.json
+            real_benchmark_results/benchmark_frames_*/*/rep1/stage_timings.json
+            real_benchmark_results/benchmark_frames_*/*/rep1/streaming_phase_profile.json
+            real_benchmark_results/benchmark_frames_*/*/rep1/fused_membrane_timings.json
+            real_benchmark_results/benchmark_frames_*/*/rep1/fused_extensions_timings.json
+            real_benchmark_results/benchmark_frames_*/*/rep1/fused_distance_timings.json
+            real_benchmark_results/benchmark_statistics_*/project_summary/statistics/statistics_phase_profile.json
+          retention-days: 14
+          if-no-files-found: warn
