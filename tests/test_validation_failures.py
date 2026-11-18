@@ -1,5 +1,6 @@
 """Actionable config/topology failures precede output creation or replacement."""
 from copy import deepcopy
+from pathlib import Path
 import re
 import MDAnalysis as mda
 import pytest
@@ -218,5 +219,5 @@ def test_maintained_yaml_uses_only_supported_option_names(filename):
     from mdscope.config import DEFAULTS
     from mdscope.config_schema import validate_known_keys
 
-    path = __import__("pathlib").Path(__file__).resolve().parents[1] / filename
+    path = Path(__file__).resolve().parents[1] / filename
     validate_known_keys(yaml.safe_load(path.read_text()), DEFAULTS)
