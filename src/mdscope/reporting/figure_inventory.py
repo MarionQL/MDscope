@@ -30,7 +30,7 @@ def figure_inventory(root, system_repouts, cfg=None, include_rejected=False):
     root=Path(root)
     paths = _figure_paths(root, system_repouts)
     import json
-    provenance = Path(root)/'project_summary/report/figure_provenance.json'
+    provenance = Path(root)/'project_summary/figures/figure_provenance.json'
     records = json.loads(provenance.read_text()) if cfg is not None and provenance.exists() else {}
     rows=[]
     seen_png = {}
