@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from time import perf_counter
 import os
+import hashlib
+import json
 from itertools import combinations
 from pathlib import Path
 
@@ -20,6 +22,17 @@ from ..interactions.interaction_tables import interaction_key_columns, interacti
 
 
 from .common import _temporal, _block_weights, _hierarchical, _hierarchical_difference, _ci, _direction, _permutation, _fdr, _range_meta, _point_difference
+
+
+def _selected_rng(seed, *identity):
+    """Stable independent Monte Carlo stream keyed by an output's full identity.
+
+    The existing legacy global RNG and its shared block weights are unchanged.
+    """
+    payload = json.dumps([int(seed), *identity], separators=(",", ":"), ensure_ascii=True)
+    entropy = int.from_bytes(hashlib.blake2b(payload.encode(), digest_size=8).digest(), "little")
+    return np.random.default_rng(entropy)
+
 
 def _presence_frame_indices(times, presence_times):
     indices = np.searchsorted(times, np.asarray(presence_times, float))
@@ -37,7 +50,8 @@ def _interaction_bootstrap(
     draws: int,
     rng: np.random.Generator,
     cache: dict,
-    rep_key
+    rep_key,
+    selected_seed=None,
 ) -> tuple[dict, dict]:
     # Bootstrap the binary presence trajectory. Event starts/lifetimes
     # are weighted at their original frames so independently sampled
@@ -57,7 +71,9 @@ def _interaction_bootstrap(
     if key not in cache:
         if len(cache) >= 8:
             cache.pop(next(iter(cache)))
-        cache[key] = _block_weights(n, key[2], draws, rng) if draws else np.empty((0, n), np.uint16)
+        weight_rng = (rng if selected_seed is None else
+                      _selected_rng(selected_seed, "block", *rep_key, n, key[2]))
+        cache[key] = _block_weights(n, key[2], draws, weight_rng) if draws else np.empty((0, n), np.uint16)
     weights = cache[key]
     duration_ns = n * dt / 1000 if dt else np.nan
     occupancy = weights.dot(presence) / max(1, n)
@@ -130,7 +146,8 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
         raise ValueError("statistics.interaction_min_occupancy must be between 0 and 1")
     draws, level = int(stats.get("bootstrap_draws", 2000)), float(stats.get("ci", 0.95))
     system_draws = draws if stats.get("hierarchy", {}).get("enabled", True) else 0
-    rng = np.random.default_rng(int(stats.get("seed", 2026)) + 2)
+    seed = int(stats.get("seed", 2026)) + 2
+    rng = np.random.default_rng(seed)
     resample = stats.get("hierarchy", {}).get("resample_replicates", True)
     # No output directory is created until saved identities are validated.
     outdir = root / "project_summary" / "statistics" / "interactions"
@@ -281,7 +298,8 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                         draws,
                         rng,
                         weight_cache,
-                        (system, repout.name)
+                        (system, repout.name),
+                        seed if selectors is not None else None,
                     )
                     repdata[(system, repout.name)] = (boot, meta)
                     for metric, values in boot.items():
@@ -329,7 +347,8 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                     boot = _hierarchical(
                         [x[1][0][metric] for x in valid],
                         system_draws,
-                        rng,
+                        (rng if selectors is None else
+                         _selected_rng(seed, "hierarchy", kind, interaction, system, metric)),
                         combine,
                         resample
                     )
@@ -378,7 +397,8 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                             rep_draws_1,
                             rep_draws_2,
                             system_draws,
-                            rng,
+                            (rng if selectors is None else
+                             _selected_rng(seed, "paired", kind, interaction, s1, s2, metric)),
                             reducer,
                             resample,
                         )
@@ -406,7 +426,12 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                                   "difference_ci_low": lo, "difference_ci_high": hi,
                                   "probability_difference_gt_0": pgt,
                                   "probability_difference_lt_0": plt,
-                                  "p_value": _permutation(amap, bmap, cfg, rng),
+                                  "p_value": _permutation(
+                                      amap, bmap, cfg,
+                                      rng if selectors is None else
+                                      _selected_rng(seed, "permutation", kind, interaction,
+                                                    s1, s2, metric)),
+
                                   "bootstrap_draws": system_draws, "ci_level": level})
         if detail_enabled:
             detail["kinds"].append({
