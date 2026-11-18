@@ -245,7 +245,7 @@ def test_descriptive_only_profile_retains_position_points_without_ci(tmp_path, m
     folder = tmp_path / "project_summary/statistics/profiles"
     result = pd.read_parquet(folder / "system_profiles.parquet")
     assert result.bootstrap_draws.eq(0).all()
-    assert result.mean.notna().all()
+    assert result["mean"].notna().all()
     assert result.mean_ci_low.isna().all()
     if (folder / "system_comparisons.parquet").exists():
         comparisons = pd.read_parquet(folder / "system_comparisons.parquet")
