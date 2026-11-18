@@ -9,6 +9,8 @@ on:
       - "src/mdscope/cli.py"
       - "scripts/plot_preview.py"
       - "scripts/figure_gallery.py"
+      - "scripts/preview_gallery.py"
+      - "scripts/preview_tables.py"
       - ".github/workflows/figure-review.yml"
 
 permissions:
@@ -35,25 +37,28 @@ jobs:
       - name: Render identical synthetic inputs with base and head renderers
         run: |
           PYTHONPATH="$RUNNER_TEMP/mdscope-base/src" python scripts/plot_preview.py \
-            --output "$RUNNER_TEMP/mdscope-plot-review/base"
+            --output "$RUNNER_TEMP/mdscope-plot-review/review/previous"
           PYTHONPATH="$GITHUB_WORKSPACE/src" python scripts/plot_preview.py \
-            --output "$RUNNER_TEMP/mdscope-plot-review/head"
+            --output "$RUNNER_TEMP/mdscope-plot-review/current"
           python scripts/figure_gallery.py \
-            --base "$RUNNER_TEMP/mdscope-plot-review/base" \
-            --head "$RUNNER_TEMP/mdscope-plot-review/head" \
-            --output "$RUNNER_TEMP/mdscope-plot-review/index.html"
+            --base "$RUNNER_TEMP/mdscope-plot-review/review/previous" \
+            --head "$RUNNER_TEMP/mdscope-plot-review/current" \
+            --output "$RUNNER_TEMP/mdscope-plot-review/review/index.html"
           # Deliberately probe the new allowlist: older base revisions
           # render extra figures, while plot-ID aware heads render only one.
           PYTHONPATH="$RUNNER_TEMP/mdscope-base/src" python scripts/plot_preview.py \
-            --output "$RUNNER_TEMP/mdscope-plot-review/base-selected" \
+            --output "$RUNNER_TEMP/mdscope-plot-review/review/previous-selected" \
             --include time_series:rmsd_A:timeseries
           PYTHONPATH="$GITHUB_WORKSPACE/src" python scripts/plot_preview.py \
-            --output "$RUNNER_TEMP/mdscope-plot-review/head-selected" \
+            --output "$RUNNER_TEMP/mdscope-plot-review/review/updated-selected" \
             --include time_series:rmsd_A:timeseries
           python scripts/figure_gallery.py \
-            --base "$RUNNER_TEMP/mdscope-plot-review/base-selected" \
-            --head "$RUNNER_TEMP/mdscope-plot-review/head-selected" \
-            --output "$RUNNER_TEMP/mdscope-plot-review/selection/index.html"
+            --base "$RUNNER_TEMP/mdscope-plot-review/review/previous-selected" \
+            --head "$RUNNER_TEMP/mdscope-plot-review/review/updated-selected" \
+            --output "$RUNNER_TEMP/mdscope-plot-review/review/selection/index.html"
+          python scripts/preview_gallery.py \
+            --preview "$RUNNER_TEMP/mdscope-plot-review/current" \
+            --output "$RUNNER_TEMP/mdscope-plot-review/index.html"
       - name: Upload HTML and figure comparisons
         if: always()
         uses: actions/upload-artifact@v4
