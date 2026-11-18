@@ -82,6 +82,32 @@ REQUIRED_TOPOLOGY = {
 
 # File names below come from the current statistics writers. They are possible
 # products, not completeness requirements: some are only written with data.
+# Minimal writer-verified statistical identity and supported estimator catalog.
+# Figure patterns are conditional, never guaranteed concrete figure IDs.
+STATISTICS_METRIC_CONTRACTS = {
+    "time_series": (["group", "metric"], "per-replica observable",
+                    ["temporal_summary", "block_bootstrap", "hierarchical_ci",
+                     "replicate_permutation", "bh_fdr"], ["time_series:{metric}:{variant}"]),
+    "profiles": (["profile"], "per-replica position within profile",
+                 ["position_summary", "temporal_block_bootstrap",
+                  "hierarchical_ci", "replicate_permutation", "bh_fdr"],
+                 ["profiles:{profile}:{variant}"]),
+    "interactions": (["kind", "interaction", "metric"], "per-replica interaction metric",
+                     ["occupancy_and_event_summary", "block_bootstrap",
+                      "hierarchical_ci", "replicate_permutation", "bh_fdr"],
+                     ["interactions:{kind}:{variant}",
+                      "interactions:{kind}:{metric}:{variant}"]),
+    "solvation_rdfs": (["solvent", "target_class", "site_class"],
+                       "per-replica radial bin",
+                       ["descriptive_mean_sd", "shell_replicate_contrast"],
+                       ["solvation:shell_rdf"]),
+    "diffusion": (["metric"], "per-replica shared-lag slope",
+                  ["shared_lag_fit", "replicate_contrast"],
+                  ["diffusion:diffusion_coefficients"]),
+    "coupling": (["mechanism"], "per-replica mechanism pair",
+                 ["block_correlation", "replicate_contrast"], []),
+}
+
 STATISTICS_CANDIDATES = {
     "time_series": ("replicate_statistics.parquet", "autocorrelation.parquet",
                     "system_statistics.parquet", "system_comparisons.parquet",
@@ -253,6 +279,16 @@ def build_plan(cfg: dict, config_path: str | Path, *,
                       for file in STATISTICS_CANDIDATES[family]],
             "files_status": "conditional_candidates_from_statistics_writers",
             "independent_condition_units": "simulation_replicates",
+            "metric_contract": {
+                "identity_fields": STATISTICS_METRIC_CONTRACTS[family][0],
+                "row_grain": STATISTICS_METRIC_CONTRACTS[family][1],
+                "supported_estimators": STATISTICS_METRIC_CONTRACTS[family][2],
+                "figure_id_patterns": STATISTICS_METRIC_CONTRACTS[family][3],
+                "figure_ids_status": "conditional; exact dynamic IDs require saved data",
+                "output_columns_status": "identity fields only; complete writer schema not catalogued",
+                "raw_analysis_independent": True,
+                "figure_selection_independent": True,
+            },
             "metric_selection": (
                 cfg.get("statistics", {}).get("metric_selection", {}).get(family)
                 if family in {"time_series", "interactions", "profiles",
