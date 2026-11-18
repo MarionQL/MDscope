@@ -89,7 +89,11 @@ class FusedMembrane:
         self.lipid_contacts = None
         if 'lipid_contacts' in self.names:
             from ..observables.lipid_contacts import LipidContacts
-            self.lipid_contacts = LipidContacts(universe, cfg['analyses']['lipid_contacts'], repout)
+            opts = ({"cache_dir": self.cache / "lipid_contacts"}
+                    if cache_dir is not None else {})
+            self.lipid_contacts = LipidContacts(
+                universe, cfg["analyses"]["lipid_contacts"], repout, **opts
+            )
         if "bilayer_normal" in self.names:
             self.geometry["bilayer_normal"] = self._geometry_setup("bilayer_normal")
         if "lipid_enrichment" in self.names:
