@@ -408,7 +408,7 @@ def time_ps(ts, frame_index: int, cfg: dict) -> float:
     raise RuntimeError("Trajectory has no usable time. Set time.dt_ps in the YAML config.")
 
 
-def load_config(path: str | Path) -> dict[str, Any]:
+def load_config(path: str | Path, *, check_paths: bool = True) -> dict[str, Any]:
     with open(path) as handle:
         raw = yaml.safe_load(handle) or {}
     if not isinstance(raw, dict):
@@ -433,7 +433,7 @@ def load_config(path: str | Path) -> dict[str, Any]:
             cfg["analyses"][name] = merge(DEFAULTS["analyses"].get(name, {}), {"enabled": value})
         elif not isinstance(value, dict):
             raise ValueError(f"analyses.{name} must be a mapping or boolean")
-    validate_config(cfg, Path(path).resolve().parent)
+    validate_config(cfg, Path(path).resolve().parent, check_paths=check_paths)
     return cfg
 
 
@@ -445,7 +445,7 @@ def _validate_time_window(window, label):
         raise ValueError(f"{label} requires two increasing finite times")
 
 
-def validate_config(cfg: dict, base: Path = Path(".")) -> None:
+def validate_config(cfg: dict, base: Path = Path("."), *, check_paths: bool = True) -> None:
     if analysis_enabled(cfg, "potassium_bridge_audit"):
         analyses = cfg["analyses"]
         solvation = analyses["solvation"]
@@ -498,7 +498,7 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
             )
         top = Path(spec["topology"])
         top = top if top.is_absolute() else (base / top).resolve()
-        if not top.is_file():
+        if check_paths and not top.is_file():
             raise FileNotFoundError(top)
         labels = []
         for index, rep in enumerate(spec["replicates"], 1):
@@ -519,13 +519,13 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
             labels.append(label)
             traj = Path(trajectory_value)
             traj = traj if traj.is_absolute() else (base / traj).resolve()
-            if not traj.is_file():
+            if check_paths and not traj.is_file():
                 raise FileNotFoundError(traj)
             if isinstance(rep, dict) and rep.get("msd_trajectory"):
                 msd_path = Path(rep["msd_trajectory"])
                 if not msd_path.is_absolute():
                     msd_path = (base / msd_path).resolve()
-                if not msd_path.is_file():
+                if check_paths and not msd_path.is_file():
                     raise FileNotFoundError(
                         f"Unmodified membrane MSD trajectory does not exist: {msd_path}"
                     )
