@@ -347,3 +347,37 @@ def test_explicit_bridge_pair_with_no_events_is_observed_zero(tmp_path):
     import pytest
     with pytest.raises(ValueError, match='tracked target IDs'):
         SolvationObserver(u, cfg, tmp_path/'invalid')
+
+
+def test_solvation_scratch_replay_preserves_committed_cache_and_rdf(tmp_path):
+    """Finalization must read replay chunks, not the existing stream cache."""
+    cfg = {"analyses": {"solvation": {
+        "enabled": True, "preset": "kinetics",
+        "targets": {"protein": {"carboxylate": "resname GLU"}},
+        "water_selection": "resname SOL and name OW",
+        "ion_selection": "resname SOD",
+        "search_radius_A": 5., "rdf_bin_width_A": 0.5,
+        "shell_cutoffs_A": {"water": 3.5, "ions": 4.},
+    }}}
+    def run(root, scratch=None):
+        u = _universe()
+        observer = SolvationObserver(u, cfg, root, cache_dir=scratch)
+        observer.prune_from(0)
+        for i, ts in enumerate(u.trajectory):
+            observer.update(ts, i, float(i) * 5.)
+            observer.flush(i)
+        observer.finalize()
+
+    baseline = tmp_path / "baseline"
+    run(baseline)
+    replay = tmp_path / "replay"
+    committed = replay / "cache/solvation/counts-000000.parquet"
+    committed.parent.mkdir(parents=True)
+    committed.write_bytes(b"committed stream data must survive replay")
+    scratch = replay / ".scratch"
+    run(replay, scratch=scratch)
+    assert committed.read_bytes() == b"committed stream data must survive replay"
+    for name in ("counts.parquet", "rdf.parquet", "events.parquet", "episodes.parquet"):
+        left = pd.read_parquet(baseline / "extensions/solvation" / name)
+        right = pd.read_parquet(replay / "extensions/solvation" / name)
+        pd.testing.assert_frame_equal(left, right, check_dtype=False)
