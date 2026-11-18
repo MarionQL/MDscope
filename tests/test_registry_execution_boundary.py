@@ -56,12 +56,7 @@ def test_scheduler_preserves_task_order_keys_and_scalar_contracts(project):
     ]
     assert len({task.key for task in tasks}) == len(tasks)
     assert all(callable(task.run) for task in tasks)
-    scalars = {task.key: task.scalar_output for task in tasks
-               if task.scalar_output is not None}
-    assert scalars == {
-        "local_environment": "extensions/local_environment/timeseries.parquet",
-        "bilayer_normal": FUSED_OUTPUTS["bilayer_normal"],
-    }
+    assert not any(hasattr(task, "scalar_output") for task in tasks)
     # Planning must use the very same output contract as the task scheduler.
     paths = {entry.path.relative_to(Path("__replica__")).as_posix()
              for entry in analysis_output_plan(cfg, Path("__replica__"))}
