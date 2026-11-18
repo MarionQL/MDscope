@@ -55,10 +55,57 @@ jobs:
           python scripts/figure_gallery.py \
             --base "$RUNNER_TEMP/mdscope-plot-review/review/previous-selected" \
             --head "$RUNNER_TEMP/mdscope-plot-review/review/updated-selected" \
-            --output "$RUNNER_TEMP/mdscope-plot-review/review/selection/index.html"
+            --output "$RUNNER_TEMP/mdscope-plot-review/review/selection/index.html" \
+            --only-name rmsd_A__timeseries.png
           python scripts/preview_gallery.py \
             --preview "$RUNNER_TEMP/mdscope-plot-review/current" \
             --output "$RUNNER_TEMP/mdscope-plot-review/index.html"
+          # Retain numeric examples only for the current-condition preview.
+          # Prior revision and selection outputs are developer comparisons:
+          # their extra Parquet/CSV copies do not belong in a user-facing ZIP.
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path(__import__("os").environ["RUNNER_TEMP"]) / "mdscope-plot-review"
+          selected_name = "rmsd_A__timeseries.png"
+          for relative in ("review/previous", "review/previous-selected",
+                           "review/updated-selected"):
+              folder = root / relative
+              manifest = folder / "preview_manifest.json"
+              record = json.loads(manifest.read_text())
+              if relative.endswith("-selected"):
+                  record["unselected_generated_plots"] = sum(
+                      Path(name).name != selected_name for name in record["plots"])
+                  record["plots"] = [
+                      name for name in record["plots"]
+                      if Path(name).name == selected_name
+                  ]
+              record.pop("table_previews", None)
+              record.pop("table_inventory_csv", None)
+              manifest.write_text(json.dumps(record, indent=2) + "\n")
+              for file in folder.rglob("*"):
+                  if not file.is_file() or file == manifest:
+                      continue
+                  if file.suffix == ".png" and (
+                      not relative.endswith("-selected") or file.name == selected_name):
+                      continue
+                  file.unlink()
+              for directory in sorted(
+                      (p for p in folder.rglob("*") if p.is_dir()),
+                      key=lambda p: len(p.parts), reverse=True):
+                  if not any(directory.iterdir()):
+                      directory.rmdir()
+          (root / "README.txt").write_text(
+              "Start with index.html: one condition-centered preview, not a diff.\n"
+              "current/: updated code's figures and synthetic numeric inputs.\n"
+              "current/table_previews/table_inventory.csv: readable Parquet table index.\n"
+              "review/index.html: previous vs updated *source-code* figures.\n"
+              "review/selection/index.html: one requested plot and counts of extras.\n"
+              "review/previous*, review/updated-selected: rendered revision examples,\n"
+              "  not additional simulation conditions or independent datasets.\n"
+              "All figures and data are SYNTHETIC EXAMPLES — NOT MD RESULTS.\n"
+          )
+          PY
       - name: Upload HTML and figure comparisons
         if: always()
         uses: actions/upload-artifact@v4
