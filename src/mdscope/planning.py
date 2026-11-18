@@ -80,6 +80,26 @@ REQUIRED_TOPOLOGY = {
 }
 
 
+# File names below come from the current statistics writers. They are possible
+# products, not completeness requirements: some are only written with data.
+STATISTICS_CANDIDATES = {
+    "time_series": ("replicate_statistics.parquet", "autocorrelation.parquet",
+                    "system_statistics.parquet", "system_comparisons.parquet",
+                    "hs_contact_episodes.parquet"),
+    "profiles": ("replicate_profiles.parquet", "residue_regions.parquet",
+                 "replicate_profile_statistics.parquet", "system_profiles.parquet",
+                 "system_profile_statistics.parquet", "system_comparisons.parquet"),
+    "interactions": ("replicate_interaction_metrics.parquet",
+                     "system_interaction_metrics.parquet",
+                     "system_interaction_comparisons.parquet"),
+    "solvation_rdfs": ("replicate_rdf.parquet", "system_rdf.parquet",
+                      "replicate_rdf_shells.parquet", "rdf_shell_comparisons.parquet"),
+    "diffusion": ("replicate_common_lag_slopes.parquet",
+                  "common_lag_comparisons.parquet"),
+    "coupling": ("replicate_correlations.parquet", "system_comparisons.parquet"),
+}
+
+
 def _format(path: str) -> str:
     """Identify the *storage container*, not an invented column schema."""
     return {
@@ -211,8 +231,9 @@ def build_plan(cfg: dict, config_path: str | Path, *,
             "status": ("enabled_conditional" if statistics_family_config(cfg, family) is not None
                        else "disabled"),
             "output_directory": f"project_summary/statistics/{STATISTICS_DIRS[family]}/",
-            "files": None,
-            "files_status": "depends_on_saved_data",
+            "files": [f"project_summary/statistics/{STATISTICS_DIRS[family]}/{file}"
+                      for file in STATISTICS_CANDIDATES[family]],
+            "files_status": "conditional_candidates_from_statistics_writers",
             "independent_condition_units": "simulation_replicates",
         })
     if (cfg.get("statistics", {}).get("matched_window_ps") is not None and
@@ -301,6 +322,7 @@ def build_plan(cfg: dict, config_path: str | Path, *,
             "Some optional raw/cache/profiles and specialized statistics products are not yet cataloged.",
             "Fixed-column schemas are described for verified producer paths only; dynamic columns remain unregistered.",
             "Enabled statistics/figures are conditional on supported saved inputs, not guaranteed results.",
+            "Statistics file lists are writer-produced candidates; empty/unsupported families may write none.",
             "Coordinate-frame labels describe input streams, not PBC or reference-model suitability.",
             "Missing/unavailable numerical values must not be silently treated as measured zeros.",
         ],
