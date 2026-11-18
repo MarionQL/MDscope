@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from ..config import plot_enabled
+from ..config import plot_enabled, figure_enabled
 
 
 def _plot_sdc4_replica_figures(cfg, root, system_repouts):
@@ -18,16 +18,24 @@ def _plot_sdc4_replica_figures(cfg, root, system_repouts):
 
     for system, paths in system_repouts.items():
         for repout in paths:
+            prefix = f"sdc4:{system}:{Path(repout).name}:"
+            region_figures = ("lipid_region_moiety_contact_fraction",
+                              "lipid_region_mean_contact_fraction",
+                              "lipid_region_mean_local_enrichment",
+                              "lipid_region_mean_matched_local_contact_fraction",
+                              "lipid_region_mean_matched_local_enrichment")
             specificity_file = (Path(repout) / "extensions/sdc4_mechanisms"
                                 / "lipid_region_specificity.parquet")
-            if specificity_file.exists():
+            if (specificity_file.exists() and any(
+                    figure_enabled(cfg, prefix + name) for name in region_figures)):
                 all_contacts = pd.read_parquet(specificity_file)
                 chemistry = all_contacts.loc[
                     all_contacts.moiety.isin(
                         ("glycan", "ceramide_head", "ceramide_tail")
                     )
                 ]
-                if not chemistry.empty:
+                if not chemistry.empty and figure_enabled(
+                        cfg, prefix + "lipid_region_moiety_contact_fraction"):
                     chem = chemistry.groupby(
                         ["region", "species", "leaflet", "moiety"], as_index=False
                     ).agg(mean_fraction=("contact_fraction", "mean"))
@@ -77,16 +85,19 @@ def _plot_sdc4_replica_figures(cfg, root, system_repouts):
                         n_matched_enrichment_frames=("matched_local_composition_enrichment", "count"),
                         n_frames_with_species=("contact_fraction", "count"),
                     )
-                    summary.to_csv(
-                        specificity_file.with_name("lipid_region_replicate_summary.csv"),
-                        index=False,
-                    )
+                    if cfg.get("plots", {}).get("include") is None:
+                        summary.to_csv(
+                            specificity_file.with_name("lipid_region_replicate_summary.csv"),
+                            index=False,
+                        )
                     for metric, ylabel in (
                         ("mean_contact_fraction", "Fraction of available molecules contacting"),
                         ("mean_local_enrichment", "Legacy unmatched local enrichment (comparison only)"),
                         ("mean_matched_local_contact_fraction", "Fraction contacting within the local anchor population"),
                         ("mean_matched_local_enrichment", "Matched local contact share / local composition share"),
                     ):
+                        if not figure_enabled(cfg, prefix + "lipid_region_" + metric):
+                            continue
                         if summary[metric].notna().sum() == 0:
                             continue
                         fig, ax = plt.subplots(figsize=(max(7, len(summary.region.unique()) * 1.3), 4))
@@ -113,7 +124,9 @@ def _plot_sdc4_replica_figures(cfg, root, system_repouts):
                         )
                         plt.close(fig)
             path = Path(repout) / "extensions/sdc4_mechanisms/lipid_density_maps.npz"
-            if not path.exists():
+            if (not path.exists() or not any(
+                    figure_enabled(cfg, prefix + f"lipid_{field}_maps")
+                    for field in ("density", "enrichment"))):
                 continue
             with np.load(path, allow_pickle=False) as data:
                 species = data["species"].astype(str)
@@ -125,6 +138,8 @@ def _plot_sdc4_replica_figures(cfg, root, system_repouts):
                 ("density", density, "lipids / nm²"),
                 ("enrichment", fold, "local / bulk lipid density"),
             ):
+                if not figure_enabled(cfg, prefix + f"lipid_{field}_maps"):
+                    continue
                 n = len(species)
                 fig, axes = plt.subplots(
                     n, 1, figsize=(6, max(3*n, 3)), squeeze=False,
@@ -148,39 +163,44 @@ def _plot_sdc4_replica_figures(cfg, root, system_repouts):
     # frame-level correlations: trajectories, not frames, are replicates.
     for system, paths in system_repouts.items():
         for repout in paths:
+            prefix = f"sdc4:{system}:{Path(repout).name}:"
+            if not any(figure_enabled(cfg, prefix + name) for name in
+                       ("nxip_height_occlusion_joint", "vvhplvpl_proline_ramachandran")):
+                continue
             folder = Path(repout) / "extensions/sdc4_mechanisms"
             series_path = folder / "timeseries.parquet"
             if not series_path.exists():
                 continue
             table = pd.read_parquet(series_path)
-            fig, axes = plt.subplots(1, 2, figsize=(9, 3.6),
-                                     constrained_layout=True)
-            n_panels = 0
-            for ax, chain in zip(axes, ("A", "B")):
-                xkey = f"sdc4_ectodomain_{chain}_height_A"
-                occlusion = [
-                    c for c in table.columns
-                    if c.startswith(f"sdc4_motif_NxIP_PRO{chain}_")
-                    and c.endswith("_steric_occlusion_fraction")
-                ]
-                ax.set_xlabel(f"Chain {chain} ectodomain height (Å)")
-                ax.set_ylabel("NxIP steric occlusion fraction")
-                if xkey not in table or len(occlusion) != 1:
-                    ax.text(.5, .5, "NxIP mapping unavailable",
-                            ha="center", va="center", transform=ax.transAxes)
-                    continue
-                x = table[xkey].to_numpy(float)
-                y = table[occlusion[0]].to_numpy(float)
-                valid = np.isfinite(x) & np.isfinite(y)
-                if not valid.any():
-                    continue
-                ax.scatter(x[valid], y[valid], s=6, alpha=.18, rasterized=True)
-                ax.set_ylim(-.03, 1.03)
-                n_panels += 1
-            if n_panels:
-                fig.suptitle(f"{system}/{Path(repout).name}: exploratory NxIP–conformation coupling")
-                fig.savefig(folder / "nxip_height_occlusion_joint.png", dpi=190)
-            plt.close(fig)
+            if figure_enabled(cfg, prefix + "nxip_height_occlusion_joint"):
+                fig, axes = plt.subplots(1, 2, figsize=(9, 3.6),
+                                         constrained_layout=True)
+                n_panels = 0
+                for ax, chain in zip(axes, ("A", "B")):
+                    xkey = f"sdc4_ectodomain_{chain}_height_A"
+                    occlusion = [
+                        c for c in table.columns
+                        if c.startswith(f"sdc4_motif_NxIP_PRO{chain}_")
+                        and c.endswith("_steric_occlusion_fraction")
+                    ]
+                    ax.set_xlabel(f"Chain {chain} ectodomain height (Å)")
+                    ax.set_ylabel("NxIP steric occlusion fraction")
+                    if xkey not in table or len(occlusion) != 1:
+                        ax.text(.5, .5, "NxIP mapping unavailable",
+                                ha="center", va="center", transform=ax.transAxes)
+                        continue
+                    x = table[xkey].to_numpy(float)
+                    y = table[occlusion[0]].to_numpy(float)
+                    valid = np.isfinite(x) & np.isfinite(y)
+                    if not valid.any():
+                        continue
+                    ax.scatter(x[valid], y[valid], s=6, alpha=.18, rasterized=True)
+                    ax.set_ylim(-.03, 1.03)
+                    n_panels += 1
+                if n_panels:
+                    fig.suptitle(f"{system}/{Path(repout).name}: exploratory NxIP–conformation coupling")
+                    fig.savefig(folder / "nxip_height_occlusion_joint.png", dpi=190)
+                plt.close(fig)
 
             # Per-proline Ramachandran distributions, not averages of wrapped
             # angles. Keep individual replicas separate.
@@ -189,7 +209,8 @@ def _plot_sdc4_replica_figures(cfg, root, system_repouts):
                 if name.startswith("sdc4_proline_") and name.endswith("_phi_deg")
                 and name[:-len("_phi_deg")] + "_psi_deg" in table.columns
             })
-            if proline_prefixes:
+            if proline_prefixes and figure_enabled(
+                    cfg, prefix + "vvhplvpl_proline_ramachandran"):
                 fig, axs = plt.subplots(
                     1, len(proline_prefixes), squeeze=False,
                     figsize=(3.2 * len(proline_prefixes), 3.6),
@@ -215,45 +236,48 @@ def _plot_shared_state_figures(cfg, root):
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     state_dir = Path(root) / "project_summary/shared_states"
-    pop_path = state_dir / "replicate_populations.parquet"
-    if not pop_path.exists():
-        return
-    pop = pd.read_parquet(pop_path)
-    if pop.empty:
-        return
-    systems = list(dict.fromkeys(pop["system"]))
-    states = sorted(pop["state"].unique())
-    fig, ax = plt.subplots(figsize=(max(7, len(states)*2.2), 4.5))
-    width = .8 / max(len(systems), 1)
-    for j, system in enumerate(systems):
-        sub = pop[pop.system == system]
-        means = [sub.loc[sub.state == state, "fraction"].mean() for state in states]
-        xpos = np.arange(len(states)) + (j - (len(systems)-1)/2)*width
-        ax.bar(xpos, means, width=width*.9, alpha=.6, label=system)
-        for i, state in enumerate(states):
-            values = sub.loc[sub.state == state, "fraction"].to_numpy(float)
-            offsets = np.linspace(-width*.22, width*.22, len(values))
-            ax.scatter(np.full(len(values), xpos[i]) + offsets, values,
-                       color="black", s=13, zorder=3)
-    ax.set_xticks(np.arange(len(states)), [f"State {s}" for s in states])
-    ax.set_ylabel("Fraction of analyzed frames")
-    ax.set_ylim(0, 1)
-    ax.set_title("Shared-state populations (points = independent replicates)")
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig(state_dir / "state_populations.png", dpi=200)
-    plt.close(fig)
-    diag = pd.read_parquet(state_dir / "sampling_diagnostics.parquet")
-    fig, ax = plt.subplots(figsize=(max(6, len(diag)*1.1), 4))
-    labels = [f"{row.system}/{row.replicate}" for row in diag.itertuples()]
-    ax.bar(np.arange(len(diag)), diag.first_second_half_js_divergence)
-    ax.set_xticks(np.arange(len(diag)), labels, rotation=45, ha="right")
-    ax.set_ylabel("Jensen–Shannon divergence (bits)")
-    ax.set_title("First- vs second-half state populations")
-    fig.tight_layout()
-    fig.savefig(state_dir / "state_sampling_diagnostics.png", dpi=200)
-    plt.close(fig)
+    if figure_enabled(cfg, "shared_states:state_populations"):
+        pop_path = state_dir / "replicate_populations.parquet"
+        if pop_path.is_file():
+            pop = pd.read_parquet(pop_path)
+            if not pop.empty:
+                systems = list(dict.fromkeys(pop["system"]))
+                states = sorted(pop["state"].unique())
+                fig, ax = plt.subplots(figsize=(max(7, len(states)*2.2), 4.5))
+                width = .8 / max(len(systems), 1)
+                for j, system in enumerate(systems):
+                    sub = pop[pop.system == system]
+                    means = [sub.loc[sub.state == state, "fraction"].mean() for state in states]
+                    xpos = np.arange(len(states)) + (j - (len(systems)-1)/2)*width
+                    ax.bar(xpos, means, width=width*.9, alpha=.6, label=system)
+                    for i, state in enumerate(states):
+                        values = sub.loc[sub.state == state, "fraction"].to_numpy(float)
+                        offsets = np.linspace(-width*.22, width*.22, len(values))
+                        ax.scatter(np.full(len(values), xpos[i]) + offsets, values,
+                                   color="black", s=13, zorder=3)
+                ax.set_xticks(np.arange(len(states)), [f"State {s}" for s in states])
+                ax.set_ylabel("Fraction of analyzed frames")
+                ax.set_ylim(0, 1)
+                ax.set_title("Shared-state populations (points = independent replicates)")
+                ax.legend()
+                fig.tight_layout()
+                fig.savefig(state_dir / "state_populations.png", dpi=200)
+                plt.close(fig)
 
+    if figure_enabled(cfg, "shared_states:state_sampling_diagnostics"):
+        diag_path = state_dir / "sampling_diagnostics.parquet"
+        if diag_path.is_file():
+            diag = pd.read_parquet(diag_path)
+            if not diag.empty:
+                fig, ax = plt.subplots(figsize=(max(6, len(diag)*1.1), 4))
+                labels = [f"{row.system}/{row.replicate}" for row in diag.itertuples()]
+                ax.bar(np.arange(len(diag)), diag.first_second_half_js_divergence)
+                ax.set_xticks(np.arange(len(diag)), labels, rotation=45, ha="right")
+                ax.set_ylabel("Jensen–Shannon divergence (bits)")
+                ax.set_title("First- vs second-half state populations")
+                fig.tight_layout()
+                fig.savefig(state_dir / "state_sampling_diagnostics.png", dpi=200)
+                plt.close(fig)
 
 
 def plot_sdc4_mechanisms(cfg, root, system_repouts):
