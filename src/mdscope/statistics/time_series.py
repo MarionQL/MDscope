@@ -11,7 +11,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ..config import statistics_family_config, atomic_parquet, ensure_dir
+from ..config import statistics_family_config
+from ..core.persistence import atomic_parquet, ensure_dir
 from ..interactions.interaction_tables import event_lifetimes
 from ..interactions.interaction_tables import interaction_tables
 
