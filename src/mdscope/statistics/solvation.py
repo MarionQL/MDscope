@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config, atomic_parquet, ensure_dir
-from ..statistics_selection import simple_family_selection, metric_inference
+from ..statistics_selection import simple_family_selection, metric_estimator_enabled
 from .replicate_contrasts import replicate_mean_contrasts
 
 
@@ -92,7 +92,7 @@ def analyze_solvation_rdfs(cfg, root, system_repouts):
     atomic_parquet(dest/"replicate_rdf.parquet", reps)
     atomic_parquet(dest/"system_rdf.parquet", system)
     shell_selected = reps.loc[
-        [metric_inference(cfg, "solvation_rdfs", (row.solvent, row.target_class, row.site_class))
+        [metric_estimator_enabled(cfg, "solvation_rdfs", (row.solvent, row.target_class, row.site_class), "ci")
          for row in reps.itertuples(index=False)]
     ]
     if not shell_selected.empty:
