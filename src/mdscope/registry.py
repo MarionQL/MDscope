@@ -167,9 +167,14 @@ def artifact_schema(entry: "FusedOutput", path: Path) -> dict:
             fields = list(HydrationObserver.SUGAR_COLUMNS)
             units = {"time_ps": "ps", "water_cutoff_A": "angstrom",
                      "water_count": "unique water entities"}
+    dynamic_columns = (analysis == "solvation" and name == "rdf.parquet") or (
+        analysis == "residue_membrane_distance" and name == "median_profile.parquet"
+    )
     return {
         "columns": fields,
-        "columns_status": "verified_fixed" if fields is not None else "not_registered",
+        "columns_status": ("verified_base_plus_optional" if dynamic_columns
+                           else "verified_fixed" if fields is not None
+                           else "not_registered"),
         "shape_axes": shape,
         "dtype": dtype,
         "units": units,
