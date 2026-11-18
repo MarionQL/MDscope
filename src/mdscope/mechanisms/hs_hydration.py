@@ -158,8 +158,9 @@ class HydrationObserver:
         "oxygen_count", "time_ps", "water_cutoff_A", "water_count",
     ]
 
-    def __init__(self, universe, cfg, repout):
+    def __init__(self, universe, cfg, repout, *, cache_dir=None):
         self.u, self.cfg, self.repout = universe, cfg, Path(repout)
+        self.cache = Path(cache_dir) if cache_dir is not None else self.repout / "cache" / "hydration"
         analyses = cfg.get("analyses", {})
         spec = analyses.get("hydration", {})
         hs_spec = analyses.get("sdc4_mechanisms", {})
@@ -315,7 +316,7 @@ class HydrationObserver:
 
     def flush(self, part):
         from ..config import ensure_dir
-        cache = ensure_dir(self.repout / "cache" / "hydration")
+        cache = ensure_dir(self.cache)
         for name, rows, columns in (
             ("counts", self.rows, self.COUNT_COLUMNS),
             ("aggregates", self.aggregate_rows, self.AGGREGATE_COLUMNS),
@@ -327,7 +328,7 @@ class HydrationObserver:
                 rows.clear()
 
     def prune_from(self, part):
-        cache = self.repout / "cache" / "hydration"
+        cache = self.cache
         for path in cache.glob("*.parquet"):
             try:
                 number = int(path.stem.rsplit("-", 1)[1])
@@ -360,7 +361,7 @@ class HydrationObserver:
             temporary.unlink(missing_ok=True)
 
     def finalize(self):
-        cache = self.repout / "cache" / "hydration"
+        cache = self.cache
         dest = self.repout / "extensions" / "hydration"
         for name, output in (("counts", "counts.parquet"),
                              ("aggregates", "aggregate_counts.parquet")):
