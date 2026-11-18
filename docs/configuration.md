@@ -118,6 +118,19 @@ relative_tolerance: 0.05
 - A 3+3 exact two-sided unpaired permutation test has minimum p = 0.10. CI exclusion is **not** FDR-adjusted significance.
 - Rerunning statistics archives old family tables/manifests under `.archives/statistics`. The active manifest is `running` until complete.
 
+## Preview the work without analyzing a trajectory
+
+```bash
+mdscope plan analysis.yaml                    # schema-only; no TPR/XTC required
+mdscope plan analysis.yaml --format json      # machine-readable preview
+mdscope plan analysis.yaml --check-topology   # real topology selections/counts
+mdscope plan analysis.yaml --check-inputs     # require TPR and trajectory paths
+```
+
+The plan reads the existing observer output registry and identifies required per-replica artifacts, named analysis runs, optional extra trajectory passes, enabled statistics families and figure families. Paths are **relative to each replica**; nothing is created or executed. Schema-only mode still validates YAML options and analysis constraints but does not prove that selections, chemistry, files, or PBC assumptions are valid. Topology mode inspects the topology only, not XTC frames.
+
+This is a **partial** catalog: many raw/cache outputs, exact Parquet/NPZ schemas, and individual plot IDs are not yet registered. A listed statistics or plot family is conditional on available saved inputs, not a promise of a nonempty result or a confidence interval. Use `mdscope validate` before production runs.
+
 ## Validate before long runs
 
 Unknown YAML option names, including nested analysis and statistics options, now fail with a dotted path and a suggested correction when available. This check also applies to disabled analyses. System, group, species, motif, solvation-site and named-run identifiers remain user-defined; their option fields are still validated.

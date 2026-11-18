@@ -61,6 +61,38 @@ def cmd_validate(args):
     validate_selections(cfg, Path(args.config).resolve().parent, emit=print)
 
 
+def cmd_plan(args):
+    """Print a no-run output plan; topology inspection is opt-in."""
+    import json
+    from .planning import build_plan
+
+    cfg = load_config(args.config, check_paths=args.check_inputs)
+    counts = (validate_selections(cfg, Path(args.config).resolve().parent)
+              if args.check_topology else None)
+    mode = ("topology_aware" if args.check_topology else
+            "input_paths" if args.check_inputs else "schema_only")
+    plan = build_plan(cfg, args.config, validation_mode=mode,
+                      topology_counts=counts)
+    if args.format == "json":
+        print(json.dumps(plan, indent=2, sort_keys=True))
+        return
+    print(f"MDscope plan ({mode}): {len(plan['systems'])} systems, "
+          f"{len(plan['replicates'])} replicas")
+    for item in plan["analyses"]:
+        print(f"  {item['analysis']}[{item['run_id']}] "
+              f"source={item['coordinate_source']} "
+              f"artifacts={item['artifact_catalog_status']}")
+    print("Registered per-replica files (required when their observer completes):")
+    for item in plan["registered_replica_outputs"]:
+        print(f"  {item['path_within_replica']} "
+              f"({item['format']}, {item['role']})")
+    print("Statistics families (conditional on saved inputs):")
+    for item in plan["statistics_families"]:
+        print(f"  {item['family']}: {item['status']}")
+    print("Catalog is partial: exact table columns, all raw products and "
+          "individual figure IDs are not yet registered.")
+
+
 def main():
     parser = argparse.ArgumentParser(prog="mdscope")
     sub = parser.add_subparsers(required=True)
@@ -70,6 +102,14 @@ def main():
     p = sub.add_parser("validate")
     p.add_argument("config")
     p.set_defaults(func=cmd_validate)
+    p = sub.add_parser("plan", help="Inspect expected outputs without running trajectories")
+    p.add_argument("config")
+    p.add_argument("--format", choices=("text", "json"), default="text")
+    p.add_argument("--check-inputs", action="store_true",
+                   help="Require topology and trajectory paths to exist")
+    p.add_argument("--check-topology", action="store_true",
+                   help="Inspect topology selections (no trajectory frames)")
+    p.set_defaults(func=cmd_plan)
     p = sub.add_parser("run")
     p.add_argument("config")
     p.set_defaults(func=lambda a: print(run_all(a.config)))

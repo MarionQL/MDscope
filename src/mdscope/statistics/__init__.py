@@ -10,6 +10,9 @@ from .coverage import write_contrast_coverage
 from .coupling import analyze_coupling
 from .windows import matched_grid
 
+# Shared with the read-only plan; keep in sync with analyze_project dispatch below.
+STATISTICS_FAMILIES = ("time_series", "profiles", "interactions", "solvation_rdfs", "diffusion", "coupling")
+
 
 def _input_snapshot(root, replicate_paths):
     """Detect concurrent edits during statistics without gating future reads."""
@@ -34,7 +37,7 @@ def analyze_project(cfg, root, system_repouts):
     from ..core.persistence import archive_output
     from pathlib import Path
     import os
-    families = ("time_series", "profiles", "interactions", "solvation_rdfs", "diffusion", "coupling")
+    families = STATISTICS_FAMILIES
     dest = Path(root) / "project_summary/statistics"
     if (dest / "manifest.json").exists():
         archive_output(dest / "manifest.json", Path(root) / ".archives/statistics/manifests",
