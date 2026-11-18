@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 
-def solvation_rdf_figure(root, system_repouts, *, max_panels=6):
+def solvation_rdf_figure(root, system_repouts, *, max_panels=6, dpi=150):
     path=Path(root)/"project_summary"/"statistics"/"solvation"/"system_rdf.parquet"
     if not path.exists():
         return None
@@ -41,13 +41,13 @@ def solvation_rdf_figure(root, system_repouts, *, max_panels=6):
     axes[-1,0].set_xlabel("Distance (Å)")
     fig.tight_layout()
     buf=BytesIO()
-    fig.savefig(buf,format="png",dpi=150)
+    fig.savefig(buf,format="png",dpi=dpi)
     plt.close(fig)
     buf.seek(0)
     return buf,len(groups),len(list(rdf.groupby(["solvent","target_class","site_class"])))
 
 
-def solvation_timeseries_figure(system_repouts, *, max_panels=4):
+def solvation_timeseries_figure(system_repouts, *, max_panels=4, dpi=150):
     data=[]
     for system,reps in system_repouts.items():
         for rep in reps:
@@ -78,13 +78,13 @@ def solvation_timeseries_figure(system_repouts, *, max_panels=4):
     axes[-1,0].set_xlabel("Time (ns)")
     fig.tight_layout()
     buf=BytesIO()
-    fig.savefig(buf,format="png",dpi=150)
+    fig.savefig(buf,format="png",dpi=dpi)
     plt.close(fig)
     buf.seek(0)
     return buf,len(selected),len(groups)
 
 
-def solvation_survival_figure(system_repouts, *, max_curves=8):
+def solvation_survival_figure(system_repouts, *, max_curves=8, dpi=150):
     """Show descriptive censored contact-survival curves, if recorded."""
     import pyarrow.parquet as pq
     curves=[]
@@ -125,7 +125,7 @@ def solvation_survival_figure(system_repouts, *, max_curves=8):
     ax.legend(fontsize=6,frameon=False)
     fig.tight_layout()
     buf=BytesIO()
-    fig.savefig(buf,format="png",dpi=150)
+    fig.savefig(buf,format="png",dpi=dpi)
     plt.close(fig)
     buf.seek(0)
     return buf,len(curves)
@@ -135,6 +135,7 @@ def solvation_survival_figure(system_repouts, *, max_curves=8):
 def plot_solvation(cfg, root, system_repouts):
     """Render a few solvation diagnostics when explicitly requested."""
     from ..config import ensure_dir, plot_enabled, figure_enabled
+    from .plot_ids import figure_dpi
     from .figure_inventory import current_statistics
 
     opts = cfg.get("plots", {})
@@ -144,10 +145,13 @@ def plot_solvation(cfg, root, system_repouts):
         return
     # Dispatch selected figures lazily: do not read unnecessary saved tables.
     figures = {
-        "shell_rdf": lambda: solvation_rdf_figure(root, system_repouts)
+        "shell_rdf": lambda: solvation_rdf_figure(
+            root, system_repouts, dpi=figure_dpi(cfg, "solvation:shell_rdf", 150))
         if current_statistics(cfg, root, "solvation_rdfs") else None,
-        "water_and_ions": lambda: solvation_timeseries_figure(system_repouts),
-        "contact_survival": lambda: solvation_survival_figure(system_repouts),
+        "water_and_ions": lambda: solvation_timeseries_figure(
+            system_repouts, dpi=figure_dpi(cfg, "solvation:water_and_ions", 150)),
+        "contact_survival": lambda: solvation_survival_figure(
+            system_repouts, dpi=figure_dpi(cfg, "solvation:contact_survival", 150)),
     }
     for name, make in figures.items():
         if not figure_enabled(cfg, f"solvation:{name}"):
