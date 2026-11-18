@@ -114,3 +114,85 @@ def test_conditional_availability_can_be_selected_without_raw_metric(tmp_path):
     series = collect_time_series(rep, selected={key})
     assert set(series) == {key}
     np.testing.assert_array_equal(series[key]["value"].to_numpy(), [1, 1, 0, 1, 1, 1, 1, 1])
+
+
+def test_interaction_identity_metric_selector_skips_other_inference(tmp_path, monkeypatch):
+    from test_interaction_statistics_reference import fixture
+    from mdscope.statistics.interactions import analyze_interactions
+    cfg, paths = fixture(tmp_path / "input")
+    cfg["statistics"]["metric_selection"] = {"interactions": [
+        {"kind": "salt_bridges", "interaction": "ASP0 | LYS7 | interchain",
+         "metric": "occupancy"}
+    ]}
+    import mdscope.statistics.interactions as module
+    original = module._interaction_bootstrap
+    called = []
+    def counted(*args, **kwargs):
+        called.append(1)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(module, "_interaction_bootstrap", counted)
+    analyze_interactions(cfg, tmp_path, paths)
+    dest = tmp_path / "project_summary/statistics/interactions"
+    replica = pd.read_parquet(dest / "replicate_interaction_metrics.parquet")
+    assert set(replica.metric) == {"occupancy"}
+    assert set(replica.interaction) == {"ASP0 | LYS7 | interchain"}
+    assert len(called) == 6  # Exactly one chosen identity per replica
+    assert len(replica) == 6
+    assert replica.loc[(replica.system == "a") & (replica.replicate == "rep1"),
+                       "value"].item() == pytest.approx(0.25)
+    system = pd.read_parquet(dest / "system_interaction_metrics.parquet")
+    contrast = pd.read_parquet(dest / "system_interaction_comparisons.parquet")
+    assert set(system.metric) == set(contrast.metric) == {"occupancy"}
+
+
+def test_empty_interaction_selection_skips_input_loading(tmp_path, monkeypatch):
+    from mdscope.statistics.interactions import analyze_interactions
+    import mdscope.statistics.interactions as module
+    cfg = deepcopy(DEFAULTS)
+    cfg["statistics"]["metric_selection"] = {"interactions": []}
+    assert statistics_family_config(cfg, "interactions") is None
+    monkeypatch.setattr(module, "interaction_tables",
+                        lambda *args, **kwargs: (_ for _ in ()).throw(
+                            AssertionError("No interaction files may be read")))
+    analyze_interactions(cfg, tmp_path, {"x": [tmp_path / "x"]})
+    assert not (tmp_path / "project_summary/statistics/interactions").exists()
+
+
+def test_unknown_interaction_identity_fails_before_output_creation(tmp_path):
+    from test_interaction_statistics_reference import fixture
+    from mdscope.statistics.interactions import analyze_interactions
+    cfg, paths = fixture(tmp_path / "input")
+    cfg["statistics"]["metric_selection"] = {"interactions": [
+        {"kind": "salt_bridges", "interaction": "UNOBSERVED | LYS7 | interchain"}
+    ]}
+    with pytest.raises(ValueError, match="Unknown saved interaction"):
+        analyze_interactions(cfg, tmp_path, paths)
+    assert not (tmp_path / "project_summary/statistics/interactions").exists()
+
+
+@pytest.mark.parametrize("invalid", [
+    [{"kind": "salt_bridges", "metric": "invented_stat"}],
+    [{"kind": ""}],
+    [{"kind": "salt_bridges", "interaction": ""}],
+    [{"kind": "salt_bridges"}, {"kind": "salt_bridges"}],
+    [{"kind": "salt_bridges", "unsupported": True}],
+])
+def test_invalid_interaction_selection_fails_config_validation(invalid):
+    from mdscope.statistics_selection import validate_metric_selection
+    with pytest.raises(ValueError, match="metric_selection"):
+        validate_metric_selection({"metric_selection": {"interactions": invalid}})
+
+
+def test_legacy_interaction_selection_is_unrestricted(tmp_path):
+    from test_interaction_statistics_reference import fixture
+    from mdscope.statistics.interactions import analyze_interactions
+    cfg, paths = fixture(tmp_path / "input")
+    analyze_interactions(cfg, tmp_path, paths)
+    rows = pd.read_parquet(
+        tmp_path / "project_summary/statistics/interactions/replicate_interaction_metrics.parquet"
+    )
+    assert set(rows.metric) == {
+        "occupancy", "event_rate_per_ns", "mean_lifetime_ps",
+        "median_lifetime_ps", "total_lifetime_ps"
+    }
+    assert len(set(rows.interaction)) == 3
