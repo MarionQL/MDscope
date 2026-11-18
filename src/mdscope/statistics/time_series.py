@@ -13,6 +13,7 @@ import pandas as pd
 
 from ..config import statistics_family_config
 from ..statistics_selection import time_series_selection, metric_inference
+from .common import selected_rng
 from ..core.persistence import atomic_parquet, ensure_dir
 from ..interactions.interaction_tables import event_lifetimes
 from ..interactions.interaction_tables import interaction_tables
@@ -269,6 +270,9 @@ def analyze_time_series(
             for (group, metric), table in series.items():
                 infer = metric_inference(cfg, "time_series", (group, metric))
                 local_draws = draws if infer else 0
+                metric_rng = (rng if selected is None else
+                              selected_rng(seed, "time_series", "replicate", system,
+                                           repout.name, group, metric))
                 window_covered = True
                 if scalar_window is not None:
                     lower, upper = scalar_window
@@ -289,7 +293,7 @@ def analyze_time_series(
                 conditional = window_covered and group is None and _has_conditional_support(metric) and not temporal_valid
                 if conditional:
                     conditional_boot = _conditional_geometry_bootstrap(
-                        np.where(np.isfinite(values), values, np.nan), times, cfg, local_draws, rng
+                        np.where(np.isfinite(values), values, np.nan), times, cfg, local_draws, metric_rng
                     )
                 values = values[valid]
                 times = times[valid]
@@ -300,14 +304,14 @@ def analyze_time_series(
                     values,
                     meta["block_length_frames"],
                     local_draws,
-                    rng,
+                    metric_rng,
                     "mean"
                 ) if temporal_valid and local_draws else np.full(local_draws, np.nan)
                 med_boot = _block_bootstrap(
                     values,
                     meta["block_length_frames"],
                     local_draws,
-                    rng,
+                    metric_rng,
                     "median"
                 ) if temporal_valid and local_draws else np.full(local_draws, np.nan)
                 sampling_status = "regular_complete" if temporal_valid else "unavailable_gapped_or_irregular"
@@ -389,20 +393,24 @@ def analyze_time_series(
         keys = [(system, r["replicate"], gid, metric) for r in rows]
         infer = metric_inference(cfg, "time_series", (gid, metric))
         local_system_draws = system_draws if infer else 0
+        system_rng = (rng if selected is None else
+                      selected_rng(seed, "time_series", "hierarchy", system, gid, metric))
+        adaptive_metric_rng = (adaptive_rng if selected is None else
+                               selected_rng(seed, "time_series", "adaptive", system, gid, metric))
         require_complete = scalar_window is not None or _has_conditional_support(metric)
         complete_replica_coverage = not require_complete or len(keys) == len(system_repouts[system])
         temporal_valid = complete_replica_coverage and all(cache[k]["temporal_valid"] for k in keys)
         if adaptive and infer:
             def sample(n):
                 return np.column_stack([
-                    _hierarchical([cache[k][stat] for k in keys], n, adaptive_rng, stat, resample)
+                    _hierarchical([cache[k][stat] for k in keys], n, adaptive_metric_rng, stat, resample)
                     for stat in ("mean", "median")
                 ]) if temporal_valid else np.empty((0, 2))
 
             (mean_boot, med_boot), precision = _adaptive_intervals(sample, level, adaptive)
         else:
             mean_boot, med_boot = (
-                _hierarchical([cache[k][stat] for k in keys], local_system_draws, rng, stat, resample)
+                _hierarchical([cache[k][stat] for k in keys], local_system_draws, system_rng, stat, resample)
                 if temporal_valid else np.full(local_system_draws, np.nan)
                 for stat in ("mean", "median")
             )
@@ -449,6 +457,11 @@ def analyze_time_series(
         local_system_draws = system_draws if infer else 0
         available = [s for s in system_repouts if (s, gid, metric) in sys_boot]
         for s1, s2 in combinations(available, 2):
+            comparison_rng = (rng if selected is None else
+                              selected_rng(seed, "time_series", "comparison", group, metric, s1, s2))
+            adaptive_comparison_rng = (adaptive_rng if selected is None else
+                                       selected_rng(seed, "time_series", "adaptive_comparison",
+                                                    group, metric, s1, s2))
             amap, amed = point_maps[(s1, gid or "", metric)]
             bmap, bmed = point_maps[(s2, gid or "", metric)]
             paired = (
@@ -468,10 +481,10 @@ def analyze_time_series(
                         a = {k[1]: cache[k][stat] for k in left["keys"]}
                         b = {k[1]: cache[k][stat] for k in right["keys"]}
                         if paired:
-                            values = _hierarchical_difference(a, b, n, adaptive_rng, stat, resample)
+                            values = _hierarchical_difference(a, b, n, adaptive_comparison_rng, stat, resample)
                         else:
-                            values = (_hierarchical(b.values(), n, adaptive_rng, stat, resample)
-                                      - _hierarchical(a.values(), n, adaptive_rng, stat, resample))
+                            values = (_hierarchical(b.values(), n, adaptive_comparison_rng, stat, resample)
+                                      - _hierarchical(a.values(), n, adaptive_comparison_rng, stat, resample))
                         columns.append(values)
                     return np.column_stack(columns)
 
@@ -485,7 +498,7 @@ def analyze_time_series(
                     _hierarchical_difference(
                         {rep_id: cache[(s1, rep_id, gid, metric)][stat] for rep_id in amap},
                         {rep_id: cache[(s2, rep_id, gid, metric)][stat] for rep_id in bmap},
-                        local_system_draws, rng, stat, resample)
+                        local_system_draws, comparison_rng, stat, resample)
                     for stat in ("mean", "median")
                 )
             else:
@@ -505,12 +518,12 @@ def analyze_time_series(
                           "mean_difference_ci_low": mlo, "mean_difference_ci_high": mhi,
                           "mean_probability_difference_gt_0": pgt,
                           "mean_probability_difference_lt_0": plt,
-                          "mean_p_value": _permutation(amap, bmap, cfg, rng) if infer else np.nan,
+                          "mean_p_value": _permutation(amap, bmap, cfg, comparison_rng) if infer else np.nan,
                           "median_difference_system2_minus_system1": median_difference,
                           "median_difference_ci_low": dlo, "median_difference_ci_high": dhi,
                           "median_probability_difference_gt_0": dpgt,
                           "median_probability_difference_lt_0": dplt,
-                          "median_p_value": _permutation(amed, bmed, cfg, rng) if infer else np.nan,
+                          "median_p_value": _permutation(amed, bmed, cfg, comparison_rng) if infer else np.nan,
                           "ci_status": "unavailable_temporal_support" if not regular else None,
                           "bootstrap_draws": len(dmean) if adaptive and infer else local_system_draws,
                           "ci_level": level, **adaptive_provenance, **precision})
