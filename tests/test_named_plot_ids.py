@@ -110,7 +110,7 @@ def test_solvation_not_selected_never_opens_rdf(tmp_path, monkeypatch):
     def forbidden(*args, **kwargs):
         raise AssertionError("solvation RDF should not be loaded")
     monkeypatch.setattr(module, "solvation_rdf_figure", forbidden)
-    monkeypatch.setattr(module, "solvation_timeseries_figure", lambda *args: None)
+    monkeypatch.setattr(module, "solvation_timeseries_figure", lambda *args, **kwargs: None)
     cfg = {"plots": {"enabled": True, "include": ["solvation:water_and_ions"]}}
     module.plot_solvation(cfg, tmp_path, {"condition": []})
 
@@ -274,7 +274,7 @@ def test_individual_dpi_changes_only_selected_visual_resolution(tmp_path):
 @pytest.mark.parametrize("options,diagnostic", [
     ({"time_series:rmsd_A:timeseries": {"dpi": 30}}, "dpi"),
     ({"time_series:rmsd_A:timeseries": {"dpi": True}}, "dpi"),
-    ({"time_series:rmsd_A:timeseries": {"legend": True}}, "supports only dpi"),
+    ({"time_series:rmsd_A:timeseries": {"legend": True}}, "legend"),
     ({"unknown:plot": {"dpi": 150}}, "unsupported plot ID"),
 ])
 def test_per_plot_options_reject_bad_keys_and_values(options, diagnostic, tmp_path, project):
@@ -284,4 +284,41 @@ def test_per_plot_options_reject_bad_keys_and_values(options, diagnostic, tmp_pa
     path.write_text(yaml.safe_dump(cfg))
     with pytest.raises(ValueError, match=diagnostic):
         load_config(path)
+
+
+def test_describe_plot_uses_declared_renderers_and_saved_input_contracts():
+    from mdscope.reporting.plot_ids import describe_plot
+
+    for identifier, expected in (
+        ("time_series:rmsd_A:timeseries", "summary/timeseries.parquet"),
+        ("profiles:lipid_order__POPC__sn1:profile", "replicate_profiles.parquet"),
+        ("interactions:salt_bridges:occupancy_heatmap", "occupancy.parquet"),
+        ("solvation:shell_rdf", "system_rdf.parquet"),
+        ("shared_states:state_populations", "replicate_populations.parquet"),
+        ("sdc4:condition_A:rep1:nxip_height_occlusion_joint", "timeseries.parquet"),
+        ("lipid_contacts:lipid_contact_matrix_condition_A_upper_enrichment", "matrix.parquet"),
+        ("diffusion:diffusion_coefficients", "replicate_coefficients.parquet"),
+    ):
+        record = describe_plot(identifier)
+        assert record["id"] == identifier
+        assert record["renderer"].startswith("reporting.")
+        assert record["destination"].endswith(".png")
+        assert record["status"] == "conditional_on_saved_data"
+        assert "dpi" in record["available_overrides"]
+        assert any(expected in source for source in record["source_candidates"])
+
+    with pytest.raises(ValueError, match="unsupported plot ID"):
+        describe_plot("sdc4:condition_A:rep1:unsupported")
+
+
+def test_figure_preview_manifest_can_describe_exact_output_ids(tmp_path):
+    from mdscope.reporting.plot_ids import id_from_figure_path, describe_plot
+
+    cfg, repouts = _fake_data(tmp_path)
+    cfg["plots"]["include"] = ["time_series:rmsd_A:timeseries"]
+    plot_all(cfg, tmp_path, repouts)
+    figure = next((tmp_path / "project_summary/figures").rglob("*.png"))
+    identifier = id_from_figure_path(figure)
+    record = describe_plot(identifier)
+    assert record["destination"] == "project_summary/figures/time_series/rmsd_A__timeseries.png"
 
