@@ -34,12 +34,12 @@ class FusedDistances:
         self.frames = 0
         self.compute_seconds = 0.
         configured = tuple(analysis_runs(cfg, "residue_membrane_distance"))
-        selected = None if run_ids is None else set(run_ids)
-        unknown = (selected or set()) - {run.run_id for run in configured}
+        selected_ids = None if run_ids is None else set(run_ids)
+        unknown = (selected_ids or set()) - {run.run_id for run in configured}
         if unknown:
             raise ValueError(f"Unknown residue-distance run IDs: {sorted(unknown)}")
         for run in configured:
-            if selected is not None and run.run_id not in selected:
+            if selected_ids is not None and run.run_id not in selected_ids:
                 continue
             spec = run.spec
             selection = str(spec.get("selection") or cfg["selections"]["protein"])
