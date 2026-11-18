@@ -17,6 +17,9 @@ SIMPLE_FAMILY_KEYS = {
 }
 
 
+# All families have descriptive point summaries. Whether to compute additional
+# inferential products can be configured independently for each selected metric.
+# The default remains True, so older selectors keep their original behavior.
 INTERACTION_METRICS = frozenset({
     "occupancy", "event_rate_per_ns", "mean_lifetime_ps",
     "median_lifetime_ps", "total_lifetime_ps",
@@ -36,7 +39,9 @@ def validate_metric_selection(stats):
         if family in SIMPLE_FAMILY_KEYS:
             keys = SIMPLE_FAMILY_KEYS[family]
             for entry in entries:
-                if (not isinstance(entry, dict) or set(entry) != set(keys)
+                if (not isinstance(entry, dict) or set(entry) - (set(keys) | {"inference"})
+                        or any(key not in entry for key in keys)
+                        or not isinstance(entry.get("inference", True), bool)
                         or any(not isinstance(entry.get(key), str) or not entry[key].strip()
                                for key in keys)):
                     raise ValueError(
@@ -50,7 +55,8 @@ def validate_metric_selection(stats):
             continue
         if family == "interactions":
             for entry in entries:
-                if (not isinstance(entry, dict) or set(entry) - {"kind", "interaction", "metric"}
+                if (not isinstance(entry, dict) or set(entry) - {"kind", "interaction", "metric", "inference"}
+                        or not isinstance(entry.get("inference", True), bool)
                         or not isinstance(entry.get("kind"), str) or not entry["kind"].strip()
                         or ("interaction" in entry and
                             (not isinstance(entry["interaction"], str) or not entry["interaction"].strip()))
@@ -67,7 +73,8 @@ def validate_metric_selection(stats):
                 seen.add(key)
             continue
         for entry in entries:
-            if (not isinstance(entry, dict) or set(entry) - {"metric", "group"}
+            if (not isinstance(entry, dict) or set(entry) - {"metric", "group", "inference"}
+                    or not isinstance(entry.get("inference", True), bool)
                     or not isinstance(entry.get("metric"), str)
                     or not entry["metric"].strip()
                     or (entry.get("group") is not None
@@ -143,3 +150,31 @@ def studio_metric_selection_defaults():
         "time_series", "profiles", "interactions", "solvation_rdfs",
         "diffusion", "coupling",
     )}
+
+
+def metric_inference(cfg, family, identity):
+    """Whether an explicitly selected observable needs CI/permutation work.
+
+    Descriptive point estimates remain available. Missing selectors retain
+    legacy inference. Identity tuples use the exact writer keys for each family.
+    For interaction selectors, broad and narrow matches are OR-combined.
+    """
+    selection = cfg.get("statistics", {}).get("metric_selection")
+    if selection is None or family not in selection:
+        return True
+    entries = selection[family]
+    if family == "interactions":
+        kind, interaction, metric = identity
+        return any(
+            item["kind"] == kind
+            and (item.get("interaction") is None or item["interaction"] == interaction)
+            and (item.get("metric") is None or item["metric"] == metric)
+            and item.get("inference", True)
+            for item in entries
+        )
+    keys = ("group", "metric") if family == "time_series" else SIMPLE_FAMILY_KEYS[family]
+    return any(
+        tuple(item.get(key) for key in keys) == tuple(identity)
+        and item.get("inference", True)
+        for item in entries
+    )
