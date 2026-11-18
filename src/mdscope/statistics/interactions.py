@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config
-from ..statistics_selection import interaction_selection, selected_interaction_metrics, metric_inference
+from ..statistics_selection import interaction_selection, selected_interaction_metrics, metric_estimator_enabled
 from ..core.persistence import atomic_json, atomic_parquet, ensure_dir
 from ..interactions.interaction_tables import interaction_key_columns, interaction_tables, sample_dt
 
@@ -293,8 +293,14 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
             if not selected_metrics:
                 continue
             metric_infer = {
-                metric: metric_inference(cfg, "interactions", (kind, interaction, metric))
-                for metric in selected_metrics
+                metric: metric_estimator_enabled(
+                    cfg, "interactions", (kind, interaction, metric), "ci"
+                ) for metric in selected_metrics
+            }
+            metric_tests = {
+                metric: metric_estimator_enabled(
+                    cfg, "interactions", (kind, interaction, metric), "hypothesis_tests"
+                ) for metric in selected_metrics
             }
             infer_any = any(metric_infer.values())
             local_draws = draws if infer_any else 0
@@ -458,7 +464,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                                       rng if selectors is None else
                                       _selected_rng(seed, "permutation", kind, interaction,
                                                     s1, s2, metric))
-                                      if metric_infer[metric] else np.nan),
+                                      if metric_tests[metric] else np.nan),
 
                                   "bootstrap_draws": local_system_draws if metric_infer[metric] else 0, "ci_level": level})
         if detail_enabled:
