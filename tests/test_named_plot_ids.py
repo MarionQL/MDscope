@@ -322,3 +322,42 @@ def test_figure_preview_manifest_can_describe_exact_output_ids(tmp_path):
     record = describe_plot(identifier)
     assert record["destination"] == "project_summary/figures/time_series/rmsd_A__timeseries.png"
 
+
+def test_single_time_series_does_not_read_unselected_statistics(tmp_path):
+    cfg, repouts = _fake_data(tmp_path)
+    stat = tmp_path / "project_summary/statistics/time_series/replicate_statistics.parquet"
+    stat.write_bytes(b"invalid statistics file that must remain unread")
+    cfg["plots"]["include"] = ["time_series:rmsd_A:timeseries"]
+    plot_all(cfg, tmp_path, repouts)
+    assert (tmp_path / "project_summary/figures/time_series/rmsd_A__timeseries.png").exists()
+
+
+def test_single_profile_does_not_read_unselected_contrast(tmp_path):
+    cfg, repouts = _fake_data(tmp_path)
+    contrast = tmp_path / "project_summary/statistics/profiles/system_comparisons.parquet"
+    contrast.write_bytes(b"invalid contrast that must remain unread")
+    cfg["plots"]["include"] = ["profiles:lipid_order__POPC__sn1:profile"]
+    plot_all(cfg, tmp_path, repouts)
+    assert (tmp_path / "project_summary/figures/profiles/lipid_order__POPC__sn1__profile.png").exists()
+
+
+def test_selected_occupancy_skips_event_presence_and_lifetimes(tmp_path):
+    cfg, repouts = _fake_data(tmp_path)
+    for reps in repouts.values():
+        for rep in reps:
+            source = rep / "interactions/salt_bridges"
+            (source / "presence.parquet").write_bytes(b"invalid high-cardinality presence")
+            (source / "lifetimes.parquet").write_bytes(b"invalid lifetimes")
+    cfg["plots"]["include"] = ["interactions:salt_bridges:occupancy_heatmap"]
+    plot_all(cfg, tmp_path, repouts)
+    assert (tmp_path /
+            "project_summary/figures/interactions/salt_bridges/occupancy_heatmap.png").is_file()
+
+
+def test_selected_interaction_kind_honors_explicit_exclusion(tmp_path):
+    cfg, repouts = _fake_data(tmp_path)
+    cfg["plots"]["include"] = ["interactions:salt_bridges:occupancy_heatmap"]
+    cfg["plots"]["interaction_exclude_kinds"] = ["salt_bridges"]
+    plot_all(cfg, tmp_path, repouts)
+    assert not list((tmp_path / "project_summary/figures").rglob("*.png"))
+
