@@ -176,3 +176,19 @@ def test_plan_summary_output_matches_real_six_frame_run(tmp_path, project):
     data = pd.read_parquet(observed)
     assert "time_ps" in data and len(data) > 0
 
+
+
+def test_plan_provenance_follows_alignment_toggle(tmp_path, project):
+    """RMSD and RMSF are source-frame measurements when fitting is disabled."""
+    path, _ = project("plan_alignment_source")
+    cfg = load_config(path)
+    cfg["analyses"]["alignment"]["enabled"] = False
+    plan = build_plan(cfg, path)
+    descriptors = {item["analysis"]: item for item in plan["analyses"]}
+    for metric in ("rmsd", "rmsf"):
+        assert descriptors[metric]["coordinate_source"] == "source"
+    cfg["analyses"]["alignment"]["enabled"] = True
+    fitted = build_plan(cfg, path)
+    descriptors = {item["analysis"]: item for item in fitted["analyses"]}
+    for metric in ("rmsd", "rmsf"):
+        assert descriptors[metric]["coordinate_source"] == "fitted"
