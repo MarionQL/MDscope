@@ -44,7 +44,7 @@ def test_scheduler_preserves_task_order_keys_and_scalar_contracts(project):
         "potassium_bridge_audit", "lipid_enrichment", "bilayer_normal",
         "lipid_hydrogen_bonds",
     ):
-        analyses[name]["enabled"] = True
+        analyses.setdefault(name, {})["enabled"] = True
 
     tasks = list(specialized_tasks(cfg))
     assert [task.key for task in tasks] == [
@@ -81,7 +81,7 @@ def test_optional_scalar_collection_keeps_missing_files_missing(tmp_path, projec
     cfg = load_config(path)
     cfg["analyses"]["lipid_enrichment"]["enabled"] = True
     cfg["analyses"]["sdc4_mechanisms"]["enabled"] = True
-    cfg["analyses"]["lipid_contacts"]["enabled"] = True
+    cfg["analyses"].setdefault("lipid_contacts", {})["enabled"] = True
     repout = tmp_path / "replica"
     assert additional_time_series(repout, cfg) == []
 
