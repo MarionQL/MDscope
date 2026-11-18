@@ -45,27 +45,41 @@ def inspect_package(root: Path) -> dict:
              for name, path in modules.items()}
     imports: dict[str, dict[str, str]] = {}
     module_edges: set[tuple[str, str]] = set()
+    import_sites: set[tuple[str, str, int, str]] = set()
     functions: dict[str, ast.AST] = {}
     for name, tree in trees.items():
         aliases: dict[str, str] = {}
+        parents = {child: parent for parent in ast.walk(tree)
+                   for child in ast.iter_child_nodes(parent)}
+
+        def record_import(target: str, node: ast.AST) -> None:
+            if target not in modules or target == name:
+                return
+            module_edges.add((name, target))
+            ancestor = node
+            phase = "module_load"
+            while ancestor in parents:
+                ancestor = parents[ancestor]
+                if isinstance(ancestor, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                    phase = "deferred"
+                    break
+            import_sites.add((name, target, node.lineno, phase))
+
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for item in node.names:
                     alias = item.asname or item.name.split(".")[0]
                     aliases[alias] = item.name if item.asname else item.name.split(".")[0]
-                    if item.name in modules and item.name != name:
-                        module_edges.add((name, item.name))
+                    record_import(item.name, node)
             elif isinstance(node, ast.ImportFrom):
                 base = import_base(name, node, modules[name].name == "__init__.py")
-                if base in modules and base != name:
-                    module_edges.add((name, base))
+                record_import(base, node)
                 for item in node.names:
                     if item.name == "*":
                         continue
                     target = ".".join(filter(None, (base, item.name)))
                     aliases[item.asname or item.name] = target
-                    if target in modules and target != name:
-                        module_edges.add((name, target))
+                    record_import(target, node)
         imports[name] = aliases
         for node in tree.body:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -112,12 +126,17 @@ def inspect_package(root: Path) -> dict:
     return {
         "modules": sorted(modules),
         "imports": sorted([list(edge) for edge in module_edges]),
+        "import_sites": [
+            {"source": source, "target": target, "line": line, "phase": phase}
+            for source, target, line, phase in sorted(import_sites)
+        ],
         "functions": sorted(functions),
         "calls": sorted([list(edge) for edge in calls]),
         "cycles": cycles(set(modules), module_edges),
         "limitations": [
             "Static source graph, not measured runtime execution.",
             "Conditional and function-local imports are included as potential dependencies.",
+            "Import-site phase is module_load or deferred; module_load may still be conditional.",
             "Call edges are approximate: dynamic dispatch, decorators, reexports, shadowed names, "
             "higher-order functions and imported C extensions are not resolved.",
             "Only module-level functions and immediate class methods are call nodes.",
