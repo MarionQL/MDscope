@@ -313,3 +313,28 @@ def test_per_metric_inference_flag_must_be_boolean(family, entry):
     from mdscope.statistics_selection import validate_metric_selection
     with pytest.raises(ValueError, match="metric_selection"):
         validate_metric_selection({"metric_selection": {family: [entry]}})
+
+
+def test_selected_time_series_rng_is_stable_when_another_metric_is_added(tmp_path):
+    """Same saved identity must keep its raw CIs and p-values across selections."""
+    paths = _data(tmp_path / "inputs")
+    cfg = deepcopy(DEFAULTS)
+    cfg["statistics"]["bootstrap_draws"] = 40
+    cfg["statistics"]["hypothesis_tests"]["permutation_draws"] = 40
+    primary = {"group": "PROA", "metric": "rmsd_A"}
+    cfg["statistics"]["metric_selection"] = {"time_series": [primary]}
+    analyze_time_series(cfg, tmp_path / "only", paths)
+    cfg["statistics"]["metric_selection"]["time_series"].append(
+        {"metric": "membrane_thickness_A"}
+    )
+    analyze_time_series(cfg, tmp_path / "both", paths)
+    folder = "project_summary/statistics/time_series"
+    for name in ("replicate_statistics.parquet", "system_statistics.parquet",
+                 "system_comparisons.parquet"):
+        one = pd.read_parquet(tmp_path / "only" / folder / name)
+        both = pd.read_parquet(tmp_path / "both" / folder / name)
+        a = one.loc[one.metric == "rmsd_A"].reset_index(drop=True)
+        b = both.loc[both.metric == "rmsd_A"].reset_index(drop=True)
+        q = [col for col in a if col.endswith("_q_value")]
+        pd.testing.assert_frame_equal(a.drop(columns=q), b.drop(columns=q),
+                                      check_exact=True)
