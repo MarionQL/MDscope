@@ -68,7 +68,10 @@ remain independently controlled by `plots.include`.
 Selections filter before temporal bootstrap/CI/permutation calculations and
 avoid reading irrelevant top-level saved source tables where possible.
 Interaction selection skips unrelated kinds and interaction identities before
-the expensive per-identity loop. For a selected identity, the shared temporal
+the expensive per-identity loop. Selective inference uses identity-keyed
+Monte Carlo streams so changing the selection does not shift existing selected
+identities' bootstrap and permutation results. The legacy no-selector RNG
+sequence remains unchanged. For a selected identity, the shared temporal
 bootstrap kernel still prepares all five summary arrays; unselected metrics
 skip CI, hierarchy, comparisons, and persistence. This is not yet full
 metric-specific kernel factorization (see #156).
