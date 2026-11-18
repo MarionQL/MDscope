@@ -9,6 +9,7 @@ import pandas as pd
 from mdscope.config import load_config
 from mdscope.pipeline.replica_tasks import additional_time_series, specialized_tasks
 from mdscope.registry import FUSED_OUTPUTS, analysis_output_plan
+from mdscope.output_paths import FUSED_OUTPUTS as CANONICAL_OUTPUT_PATHS
 
 
 def test_registry_import_does_not_import_execution_implementations():
@@ -66,6 +67,7 @@ def test_scheduler_preserves_task_order_keys_and_scalar_contracts(project):
     paths = {entry.path.relative_to(Path("__replica__")).as_posix()
              for entry in analysis_output_plan(cfg, Path("__replica__"))}
     assert FUSED_OUTPUTS["lipid_enrichment"] in paths
+    assert FUSED_OUTPUTS is CANONICAL_OUTPUT_PATHS
 
 
 def test_lipid_footprint_directory_is_derived_from_output_registry():
