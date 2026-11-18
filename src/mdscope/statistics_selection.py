@@ -1,8 +1,7 @@
-"""Explicit inference selection for persisted series and interactions (not raw analyses).
+"""Select descriptive metrics and their eligible inferential estimators.
 
-An absent selector preserves legacy family behavior. A present empty list
-means no time-series inference. Identities are the existing saved
-(group, metric) keys; no new metric naming convention is invented.
+Missing selectors retain legacy family-level inference. Explicit empty lists
+mean no statistics for that family; raw trajectory outputs are unaffected.
 """
 from __future__ import annotations
 
@@ -175,34 +174,6 @@ def studio_metric_selection_defaults():
         "time_series", "profiles", "interactions", "solvation_rdfs",
         "diffusion", "coupling",
     )}
-
-
-def metric_inference(cfg, family, identity):
-    """Whether an explicitly selected observable needs CI/permutation work.
-
-    Descriptive point estimates remain available. Missing selectors retain
-    legacy inference. Identity tuples use the exact writer keys for each family.
-    For interaction selectors, broad and narrow matches are OR-combined.
-    """
-    selection = cfg.get("statistics", {}).get("metric_selection")
-    if selection is None or family not in selection:
-        return True
-    entries = selection[family]
-    if family == "interactions":
-        kind, interaction, metric = identity
-        return any(
-            item["kind"] == kind
-            and (item.get("interaction") is None or item["interaction"] == interaction)
-            and (item.get("metric") is None or item["metric"] == metric)
-            and item.get("inference", True)
-            for item in entries
-        )
-    keys = ("group", "metric") if family == "time_series" else SIMPLE_FAMILY_KEYS[family]
-    return any(
-        tuple(item.get(key) for key in keys) == tuple(identity)
-        and item.get("inference", True)
-        for item in entries
-    )
 
 
 def metric_estimator_enabled(cfg, family, identity, estimator):
