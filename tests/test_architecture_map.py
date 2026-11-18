@@ -87,6 +87,20 @@ def test_current_stats_module_boundaries_are_not_historic_analysis_tree():
     assert ("mdscope.statistics.time_series", "mdscope.observables.membrane_order") not in imports
 
 
+def test_solvation_postprocessing_does_not_import_the_observer():
+    """The former deferred cycle must not reappear in the static map."""
+    graph = run_path(str(SCRIPT))["inspect_package"](ROOT / "src/mdscope")
+    edges = {tuple(edge) for edge in graph["imports"]}
+    solvation = "mdscope.observables.solvation"
+    offline = "mdscope.observables.solvation_postprocess"
+    shared = "mdscope.observables.solvation_common"
+    assert (solvation, offline) in edges  # Finalize still uses offline derivatives.
+    assert (solvation, shared) in edges
+    assert (offline, shared) in edges
+    assert (offline, solvation) not in edges
+    assert not any({solvation, offline} <= set(group) for group in graph["cycles"])
+
+
 def test_interactions_package_exports_are_explicit_without_changing_named_api():
     """All intended functions remain importable; third-party names do not leak."""
     import mdscope.interactions as package
