@@ -187,7 +187,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
         if missing:
             raise ValueError(
                 "Unknown saved interaction identities or excluded kinds: "
-                + ", ".join(map(str, sorted(missing)))
+                + ", ".join(map(str, sorted(missing, key=str)))
             )
     ensure_dir(outdir)
     if detail_enabled:
