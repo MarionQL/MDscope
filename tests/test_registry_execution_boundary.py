@@ -48,12 +48,8 @@ def test_scheduler_preserves_task_order_keys_and_scalar_contracts(project):
         analyses.setdefault(name, {})["enabled"] = True
 
     tasks = list(specialized_tasks(cfg))
-    assert [task.key for task in tasks] == [
-        "residue-membrane-phosphate", "residue-membrane-lipids",
-        "membrane-order", "profiles", "hydrogen-bonds",
-        "potassium_bridge_audit", "bilayer_normal",
-        "lipid_hydrogen_bonds",
-    ]
+    # All enabled analyses above use fused observer paths except the K audit.
+    assert [task.key for task in tasks] == ["potassium_bridge_audit"]
     assert len({task.key for task in tasks}) == len(tasks)
     assert all(callable(task.run) for task in tasks)
     assert not any(hasattr(task, "scalar_output") for task in tasks)
@@ -62,6 +58,46 @@ def test_scheduler_preserves_task_order_keys_and_scalar_contracts(project):
              for entry in analysis_output_plan(cfg, Path("__replica__"))}
     assert FUSED_OUTPUTS["lipid_enrichment"] in paths
     assert FUSED_OUTPUTS is CANONICAL_OUTPUT_PATHS
+
+
+def test_specialized_profiles_only_when_dssp_requires_workers(project):
+    """Non-serial DSSP is the only profile scheduling exception."""
+    path, _ = project("profile_dispatch")
+    cfg = load_config(path)
+    for name in ("dssp", "sasa"):
+        cfg["analyses"][name]["enabled"] = True
+
+    assert "dssp" in __import__(
+        "mdscope.pipeline.analysis_selection", fromlist=["extensions_enabled_names"]
+    ).extensions_enabled_names(cfg)
+    assert [task.key for task in specialized_tasks(cfg)] == []
+
+    cfg["analyses"]["dssp"]["backend"] = "parallel"
+    from mdscope.pipeline.analysis_selection import extensions_enabled_names
+    assert "dssp" not in extensions_enabled_names(cfg)
+    assert "sasa" not in extensions_enabled_names(cfg)
+    assert [task.key for task in specialized_tasks(cfg)] == ["profiles"]
+
+    cfg["analyses"]["sasa"]["enabled"] = False
+    assert [task.key for task in specialized_tasks(cfg)] == ["profiles"]
+
+    cfg["analyses"]["dssp"]["enabled"] = False
+    cfg["analyses"]["sasa"]["enabled"] = True
+    assert [task.key for task in specialized_tasks(cfg)] == []
+    assert "sasa" in extensions_enabled_names(cfg)
+
+
+def test_fused_only_analysis_families_have_no_specialized_task(project):
+    path, _ = project("fused_only_dispatch")
+    cfg = load_config(path)
+    for name in (
+        "residue_membrane_distance", "membrane_order", "bilayer_normal",
+        "hydrogen_bonds", "lipid_hydrogen_bonds", "sasa", "local_environment",
+    ):
+        cfg["analyses"][name]["enabled"] = True
+    cfg["analyses"]["dssp"]["enabled"] = True
+    cfg["analyses"]["dssp"]["backend"] = "serial"
+    assert list(specialized_tasks(cfg)) == []
 
 
 def test_lipid_footprint_directory_is_derived_from_output_registry():
