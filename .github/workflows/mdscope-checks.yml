@@ -55,6 +55,23 @@ jobs:
       - name: Run synthetic regression tests
         run: |
           pytest -q --durations=20 tests
+      - name: Generate current static architecture graphs
+        if: matrix.python-version == '3.11'
+        run: |
+          python scripts/architecture_map.py --output /tmp/mdscope-architecture
+          # Graphviz is optional. The DOT and JSON files always remain usable.
+          if command -v dot >/dev/null 2>&1; then
+            dot -Tsvg /tmp/mdscope-architecture/modules.dot -o /tmp/mdscope-architecture/modules.svg
+            dot -Tsvg /tmp/mdscope-architecture/calls.dot -o /tmp/mdscope-architecture/calls.svg
+          fi
+      - name: Publish architecture review artifact
+        if: always() && matrix.python-version == '3.11'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mdscope-architecture-map
+          path: /tmp/mdscope-architecture/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Profile representative numerical kernels (manual only)
         if: github.event_name == 'workflow_dispatch' && matrix.python-version == '3.11'
         run: |
