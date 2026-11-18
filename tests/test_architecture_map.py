@@ -137,6 +137,7 @@ def test_pipeline_graphs_reuse_live_architecture_inventory(tmp_path):
     assert '"mdscope.pipeline.runner"' in focused
     assert '"mdscope.pipeline.fused_all"' in focused
     assert '"mdscope.observables.solvation"' in focused
+    assert '"mdscope.observables.solvation_common"' in focused
     full = (output / "imports_full.dot").read_text()
     assert '"mdscope.pipeline.streaming"' in full
     assert '"mdscope.observables.lipid_enrichment"' in full
