@@ -62,7 +62,7 @@ def figure_inventory(root, system_repouts, cfg=None, include_rejected=False):
 
 def figure_family(path):
     parts = Path(path).parts
-    for token, family in (('shared_states','shared_states'),('sdc4_mechanisms','sdc4'),
+    for token, family in (('shared_states','shared_states'),('sdc4','sdc4'),('sdc4_mechanisms','sdc4'),
                           ('solvation','solvation'),('diffusion','diffusion'),
                           ('lipid_contacts','lipid_contacts'),('membrane','lipid_enrichment'),
                           ('interactions','interactions'),('profiles','profiles'),
