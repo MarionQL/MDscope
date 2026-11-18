@@ -308,6 +308,9 @@ def test_saved_statistics_catalog_reads_real_parquet_schema_and_bounds_identitie
     assert item["status"] == "saved"
     assert len(item["identities"]) == 2
     assert item["identities_truncated"]
+    assert item["identities"][0]["id"] == 'statistics:time_series:["PROA","rmsd_A"]'
+    assert item["identities"][0]["group"] == "PROA"
+    assert len({row["id"] for row in item["identities"]}) == 2
     assert item["identity_columns"] == ["group", "metric"]
     assert "mean_ci_low" in item["files"][source.name]["columns"]
     assert item["files"][source.name]["rows"] == 4
