@@ -13,6 +13,7 @@ import pandas as pd
 
 from ..config import statistics_family_config
 from ..statistics_selection import simple_family_selection, metric_inference
+from .common import selected_rng
 from ..core.persistence import atomic_parquet, ensure_dir
 from ..observables.membrane_order import temporal_membrane_order_profiles
 from ..observables.density_1d import align_density_profiles, temporal_density_profiles
@@ -238,7 +239,8 @@ def analyze_profiles(
     draws = int(stats.get("bootstrap_draws", 2000))
     system_draws = draws if stats.get("hierarchy", {}).get("enabled", True) else 0
     level = float(stats.get("ci", 0.95))
-    rng = np.random.default_rng(int(stats.get("seed", 2026)) + 1)
+    seed = int(stats.get("seed", 2026)) + 1
+    rng = np.random.default_rng(seed)
     resample = stats.get("hierarchy", {}).get("resample_replicates", True)
     outdir = root / "project_summary" / "statistics" / "profiles"
     verbose = cfg.get("progress", {}).get("enabled", True)
@@ -272,6 +274,7 @@ def analyze_profiles(
         infer = metric_inference(cfg, "profiles", (profile,))
         local_draws = draws if infer else 0
         local_system_draws = system_draws if infer else 0
+        profile_rng = (rng if selected is None else selected_rng(seed, "profiles", profile))
         if verbose and (index == 1 or index % 25 == 0):
             print(f"Statistics profiles: {index}/{len(profiles)} {profile}", flush=True)
         profile_sources = {
@@ -285,7 +288,7 @@ def analyze_profiles(
                 key = (system, repout.name)
                 if key not in profile_sources:
                     continue
-                item = _prepare_profile(profile_sources[key], cfg, local_draws, rng)
+                item = _prepare_profile(profile_sources[key], cfg, local_draws, profile_rng)
                 prepared[key] = item
                 rep_points.extend(
                     {
@@ -343,7 +346,7 @@ def analyze_profiles(
             boot = _hierarchical(
                 aligned_draws,
                 local_system_draws,
-                rng,
+                profile_rng,
                 "mean",
                 resample,
             )
@@ -430,7 +433,7 @@ def analyze_profiles(
                     rep_draws_1,
                     rep_draws_2,
                     local_system_draws,
-                    rng,
+                    profile_rng,
                     "mean",
                     resample,
                 )
@@ -478,7 +481,7 @@ def analyze_profiles(
                     "difference_ci_high": float(high[index]),
                     "probability_difference_gt_0": pgt,
                     "probability_difference_lt_0": plt,
-                    "p_value": _permutation(amap, bmap, cfg, rng) if infer else np.nan,
+                    "p_value": _permutation(amap, bmap, cfg, profile_rng) if infer else np.nan,
                     "bootstrap_draws": local_system_draws,
                     "ci_level": level,
                 })
