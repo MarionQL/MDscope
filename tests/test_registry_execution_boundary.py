@@ -51,7 +51,7 @@ def test_scheduler_preserves_task_order_keys_and_scalar_contracts(project):
     assert [task.key for task in tasks] == [
         "residue-membrane-phosphate", "residue-membrane-lipids",
         "membrane-order", "profiles", "hydrogen-bonds", "local_environment",
-        "potassium_bridge_audit", "lipid_enrichment", "bilayer_normal",
+        "potassium_bridge_audit", "bilayer_normal",
         "lipid_hydrogen_bonds",
     ]
     assert len({task.key for task in tasks}) == len(tasks)
@@ -60,7 +60,6 @@ def test_scheduler_preserves_task_order_keys_and_scalar_contracts(project):
                if task.scalar_output is not None}
     assert scalars == {
         "local_environment": "extensions/local_environment/timeseries.parquet",
-        "lipid_enrichment": FUSED_OUTPUTS["lipid_enrichment"],
         "bilayer_normal": FUSED_OUTPUTS["bilayer_normal"],
     }
     # Planning must use the very same output contract as the task scheduler.
@@ -161,6 +160,53 @@ def test_read_only_output_plan_does_not_load_producers():
         "             'mdscope.pipeline.fused_distance',\n"
         "             'mdscope.mechanisms.sdc4_mechanisms'):\n"
         "    assert name not in sys.modules, name\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True, text=True, check=False, timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_scalar_collection_does_not_construct_executable_tasks(
+        tmp_path, project, monkeypatch):
+    """Fused lipid series remains readable without the obsolete run wrapper."""
+    import mdscope.pipeline.replica_tasks as tasks
+
+    path, _ = project("scalar_without_tasks")
+    cfg = load_config(path)
+    for name in ("local_environment", "lipid_enrichment", "bilayer_normal"):
+        cfg["analyses"].setdefault(name, {})["enabled"] = True
+    repout = tmp_path / "replica"
+    for i, name in enumerate(("local_environment", "lipid_enrichment", "bilayer_normal")):
+        output = repout / FUSED_OUTPUTS[name]
+        output.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame({"time_ps": [0.0, 10.0],
+                      f"value_{i}": [1.0, 2.0]}).to_parquet(output, index=False)
+
+    def never_schedule(*args, **kwargs):
+        raise AssertionError("Scalar discovery must not build executable tasks")
+
+    monkeypatch.setattr(tasks, "specialized_tasks", never_schedule)
+    tables = tasks.additional_time_series(repout, cfg)
+    assert [sorted(set(table) - {"time_ps"}) for table in tables] == [
+        ["value_0"], ["value_1"], ["value_2"],
+    ]
+    assert all(table.time_ps.tolist() == [0.0, 10.0] for table in tables)
+    cfg["analyses"]["lipid_enrichment"]["enabled"] = False
+    assert [sorted(set(table) - {"time_ps"}) for table in
+            tasks.additional_time_series(repout, cfg)] == [
+        ["value_0"], ["value_2"],
+    ]
+
+
+def test_lipid_observable_has_no_back_edge_to_fused_executor():
+    """The scientific kernel remains independent of the trajectory scheduler."""
+    code = (
+        "import sys\n"
+        "import mdscope.observables.lipid_enrichment as lipid\n"
+        "assert not hasattr(lipid, 'run_lipid_enrichment')\n"
+        "assert 'mdscope.pipeline.fused_membrane' not in sys.modules\n"
     )
     result = subprocess.run(
         [sys.executable, "-c", code],
