@@ -430,3 +430,13 @@ def test_condition_sdc4_missing_replica_is_visible_not_silently_averaged(tmp_pat
     plot_sdc4_mechanisms(cfg, tmp_path, repouts)
     assert inspected == ["lipid_region_mean_contact_fraction"]
 
+
+def test_stale_per_replica_sdc4_png_is_preserved_but_not_active(tmp_path):
+    rep = tmp_path / "condition" / "rep1"
+    legacy = rep / "extensions/sdc4_mechanisms/nxip_height_occlusion_joint.png"
+    legacy.parent.mkdir(parents=True)
+    Image.new("RGB", (100, 80), "white").save(legacy)
+    cfg = {"plots": {"enabled": True}}
+    assert figure_status(legacy, cfg, tmp_path, {"condition": [rep]}) == "disabled"
+    assert legacy.is_file(), "Never remove existing analysis results as a plotting side-effect"
+
