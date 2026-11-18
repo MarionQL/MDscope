@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config
+from ..statistics_selection import interaction_selection, selected_interaction_metrics
 from ..core.persistence import atomic_json, atomic_parquet, ensure_dir
 from ..interactions.interaction_tables import interaction_key_columns, interaction_tables, sample_dt
 
@@ -121,6 +122,9 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
     if not cfg.get("statistics", {}).get("enabled", True):
         return
     stats = cfg["statistics"]
+    selectors = interaction_selection(cfg)
+    if selectors is not None and not selectors:
+        return
     min_occupancy = float(stats.get("interaction_min_occupancy", 0.0))
     if not 0 <= min_occupancy <= 1:
         raise ValueError("statistics.interaction_min_occupancy must be between 0 and 1")
@@ -128,7 +132,8 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
     system_draws = draws if stats.get("hierarchy", {}).get("enabled", True) else 0
     rng = np.random.default_rng(int(stats.get("seed", 2026)) + 2)
     resample = stats.get("hierarchy", {}).get("resample_replicates", True)
-    outdir = ensure_dir(root / "project_summary" / "statistics" / "interactions")
+    # No output directory is created until saved identities are validated.
+    outdir = root / "project_summary" / "statistics" / "interactions"
     sources, kinds = {}, set()
     detail_enabled = os.environ.get("MDSCOPE_PROFILE", "0").strip().lower() not in {
         "", "0", "false", "off", "no",
@@ -136,6 +141,11 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
     detail = {"kinds": []}
     loading_started = perf_counter()
     excluded_kinds = set(stats.get('interaction_exclude_kinds', []))
+    included = (set(stats["interaction_include_kinds"])
+                if stats.get("interaction_include_kinds") is not None else None)
+    if selectors is not None:
+        wanted_kinds = {kind for kind, _, _ in selectors} - excluded_kinds
+        included = wanted_kinds if included is None else included & wanted_kinds
     verbose = cfg.get("progress", {}).get("enabled", True)
     for system, reps in system_repouts.items():
         for repout in reps:
@@ -145,8 +155,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                 repout,
                 exclude_kinds=excluded_kinds,
                 table_names=("presence", "lifetimes"),
-                include_kinds=(set(stats["interaction_include_kinds"])
-                               if stats.get("interaction_include_kinds") is not None else None),
+                include_kinds=included,
             )
             path = repout / "summary" / "timeseries.parquet"
             times = (
@@ -155,6 +164,32 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
             )
             sources[(system, repout.name)] = (times, tables)
             kinds.update(tables)
+    if selectors is not None:
+        available = set()
+        for kind in kinds - excluded_kinds:
+            known = set()
+            for _, tables in sources.values():
+                tab = tables.get(kind, {})
+                for name in ("presence", "lifetimes"):
+                    data = tab.get(name)
+                    if data is None or data.empty:
+                        continue
+                    keys = interaction_key_columns(kind, data)
+                    missing = [key for key in keys if key not in data.columns]
+                    if missing:
+                        raise ValueError(f"Interaction {kind} missing identity columns: {missing}")
+                    known.update(data[keys].astype(str).agg(" | ".join, axis=1)
+                                 if keys else ["interaction"])
+            available.update((kind, value) for value in known)
+            available.add((kind, None))
+        requested = {(kind, identity) for kind, identity, _ in selectors}
+        missing = requested - available
+        if missing:
+            raise ValueError(
+                "Unknown saved interaction identities or excluded kinds: "
+                + ", ".join(map(str, sorted(missing)))
+            )
+    ensure_dir(outdir)
     if detail_enabled:
         detail["input_loading_seconds"] = perf_counter() - loading_started
     rep_rows, sys_rows, comps = [], [], []
@@ -164,6 +199,9 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
             print(f"Interaction statistics {kind}: grouping input records", flush=True)
         grouping_started = perf_counter()
         interactions, retained, prepared = set(), set(), {}
+        requested_ids = (None if selectors is None or any(
+            group == kind and identity is None for group, identity, _ in selectors
+        ) else {identity for group, identity, _ in selectors if group == kind})
         for key, (times, tables) in sources.items():
             tab = tables.get(kind, {})
             presence = tab.get("presence", pd.DataFrame()).copy()
@@ -183,6 +221,9 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                         if keys
                         else "interaction"
                     )
+                    if requested_ids is not None:
+                        table.drop(table.index[~table["interaction"].isin(requested_ids)],
+                                   inplace=True)
                     interactions.update(table["interaction"])
             if min_occupancy and len(times) and not presence.empty:
                 indices, valid = _presence_frame_indices(times, presence["time_ps"])
@@ -213,6 +254,9 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
         kind_started = perf_counter()
         log_every = int(stats.get("interaction_progress_every", 1000))
         for completed, interaction in enumerate(sorted(interactions), 1):
+            selected_metrics = selected_interaction_metrics(selectors, kind, interaction)
+            if not selected_metrics:
+                continue
             if verbose and (completed == 1 or completed % log_every == 0):
                 print(f"Interaction statistics {kind}: processing identity "
                       f"{completed}/{len(interactions)} | elapsed {perf_counter()-kind_started:.1f} s",
@@ -241,6 +285,8 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                     )
                     repdata[(system, repout.name)] = (boot, meta)
                     for metric, values in boot.items():
+                        if metric not in selected_metrics:
+                            continue
                         lo, hi = _ci(values, level)
                         rep_rows.append({
                             "system": system,
@@ -277,7 +323,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                     "total_lifetime_ps"
                 ):
                     valid = [(rep, data) for rep, data in items if np.isfinite(data[1][metric])]
-                    if not valid:
+                    if not valid or metric not in selected_metrics:
                         continue
                     combine = "median" if metric == "median_lifetime_ps" else "mean"
                     boot = _hierarchical(
