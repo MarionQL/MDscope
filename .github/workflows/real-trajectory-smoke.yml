@@ -63,6 +63,31 @@ jobs:
       - name: Full-length physical audit and stage benchmarks
         run: |
           python tests/real_trajectory_physics.py
+      # Run the expanded profiling workload only for the benchmarking PR.
+      - name: Benchmark trajectory and statistics scaling (performance PR only)
+        if: github.event_name == 'pull_request' && github.head_ref == 'perf/benchmark-pipeline-statistics'
+        env:
+          MDSCOPE_REAL_OUTPUT: real_benchmark_results
+          MDSCOPE_STATS_WORKERS: "1"
+          OPENBLAS_NUM_THREADS: "1"
+          OMP_NUM_THREADS: "1"
+        run: |
+          python tests/performance_pipeline_benchmark.py --frames 40 160 --draws 100 500
+      - name: Upload benchmark performance diagnostics (performance PR only)
+        if: always() && github.event_name == 'pull_request' && github.head_ref == 'perf/benchmark-pipeline-statistics'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mdscope-pipeline-statistics-benchmark
+          path: |
+            real_benchmark_results/performance_benchmark.json
+            real_benchmark_results/benchmark_frames_*/*/rep1/stage_timings.json
+            real_benchmark_results/benchmark_frames_*/*/rep1/streaming_phase_profile.json
+            real_benchmark_results/benchmark_frames_*/*/rep1/fused_membrane_timings.json
+            real_benchmark_results/benchmark_frames_*/*/rep1/fused_extensions_timings.json
+            real_benchmark_results/benchmark_frames_*/*/rep1/fused_distance_timings.json
+            real_benchmark_results/benchmark_statistics_*/project_summary/statistics/statistics_phase_profile.json
+          retention-days: 14
+          if-no-files-found: warn
       - name: Upload diagnostic reports and sample output
         if: always()
         uses: actions/upload-artifact@v4
