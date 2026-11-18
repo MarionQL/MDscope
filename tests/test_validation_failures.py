@@ -133,3 +133,89 @@ def test_overlapping_analysis_groups_are_valid_distinct_outputs(tmp_path, projec
     raw["selections"]["groups"] = {"whole":{"selection":"protein"},"subset":{"selection":"index 0:2"}}
     path.write_text(yaml.safe_dump(raw)); cfg = load_config(path)
     validate_selections(cfg,tmp_path)
+
+
+@pytest.mark.parametrize("keys,expected", [
+    (("projeckt",), "project"),
+    (("analyses", "rmsff"), "rmsf"),
+    (("analyses", "rmsd", "enabld"), "enabled"),
+    (("analyses", "density_1d", "runs", "new_density", "bin_wdth_A"), "bin_width_A"),
+    (("analyses", "sasa", "runs", "environment", "probe_radus_A"), "probe_radius_A"),
+    (("analyses", "membrane", "msd", "multi_origin_max_lag_frame"), "multi_origin_max_lag_frames"),
+    (("analyses", "membrane_order", "tails", "sn1", "carbon_pattrn"), "carbon_pattern"),
+    (("analyses", "solvation", "targets", "protein", "site", "selecton"), "selection"),
+    (("analyses", "sdc4_mechanisms", "hs_auto", "glycn_selection"), "glycan_selection"),
+    (("statistics", "block", "tau_multiplir"), "tau_multiplier"),
+    (("statistics", "families", "profiles", "bootstrp"), "bootstrap"),
+    (("statistics", "families", "time_series", "adaptive_hierarchy", "min_daws"), "min_draws"),
+    (("selections", "groups", "A", "alignment_selecton"), "alignment_selection"),
+    (("plots", "font_sizes", "bsae"), "base"),
+])
+def test_unknown_yaml_keys_fail_without_modifying_outputs(tmp_path, project, keys, expected):
+    path, root = project("unknown_key")
+    cfg = yaml.safe_load(path.read_text())
+    _set(cfg, keys, True)
+    path.write_text(yaml.safe_dump(cfg))
+    root.mkdir()
+    sentinel = root / "keep.txt"
+    sentinel.write_bytes(b"existing scientific output")
+    with pytest.raises(ValueError, match=r"Unknown YAML option .*" + re.escape(expected)):
+        load_config(path)
+    assert list(root.iterdir()) == [sentinel]
+    assert sentinel.read_bytes() == b"existing scientific output"
+
+
+def test_unknown_replica_file_key_reports_exact_index(tmp_path, project):
+    path, _ = project("unknown_rep")
+    cfg = yaml.safe_load(path.read_text())
+    cfg["systems"]["tiny"]["replicates"][0]["trajectry"] = "mistyped"
+    path.write_text(yaml.safe_dump(cfg))
+    with pytest.raises(ValueError, match=r"systems.tiny.replicates\[0\].trajectry.*trajectory"):
+        load_config(path)
+
+
+def test_dynamic_yaml_identifiers_remain_supported():
+    from mdscope.config import DEFAULTS
+    from mdscope.config_schema import validate_known_keys
+
+    spec = {
+        "systems": {"custom_condition": {"topology": "system.tpr",
+                    "replicates": [{"trajectory": "run.xtc", "plot_label": "R1"}]}},
+        "selections": {"groups": {"chain_C": {"selection": "segid C",
+                      "alignment_selection": "segid C and name CA"}}},
+        "analyses": {
+            "density_1d": {"runs": {"membrane_normal": {
+                "selections": {"custom_species": {"selection": "resname X",
+                                                  "mode": "number"}}}}},
+            "sasa": {"runs": {"environment": {"target_selection": "protein",
+                "element_radii_A": {"C": 1.7}}}},
+            "membrane_order": {"tails": {"new_tail": {"carbon_pattern": "C[0-9]+"}},
+                               "lipid_overrides": {"NEWLIPID": {"new_tail": {
+                                   "carbon_names": ["C1", "C2"], "positions": [1, 2]}}}},
+            "solvation": {"targets": {"custom_molecule": {"custom_site": {
+                "selection": "resname ABC", "group_by": "residue"}}},
+                "ion_selections": {"Mg": "resname MG"}},
+            "sdc4_mechanisms": {"motifs": {"custom_regex": "G...G"},
+                "lipid_anchors": {"new_lipid": "resname NEWLIPID"}},
+            "coupling_screen": {"enabled": False, "pairs": [["a", "b"]]},
+        },
+        "statistics": {"hypothesis_families": {"planned": ["metric"]},
+            "families": {"time_series": {"adaptive_hierarchy": {
+                "min_draws": 100, "max_draws": 500,
+                "batch_size": 100, "stable_checks": 2,
+                "relative_tolerance": 0.05}}}},
+        "plots": {"families": {"profiles": True}},
+    }
+    validate_known_keys(spec, DEFAULTS)
+
+
+@pytest.mark.parametrize("filename", [
+    "synd4_baseline.yaml", "synd4_full_mechanisms.yaml",
+    "synd4_full_mechanisms_finalize_fast.yaml",
+])
+def test_maintained_yaml_uses_only_supported_option_names(filename):
+    from mdscope.config import DEFAULTS
+    from mdscope.config_schema import validate_known_keys
+
+    path = __import__("pathlib").Path(__file__).resolve().parents[1] / filename
+    validate_known_keys(yaml.safe_load(path.read_text()), DEFAULTS)
