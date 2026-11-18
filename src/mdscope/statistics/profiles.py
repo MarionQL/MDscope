@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config
-from ..statistics_selection import simple_family_selection, metric_inference
+from ..statistics_selection import simple_family_selection, metric_estimator_enabled
 from .common import selected_rng
 from ..core.persistence import atomic_parquet, ensure_dir
 from ..observables.membrane_order import temporal_membrane_order_profiles
@@ -271,7 +271,10 @@ def analyze_profiles(
     if verbose:
         print(f"Statistics profiles: processing {len(profiles)} profiles", flush=True)
     for index, profile in enumerate(profiles, 1):
-        infer = metric_inference(cfg, "profiles", (profile,))
+        infer = metric_estimator_enabled(cfg, "profiles", (profile,), "ci")
+        test_enabled = metric_estimator_enabled(
+            cfg, "profiles", (profile,), "hypothesis_tests"
+        )
         local_draws = draws if infer else 0
         local_system_draws = system_draws if infer else 0
         profile_rng = (rng if selected is None else selected_rng(seed, "profiles", profile))
@@ -481,7 +484,7 @@ def analyze_profiles(
                     "difference_ci_high": float(high[index]),
                     "probability_difference_gt_0": pgt,
                     "probability_difference_lt_0": plt,
-                    "p_value": _permutation(amap, bmap, cfg, profile_rng) if infer else np.nan,
+                    "p_value": _permutation(amap, bmap, cfg, profile_rng) if test_enabled else np.nan,
                     "bootstrap_draws": local_system_draws,
                     "ci_level": level,
                 })
