@@ -12,7 +12,7 @@ from typing import Any
 
 from .config import analysis_runs, iter_replicates, plot_enabled, statistics_family_config
 from .registry import analysis_output_plan, required_artifacts, artifact_schema
-from .statistics import STATISTICS_FAMILIES
+from .statistics_families import STATISTICS_FAMILIES
 
 
 # Interpretation of coordinates, not a claim about PBC or bulk density.

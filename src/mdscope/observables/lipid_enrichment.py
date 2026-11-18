@@ -175,12 +175,6 @@ class LipidFootprint:
         atomic_json(out / "reference.json", self.reference)
 
 
-def run_lipid_enrichment(rep, cfg, repout):
-    from ..pipeline.fused_membrane import run_fused_membrane
-
-    return run_fused_membrane(rep, cfg, repout, names=("lipid_enrichment",))["lipid_enrichment"]
-
-
 def summarize_lipid_composition(repout):
     """Offline population inventory from counted molecular anchors."""
     directory = Path(repout) / FOOTPRINT_OUTPUT

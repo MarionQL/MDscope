@@ -11,11 +11,6 @@ from pathlib import Path
 import yaml
 
 from .config import iter_replicates, load_config
-from .core.validation import validate_selections
-from .pipeline.runner import finalize_project, run_all, run_one
-from .reporting.report import generate_report
-from .statistics.residue_regions import scan_saved_residue_regions
-
 
 def interactive_init(output="analysis.yaml"):
     print("MDscope configuration generator (analysis runs themselves are non-interactive).")
@@ -52,6 +47,8 @@ def interactive_init(output="analysis.yaml"):
 
 
 def cmd_validate(args):
+    from .core.validation import validate_selections
+
     cfg = load_config(args.config)
     reps = list(iter_replicates(cfg, args.config))
     print(f"Valid config: {len(cfg['systems'])} systems, {len(reps)} replicates")
@@ -67,8 +64,11 @@ def cmd_plan(args):
     from .planning import build_plan
 
     cfg = load_config(args.config, check_paths=args.check_inputs)
-    counts = (validate_selections(cfg, Path(args.config).resolve().parent)
-              if args.check_topology else None)
+    counts = None
+    if args.check_topology:
+        from .core.validation import validate_selections
+
+        counts = validate_selections(cfg, Path(args.config).resolve().parent)
     mode = ("topology_aware" if args.check_topology else
             "input_paths" if args.check_inputs else "schema_only")
     plan = build_plan(cfg, args.config, validation_mode=mode,
@@ -93,6 +93,36 @@ def cmd_plan(args):
           "individual figure IDs are not yet registered.")
 
 
+def cmd_run(args):
+    from .pipeline.runner import run_all
+
+    print(run_all(args.config))
+
+
+def cmd_replicate(args):
+    from .pipeline.runner import run_one
+
+    print(run_one(args.config, args.index))
+
+
+def cmd_finalize(args, phase="statistics"):
+    from .pipeline.runner import finalize_project
+
+    print(finalize_project(args.config, phase=phase))
+
+
+def cmd_report(args):
+    from .reporting.report import generate_report
+
+    print(generate_report(args.statistics_dir))
+
+
+def cmd_scan_residue_regions(args):
+    from .statistics.residue_regions import scan_saved_residue_regions
+
+    print(scan_saved_residue_regions(args.statistics_dir))
+
+
 def main():
     parser = argparse.ArgumentParser(prog="mdscope")
     sub = parser.add_subparsers(required=True)
@@ -112,24 +142,24 @@ def main():
     p.set_defaults(func=cmd_plan)
     p = sub.add_parser("run")
     p.add_argument("config")
-    p.set_defaults(func=lambda a: print(run_all(a.config)))
+    p.set_defaults(func=cmd_run)
     p = sub.add_parser("replicate", help="run one zero-based systemxreplicate entry")
     p.add_argument("config")
     p.add_argument("--index", type=int, required=True)
-    p.set_defaults(func=lambda a: print(run_one(a.config, a.index)))
+    p.set_defaults(func=cmd_replicate)
     p = sub.add_parser("finalize")
     p.add_argument("config")
-    p.set_defaults(func=lambda a: print(finalize_project(a.config)))
+    p.set_defaults(func=lambda a: cmd_finalize(a, phase="statistics"))
     for phase in ("statistics", "plotting"):
         p = sub.add_parser(phase, help=f"Run only the {phase} finalization phase")
         p.add_argument("config")
-        p.set_defaults(func=lambda a, phase=phase: print(finalize_project(a.config, phase=phase)))
+        p.set_defaults(func=lambda a, phase=phase: cmd_finalize(a, phase=phase))
     p = sub.add_parser("scan-residue-regions", help="Find contiguous changes in saved residue profiles")
     p.add_argument("statistics_dir", type=Path)
-    p.set_defaults(func=lambda a: print(scan_saved_residue_regions(a.statistics_dir)))
+    p.set_defaults(func=cmd_scan_residue_regions)
     p = sub.add_parser("report", help="Summarize bootstrap findings from a completed statistics directory")
     p.add_argument("statistics_dir", type=Path)
-    p.set_defaults(func=lambda a: print(generate_report(a.statistics_dir)))
+    p.set_defaults(func=cmd_report)
     args = parser.parse_args()
     args.func(args)
 

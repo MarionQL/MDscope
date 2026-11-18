@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import MDAnalysis as mda
 from mdscope.config import Replicate
-from mdscope.observables.lipid_enrichment import run_lipid_enrichment
+from mdscope.pipeline.fused_membrane import run_fused_membrane
 from mdscope.observables.bilayer_normal import run_bilayer_normal
 from mdscope.interactions.lipid_hydrogen_bonds import tabulate_events
 
@@ -44,7 +44,7 @@ def test_lipid_analyses_real_small_trajectory(tmp_path):
                 "neighbor_radius_A":10.,"min_neighbors":3}}}
     rep=Replicate("test",1,pdb,dcd,"rep1")
     out=tmp_path/"test"/"rep1"
-    a=run_lipid_enrichment(rep,cfg,out)
+    a=run_fused_membrane(rep,cfg,out,names=("lipid_enrichment",))["lipid_enrichment"]
     b=run_bilayer_normal(rep,cfg,out)
     assert a["frames"]==5 and b["frames"]==5
     e=pd.read_parquet(out/"extensions/lipid_footprint/timeseries.parquet")

@@ -1,7 +1,8 @@
 """Execution-only specialized replica tasks and saved scalar collection.
 
-Output paths stay authoritative in mdscope.registry; the read-only planner
-does not import this module or the callable analysis implementations.
+Output paths stay authoritative in mdscope.output_paths and are also
+reexported by the registry. The read-only planner does not import this module
+or its executable analysis implementations.
 """
 from __future__ import annotations
 
@@ -12,14 +13,13 @@ from typing import Callable
 import pandas as pd
 
 from ..config import analysis_enabled, analysis_runs
-from ..registry import FUSED_OUTPUTS
+from ..output_paths import FUSED_OUTPUTS
 from ..observables.residue_membrane_distance import run_residue_membrane_distance
 from ..observables.membrane_order import run_membrane_order
 from ..observables.structure_profiles import run_structure_profiles
 from ..interactions.hydrogen_bonds import run_hydrogen_bonds
 from ..mechanisms.local_environment import run_local_environment
 from ..mechanisms.potassium_bridge_audit import run_potassium_bridge_audit
-from ..observables.lipid_enrichment import run_lipid_enrichment
 from ..observables.bilayer_normal import run_bilayer_normal
 from ..interactions.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
 
@@ -28,7 +28,6 @@ from ..interactions.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
 class AnalysisTask:
     key: str
     run: Callable
-    scalar_output: str|None=None
 
 def specialized_tasks(cfg):
     """Yield uniquely checkpointed tasks; avoid re-reading trajectory unnecessarily."""
@@ -42,33 +41,30 @@ def specialized_tasks(cfg):
     if cfg["analyses"]["hydrogen_bonds"].get("enabled",False):
         yield AnalysisTask("hydrogen-bonds",run_hydrogen_bonds)
     if cfg.get("analyses",{}).get("local_environment",{}).get("enabled",False):
-        yield AnalysisTask("local_environment",run_local_environment,
-                           "extensions/local_environment/timeseries.parquet")
+        yield AnalysisTask("local_environment", run_local_environment)
 
     if analysis_enabled(cfg, "potassium_bridge_audit"):
         yield AnalysisTask("potassium_bridge_audit", run_potassium_bridge_audit)
 
-    for name,fn in (("lipid_enrichment",run_lipid_enrichment),
-                    ("bilayer_normal",run_bilayer_normal),
+    for name,fn in (("bilayer_normal",run_bilayer_normal),
                     ("lipid_hydrogen_bonds",run_lipid_hydrogen_bonds)):
         if cfg.get("analyses",{}).get(name,{}).get("enabled",False):
-            output = FUSED_OUTPUTS[name] if name != "lipid_hydrogen_bonds" else None
-            yield AnalysisTask(name,fn,output)
+            yield AnalysisTask(name, fn)
 
-def additional_time_series(repout:Path,cfg):
-    """Discover scalar series from registered analysis output contracts."""
-    output=[]
-    for task in specialized_tasks(cfg):
-        if task.scalar_output is None:continue
-        path=Path(repout)/task.scalar_output
-        if path.exists():
-            output.append(pd.read_parquet(path))
-    if cfg.get("analyses", {}).get("sdc4_mechanisms", {}).get("enabled", False):
-        path = Path(repout) / "extensions/sdc4_mechanisms/timeseries.parquet"
-        if path.exists():
-            output.append(pd.read_parquet(path))
-    if cfg.get('analyses', {}).get('lipid_contacts', {}).get('enabled', False):
-        path = Path(repout)/'extensions/lipid_contacts/timeseries.parquet'
+def additional_time_series(repout: Path, cfg):
+    """Read optional scalar products without constructing executable tasks.
+
+    The ordering is a persisted summary contract: local environment, lipid
+    footprint, bilayer normal, SDC4 and lipid contacts.
+    """
+    output = []
+    for name in (
+        "local_environment", "lipid_enrichment", "bilayer_normal",
+        "sdc4_mechanisms", "lipid_contacts",
+    ):
+        if not analysis_enabled(cfg, name):
+            continue
+        path = Path(repout) / FUSED_OUTPUTS[name]
         if path.exists():
             output.append(pd.read_parquet(path))
     return output
