@@ -33,8 +33,8 @@ def _input_snapshot(root, replicate_paths):
 
 
 def analyze_project(cfg, root, system_repouts):
-    from ..config import atomic_json, statistics_family_config
-    from ..core.persistence import archive_output
+    from ..config import statistics_family_config
+    from ..core.persistence import archive_output, atomic_json
     from pathlib import Path
     import os
     families = STATISTICS_FAMILIES
