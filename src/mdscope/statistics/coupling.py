@@ -6,6 +6,7 @@ import pandas as pd
 from pyarrow.parquet import read_schema
 
 from ..config import atomic_parquet, statistics_family_config
+from ..statistics_selection import simple_family_selection
 from .common import _regular_times
 from .replicate_contrasts import replicate_mean_contrasts
 
@@ -34,6 +35,13 @@ def collect_couplings(cfg, system_repouts):
     if spec.get("include_defaults", True):
         pairs = [dict(name=name, x=x, y=y) for name, x, y in PAIRS] + pairs
     pairs = [(str(pair["name"]), str(pair["x"]), str(pair["y"])) for pair in pairs]
+    selected = simple_family_selection(cfg, "coupling")
+    if selected is not None:
+        available = {(name,) for name, _, _ in pairs}
+        missing = selected - available
+        if missing:
+            raise ValueError(f"Unknown configured coupling identities: {sorted(missing)}")
+        pairs = [pair for pair in pairs if (pair[0],) in selected]
     if len(set(pairs)) != len(pairs):
         raise ValueError("Duplicate coupling pair")
     block = int(spec.get("block_frames", 50))
@@ -83,6 +91,9 @@ def collect_couplings(cfg, system_repouts):
 def analyze_coupling(cfg, root, system_repouts):
     cfg = statistics_family_config(cfg, "coupling")
     if cfg is None or not cfg.get("analyses", {}).get("coupling_screen", {}).get("enabled", False):
+        return
+    selected = simple_family_selection(cfg, "coupling")
+    if selected is not None and not selected:
         return
     frame = collect_couplings(cfg, system_repouts)
     if frame.empty:
