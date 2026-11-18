@@ -1011,9 +1011,9 @@ def statistics_family_config(cfg, family):
     option = {"enabled": option} if isinstance(option, bool) else option
     if not stats.get("enabled", True) or not option.get("enabled", True):
         return None
-    if family == "time_series":
+    if family in {"time_series", "interactions"}:
         selection = stats.get("metric_selection")
-        if selection is not None and selection.get("time_series") == []:
+        if selection is not None and selection.get(family) == []:
             return None
     if not option and stats.get("bootstrap", True):
         return cfg
