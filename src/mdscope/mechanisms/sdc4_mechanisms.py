@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import json
 import re
 import time
@@ -1274,28 +1275,29 @@ class SDC4Mechanisms:
 
 
 def run_sdc4_mechanisms(rep, cfg, repout):
-    """Standalone fallback when regular protein streaming is disabled."""
+    """Standalone fallback with scratch chunks independent of stream checkpoints."""
     if not enabled(cfg):
         return {}
     u = mda.Universe(str(rep.topology), str(rep.trajectory))
     tr = cfg["trajectory"]
     start = 0 if tr.get("start") is None else int(tr["start"])
     u.trajectory[start]
-    observer = SDC4Mechanisms(u, cfg, repout)
-    observer.prune_from(0)
-    frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr["stride"]))]
     chunk = max(1, int(tr.get("chunk_frames", 1000)))
-    count = 0
-    for count, ts in enumerate(track(
-        frames, total=len(frames), desc=f"{rep.system}/{rep.label}: SDC4 mechanisms",
-        enabled=cfg.get("progress", {}).get("enabled", True),
-    ), start=1):
-        observer.update(ts, count - 1)
-        if count % chunk == 0:
-            observer.flush((count - 1) // chunk)
-    if count % chunk:
-        observer.flush(count // chunk)
-    return observer.finalize()
+    with TemporaryDirectory(dir=ensure_dir(Path(repout)), prefix=".sdc4-recovery-") as scratch:
+        observer = SDC4Mechanisms(u, cfg, repout, cache_dir=scratch)
+        observer.prune_from(0)
+        frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr["stride"]))]
+        count = 0
+        for count, ts in enumerate(track(
+            frames, total=len(frames), desc=f"{rep.system}/{rep.label}: SDC4 mechanisms",
+            enabled=cfg.get("progress", {}).get("enabled", True),
+        ), start=1):
+            observer.update(ts, count - 1)
+            if count % chunk == 0:
+                observer.flush((count - 1) // chunk)
+        if count % chunk:
+            observer.flush(count // chunk)
+        return observer.finalize()
 
 
 
