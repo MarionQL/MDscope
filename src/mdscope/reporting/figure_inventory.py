@@ -152,11 +152,16 @@ def record_generated_figures(cfg, root, system_repouts, before):
 def figure_status(path, cfg, root, system_repouts, records=None):
     import json
     from PIL import Image
-    from ..config import plot_enabled
+    from ..config import plot_enabled, figure_enabled
+    from .plot_ids import id_from_figure_path
     root, path = Path(root), Path(path)
     family = figure_family(path)
     if not plot_enabled(cfg, family):
         return 'disabled'
+    if cfg.get("plots", {}).get("include") is not None:
+        identifier = id_from_figure_path(path)
+        if identifier is None or not figure_enabled(cfg, identifier):
+            return 'disabled'
     parts = path.parts
     if family == 'interactions':
         kind = parts[parts.index('interactions')+1]
