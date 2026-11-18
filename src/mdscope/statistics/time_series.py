@@ -89,11 +89,27 @@ def collect_time_series(repout: Path, *, sources: set[str] | None = None,
     ):
         if not path.exists() or (sources is not None and "summary" not in sources):
             continue
-        data = pd.read_parquet(path)
+        if selected is not None:
+            # Read only persisted columns relevant to selected metrics. Group
+            # columns and time coordinates remain necessary for identities.
+            from pyarrow.parquet import read_schema
+            available = set(read_schema(path).names)
+            requested = {metric for group, metric in selected
+                         if metric in available and (group is None or group_col == "group")}
+            if not requested:
+                continue
+            columns = ["time_ps", *sorted(requested)]
+            if group_col:
+                columns.insert(0, group_col)
+            data = pd.read_parquet(path, columns=columns)
+        else:
+            data = pd.read_parquet(path)
         groups = [(None, data)] if group_col is None else data.groupby(group_col, sort=False)
         for group_id, subset in groups:
             out.update(_hs_contact_observables(subset, group_id))
             for metric in subset.columns:
+                if selected is not None and (None if group_id is None else str(group_id), metric) not in selected:
+                    continue
                 if (group_id is None and _has_conditional_support(metric)
                         and not metric.endswith("_hs_contacts_during_contact")):
                     available = pd.to_numeric(subset[metric], errors="coerce").map(np.isfinite)
