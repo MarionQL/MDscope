@@ -50,7 +50,8 @@ from ..mechanisms.residue_occlusion import (
 )
 from ..mechanisms.shared_states import fit_shared_states
 from ..mechanisms.hs_hydration import temporal_hs_hydration_profiles
-from ..registry import specialized_tasks,additional_time_series,fused_output,fused_output_plan,analysis_output_plan,required_artifacts
+from ..registry import fused_output, fused_output_plan, analysis_output_plan, required_artifacts
+from .replica_tasks import specialized_tasks, additional_time_series
 from ..observables.lipid_enrichment import footprint_pending, summarize_lipid_composition
 from ..observables.msd import summarize_diffusion, summarize_project_diffusion, summarize_project_multi_origin
 from ..observables.multi_origin_pipeline import run_multi_origin_diffusion
