@@ -271,7 +271,7 @@ def analyze_profiles(
     for index, profile in enumerate(profiles, 1):
         infer = metric_inference(cfg, "profiles", (profile,))
         local_draws = draws if infer else 0
-        local_system_draws = local_system_draws if infer else 0
+        local_system_draws = system_draws if infer else 0
         if verbose and (index == 1 or index % 25 == 0):
             print(f"Statistics profiles: {index}/{len(profiles)} {profile}", flush=True)
         profile_sources = {
