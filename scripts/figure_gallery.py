@@ -33,7 +33,7 @@ def build_gallery(base: Path, head: Path, output: Path):
     for index, name in enumerate(all_paths):
         left, right = base / name, head / name
         panels = []
-        for label, path in (("Base", left), ("PR head", right)):
+        for label, path in (("Previous code", left), ("Updated code", right)):
             if path.is_file():
                 url = relative(path)
                 panels.append(f'<div class="panel"><strong>{label}</strong>'
@@ -76,11 +76,14 @@ section{border-top:1px solid #bbb;padding:18px 0}.row{display:flex;gap:15px;alig
 .panel{flex:1;min-width:0}.panel img{width:100%;height:auto;border:1px solid #ddd}
 .panel strong{display:block;margin-bottom:6px}
 @media(max-width:750px){.row{flex-direction:column}.panel{width:100%}}
-</style></head><body><h1>MDscope figure review — base vs PR head</h1>
+</style></head><body><h1>MDscope developer review — previous vs updated code</h1>
 <p class="notice">SYNTHETIC EXAMPLES — NOT MOLECULAR DYNAMICS RESULTS.</p>
-<p>Both revisions render the same deterministic fake Parquet inputs through
-the MDscope plotting functions. Pixel differences are diagnostic, not
-automatic scientific validation. Inspect labels, units, axes and legends.</p>
+<p><strong>This compares source-code versions, not condition A against condition B or replica 1 against replica 2.</strong>
+"Previous code" is the pull request's base revision; "Updated code" is the proposed revision.
+Both receive the same deterministic synthetic Parquet inputs. When no rendering code
+changed, the images will intentionally look identical. Pixel differences are diagnostic,
+not scientific validation. Inspect axes, labels, units and legends.</p>
+<p>For the nonduplicated condition-centered preview, open <code>../index.html</code>.</p>
 ''' + "\n".join(rows) + "\n</body></html>\n"
     output.write_text(html)
     return len(all_paths)
