@@ -6,6 +6,7 @@ comparison statistics.
 from __future__ import annotations
 
 from time import perf_counter
+import os
 from itertools import combinations
 from pathlib import Path
 
@@ -13,7 +14,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config
-from ..core.persistence import atomic_parquet, ensure_dir
+from ..core.persistence import atomic_json, atomic_parquet, ensure_dir
 from ..interactions.interaction_tables import interaction_key_columns, interaction_tables, sample_dt
 
 
@@ -129,6 +130,11 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
     resample = stats.get("hierarchy", {}).get("resample_replicates", True)
     outdir = ensure_dir(root / "project_summary" / "statistics" / "interactions")
     sources, kinds = {}, set()
+    detail_enabled = os.environ.get("MDSCOPE_PROFILE", "0").strip().lower() not in {
+        "", "0", "false", "off", "no",
+    }
+    detail = {"kinds": []}
+    loading_started = perf_counter()
     excluded_kinds = set(stats.get('interaction_exclude_kinds', []))
     verbose = cfg.get("progress", {}).get("enabled", True)
     for system, reps in system_repouts.items():
@@ -149,11 +155,14 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
             )
             sources[(system, repout.name)] = (times, tables)
             kinds.update(tables)
+    if detail_enabled:
+        detail["input_loading_seconds"] = perf_counter() - loading_started
     rep_rows, sys_rows, comps = [], [], []
     weight_cache = {}
     for kind in sorted(kinds - excluded_kinds):
         if verbose:
             print(f"Interaction statistics {kind}: grouping input records", flush=True)
+        grouping_started = perf_counter()
         interactions, retained, prepared = set(), set(), {}
         for key, (times, tables) in sources.items():
             tab = tables.get(kind, {})
@@ -199,6 +208,8 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                     flush=True,
                 )
             interactions = retained
+        if detail_enabled:
+            grouped_seconds = perf_counter() - grouping_started
         kind_started = perf_counter()
         log_every = int(stats.get("interaction_progress_every", 1000))
         for completed, interaction in enumerate(sorted(interactions), 1):
@@ -351,6 +362,13 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                                   "probability_difference_lt_0": plt,
                                   "p_value": _permutation(amap, bmap, cfg, rng),
                                   "bootstrap_draws": system_draws, "ci_level": level})
+        if detail_enabled:
+            detail["kinds"].append({
+                "kind": kind, "unique_identities": len(interactions),
+                "grouping_seconds": grouped_seconds,
+                "per_identity_seconds": perf_counter() - kind_started,
+            })
+    writing_started = perf_counter()
     for name, rows in(
         ("replicate_interaction_metrics.parquet", rep_rows),
         ("system_interaction_metrics.parquet", sys_rows)
@@ -372,6 +390,14 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
             ["system_1", "system_2", "interaction_type", "metric"]
         )
         atomic_parquet(outdir / "system_interaction_comparisons.parquet", comp)
+
+    if detail_enabled:
+        detail["persistence_seconds"] = perf_counter() - writing_started
+        detail["bootstrap_draws"] = draws
+        detail["total_unique_identities_across_kinds"] = sum(
+            entry["unique_identities"] for entry in detail["kinds"]
+        )
+        atomic_json(outdir / "interaction_phase_profile.json", detail)
 
 
 
