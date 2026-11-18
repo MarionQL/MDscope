@@ -228,3 +228,24 @@ def test_interaction_selected_rng_invariant_to_other_requested_identities(tmp_pa
             original = original.drop(columns="q_value")
             expanded = expanded.drop(columns="q_value")
         pd.testing.assert_frame_equal(original, expanded, check_exact=True)
+
+
+def test_merged_temporal_cache_and_selective_rng_can_execute_together():
+    """Regression: merging #194 into selective inference must not lose selected_seed."""
+    from mdscope.statistics.interactions import _interaction_bootstrap
+    cache, zeros = {}, {}
+    frames = np.arange(16, dtype=float) * 5
+    cfg = deepcopy(DEFAULTS)
+    rng = np.random.default_rng(34)
+    one, meta_a = _interaction_bootstrap(
+        frames, np.array([], float), pd.DataFrame(), cfg, 100,
+        rng, cache, ("system", "rep1"), zeros, 2026,
+    )
+    two, meta_b = _interaction_bootstrap(
+        frames, np.array([], float), pd.DataFrame(), cfg, 100,
+        rng, cache, ("system", "rep1"), zeros, 2026,
+    )
+    assert meta_a == meta_b
+    assert len(zeros) == 1
+    for metric in one:
+        np.testing.assert_array_equal(one[metric], two[metric])
