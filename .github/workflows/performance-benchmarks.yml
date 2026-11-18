@@ -62,5 +62,6 @@ jobs:
             real_benchmark_results/benchmark_frames_*/*/rep1/fused_extensions_timings.json
             real_benchmark_results/benchmark_frames_*/*/rep1/fused_distance_timings.json
             real_benchmark_results/benchmark_statistics_*/project_summary/statistics/statistics_phase_profile.json
+            real_benchmark_results/benchmark_statistics_*/project_summary/statistics/interactions/interaction_phase_profile.json
           retention-days: 14
           if-no-files-found: warn
