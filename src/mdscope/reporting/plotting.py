@@ -18,6 +18,7 @@ from ..config import plot_enabled, figure_enabled, ensure_dir, replicate_label, 
 from ..interactions import interaction_tables
 from ..statistics import collect_time_series, finite
 from .figure_inventory import current_statistics
+from .plot_ids import id_from_figure_path
 
 
 from .labels import METRIC_LABELS, _metric_meta
@@ -93,7 +94,10 @@ def _subplot_grid(n: int):
 
 def _table_figure(title: str, dataframe: pd.DataFrame, path: Path, cfg: dict,
                   max_rows: int = 16, plot_id: str | None = None):
-    if plot_id is not None and not figure_enabled(cfg, plot_id):
+    identifier = plot_id or id_from_figure_path(path)
+    if (cfg.get("plots", {}).get("include") is not None and identifier is None):
+        return
+    if identifier is not None and not figure_enabled(cfg, identifier):
         return
     # Statistical tables are figures on purpose: they travel with the
     # plot set and are easy to drop directly into slides/manuscripts.
@@ -378,6 +382,10 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
     systems = list(system_repouts)
 
     for profile_id in reps["profile"].drop_duplicates():
+        stem = _safe(profile_id)
+        if selected is not None and not any(
+                identifier.startswith(f"profiles:{stem}:") for identifier in selected):
+            continue
         data = reps[reps.profile == profile_id]
         sysdata = systems_df[systems_df.profile == profile_id]
         xlabel, ylabel, profile_title = _profile_meta(str(profile_id))
