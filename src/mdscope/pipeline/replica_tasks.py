@@ -1,7 +1,8 @@
 """Execution-only specialized replica tasks and saved scalar collection.
 
-Output paths stay authoritative in mdscope.registry; the read-only planner
-does not import this module or the callable analysis implementations.
+Output paths stay authoritative in mdscope.output_paths and are also
+reexported by the registry. The read-only planner does not import this module
+or its executable analysis implementations.
 """
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ from typing import Callable
 import pandas as pd
 
 from ..config import analysis_enabled, analysis_runs
+from ..output_paths import FUSED_OUTPUTS
 from ..observables.residue_membrane_distance import run_residue_membrane_distance
 from ..observables.membrane_order import run_membrane_order
 from ..observables.structure_profiles import run_structure_profiles
