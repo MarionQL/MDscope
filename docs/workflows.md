@@ -101,6 +101,26 @@ plots:
 
 An inference-disabled metric cannot produce a valid interval or p-value;
 columns retained for output compatibility are null, with zero bootstrap draws.
+The `inference` flag is shorthand for both estimators. To request only
+one, set `ci` and `hypothesis_tests` independently on a selected time-series,
+profile or interaction metric:
+
+```yaml
+statistics:
+  metric_selection:
+    time_series:
+      - {group: PROA, metric: rmsd_A, ci: true, hypothesis_tests: false}
+      - {metric: membrane_thickness_A, ci: false, hypothesis_tests: true}
+```
+
+The first produces point summaries and bootstrap CIs without permutation
+tests or q-values. The second produces point summaries and permutation
+tests without bootstrap CIs. RDF, diffusion and coupling writers support
+`ci` (replica or first-shell contrasts), but **not**
+`hypothesis_tests`; unsupported requests fail YAML validation. A
+contradictory `inference: false, ci: true` is invalid. Omitted
+`inference` and estimator flags preserve the original calculation.
+
 For whole-curve RDF selectors, `inference: false` retains descriptive
 g(r) and replicate dispersion but disables first-shell contrasts. For
 diffusion and coupling it retains per-replica estimates without
