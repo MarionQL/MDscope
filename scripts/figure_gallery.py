@@ -11,7 +11,7 @@ from pathlib import Path
 from PIL import Image, ImageChops
 
 
-def build_gallery(base: Path, head: Path, output: Path):
+def build_gallery(base: Path, head: Path, output: Path, *, only_name: str | None = None):
     base, head, output = Path(base).resolve(), Path(head).resolve(), Path(output).resolve()
     for label, directory in (("base", base), ("head", head)):
         if not (directory / "preview_manifest.json").is_file():
@@ -20,6 +20,18 @@ def build_gallery(base: Path, head: Path, output: Path):
     head_manifest = json.loads((head / "preview_manifest.json").read_text())
     base_paths, head_paths = base_manifest["plots"], head_manifest["plots"]
     all_paths = sorted(set(base_paths) | set(head_paths))
+    extra_note = ""
+    if only_name is not None:
+        requested = [name for name in all_paths if Path(name).name == only_name]
+        if len(requested) != 1:
+            raise ValueError(f"Selection example {only_name!r} must match one figure")
+        all_paths = requested
+        previous_extra = len(base_paths) - sum(name in base_paths for name in requested)
+        updated_extra = len(head_paths) - sum(name in head_paths for name in requested)
+        extra_note = (f'<p>One-figure selection test: requested <strong>{escape(only_name)}</strong>. '
+                      f'Previous code generated {previous_extra} other figure(s); '
+                      f'updated code generated {updated_extra} other figure(s). '
+                      'The unrequested pictures are not repeated in this gallery.</p>')
     if not all_paths:
         raise ValueError("No preview plots to compare")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -84,7 +96,7 @@ Both receive the same deterministic synthetic Parquet inputs. When no rendering 
 changed, the images will intentionally look identical. Pixel differences are diagnostic,
 not scientific validation. Inspect axes, labels, units and legends.</p>
 <p>For the nonduplicated condition-centered preview, open <code>../index.html</code>.</p>
-''' + "\n".join(rows) + "\n</body></html>\n"
+''' + extra_note + "\n".join(rows) + "\n</body></html>\n"
     output.write_text(html)
     return len(all_paths)
 
@@ -94,8 +106,9 @@ def main():
     parser.add_argument("--base", type=Path, required=True)
     parser.add_argument("--head", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--only-name", help="For selection reviews, show only the requested figure")
     args = parser.parse_args()
-    number = build_gallery(args.base, args.head, args.output)
+    number = build_gallery(args.base, args.head, args.output, only_name=args.only_name)
     print(f"Wrote {number} figure comparison panels: {args.output}")
 
 
