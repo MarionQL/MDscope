@@ -331,6 +331,12 @@ def render_preview(root: Path, *, include: list[str] | None = None):
         raise RuntimeError(f"Expected at least {minimum} figure preview(s); got {len(figures)}")
     for path in figures:
         mark_synthetic(path)
+    # Export only schema and a bounded first-row sample, never full MD tables.
+    from runpy import run_path
+    export = run_path(str(Path(__file__).with_name("preview_tables.py")))[
+        "export_preview_tables"
+    ]
+    tables = export(root, sample_rows=5)
     import mdscope
     record = {
         "notice": STAMP,
@@ -338,6 +344,8 @@ def render_preview(root: Path, *, include: list[str] | None = None):
         "input_data_kind": "deterministic synthetic Parquet",
         "requested_plot_ids": include,
         "plots": [str(path.relative_to(root)) for path in figures],
+        "table_previews": tables,
+        "table_inventory_csv": "table_previews/table_inventory.csv",
         "plot_ids": {},
     }
     try:
