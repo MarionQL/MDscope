@@ -392,3 +392,49 @@ def test_mixed_interaction_inference_draw_counts_do_not_share_incompatible_weigh
         assert len(boot["occupancy"]) == draws
         assert point["occupancy"] == pytest.approx(2 / len(times))
     assert sorted({key[-1] for key in cache}) == [0, 32]
+
+
+def test_changing_metric_selection_rebuilds_statistics_without_touching_raw_data(tmp_path):
+    """Re-finalization must not mistake old selected outputs for current ones."""
+    import hashlib
+    from mdscope.statistics import analyze_project
+    paths = _data(tmp_path / "inputs")
+    raw = {
+        source: hashlib.sha256(source.read_bytes()).hexdigest()
+        for source in (tmp_path / "inputs").rglob("*.parquet")
+    }
+    cfg = deepcopy(DEFAULTS)
+    cfg["progress"] = {"enabled": False}
+    cfg["statistics"]["bootstrap_draws"] = 20
+    cfg["statistics"]["hypothesis_tests"]["enabled"] = False
+    cfg["statistics"]["families"] = {
+        name: False for name in
+        ("profiles", "interactions", "solvation_rdfs", "diffusion", "coupling")
+    }
+    cfg["statistics"]["metric_selection"] = {"time_series": [
+        {"group": "PROA", "metric": "rmsd_A"}
+    ]}
+    root = tmp_path / "results"
+    analyze_project(cfg, root, paths)
+    initial = pd.read_parquet(
+        root / "project_summary/statistics/time_series/replicate_statistics.parquet"
+    )
+    assert set(initial.metric) == {"rmsd_A"}
+    cfg["statistics"]["metric_selection"] = {"time_series": [
+        {"metric": "membrane_thickness_A"}
+    ]}
+    analyze_project(cfg, root, paths)
+    updated = pd.read_parquet(
+        root / "project_summary/statistics/time_series/replicate_statistics.parquet"
+    )
+    assert set(updated.metric) == {"membrane_thickness_A"}
+    assert all(hashlib.sha256(path.read_bytes()).hexdigest() == digest
+               for path, digest in raw.items())
+    import json
+    manifest = json.loads(
+        (root / "project_summary/statistics/manifest.json").read_text()
+    )
+    assert manifest["status"] == "complete"
+    assert manifest["methods"]["metric_selection"]["time_series"][0]["metric"] == (
+        "membrane_thickness_A"
+    )
