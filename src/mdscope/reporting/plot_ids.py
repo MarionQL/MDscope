@@ -14,7 +14,7 @@ DYNAMIC_VARIANTS = {
     }),
     "profiles": frozenset({
         "profile", "distribution", "system_difference",
-        "comparison_table",
+        "comparison_table", "bootstrap_table",
     }),
     "interactions": frozenset({
         "occupancy_heatmap", "lifetime_distribution",
@@ -45,6 +45,9 @@ def validate_plot_ids(include):
         if len(parts) == 3 and parts[0] in {"time_series", "profiles"}:
             if parts[1] and parts[2] in DYNAMIC_VARIANTS[parts[0]]:
                 continue
+        if (len(parts) == 4 and parts[0] == "profiles" and parts[1]
+                and parts[2] and parts[3] == "distance_heatmap"):
+            continue
         if len(parts) in {3, 4} and parts[0] == "interactions":
             if (parts[1] and (len(parts) == 3 and parts[2] in {
                     "occupancy_heatmap", "lifetime_distribution"
@@ -65,6 +68,10 @@ def id_from_figure_path(path: Path) -> str | None:
         return None
     parts = path.parts
     name = path.stem
+    if (path.parent.name.startswith("residue_membrane_distance__")
+            and name.endswith("__distance_heatmap")):
+        system = name.removesuffix("__distance_heatmap")
+        return f"profiles:{path.parent.name}:{system}:distance_heatmap"
     if "time_series" in parts or "profiles" in parts:
         family = "time_series" if "time_series" in parts else "profiles"
         if "__" in name:
