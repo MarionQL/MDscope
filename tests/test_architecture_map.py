@@ -78,3 +78,19 @@ def test_current_stats_module_boundaries_are_not_historic_analysis_tree():
     # keep observers loaded merely to analyze autocorrelation.
     assert ("mdscope.statistics.common", "mdscope.observables.membrane_order") not in imports
     assert ("mdscope.statistics.time_series", "mdscope.observables.membrane_order") not in imports
+
+
+def test_interactions_package_exports_are_explicit_without_changing_named_api():
+    """All intended functions remain importable; third-party names do not leak."""
+    import mdscope.interactions as package
+    from mdscope.interactions.interaction_tables import (
+        event_lifetimes, interaction_key_columns, sample_dt, interaction_tables,
+    )
+
+    assert package.event_lifetimes is event_lifetimes
+    assert package.interaction_key_columns is interaction_key_columns
+    assert package.sample_dt is sample_dt
+    assert package.interaction_tables is interaction_tables
+    assert set(package.__all__) <= set(vars(package))
+    assert all(callable(getattr(package, name)) for name in package.__all__)
+    assert not any(name in package.__all__ for name in ("np", "pd", "Path", "atomic_parquet"))
