@@ -440,3 +440,40 @@ def test_stale_per_replica_sdc4_png_is_preserved_but_not_active(tmp_path):
     assert figure_status(legacy, cfg, tmp_path, {"condition": [rep]}) == "disabled"
     assert legacy.is_file(), "Never remove existing analysis results as a plotting side-effect"
 
+
+
+def test_descriptive_plotting_does_not_require_completed_statistics(tmp_path, project):
+    """A selected saved-data RMSD plot does not imply running bootstrap."""
+    from mdscope.pipeline.runner import run_one, finalize_project
+
+    path, root = project("descriptive_only", statistics=False)
+    options = yaml.safe_load(path.read_text())
+    options["plots"] = {
+        "enabled": True,
+        "include": ["time_series:rmsd_A:timeseries"],
+    }
+    path.write_text(yaml.safe_dump(options))
+    run_one(path, 0)
+    assert not (root / "project_summary/statistics/manifest.json").exists()
+
+    finalize_project(path, phase="plotting")
+    figures = sorted((root / "project_summary/figures").rglob("*.png"))
+    assert [figure.name for figure in figures] == ["rmsd_A__timeseries.png"]
+    assert not (root / "project_summary/statistics/manifest.json").exists()
+
+
+def test_statistical_plot_still_requires_completed_statistics(tmp_path, project):
+    """A bootstrap figure cannot quietly render without inferential inputs."""
+    from mdscope.pipeline.runner import run_one, finalize_project
+
+    path, root = project("statistical_plot_without_stats", statistics=False)
+    options = yaml.safe_load(path.read_text())
+    options["plots"] = {
+        "enabled": True,
+        "include": ["time_series:rmsd_A:bootstrap_table"],
+    }
+    path.write_text(yaml.safe_dump(options))
+    run_one(path, 0)
+    with pytest.raises(RuntimeError, match="completed statistics"):
+        finalize_project(path, phase="plotting")
+    assert not list(root.rglob("*.png"))
