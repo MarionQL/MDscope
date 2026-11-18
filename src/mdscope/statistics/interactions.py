@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config
-from ..statistics_selection import interaction_selection, selected_interaction_metrics
+from ..statistics_selection import interaction_selection, selected_interaction_metrics, metric_inference
 from ..core.persistence import atomic_json, atomic_parquet, ensure_dir
 from ..interactions.interaction_tables import interaction_key_columns, interaction_tables, sample_dt
 
@@ -292,6 +292,13 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
             selected_metrics = selected_interaction_metrics(selectors, kind, interaction)
             if not selected_metrics:
                 continue
+            metric_infer = {
+                metric: metric_inference(cfg, "interactions", (kind, interaction, metric))
+                for metric in selected_metrics
+            }
+            infer_any = any(metric_infer.values())
+            local_draws = draws if infer_any else 0
+            local_system_draws = system_draws if infer_any else 0
             if verbose and (completed == 1 or completed % log_every == 0):
                 print(f"Interaction statistics {kind}: processing identity "
                       f"{completed}/{len(interactions)} | elapsed {perf_counter()-kind_started:.1f} s",
@@ -313,7 +320,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                         pt,
                         ls,
                         cfg,
-                        draws,
+                        local_draws,
                         rng,
                         weight_cache,
                         (system, repout.name),
@@ -324,7 +331,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                     for metric, values in boot.items():
                         if metric not in selected_metrics:
                             continue
-                        lo, hi = _ci(values, level)
+                        lo, hi = _ci(values, level) if metric_infer[metric] else (np.nan, np.nan)
                         rep_rows.append({
                             "system": system,
                             "replicate": repout.name,
@@ -342,7 +349,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                                              "n_event_starts",
                                              "n_completed_events"
                                          )},
-                                         "bootstrap_draws": draws, "ci_level": level})
+                                         "bootstrap_draws": local_draws if metric_infer[metric] else 0, "ci_level": level})
             sys_boot = {}
             for system, reps in system_repouts.items():
                 items = [(
@@ -362,10 +369,11 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                     valid = [(rep, data) for rep, data in items if np.isfinite(data[1][metric])]
                     if not valid or metric not in selected_metrics:
                         continue
+                    infer_metric = metric_infer[metric]
                     combine = "median" if metric == "median_lifetime_ps" else "mean"
                     boot = _hierarchical(
                         [x[1][0][metric] for x in valid],
-                        system_draws,
+                        local_system_draws if infer_metric else 0,
                         (rng if selectors is None else
                          _selected_rng(seed, "hierarchy", kind, interaction, system, metric)),
                         combine,
@@ -385,7 +393,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                                      "median": float(np.median(points)),
                                      "mean_ci_low": lo, "mean_ci_high": hi, **_range_meta(
                                          [x[1][1] for x in valid]
-                                     ), "bootstrap_draws": system_draws, "ci_level": level})
+                                     ), "bootstrap_draws": local_system_draws if infer_metric else 0, "ci_level": level})
             available = [s for s in system_repouts if s in sys_boot]
             for s1, s2 in combinations(available, 2):
                 for metric in sorted(set(sys_boot[s1]) & set(sys_boot[s2])):
@@ -415,7 +423,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                         delta = _hierarchical_difference(
                             rep_draws_1,
                             rep_draws_2,
-                            system_draws,
+                            local_system_draws if metric_infer[metric] else 0,
                             (rng if selectors is None else
                              _selected_rng(seed, "paired", kind, interaction, s1, s2, metric)),
                             reducer,
@@ -445,13 +453,14 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                                   "difference_ci_low": lo, "difference_ci_high": hi,
                                   "probability_difference_gt_0": pgt,
                                   "probability_difference_lt_0": plt,
-                                  "p_value": _permutation(
+                                  "p_value": (_permutation(
                                       amap, bmap, cfg,
                                       rng if selectors is None else
                                       _selected_rng(seed, "permutation", kind, interaction,
-                                                    s1, s2, metric)),
+                                                    s1, s2, metric))
+                                      if metric_infer[metric] else np.nan),
 
-                                  "bootstrap_draws": system_draws, "ci_level": level})
+                                  "bootstrap_draws": local_system_draws if metric_infer[metric] else 0, "ci_level": level})
         if detail_enabled:
             detail["kinds"].append({
                 "kind": kind, "unique_identities": len(interactions),
