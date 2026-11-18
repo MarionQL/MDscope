@@ -354,12 +354,16 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
             state.mark(key, run_streaming_pass(rep, cfg, root))
             stage_timings.append({"stage": "streaming", "seconds": perf_counter() - t0})
 
-    # Without protein streaming, run *all* optional observer families in
-    # one shared frame loop instead of three separate fallback traversals.
+    # Observer-only mode replays every pending instance in one frame pass.
+    # Preserve run IDs: multiple SASA and distance runs have distinct outputs.
+    # Lipid footprint needs its committed reference.json as well as a table.
     if not streaming_required:
-        pending_outputs = fused_output_plan(cfg, repout)
-        pending = {entry.name for entry in pending_outputs if not entry.path.is_file()}
-        if pending - {"lipid_enrichment"}:
+        pending = tuple(
+            entry for entry in fused_output_plan(cfg, repout)
+            if (footprint_pending(entry.path, cfg["analyses"]["lipid_enrichment"])
+                if entry.name == "lipid_enrichment" else not entry.path.is_file())
+        )
+        if pending:
             t0 = perf_counter()
             run_fused_only(rep, cfg, repout, only=pending)
             stage_timings.append({"stage": "fused-only", "seconds": perf_counter() - t0})
@@ -402,12 +406,18 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
                     fused_output(repout, "sasa") if run.run_id == "default"
                     else fused_output(repout, "sasa", run_id=run.run_id)
                 )
-        missing = [name for name, entry in extension_outputs.items()
+        missing = [entry for entry in extension_outputs.values()
                    if not entry.path.is_file()]
         if missing:
             t0 = perf_counter()
-            run_fused_extensions(rep, cfg, repout,
-                                 names=tuple(name.split("-", 1)[0] for name in missing))
+            run_fused_extensions(
+                rep, cfg, repout,
+                names=tuple(dict.fromkeys(entry.name for entry in missing)),
+                sasa_run_ids=tuple(
+                    entry.run_id if entry.run_id is not None else "default"
+                    for entry in missing if entry.name == "sasa"
+                ),
+            )
             stage_timings.append({"stage": "fused-extensions-fallback", "seconds": perf_counter() - t0})
         for name in extension_outputs:
             if not extension_outputs[name].path.is_file():
@@ -426,7 +436,7 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
         missing = [name for name, entry in expected.items() if not entry.path.is_file()]
         if missing:
             t0 = perf_counter()
-            run_fused_distances(rep, cfg, repout)
+            run_fused_distances(rep, cfg, repout, run_ids=tuple(missing))
             stage_timings.append({"stage": "fused-distances-fallback", "seconds": perf_counter() - t0})
         for run_id, entry in expected.items():
             if not entry.path.is_file():
