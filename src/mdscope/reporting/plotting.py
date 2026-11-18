@@ -134,9 +134,24 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
     systems = list(system_repouts)
     keys = set()
     cache = {}
+    include = cfg.get("plots", {}).get("include")
+    sources = None if include is None else {"summary"}
+    if include is not None:
+        for identifier in include:
+            if not identifier.startswith("time_series:"):
+                continue
+            stem = identifier.split(":", 2)[1]
+            if "__group_lipid_contacts_" in stem:
+                sources.add("lipid_contacts")
+            if "__group_solvation_bridges_" in stem:
+                sources.add("solvation_bridges")
+            elif "__group_solvation_" in stem:
+                sources.add("solvation")
+            if "__group_hydration_" in stem:
+                sources.add("hydration")
     for system, reps in system_repouts.items():
         for repout in reps:
-            cache[(system, repout.name)] = collect_time_series(repout)
+            cache[(system, repout.name)] = collect_time_series(repout, sources=sources)
             keys.update(cache[(system, repout.name)].keys())
     rep_stats_path = (
         root / "project_summary" / "statistics" / "time_series" / "replicate_statistics.parquet"
