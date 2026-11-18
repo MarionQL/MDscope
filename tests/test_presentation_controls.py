@@ -65,3 +65,16 @@ def test_scientific_labels_preserve_raw_identifier_in_data_only():
     label,units=_metric_meta(raw)
     assert '_' not in label and 'chain B' in label and 'proxy' in label
     assert units=='fraction'
+
+def test_figure_inventory_reads_generated_provenance_metadata(tmp_path):
+    cfg, paths, fig = _fixture(tmp_path)
+    record_generated_figures(cfg, tmp_path, paths, {})
+
+    inventory = figure_inventory(tmp_path, paths, cfg)
+    row = inventory.set_index("figure").loc[str(fig.relative_to(tmp_path))]
+    assert row["status"] == "valid"
+    assert row["source_metric"] == "rmsd_A"
+    assert row["display_label"] == "RMSD"
+    assert row["units"] == "A"
+    assert "condition/rep1/summary/timeseries.parquet" in row["source_files"]
+    assert row["generated_at"]
