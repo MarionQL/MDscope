@@ -102,6 +102,11 @@ def test_named_run_registered_products_reuse_actual_registry(tmp_path, project):
     assert distance["dtype"] == "float32"
     assert distance["units"] == "angstrom"
     assert plan["coverage"]["partial_verified_column_schemas"] is True
+    assert all(item["id"].endswith(":" + item["run_id"])
+               for item in plan["analyses"])
+    assert any(item["purpose"] != "Not cataloged" for item in plan["analyses"])
+    assert any(item["topology_requirements_status"] == "partial_contract"
+               for item in plan["analyses"] if item["analysis"] == "sasa")
     assert {item["run_id"] for item in plan["analyses"]
             if item["analysis"] == "sasa"} == {"isolated", "environment"}
     assert any(item["path_within_replica"].endswith("residue_burial.parquet")
@@ -128,6 +133,11 @@ def test_family_controls_and_partial_catalog_are_explicit(tmp_path, project):
     assert figures["time_series"]["status"] == "enabled_conditional"
     assert plan["coverage"]["all_generated_files_cataloged"] is False
     assert plan["coverage"]["individual_figure_ids_cataloged"] is False
+    assert "project_summary/statistics/profiles/system_profiles.parquet" in (
+        families["profiles"]["files"])
+    assert "project_summary/statistics/time_series/replicate_statistics.parquet" in (
+        families["time_series"]["files"])
+    assert families["time_series"]["files_status"].startswith("conditional_")
 
 
 def test_plan_lists_extra_passes_and_does_not_mutate_config(tmp_path, project):
@@ -145,3 +155,24 @@ def test_plan_lists_extra_passes_and_does_not_mutate_config(tmp_path, project):
     assert set(plan["additional_trajectory_passes"]) == {
         "multi_origin_msd", "potassium_bridge_audit"
     }
+
+
+def test_plan_summary_output_matches_real_six_frame_run(tmp_path, project):
+    """End-to-end check: a promised conditional summary is really produced."""
+    from mdscope.pipeline.runner import run_one
+
+    path, root = project("plan_real_output")
+    cfg = load_config(path)
+    plan = build_plan(cfg, path)
+    summary = {entry["path_within_replica"]: entry
+               for entry in plan["conditional_replica_outputs"]}
+    assert summary["summary/timeseries.parquet"]["status"] == "written_if_nonempty"
+
+    run_one(path, 0)
+    observed = root / "tiny" / "rep1" / "summary/timeseries.parquet"
+    assert observed.is_file()
+    import pandas as pd
+
+    data = pd.read_parquet(observed)
+    assert "time_ps" in data and len(data) > 0
+
