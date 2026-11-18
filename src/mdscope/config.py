@@ -204,6 +204,7 @@ DEFAULTS = {
     "plots": {
         "enabled": False,
         "include": None,
+        "options": {},
         "min_occupancy": 0.05,
         "time_series": True,
         "distributions": False,
@@ -852,8 +853,9 @@ def validate_config(cfg: dict, base: Path = Path(".")) -> None:
     if (not isinstance(families, dict) or set(families) - allowed
             or any(not isinstance(value, bool) for value in families.values())):
         raise ValueError("plots.families must map known families to booleans")
-    from .reporting.plot_ids import validate_plot_ids
+    from .reporting.plot_ids import validate_plot_ids, validate_figure_options
     validate_plot_ids(plots.get("include"))
+    validate_figure_options(plots.get("options", {}))
     excluded = plots.get("interaction_exclude_kinds", [])
     if not isinstance(excluded, list) or any(not isinstance(value, str) for value in excluded):
         raise ValueError("plots.interaction_exclude_kinds must be a list")
