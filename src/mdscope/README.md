@@ -9,7 +9,8 @@
 | `statistics/` | Autocorrelation, replicate bootstrap, contrasts |
 | `reporting/` | Saved findings and optional figures |
 | `pipeline/` | Fused streaming, executable replica tasks, restart and finalization |
-| `cli.py`, `config.py`, `registry.py` | CLI, configuration, output paths and artifact contracts |
+| `cli.py`, `config.py` | CLI and YAML configuration |
+| `output_paths.py`, `registry.py` | Canonical output paths, schemas and artifact contracts |
 
 **Coordinate rule:** Membrane observables use source coordinates **before** protein fitting; optional `msd_trajectory` is separately synchronized. Do not rotate or recenter the shared input frames. Old internal Python aliases are unsupported.
 
