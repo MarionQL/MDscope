@@ -191,3 +191,24 @@ def test_unknown_diffusion_metric_fails_before_products(tmp_path):
     with pytest.raises(ValueError, match="Unknown saved diffusion metric"):
         analyze_multi_origin_diffusion(cfg, tmp_path, {"a": [rep]})
     assert not (tmp_path / "project_summary/statistics/diffusion").exists()
+
+
+def test_studio_new_config_explicitly_disables_all_inference_families():
+    from mdscope.statistics_selection import studio_metric_selection_defaults
+    selection = studio_metric_selection_defaults()
+    assert set(selection) == {
+        "time_series", "profiles", "interactions",
+        "solvation_rdfs", "diffusion", "coupling",
+    }
+    cfg = deepcopy(DEFAULTS)
+    cfg["statistics"]["metric_selection"] = selection
+    validate_metric_selection(cfg["statistics"])
+    assert all(statistics_family_config(cfg, family) is None for family in selection)
+    assert statistics_family_config(deepcopy(DEFAULTS), "time_series") is not None
+
+
+def test_studio_metric_selection_defaults_are_not_shared_mutable_lists():
+    from mdscope.statistics_selection import studio_metric_selection_defaults
+    selection = studio_metric_selection_defaults()
+    selection["profiles"].append({"profile": "test"})
+    assert studio_metric_selection_defaults()["profiles"] == []
