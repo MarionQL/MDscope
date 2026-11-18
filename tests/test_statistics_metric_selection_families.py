@@ -142,3 +142,52 @@ def test_missing_coupling_is_rejected_before_read(tmp_path, monkeypatch):
         {"mechanism": "nonexistent"}]}
     with pytest.raises(ValueError, match="Unknown configured coupling"):
         analyze_coupling(cfg, tmp_path, {"s": [tmp_path / "missing"]})
+
+
+def test_diffusion_selection_filters_shared_lag_fits(tmp_path, monkeypatch):
+    cfg = deepcopy(DEFAULTS)
+    cfg["analyses"]["membrane"]["msd"].update(enabled=True, multi_origin=True)
+    cfg["statistics"]["metric_selection"] = {"diffusion": [{"metric": "DOPC"}]}
+    replicas = {"a": [], "b": []}
+    for system in replicas:
+        for i in range(2):
+            rep = tmp_path / system / f"rep{i}"
+            source = rep / "summary/multi_origin_msd.parquet"
+            source.parent.mkdir(parents=True)
+            lag = np.arange(30, dtype=float)
+            pd.DataFrame({
+                "metric": ["DOPC"] * 30 + ["POPC"] * 30,
+                "lag_ps": list(lag) * 2,
+                "msd_A2": list(lag * (2 + i)) + list(lag * 3),
+                "n_time_origins": [100] * 60,
+            }).to_parquet(source)
+            replicas[system].append(rep)
+    import mdscope.statistics.diffusion as mod
+    original_fit = mod.fit_multi_origin_curve
+    observed = []
+    def counted(*args, **kwargs):
+        observed.append(1)
+        return original_fit(*args, **kwargs)
+    monkeypatch.setattr(mod, "fit_multi_origin_curve", counted)
+    analyze_multi_origin_diffusion(cfg, tmp_path, replicas)
+    result = pd.read_parquet(
+        tmp_path / "project_summary/statistics/diffusion/replicate_common_lag_slopes.parquet"
+    )
+    assert set(result.metric) == {"DOPC"}
+    assert len(observed) == 4
+
+
+def test_unknown_diffusion_metric_fails_before_products(tmp_path):
+    cfg = deepcopy(DEFAULTS)
+    cfg["analyses"]["membrane"]["msd"].update(enabled=True, multi_origin=True)
+    cfg["statistics"]["metric_selection"] = {"diffusion": [{"metric": "NOT_SAVED"}]}
+    rep = tmp_path / "a/rep1"
+    source = rep / "summary/multi_origin_msd.parquet"
+    source.parent.mkdir(parents=True)
+    pd.DataFrame({
+        "metric": ["DOPC"], "lag_ps": [0.], "msd_A2": [0.],
+        "n_time_origins": [100],
+    }).to_parquet(source)
+    with pytest.raises(ValueError, match="Unknown saved diffusion metric"):
+        analyze_multi_origin_diffusion(cfg, tmp_path, {"a": [rep]})
+    assert not (tmp_path / "project_summary/statistics/diffusion").exists()
