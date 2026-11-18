@@ -80,7 +80,7 @@ def test_html_gallery_displays_before_after_and_no_scientific_claims(tmp_path):
     text = output.read_text()
     assert n >= 4
     assert "SYNTHETIC EXAMPLES" in text
-    assert "Base" in text and "PR head" in text
+    assert "Previous code" in text and "Updated code" in text
     assert "rmsd_A__timeseries.png" in text
     assert "Unchanged pixels" in text
     assert json.loads((base / "preview_manifest.json").read_text())["plots"] == (
