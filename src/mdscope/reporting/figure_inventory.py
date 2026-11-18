@@ -156,6 +156,11 @@ def figure_status(path, cfg, root, system_repouts, records=None):
     from .plot_ids import id_from_figure_path
     root, path = Path(root), Path(path)
     family = figure_family(path)
+    # Old SDC4 diagnostics lived beside each replica's Parquet files.
+    # The current figure renderer writes condition-level PNGs instead. Do not
+    # advertise stale legacy PNGs as active, and never delete user artifacts.
+    if family == "sdc4" and "extensions" in path.parts and "sdc4_mechanisms" in path.parts:
+        return 'disabled'
     if not plot_enabled(cfg, family):
         return 'disabled'
     if cfg.get("plots", {}).get("include") is not None:
