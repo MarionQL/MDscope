@@ -103,3 +103,67 @@ def test_optional_scalar_collection_keeps_missing_files_missing(tmp_path, projec
         [metric] for _, metric in expected
     ]
     assert all(df.time_ps.tolist() == [0.0, 10.0] for df in tables)
+
+
+def test_output_plan_uses_lightweight_production_predicates(project):
+    """Producer exports and registry must see identical scheduling decisions."""
+    from mdscope.pipeline.analysis_selection import (
+        membrane_enabled_names, extensions_enabled_names,
+        distance_enabled_names, sdc4_enabled,
+    )
+    from mdscope.pipeline.fused_membrane import enabled_names as membrane_producer
+    from mdscope.pipeline.fused_extensions import enabled_names as extensions_producer
+    from mdscope.pipeline.fused_distance import enabled_names as distance_producer
+    from mdscope.mechanisms.sdc4_mechanisms import enabled as sdc4_producer
+
+    assert membrane_enabled_names is membrane_producer
+    assert extensions_enabled_names is extensions_producer
+    assert distance_enabled_names is distance_producer
+    assert sdc4_enabled is sdc4_producer
+
+    path, _ = project("lightweight_predicates")
+    cfg = load_config(path)
+    specs = cfg["analyses"]
+    specs["membrane_order"]["enabled"] = True
+    specs["sasa"]["enabled"] = True
+    specs["dssp"].update({"enabled": True, "backend": "parallel"})
+    specs["sdc4_mechanisms"].update({
+        "enabled": True, "hs_sugar_water_cutoff_A": 3.5,
+    })
+    specs["residue_membrane_distance"].update({
+        "enabled": True,
+        "runs": {"near": {"membrane_selection": "name P"}},
+    })
+    assert membrane_enabled_names(cfg) == ("membrane_order",)
+    assert "sasa" not in extensions_enabled_names(cfg)
+    assert "dssp" not in extensions_enabled_names(cfg)
+    assert "hydration" in extensions_enabled_names(cfg)
+    assert distance_enabled_names(cfg) == ("near",)
+    assert sdc4_enabled(cfg)
+    entries = analysis_output_plan(cfg, Path("__replica__"))
+    assert {entry.name for entry in entries} >= {
+        "membrane_order", "sasa", "dssp", "hydration",
+        "residue_membrane_distance", "sdc4_mechanisms",
+    }
+
+
+def test_read_only_output_plan_does_not_load_producers():
+    code = (
+        "import sys\\n"
+        "from pathlib import Path\\n"
+        "from mdscope.registry import analysis_output_plan\\n"
+        "cfg = {'analyses': {name: {'enabled': False} for name in (\\n"
+        "    'membrane_order', 'sasa', 'dssp', 'residue_membrane_distance',\\n"
+        "    'sdc4_mechanisms', 'potassium_bridge_audit')}}\\n"
+        "analysis_output_plan(cfg, Path('__replica__'))\\n"
+        "for name in ('mdscope.pipeline.fused_membrane',\\n"
+        "             'mdscope.pipeline.fused_extensions',\\n"
+        "             'mdscope.pipeline.fused_distance',\\n"
+        "             'mdscope.mechanisms.sdc4_mechanisms'):\\n"
+        "    assert name not in sys.modules, name\\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True, text=True, check=False, timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
