@@ -38,14 +38,14 @@ EXECUTION = {
         "precheck": "Validate existing products before writes",
         "choice": "Core streaming or aligned cache required?",
         "stream": "streaming: shared primary frame pass",
-        "fusedonly": "fused_all: observer-only shared pass",
+        "fusedonly": "fused_all: pending instances, one shared pass",
         "membrane": "FusedMembrane: order / normal / enrichment / contacts",
         "extensions": "FusedExtensions: H-bonds / SASA / DSSP / solvation / hydration",
         "distance": "FusedDistances: residue-membrane",
         "sdc4": "SDC4Mechanisms: motif / HS / membrane",
         "core": "Core metrics: RMSD / RMSF / Rg / density / membrane",
         "audit": "Per-family missing/incomplete product checks",
-        "fallback": "Conditional fused-family fallback readers",
+        "fallback": "Selective fused-family fallback readers",
         "tasks": "Conditional specialized tasks / multi-origin MSD",
         "verify": "Validate registered artifact contracts / stage markers",
         "summary": "Saved per-replica data and summary",
@@ -75,6 +75,54 @@ EXECUTION = {
 }
 
 
+
+# A conceptual decision tree for artifact reuse and reconstruction.
+# Fused-only replays use per-instance selection; existing corrupt products
+# fail preflight rather than being silently replaced.
+RECOVERY = {
+    "nodes": {
+        "start": "Start replicate / read output registry",
+        "preflight": "Validate existing primary and required companions",
+        "invalid": "Invalid existing artifact?",
+        "abort": "Fail; preserve existing outputs for inspection",
+        "stream": "Core stream required?",
+        "checkpoint": "Valid completed stream checkpoint?",
+        "reuse_stream": "Reuse stream; validate checkpoint inventory",
+        "replay_stream": "Resume or execute primary stream using checked chunks",
+        "pending": "Pending fused artifacts? (analysis + run ID)",
+        "skip": "No pending fused output; avoid opening trajectory",
+        "shared": "Observer-only: one source-frame pass for selected instances",
+        "scratch": "Isolated scratch chunks; publish selected products only",
+        "fallback": "Per-family selective fallback if stream left missing products",
+        "validate": "Validate registered artifacts and their companions",
+        "summary": "Reuse or rebuild replica summary as required",
+        "extras": "Optional specialized tasks / further passes",
+        "end": "Saved replica ready for offline finalization",
+    },
+    "edges": [
+        ("start", "preflight", ""),
+        ("preflight", "invalid", ""),
+        ("invalid", "abort", "yes"),
+        ("invalid", "stream", "no"),
+        ("stream", "checkpoint", "yes"),
+        ("checkpoint", "reuse_stream", "yes"),
+        ("checkpoint", "replay_stream", "no"),
+        ("reuse_stream", "fallback", ""),
+        ("replay_stream", "fallback", ""),
+        ("stream", "pending", "no"),
+        ("pending", "skip", "no"),
+        ("pending", "shared", "yes"),
+        ("shared", "scratch", ""),
+        ("scratch", "validate", ""),
+        ("skip", "validate", ""),
+        ("fallback", "validate", ""),
+        ("validate", "summary", ""),
+        ("summary", "extras", ""),
+        ("extras", "end", ""),
+    ],
+}
+
+
 def quote(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
@@ -97,6 +145,29 @@ def write_execution(path: Path) -> None:
         lines.append(f'  {quote(source)} -> {quote(target)}{style};')
     lines.append("}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_recovery(path: Path) -> None:
+    lines = [
+        "digraph recovery {",
+        '  graph [rankdir=TB, bgcolor=white, label="MDscope artifact recovery (conceptual)", labelloc=t];',
+        '  node [shape=box, style="rounded,filled", fillcolor="#e6effb", color="#7299cc"];',
+    ]
+    for key, label in RECOVERY["nodes"].items():
+        attrs = ["label=" + quote(label)]
+        if key in {"invalid", "stream", "checkpoint", "pending"}:
+            attrs.append('shape=diamond')
+            attrs.append('fillcolor="#fff1d9"')
+        elif key in {"abort"}:
+            attrs.append('fillcolor="#ffe1df"')
+        elif key in {"reuse_stream", "skip", "shared", "scratch", "replay_stream"}:
+            attrs.append('fillcolor="#dcf4e8"')
+        lines.append(f'  {quote(key)} [{", ".join(attrs)}];')
+    for source, target, decision in RECOVERY["edges"]:
+        attrs = f' [label={quote(decision)}]' if decision else ""
+        lines.append(f'  {quote(source)} -> {quote(target)}{attrs};')
+    lines.append("}")
+    path.write_text("\\n".join(lines) + "\\n", encoding="utf-8")
 
 
 def write_imports(path: Path, inventory: dict, focused: bool) -> None:
@@ -146,11 +217,12 @@ def main() -> int:
     if not {"modules", "imports", "import_sites", "cycles"} <= inventory.keys():
         parser.error("Invalid architecture inventory")
     write_execution(args.output / "execution.dot")
+    write_recovery(args.output / "recovery.dot")
     write_imports(args.output / "imports_focused.dot", inventory, focused=True)
     write_imports(args.output / "imports_full.dot", inventory, focused=False)
     dot = shutil.which("dot")
     if dot:
-        for name in ("execution", "imports_focused", "imports_full"):
+        for name in ("execution", "recovery", "imports_focused", "imports_full"):
             subprocess.run(
                 [dot, "-Tsvg", str(args.output / (name + ".dot")),
                  "-o", str(args.output / (name + ".svg"))], check=True,
