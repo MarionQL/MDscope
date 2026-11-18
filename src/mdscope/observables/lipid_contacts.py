@@ -47,9 +47,10 @@ def contact_matrix(species, upper, molecule_pairs, categories=None):
 
 
 class LipidContacts:
-    def __init__(self, universe, spec, repout):
+    def __init__(self, universe, spec, repout, *, cache_dir=None):
         self.u, self.spec = universe, spec
-        self.cache = ensure_dir(Path(repout)/'cache/lipid_contacts')
+        self.cache = ensure_dir(Path(cache_dir) if cache_dir is not None
+                                else Path(repout) / 'cache/lipid_contacts')
         self.out = ensure_dir(Path(repout)/'extensions/lipid_contacts')
         self.species, residues, self.tracker, self.initial = anchor_groups(universe, spec)
         self.axis = {'x':0, 'y':1, 'z':2}[spec.get('axis', 'z')]
