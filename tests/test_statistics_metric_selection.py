@@ -89,3 +89,14 @@ def test_legacy_selector_absent_preserves_all_metrics(tmp_path):
 def test_invalid_selectors_fail_validation(selection):
     with pytest.raises(ValueError, match="metric_selection"):
         validate_metric_selection({"metric_selection": selection})
+
+
+def test_unknown_saved_identity_fails_before_statistics_outputs(tmp_path):
+    paths = _data(tmp_path / "inputs")
+    cfg = deepcopy(DEFAULTS)
+    cfg["statistics"]["metric_selection"] = {
+        "time_series": [{"group": "NOT_A_GROUP", "metric": "rmsd_A"}]
+    }
+    with pytest.raises(ValueError, match="Unknown saved time-series metric"):
+        analyze_time_series(cfg, tmp_path, paths)
+    assert not (tmp_path / "project_summary/statistics/time_series").exists()
