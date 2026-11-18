@@ -279,6 +279,16 @@ def build_plan(cfg: dict, config_path: str | Path, *,
                       for file in STATISTICS_CANDIDATES[family]],
             "files_status": "conditional_candidates_from_statistics_writers",
             "independent_condition_units": "simulation_replicates",
+            "candidate_source_runs": [
+                {
+                    "analysis": item["analysis"],
+                    "run_id": item["run_id"],
+                    "selection_inputs": item["selection_inputs"],
+                    "status": "candidate; exact metric identity requires saved data",
+                }
+                for item in selected
+                if family in (ANALYSIS_METADATA.get(item["analysis"], ("", (), ()))[1])
+            ],
             "metric_contract": {
                 "identity_fields": STATISTICS_METRIC_CONTRACTS[family][0],
                 "row_grain": STATISTICS_METRIC_CONTRACTS[family][1],
@@ -288,6 +298,25 @@ def build_plan(cfg: dict, config_path: str | Path, *,
                 "output_columns_status": "identity fields only; complete writer schema not catalogued",
                 "raw_analysis_independent": True,
                 "figure_selection_independent": True,
+                "descriptive_selection": "included_identity",
+                "inferential_selection": "per_entry_inference_boolean_default_true",
+                "unavailable_estimate_policy": "nullable_ci_p_and_q_not_fabricated",
+                "eligibility_requirements": {
+                    "replicate_independence": "simulation_replicates",
+                    "temporal": ("correlated_frames; full_grid_and_valid_blocks_required"
+                                 if family in {"time_series", "profiles", "interactions"}
+                                 else "not_a_framewise_bootstrap"),
+                    "between_condition_ci": (
+                        "complete_eligible_replicates; paired/unpaired design honored"
+                    ),
+                    "dynamic_ids": "requires_saved_data; schema_only_candidates",
+                },
+                "configured_statistical_figure_ids": [
+                    identifier for identifier in (cfg.get("plots", {}).get("include") or [])
+                    if identifier.split(":", 1)[0] == (
+                        "solvation" if family == "solvation_rdfs" else family
+                    )
+                ],
             },
             "metric_selection": (
                 cfg.get("statistics", {}).get("metric_selection", {}).get(family)
