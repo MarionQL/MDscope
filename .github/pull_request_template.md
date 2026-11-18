@@ -12,7 +12,7 @@
 
 ## Plotting changes (if applicable)
 
-- [ ] Opened **MDscope figure review** Actions artifact: `mdscope-figure-review/index.html`.
+- [ ] Opened the **condition-first figure preview** at artifact root `index.html` and the **code-revision comparison** at `review/index.html`.
 - [ ] Reviewed base/head plots for axes, labels, units, legends, missing data, clipping and color mappings.
 - [ ] Included a link to the visual artifact and described the intended differences (or explained why there should be none).
 - [ ] Added a deterministic saved-data example if a changed renderer was not covered by the gallery.
