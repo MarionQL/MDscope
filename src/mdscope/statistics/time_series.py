@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config
-from .selection import time_series_selection
+from ..statistics_selection import time_series_selection
 from ..core.persistence import atomic_parquet, ensure_dir
 from ..interactions.interaction_tables import event_lifetimes
 from ..interactions.interaction_tables import interaction_tables
