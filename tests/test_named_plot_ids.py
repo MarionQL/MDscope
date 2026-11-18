@@ -251,3 +251,37 @@ def test_selected_lipid_contact_time_series_still_reads_needed_matrix(tmp_path):
         tmp_path / "project_summary/figures").rglob("*.png")]
     assert produced == ["enrichment__group_lipid_contacts_upper_POPC_DOPC__timeseries.png"]
 
+
+def test_individual_dpi_changes_only_selected_visual_resolution(tmp_path):
+    root_base, root_hires = tmp_path / "base", tmp_path / "hires"
+    cfg, repouts = _fake_data(root_base)
+    cfg["plots"]["include"] = ["time_series:rmsd_A:timeseries"]
+    plot_all(cfg, root_base, repouts)
+    image_path = "project_summary/figures/time_series/rmsd_A__timeseries.png"
+    with Image.open(root_base / image_path) as image:
+        base_pixels = image.size
+
+    hires, reps_hi = _fake_data(root_hires)
+    hires["plots"]["include"] = ["time_series:rmsd_A:timeseries"]
+    hires["plots"]["options"] = {"time_series:rmsd_A:timeseries": {"dpi": 250}}
+    plot_all(hires, root_hires, reps_hi)
+    with Image.open(root_hires / image_path) as image:
+        hires_pixels = image.size
+    assert hires_pixels[0] > base_pixels[0] * 1.5
+    assert hires_pixels[1] > base_pixels[1] * 1.5
+
+
+@pytest.mark.parametrize("options,diagnostic", [
+    ({"time_series:rmsd_A:timeseries": {"dpi": 30}}, "dpi"),
+    ({"time_series:rmsd_A:timeseries": {"dpi": True}}, "dpi"),
+    ({"time_series:rmsd_A:timeseries": {"legend": True}}, "supports only dpi"),
+    ({"unknown:plot": {"dpi": 150}}, "unsupported plot ID"),
+])
+def test_per_plot_options_reject_bad_keys_and_values(options, diagnostic, tmp_path, project):
+    path, _ = project("per_plot_bad")
+    cfg = yaml.safe_load(path.read_text())
+    cfg["plots"]["options"] = options
+    path.write_text(yaml.safe_dump(cfg))
+    with pytest.raises(ValueError, match=diagnostic):
+        load_config(path)
+
