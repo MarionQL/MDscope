@@ -34,6 +34,8 @@ Read-only `cli.py` commands import the runner, statistical estimators, and topol
 
 Key interfaces: `cli.py`, `config.py` (`analysis_runs`, `iter_replicates`), `registry.py` (`analysis_output_plan`, `required_artifacts`), `output_paths.py` (shared immutable path contracts), `pipeline/analysis_selection.py` (shared enabled-analysis predicates), `pipeline/replica_tasks.py` (`specialized_tasks`, `additional_time_series`), `pipeline/runner.py`, `pipeline/streaming.py`.
 
+For the **execution-flow** and **module-dependency** diagrams, including how to regenerate them, see [Pipeline graphs](pipeline-graphs.md). The import diagram is derived from the current source; the execution diagram summarizes the documented runner control flow.
+
 ## Inspect the current module and call graph
 
 Run from a checkout with Python 3.11+ (and optionally an installed `mdscope`

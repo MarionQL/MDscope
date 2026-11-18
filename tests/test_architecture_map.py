@@ -101,3 +101,28 @@ def test_interactions_package_exports_are_explicit_without_changing_named_api():
     assert set(package.__all__) <= set(vars(package))
     assert all(callable(getattr(package, name)) for name in package.__all__)
     assert not any(name in package.__all__ for name in ("np", "pd", "Path", "atomic_parquet"))
+
+
+def test_pipeline_graphs_reuse_live_architecture_inventory(tmp_path):
+    """Diagram builder must work from a checkout, without trajectories."""
+    script = ROOT / "scripts/pipeline_graphs.py"
+    output = tmp_path / "pipeline-graphs"
+    result = subprocess.run(
+        [sys.executable, str(script), "--output", str(output)],
+        capture_output=True, text=True, check=False, timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    inventory = json.loads((output / "architecture.json").read_text())
+    assert "mdscope.pipeline.streaming" in inventory["modules"]
+    execution = (output / "execution.dot").read_text()
+    assert "streaming: shared primary frame pass" in execution
+    assert '"fusedonly" [' in execution
+    assert '"choice" -> "fusedonly"' in execution
+    assert "FusedMembrane" in execution and "FusedExtensions" in execution
+    focused = (output / "imports_focused.dot").read_text()
+    assert '"mdscope.pipeline.runner"' in focused
+    assert '"mdscope.pipeline.fused_all"' in focused
+    assert '"mdscope.observables.solvation"' in focused
+    full = (output / "imports_full.dot").read_text()
+    assert '"mdscope.pipeline.streaming"' in full
+    assert '"mdscope.observables.lipid_enrichment"' in full
