@@ -149,18 +149,18 @@ def test_output_plan_uses_lightweight_production_predicates(project):
 
 def test_read_only_output_plan_does_not_load_producers():
     code = (
-        "import sys\\n"
-        "from pathlib import Path\\n"
-        "from mdscope.registry import analysis_output_plan\\n"
-        "cfg = {'analyses': {name: {'enabled': False} for name in (\\n"
-        "    'membrane_order', 'sasa', 'dssp', 'residue_membrane_distance',\\n"
-        "    'sdc4_mechanisms', 'potassium_bridge_audit')}}\\n"
-        "analysis_output_plan(cfg, Path('__replica__'))\\n"
-        "for name in ('mdscope.pipeline.fused_membrane',\\n"
-        "             'mdscope.pipeline.fused_extensions',\\n"
-        "             'mdscope.pipeline.fused_distance',\\n"
-        "             'mdscope.mechanisms.sdc4_mechanisms'):\\n"
-        "    assert name not in sys.modules, name\\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        "from mdscope.registry import analysis_output_plan\n"
+        "cfg = {'analyses': {name: {'enabled': False} for name in (\n"
+        "    'membrane_order', 'sasa', 'dssp', 'residue_membrane_distance',\n"
+        "    'sdc4_mechanisms', 'potassium_bridge_audit')}}\n"
+        "analysis_output_plan(cfg, Path('__replica__'))\n"
+        "for name in ('mdscope.pipeline.fused_membrane',\n"
+        "             'mdscope.pipeline.fused_extensions',\n"
+        "             'mdscope.pipeline.fused_distance',\n"
+        "             'mdscope.mechanisms.sdc4_mechanisms'):\n"
+        "    assert name not in sys.modules, name\n"
     )
     result = subprocess.run(
         [sys.executable, "-c", code],
