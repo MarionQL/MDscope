@@ -90,16 +90,24 @@ def collect_time_series(repout: Path, *, sources: set[str] | None = None,
         if not path.exists() or (sources is not None and "summary" not in sources):
             continue
         if selected is not None:
-            # Read only persisted columns relevant to selected metrics. Group
-            # columns and time coordinates remain necessary for identities.
             from pyarrow.parquet import read_schema
             available = set(read_schema(path).names)
-            requested = {metric for group, metric in selected
-                         if metric in available and (group is None or group_col == "group")}
-            if not requested:
+            relevant = {(group, metric) for group, metric in selected
+                        if (group is None if group_col is None else group is not None)}
+            if not relevant:
                 continue
-            columns = ["time_ps", *sorted(requested)]
-            if group_col:
+            requested = {metric for _, metric in relevant if metric in available}
+            # Conditional-availability and HS episode metrics are derived from
+            # another raw column. Preserve those source columns, not fake zeros.
+            derived = any(
+                metric.endswith("_available_fraction")
+                or metric.endswith(("_hs_contacts_during_contact", "_hs_any_contact_state"))
+                for _, metric in relevant
+            )
+            if not requested and not derived:
+                continue
+            columns = None if derived else ["time_ps", *sorted(requested)]
+            if columns is not None and group_col:
                 columns.insert(0, group_col)
             data = pd.read_parquet(path, columns=columns)
         else:
@@ -125,7 +133,9 @@ def collect_time_series(repout: Path, *, sources: set[str] | None = None,
     # every other MDscope time series. Never resample individual lipid molecules
     # or water contacts as if they were independent simulation replicates.
     solvation = Path(repout) / "extensions" / "solvation" / "species_timeseries.parquet"
-    if solvation.exists() and (sources is None or "solvation" in sources):
+    if (solvation.exists() and (sources is None or "solvation" in sources)
+            and (selected is None or any(group is not None and group.startswith("solvation/")
+                                        for group, _ in selected))):
         data = pd.read_parquet(solvation)
         required = {"solvent", "target_class", "site_class", "time_ps",
                     "mean_n_solvent"}
@@ -144,7 +154,9 @@ def collect_time_series(repout: Path, *, sources: set[str] | None = None,
                     out[(group_id, metric)] = group[["time_ps", metric]].rename(
                         columns={metric: "value"})
     hydration = Path(repout) / "extensions" / "hydration" / "aggregate_counts.parquet"
-    if hydration.exists() and (sources is None or "hydration" in sources):
+    if (hydration.exists() and (sources is None or "hydration" in sources)
+            and (selected is None or any(group is not None and group.startswith("hydration/")
+                                        for group, _ in selected))):
         data = pd.read_parquet(hydration)
         required = {"time_ps", "compartment", "level", "group_id",
                     "water_count", "water_per_site"}
@@ -170,7 +182,9 @@ def collect_time_series(repout: Path, *, sources: set[str] | None = None,
                 out[(identity, metric)] = group[["time_ps", column]].rename(
                     columns={column: "value"})
     bridges = Path(repout)/"extensions/solvation/bridge_pair_timeseries.parquet"
-    if bridges.exists() and (sources is None or "solvation_bridges" in sources):
+    if (bridges.exists() and (sources is None or "solvation_bridges" in sources)
+            and (selected is None or any(group is not None and group.startswith("solvation_bridges/")
+                                        for group, _ in selected))):
         import json
         data = pd.read_parquet(bridges)
         required = {"time_ps", "solvent", "target_a", "target_b", "bridge_entity_count", "bridge_present_fraction"}
@@ -186,7 +200,9 @@ def collect_time_series(repout: Path, *, sources: set[str] | None = None,
                     continue
                 out[(identity, metric)] = group.sort_values("time_ps")[["time_ps", metric]].rename(columns={metric: "value"})
     matrix = Path(repout)/'extensions/lipid_contacts/matrix.parquet'
-    if matrix.exists() and (sources is None or "lipid_contacts" in sources):
+    if (matrix.exists() and (sources is None or "lipid_contacts" in sources)
+            and (selected is None or any(group is not None and group.startswith("lipid_contacts/")
+                                        for group, _ in selected))):
         data = pd.read_parquet(matrix)
         for (leaf, a, b), group in data.groupby(['leaflet','species_a','species_b'], sort=False):
             for metric in ('neighbors_per_molecule','enrichment'):
