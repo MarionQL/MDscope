@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config, atomic_parquet, ensure_dir
-from ..statistics_selection import simple_family_selection
+from ..statistics_selection import simple_family_selection, metric_inference
 from .replicate_contrasts import replicate_mean_contrasts
 
 
@@ -91,7 +91,12 @@ def analyze_solvation_rdfs(cfg, root, system_repouts):
     dest = ensure_dir(Path(root)/"project_summary"/"statistics"/"solvation")
     atomic_parquet(dest/"replicate_rdf.parquet", reps)
     atomic_parquet(dest/"system_rdf.parquet", system)
-    _write_shell_contrasts(reps, dest, cfg, system_repouts)
+    shell_selected = reps.loc[
+        [metric_inference(cfg, "solvation_rdfs", (row.solvent, row.target_class, row.site_class))
+         for row in reps.itertuples(index=False)]
+    ]
+    if not shell_selected.empty:
+        _write_shell_contrasts(shell_selected, dest, cfg, system_repouts)
 
 
 def _write_shell_contrasts(reps, dest, cfg, system_repouts):
