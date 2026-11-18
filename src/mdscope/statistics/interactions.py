@@ -51,7 +51,7 @@ def _interaction_bootstrap(
     rng: np.random.Generator,
     cache: dict,
     rep_key,
-    selected_seed=None,
+    zero_meta_cache: dict | None = None,
 ) -> tuple[dict, dict]:
     # Bootstrap the binary presence trajectory. Event starts/lifetimes
     # are weighted at their original frames so independently sampled
@@ -63,7 +63,17 @@ def _interaction_bootstrap(
     if n and len(presence_times):
         idx, valid = _presence_frame_indices(times, presence_times)
         presence[idx[valid]] = 1
-    meta = _temporal(presence, times, cfg)
+    # Interactions absent from a replicate produce the same zero-occupancy
+    # temporal metadata for every identity on that replicate's time grid.
+    # Cache only that deterministic metadata: bootstrap weight generation,
+    # draws, and hierarchical RNG order remain untouched.
+    absent = not len(presence_times) and (lifetimes is None or lifetimes.empty)
+    if absent and zero_meta_cache is not None and rep_key in zero_meta_cache:
+        meta = zero_meta_cache[rep_key]
+    else:
+        meta = _temporal(presence, times, cfg)
+        if absent and zero_meta_cache is not None:
+            zero_meta_cache[rep_key] = meta
     key = (rep_key, n, meta["block_length_frames"])
     # Reuse the same block weights for all interactions from one
     # replicate/block length; this is a major speed/memory win when
@@ -217,6 +227,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
         detail["input_loading_seconds"] = perf_counter() - loading_started
     rep_rows, sys_rows, comps = [], [], []
     weight_cache = {}
+    zero_meta_cache = {}
     for kind in sorted(kinds - excluded_kinds):
         if verbose:
             print(f"Interaction statistics {kind}: grouping input records", flush=True)
@@ -305,7 +316,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                         rng,
                         weight_cache,
                         (system, repout.name),
-                        seed if selectors is not None else None,
+                        zero_meta_cache,
                     )
                     repdata[(system, repout.name)] = (boot, meta)
                     for metric, values in boot.items():

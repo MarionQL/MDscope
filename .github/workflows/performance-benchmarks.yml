@@ -5,7 +5,7 @@ name: MDscope pipeline and statistics performance benchmark
 on:
   workflow_dispatch:
   pull_request:
-    branches: [main]
+    branches: [main, perf/benchmark-pipeline-statistics]
     paths:
       - "tests/performance_pipeline_benchmark.py"
       - "src/mdscope/statistics/**"
