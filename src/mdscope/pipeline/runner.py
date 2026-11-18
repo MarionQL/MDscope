@@ -453,7 +453,7 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     for task in specialized_tasks(cfg):
         if task.key.startswith("residue-membrane-") and task.key[len("residue-membrane-"):] in distance_names:
             continue
-        if task.key in {"membrane-order", "bilayer_normal", "lipid_enrichment"}:
+        if task.key in {"membrane-order", "bilayer_normal"}:
             continue
         if task.key in {"hydrogen-bonds", "lipid_hydrogen_bonds", "local_environment"} and {
             "hydrogen-bonds": "hydrogen_bonds",
