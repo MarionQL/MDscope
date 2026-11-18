@@ -52,6 +52,7 @@ def _interaction_bootstrap(
     cache: dict,
     rep_key,
     zero_meta_cache: dict | None = None,
+    selected_seed: int | None = None,
 ) -> tuple[dict, dict]:
     # Bootstrap the binary presence trajectory. Event starts/lifetimes
     # are weighted at their original frames so independently sampled
@@ -317,6 +318,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                         weight_cache,
                         (system, repout.name),
                         zero_meta_cache,
+                        seed if selectors is not None else None,
                     )
                     repdata[(system, repout.name)] = (boot, meta)
                     for metric, values in boot.items():
