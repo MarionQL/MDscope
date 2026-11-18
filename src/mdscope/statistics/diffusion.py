@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import atomic_parquet, statistics_family_config
-from ..statistics_selection import simple_family_selection
+from ..statistics_selection import simple_family_selection, metric_inference
 from ..observables.multi_origin_msd import fit_multi_origin_curve
 from .replicate_contrasts import replicate_mean_contrasts
 
@@ -99,7 +99,13 @@ def analyze_multi_origin_diffusion(cfg, root, system_repouts):
     if not rows:
         return
     replicas = pd.DataFrame(rows)
-    comparisons = replicate_mean_contrasts(replicas, ["metric"], system_repouts, cfg["statistics"])
+    infer = replicas.loc[
+        replicas.metric.map(lambda metric: metric_inference(cfg, "diffusion", (str(metric),)))
+    ]
+    comparisons = (
+        replicate_mean_contrasts(infer, ["metric"], system_repouts, cfg["statistics"])
+        if not infer.empty else pd.DataFrame()
+    )
     dest = Path(root) / "project_summary" / "statistics" / "diffusion"
     atomic_parquet(dest / "replicate_common_lag_slopes.parquet", replicas)
     if not comparisons.empty:
