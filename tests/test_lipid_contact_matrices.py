@@ -123,3 +123,25 @@ def test_difference_heatmap_uses_replica_means_and_masks_unavailable_species(tmp
     for values in deltas:
         assert values.loc['A', 'A'] == 2.
         assert np.isnan(values.loc['A', 'B'])
+
+
+def test_lipid_contact_replay_preserves_stream_cache(tmp_path):
+    """Membrane scratch must also isolate the nested lipid-contact observer."""
+    expected = _run(tmp_path / "baseline", 100, 4)
+    root = tmp_path / "replay"
+    committed = root / "cache/lipid_contacts/matrix-000000.parquet"
+    committed.parent.mkdir(parents=True)
+    committed.write_bytes(b"committed matrix chunk")
+    universe, cfg = _system()
+    observer = FusedMembrane(
+        universe, cfg, root, names=("lipid_contacts",),
+        cache_dir=root / ".scratch",
+    )
+    observer.prune_from(0)
+    for i, ts in enumerate(universe.trajectory):
+        observer.update(ts, i)
+        observer.flush(i)
+    observer.finalize()
+    assert committed.read_bytes() == b"committed matrix chunk"
+    actual = pd.read_parquet(root / "extensions/lipid_contacts/matrix.parquet")
+    pd.testing.assert_frame_equal(actual, expected)
