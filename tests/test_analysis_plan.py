@@ -287,3 +287,33 @@ def test_metric_estimator_flags_validate_through_real_yaml_schema(tmp_path, proj
     path.write_text(yaml.safe_dump(cfg))
     with pytest.raises(ValueError, match="metric_selection"):
         load_config(path, check_paths=False)
+
+
+def test_saved_statistics_catalog_reads_real_parquet_schema_and_bounds_identities(tmp_path):
+    import pandas as pd
+    from mdscope.planning import inspect_saved_statistics
+    folder = tmp_path / "project_summary/statistics"
+    folder.mkdir(parents=True)
+    (folder / "manifest.json").write_text(json.dumps({"status": "complete"}))
+    source = folder / "time_series/replicate_statistics.parquet"
+    source.parent.mkdir()
+    pd.DataFrame({
+        "group": ["PROA", "PROA", "PROB", "PROB"],
+        "metric": ["rmsd_A", "rmsd_A", "rmsd_A", "radius_of_gyration_A"],
+        "mean_ci_low": [1., 1.5, 2., 3.],
+        "bootstrap_draws": [20, 20, 20, 20],
+    }).to_parquet(source)
+    result = inspect_saved_statistics(tmp_path, max_identities=2)
+    item = result["families"]["time_series"]
+    assert item["status"] == "saved"
+    assert len(item["identities"]) == 2
+    assert item["identities_truncated"]
+    assert item["identity_columns"] == ["group", "metric"]
+    assert "mean_ci_low" in item["files"][source.name]["columns"]
+    assert item["files"][source.name]["rows"] == 4
+    assert result["families"]["profiles"]["status"] == "not_materialized"
+    with pytest.raises(ValueError, match="max_identities"):
+        inspect_saved_statistics(tmp_path, max_identities=0)
+    (folder / "manifest.json").write_text(json.dumps({"status": "running"}))
+    with pytest.raises(ValueError, match="incomplete"):
+        inspect_saved_statistics(tmp_path)
