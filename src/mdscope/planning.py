@@ -436,3 +436,86 @@ def build_plan(cfg: dict, config_path: str | Path, *,
             "Missing/unavailable numerical values must not be silently treated as measured zeros.",
         ],
     }
+
+
+# Writer-owned saved identity columns. This mapping is for reading existing
+# statistics, not an alternate identity or output schema.
+SAVED_STATISTICS_IDENTITY = {
+    "time_series": ("replicate_statistics.parquet", ("group", "metric")),
+    "profiles": ("replicate_profile_statistics.parquet", ("profile",)),
+    "interactions": (
+        "replicate_interaction_metrics.parquet",
+        ("interaction_type", "interaction", "metric"),
+    ),
+    "solvation_rdfs": (
+        "replicate_rdf.parquet", ("solvent", "target_class", "site_class"),
+    ),
+    "diffusion": ("replicate_common_lag_slopes.parquet", ("metric",)),
+    "coupling": ("replicate_correlations.parquet", ("mechanism",)),
+}
+
+
+def inspect_saved_statistics(root: str | Path, *, max_identities: int = 256) -> dict:
+    """Inspect completed statistics read-only; bound high-cardinality discovery.
+
+    Schemas come from actual Parquet metadata, not an independently maintained
+    GUI column list. Only identity columns are scanned, stopping at the cap.
+    """
+    import json
+    import pyarrow.parquet as pq
+
+    if max_identities < 1:
+        raise ValueError("max_identities must be positive")
+    dest = Path(root) / "project_summary" / "statistics"
+    manifest_file = dest / "manifest.json"
+    if not manifest_file.is_file():
+        raise FileNotFoundError(f"No saved statistics manifest: {manifest_file}")
+    manifest = json.loads(manifest_file.read_text())
+    if manifest.get("status") != "complete":
+        raise ValueError("Statistics are incomplete; cannot claim an output catalog")
+    result = {}
+    for family, (identity_file, columns) in SAVED_STATISTICS_IDENTITY.items():
+        folder = dest / STATISTICS_DIRS[family]
+        files = {}
+        for path in sorted(folder.glob("*.parquet")):
+            info = pq.ParquetFile(path)
+            files[path.name] = {
+                "columns": info.schema_arrow.names,
+                "rows": info.metadata.num_rows,
+                "path": str(path.relative_to(Path(root))),
+            }
+        source = folder / identity_file
+        if not source.is_file():
+            result[family] = {"status": "not_materialized",
+                              "files": files, "identities": [],
+                              "identities_truncated": False}
+            continue
+        reader = pq.ParquetFile(source)
+        available = set(reader.schema_arrow.names)
+        if not set(columns) <= available:
+            raise ValueError(f"Saved statistics {source} lacks identity columns")
+        identities = []
+        seen = set()
+        truncated = False
+        for batch in reader.iter_batches(batch_size=4096, columns=list(columns)):
+            for row in zip(*(batch.column(i).to_pylist()
+                             for i in range(len(columns)))):
+                identity = tuple(None if item is None else str(item) for item in row)
+                if identity in seen:
+                    continue
+                if len(identities) >= max_identities:
+                    truncated = True
+                    break
+                seen.add(identity)
+                identities.append(dict(zip(columns, identity)))
+            if truncated:
+                break
+        result[family] = {
+            "status": "saved",
+            "identity_columns": list(columns),
+            "identities": identities,
+            "identities_truncated": truncated,
+            "files": files,
+        }
+    return {"status": "complete", "families": result,
+            "identity_limit": max_identities}
