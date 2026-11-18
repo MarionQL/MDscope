@@ -68,7 +68,7 @@ def _trajectory_experiment(root, frames, species):
     return {"wall": measurements, "profiles": _profile(root)}
 
 
-def _stats_experiment(source, root, frames, draws, template):
+def _stats_experiment(source, root, frames, draws, occupancy, template):
     if root.exists():
         raise FileExistsError(f"Statistics output already exists: {root}")
     root.mkdir(parents=True)
@@ -83,12 +83,14 @@ def _stats_experiment(source, root, frames, draws, template):
     cfg["progress"]["enabled"] = False
     cfg["statistics"]["enabled"] = True
     cfg["statistics"]["bootstrap_draws"] = int(draws)
+    cfg["statistics"]["interaction_min_occupancy"] = float(occupancy)
     cfg["statistics"]["hypothesis_tests"]["permutation_draws"] = 200
     started = perf_counter()
     analyze_project(cfg, root, repouts)
     return {
         "frames": frames,
         "bootstrap_draws": draws,
+        "interaction_min_occupancy": occupancy,
         "elapsed_seconds": perf_counter() - started,
         "profile": _read(root / "project_summary/statistics/statistics_phase_profile.json"),
         "interaction_detail": _read(
@@ -103,11 +105,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--frames", nargs="+", type=int, default=[40, 160])
     parser.add_argument("--draws", nargs="+", type=int, default=[100, 500])
+    parser.add_argument("--occupancies", nargs="+", type=float, default=[0.0, 0.20],
+                        help="Per-identity occupancy filter; 0.2 matches SDC4 production")
     parser.add_argument("--skip-trajectory", action="store_true",
                         help="Reuse existing completed benchmark inputs")
     args = parser.parse_args()
     if any(n < 2 for n in args.frames) or any(n < 2 for n in args.draws):
         parser.error("frames and draws must be at least 2")
+    if any(not 0 <= value <= 1 for value in args.occupancies):
+        parser.error("occupancy must be between zero and one")
     ROOT.mkdir(parents=True, exist_ok=True)
     os.environ["MDSCOPE_PROFILE"] = "1"
     os.environ["MDSCOPE_STATS_WORKERS"] = "1"
@@ -137,10 +143,12 @@ def main():
     longest = max(args.frames)
     source = ROOT / f"benchmark_frames_{longest}"
     template = load_config(ROOT / f"performance_{longest}_{next(iter(SYSTEMS))}.yaml")
-    for draws in args.draws:
-        root = ROOT / f"benchmark_statistics_{longest}f_{draws}draws"
-        results["statistics"][str(draws)] = _stats_experiment(
-            source, root, longest, draws, template)
+    for occupancy in args.occupancies:
+        for draws in args.draws:
+            label = f"{draws}draws_{int(occupancy * 100):02d}pct"
+            root = ROOT / f"benchmark_statistics_{longest}f_{label}"
+            results["statistics"][label] = _stats_experiment(
+                source, root, longest, draws, occupancy, template)
 
     results["peak_rss_mb"] = (
         resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.
@@ -153,9 +161,11 @@ def main():
         for system, entry in record["wall"].items():
             print(f"BENCH trajectory frames={frames} system={system} "
                   f"wall={entry['elapsed_seconds']:.3f}s", flush=True)
-    for draws, entry in results["statistics"].items():
-        print(f"BENCH statistics frames={longest} draws={draws} "
-              f"wall={entry['elapsed_seconds']:.3f}s", flush=True)
+    for label, entry in results["statistics"].items():
+        detail = entry["interaction_detail"]
+        identities = detail.get("total_unique_identities_across_kinds")
+        print(f"BENCH statistics frames={longest} scenario={label} "
+              f"identities={identities} wall={entry['elapsed_seconds']:.3f}s", flush=True)
 
 
 if __name__ == "__main__":
