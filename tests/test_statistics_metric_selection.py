@@ -338,3 +338,41 @@ def test_selected_time_series_rng_is_stable_when_another_metric_is_added(tmp_pat
         q = [col for col in a if col.endswith("_q_value")]
         pd.testing.assert_frame_equal(a.drop(columns=q), b.drop(columns=q),
                                       check_exact=True)
+
+
+@pytest.mark.parametrize("ci_enabled,tests_enabled", [(False, True), (True, False)])
+def test_selected_time_series_estimator_independence(
+        tmp_path, monkeypatch, ci_enabled, tests_enabled):
+    paths = _data(tmp_path / "inputs")
+    cfg = deepcopy(DEFAULTS)
+    cfg["statistics"]["bootstrap_draws"] = 50
+    cfg["statistics"]["hypothesis_tests"]["permutation_draws"] = 50
+    cfg["statistics"]["metric_selection"] = {"time_series": [
+        {"group": "PROA", "metric": "rmsd_A",
+         "ci": ci_enabled, "hypothesis_tests": tests_enabled},
+    ]}
+    if not ci_enabled:
+        import mdscope.statistics.time_series as module
+        monkeypatch.setattr(module, "_block_bootstrap",
+                            lambda *args, **kwargs: (_ for _ in ()).throw(
+                                AssertionError("CI-disabled metric must not bootstrap")))
+    analyze_time_series(cfg, tmp_path, paths)
+    folder = tmp_path / "project_summary/statistics/time_series"
+    replicas = pd.read_parquet(folder / "replicate_statistics.parquet")
+    comparisons = pd.read_parquet(folder / "system_comparisons.parquet")
+    assert replicas.mean_ci_low.notna().any() == ci_enabled
+    assert comparisons.mean_p_value.notna().any() == tests_enabled
+    assert replicas.bootstrap_draws.eq(50 if ci_enabled else 0).all()
+
+
+@pytest.mark.parametrize("family,entry", [
+    ("solvation_rdfs", {"solvent": "water", "target_class": "protein",
+                       "site_class": "acidic", "hypothesis_tests": True}),
+    ("diffusion", {"metric": "DOPC", "hypothesis_tests": False}),
+    ("coupling", {"mechanism": "membrane_coupling", "hypothesis_tests": True}),
+    ("time_series", {"metric": "rmsd_A", "inference": False, "ci": True}),
+])
+def test_unsupported_or_contradictory_estimator_flags_rejected(family, entry):
+    from mdscope.statistics_selection import validate_metric_selection
+    with pytest.raises(ValueError, match="metric_selection"):
+        validate_metric_selection({"metric_selection": {family: [entry]}})
