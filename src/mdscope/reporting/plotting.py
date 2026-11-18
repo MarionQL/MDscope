@@ -14,10 +14,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from ..config import plot_enabled, ensure_dir, replicate_label, replicate_specs, system_label
+from ..config import plot_enabled, figure_enabled, ensure_dir, replicate_label, replicate_specs, system_label
 from ..interactions import interaction_tables
 from ..statistics import collect_time_series, finite
 from .figure_inventory import current_statistics
+from .plot_ids import id_from_figure_path, figure_dpi
 
 
 from .labels import METRIC_LABELS, _metric_meta
@@ -42,8 +43,16 @@ def _safe(text) -> str:
 def _save(fig, path: Path, cfg: dict):
     ensure_dir(path.parent)
     fig.tight_layout()
-    fig.savefig(path, dpi=int(cfg.get("plots", {}).get("dpi", 250)), bbox_inches="tight")
+    dpi = figure_dpi(cfg, id_from_figure_path(path), cfg.get("plots", {}).get("dpi", 250))
+    fig.savefig(path, dpi=int(dpi), bbox_inches="tight")
     plt.close(fig)
+
+
+def _save_selected(fig, path: Path, cfg: dict, plot_id: str):
+    if figure_enabled(cfg, plot_id):
+        _save(fig, path, cfg)
+    else:
+        plt.close(fig)
 
 
 def _system_colors(cfg: dict) -> dict[str, tuple]:
@@ -84,7 +93,13 @@ def _subplot_grid(n: int):
     return fig, axes.ravel()
 
 
-def _table_figure(title: str, dataframe: pd.DataFrame, path: Path, cfg: dict, max_rows: int = 16):
+def _table_figure(title: str, dataframe: pd.DataFrame, path: Path, cfg: dict,
+                  max_rows: int = 16, plot_id: str | None = None):
+    identifier = plot_id or id_from_figure_path(path)
+    if (cfg.get("plots", {}).get("include") is not None and identifier is None):
+        return
+    if identifier is not None and not figure_enabled(cfg, identifier):
+        return
     # Statistical tables are figures on purpose: they travel with the
     # plot set and are easy to drop directly into slides/manuscripts.
     if dataframe.empty:
@@ -120,9 +135,24 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
     systems = list(system_repouts)
     keys = set()
     cache = {}
+    include = cfg.get("plots", {}).get("include")
+    sources = None if include is None else {"summary"}
+    if include is not None:
+        for identifier in include:
+            if not identifier.startswith("time_series:"):
+                continue
+            stem = identifier.split(":", 2)[1]
+            if "__group_lipid_contacts_" in stem:
+                sources.add("lipid_contacts")
+            if "__group_solvation_bridges_" in stem:
+                sources.add("solvation_bridges")
+            elif "__group_solvation_" in stem:
+                sources.add("solvation")
+            if "__group_hydration_" in stem:
+                sources.add("hydration")
     for system, reps in system_repouts.items():
         for repout in reps:
-            cache[(system, repout.name)] = collect_time_series(repout)
+            cache[(system, repout.name)] = collect_time_series(repout, sources=sources)
             keys.update(cache[(system, repout.name)].keys())
     rep_stats_path = (
         root / "project_summary" / "statistics" / "time_series" / "replicate_statistics.parquet"
@@ -130,17 +160,33 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
     sys_stats_path = (
         root / "project_summary" / "statistics" / "time_series" / "system_statistics.parquet"
     )
-    rep_stats = pd.read_parquet(rep_stats_path) if rep_stats_path.exists() and stats_allowed else pd.DataFrame()
-    sys_stats = pd.read_parquet(sys_stats_path) if sys_stats_path.exists() and stats_allowed else pd.DataFrame()
+    needs_replicate_stats = (include is None or any(
+        item.startswith("time_series:") and item.rsplit(":", 1)[-1] in
+        {"autocorrelation", "bootstrap_table"} for item in include))
+    needs_system_stats = (include is None or any(
+        item.startswith("time_series:") and item.endswith(":bootstrap_table")
+        for item in include))
+    needs_comparisons = (include is None or any(
+        item.startswith("time_series:") and item.endswith(":comparison_table")
+        for item in include))
+    rep_stats = (pd.read_parquet(rep_stats_path) if rep_stats_path.exists()
+                 and stats_allowed and needs_replicate_stats else pd.DataFrame())
+    sys_stats = (pd.read_parquet(sys_stats_path) if sys_stats_path.exists()
+                 and stats_allowed and needs_system_stats else pd.DataFrame())
     comp_stats_path = (
         root / "project_summary" / "statistics" / "time_series" / "system_comparisons.parquet"
     )
-    comp_stats = pd.read_parquet(comp_stats_path) if comp_stats_path.exists() and stats_allowed else pd.DataFrame()
+    comp_stats = (pd.read_parquet(comp_stats_path) if comp_stats_path.exists()
+                  and stats_allowed and needs_comparisons else pd.DataFrame())
 
     for group_id, metric in sorted(keys, key=lambda x: (str(x[0]), x[1])):
         title, ylabel = _metric_meta(metric)
         suffix = f"__group_{group_id}" if group_id is not None else ""
         stem = _safe(metric + suffix)
+        selected = cfg.get("plots", {}).get("include")
+        if selected is not None and not any(
+                identifier.startswith(f"time_series:{stem}:") for identifier in selected):
+            continue
         fig, axes = _subplot_grid(len(systems))
         distribution_values, distribution_labels, distribution_colors = [], [], []
         for ax, system in zip(axes, systems):
@@ -171,7 +217,7 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
         for ax in axes[len(systems):]:
             ax.remove()
         fig.suptitle(title + (f" - {group_id}" if group_id is not None else ""))
-        _save(fig, out / f"{stem}__timeseries.png", cfg)
+        _save_selected(fig, out / f"{stem}__timeseries.png", cfg, f"time_series:{stem}:timeseries")
 
         if cfg.get("plots", {}).get("distributions", True) and distribution_values:
             fig, (
@@ -213,7 +259,7 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
             )
             ax_violin.set_ylabel(ylabel)
             fig.suptitle(f"{title} distribution")
-            _save(fig, out / f"{stem}__distribution.png", cfg)
+            _save_selected(fig, out / f"{stem}__distribution.png", cfg, f"time_series:{stem}:distribution")
 
         if cfg.get("plots", {}).get("autocorrelation", True) and not rep_stats.empty:
             acf_path = (
@@ -246,7 +292,7 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
                     for ax in axes[len(systems):]:
                         ax.remove()
                     fig.suptitle(f"{title} autocorrelation")
-                    _save(fig, out / f"{stem}__autocorrelation.png", cfg)
+                    _save_selected(fig, out / f"{stem}__autocorrelation.png", cfg, f"time_series:{stem}:autocorrelation")
 
         if cfg.get("plots", {}).get("bootstrap_tables", True) and not rep_stats.empty:
             r = (
@@ -335,6 +381,11 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
 def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
     if not plot_enabled(cfg, 'profiles'):
         return
+    selected = cfg.get("plots", {}).get("include")
+    if selected is not None and not any(
+            identifier.startswith("profiles:") and not identifier.endswith(":distance_heatmap")
+            for identifier in selected):
+        return
     stats_allowed = current_statistics(cfg, root, 'profiles')
     if not stats_allowed:
         return
@@ -347,18 +398,27 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
         return
     reps, systems_df = pd.read_parquet(replicate_path), pd.read_parquet(system_path)
     comparisons_path = stats_dir / "system_comparisons.parquet"
-    comparisons = (
-        pd.read_parquet(comparisons_path) if comparisons_path.exists() else pd.DataFrame()
-    )
+    needs_contrasts = (selected is None or any(
+        item.startswith("profiles:") and item.rsplit(":", 1)[-1] in
+        {"system_difference", "comparison_table"} for item in selected))
+    needs_bootstrap_tables = (selected is None or any(
+        item.startswith("profiles:") and item.endswith(":bootstrap_table")
+        for item in selected))
+    comparisons = (pd.read_parquet(comparisons_path)
+                   if needs_contrasts and comparisons_path.exists() else pd.DataFrame())
     global_path = stats_dir / "system_profile_statistics.parquet"
-    global_stats = pd.read_parquet(global_path) if global_path.exists() else pd.DataFrame()
+    global_stats = (pd.read_parquet(global_path) if needs_bootstrap_tables
+                    and global_path.exists() else pd.DataFrame())
     rep_summary_path = stats_dir / "replicate_profile_statistics.parquet"
-    rep_summary = (
-        pd.read_parquet(rep_summary_path) if rep_summary_path.exists() else pd.DataFrame()
-    )
+    rep_summary = (pd.read_parquet(rep_summary_path) if needs_bootstrap_tables
+                   and rep_summary_path.exists() else pd.DataFrame())
     systems = list(system_repouts)
 
     for profile_id in reps["profile"].drop_duplicates():
+        stem = _safe(profile_id)
+        if selected is not None and not any(
+                identifier.startswith(f"profiles:{stem}:") for identifier in selected):
+            continue
         data = reps[reps.profile == profile_id]
         sysdata = systems_df[systems_df.profile == profile_id]
         xlabel, ylabel, profile_title = _profile_meta(str(profile_id))
@@ -403,7 +463,7 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
         for ax in axes[len(systems):]:
             ax.remove()
         fig.suptitle(profile_title)
-        _save(fig, out / f"{stem}__profile.png", cfg)
+        _save_selected(fig, out / f"{stem}__profile.png", cfg, f"profiles:{stem}:profile")
 
         if distributions:
             fig, ax = plt.subplots(figsize=(max(8, 1.1 * len(distributions)), 5))
@@ -414,7 +474,7 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
             ax.set_xticks(np.arange(1, len(labels) + 1), labels, rotation=25, ha="right")
             ax.set_ylabel(ylabel)
             ax.set_title(f"{profile_title}: value distribution")
-            _save(fig, out / f"{stem}__distribution.png", cfg)
+            _save_selected(fig, out / f"{stem}__distribution.png", cfg, f"profiles:{stem}:distribution")
 
         comp = (
             comparisons[
@@ -444,7 +504,7 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
             ax.set_ylabel(f"Difference in {ylabel}")
             ax.set_title(f"{profile_title}: system differences")
             ax.legend(frameon=False)
-            _save(fig, out / f"{stem}__system_difference.png", cfg)
+            _save_selected(fig, out / f"{stem}__system_difference.png", cfg, f"profiles:{stem}:system_difference")
             rank_col = "q_value" if "q_value" in comp else "p_value"
             ranked = comp.sort_values(rank_col, na_position="last").head(16)
             shown = pd.DataFrame({
@@ -521,16 +581,12 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
 def _plot_residue_distance_heatmaps(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
     from ..config import analysis_runs, profile_dir
     for run in analysis_runs(cfg, "residue_membrane_distance"):
-        run_out = (
-            ensure_dir(
-                root
-                / "project_summary"
-                / "figures"
-                / "profiles"
-                / _safe(f"residue_membrane_distance__{run.run_id}")
-            )
-        )
+        run_out = (root / "project_summary" / "figures" / "profiles"
+                   / _safe(f"residue_membrane_distance__{run.run_id}"))
         for system, repouts in system_repouts.items():
+            plot_id = f"profiles:{run_out.name}:{_safe(system)}:distance_heatmap"
+            if not figure_enabled(cfg, plot_id):
+                continue
             available = []
             for repout in repouts:
                 directory = profile_dir(repout, "residue_membrane_distance", run.run_id)
@@ -602,10 +658,33 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
     out = ensure_dir(root / "project_summary" / "figures" / "interactions")
     kinds = set()
     tables = {}
+    selected = cfg.get("plots", {}).get("include")
+    selected_kinds = (None if selected is None else {
+        identifier.split(":")[1] for identifier in selected
+        if identifier.startswith("interactions:")
+    })
+    if selected is None:
+        table_names = ("presence", "occupancy", "lifetimes", "summary")
+    else:
+        needed = set()
+        for item in selected:
+            if not item.startswith("interactions:"):
+                continue
+            variant = item.rsplit(":", 1)[-1]
+            if variant == "occupancy_heatmap":
+                needed.add("occupancy")
+            elif variant == "lifetime_distribution":
+                needed.add("lifetimes")
+        table_names = tuple(sorted(needed))
+        kinds.update((selected_kinds or set()) - set(
+            cfg.get("plots", {}).get("interaction_exclude_kinds", [])))
     for system, reps in system_repouts.items():
         for repout in reps:
-            tables[(system, repout.name)] = interaction_tables(repout,
-                exclude_kinds=set(cfg.get('plots',{}).get('interaction_exclude_kinds',[])))
+            tables[(system, repout.name)] = (
+                interaction_tables(repout,
+                    exclude_kinds=set(cfg.get('plots',{}).get('interaction_exclude_kinds',[])),
+                    include_kinds=selected_kinds, table_names=table_names)
+                if table_names else {})
             kinds.update(tables[(system, repout.name)])
     stats_path = (
         root
@@ -614,7 +693,14 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
         / "interactions"
         / "system_interaction_metrics.parquet"
     )
-    stats = pd.read_parquet(stats_path) if stats_path.exists() and stats_allowed else pd.DataFrame()
+    needs_stats = selected is None or any(
+        item.startswith("interactions:") and item.rsplit(":", 1)[-1] in
+        {"bootstrap_table", "comparison_table"} for item in selected)
+    needs_comp = selected is None or any(
+        item.startswith("interactions:") and item.endswith(":comparison_table")
+        for item in selected)
+    stats = (pd.read_parquet(stats_path) if stats_path.exists()
+             and stats_allowed and needs_stats else pd.DataFrame())
     comp_path = (
         root
         / "project_summary"
@@ -622,9 +708,13 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
         / "interactions"
         / "system_interaction_comparisons.parquet"
     )
-    comp_stats = pd.read_parquet(comp_path) if comp_path.exists() and stats_allowed else pd.DataFrame()
+    comp_stats = (pd.read_parquet(comp_path) if comp_path.exists()
+                  and stats_allowed and needs_comp else pd.DataFrame())
 
     for kind in sorted(kinds):
+        if selected is not None and not any(
+                identifier.startswith(f"interactions:{_safe(kind)}:") for identifier in selected):
+            continue
         kind_out = ensure_dir(out / _safe(kind))
         columns, occupancy_series, lifetime_sets, lifetime_labels = [], [], [], []
         for system, reps in system_repouts.items():
@@ -676,7 +766,8 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
                 ax.set_yticks(np.arange(len(labels)), labels)
                 ax.set_title(f"{kind.replace('_', ' ').title()} occupancy")
                 fig.colorbar(image, ax=ax, label="Occupancy")
-                _save(fig, kind_out / "occupancy_heatmap.png", cfg)
+                _save_selected(fig, kind_out / "occupancy_heatmap.png", cfg,
+                               f"interactions:{_safe(kind)}:occupancy_heatmap")
 
         if lifetime_sets:
             fig, ax = plt.subplots(figsize=(max(8, 1.1 * len(lifetime_sets)), 5))
@@ -689,7 +780,8 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
             )
             ax.set_ylabel("Lifetime (ns)")
             ax.set_title(f"{kind.replace('_', ' ').title()} lifetime distribution")
-            _save(fig, kind_out / "lifetime_distribution.png", cfg)
+            _save_selected(fig, kind_out / "lifetime_distribution.png", cfg,
+                           f"interactions:{_safe(kind)}:lifetime_distribution")
 
         if not stats.empty:
             subset = stats[stats.interaction_type == kind]

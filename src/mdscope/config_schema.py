@@ -151,6 +151,8 @@ def _schema(defaults):
     for name in ("solvation", "sdc4", "shared_states", "diffusion",
                  "lipid_enrichment", "lipid_contacts", "other"):
         plots[name] = None
+    plots["include"] = None
+    plots["options"] = {"*": {"dpi": None}}
     plots["families"] = {"*": None}  # Existing validator checks family names.
     plots["interaction_exclude_kinds"] = None
 

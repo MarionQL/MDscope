@@ -8,10 +8,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from ..config import ensure_dir, plot_enabled
+from ..config import ensure_dir, plot_enabled, figure_enabled
 from .figure_inventory import current_statistics
+from .plot_ids import figure_dpi
 
 def plot_lipid_enrichment_matrix(cfg,root):
+    if not any(figure_enabled(cfg, "lipid_enrichment:" + name)
+               for name in ("lipid_enrichment_heatmap", "lipid_area_density_heatmap")):
+        return
     if not current_statistics(cfg, root, 'time_series'):
         return
     source=Path(root)/"project_summary"/"statistics"/"time_series"/"replicate_statistics.parquet"
@@ -22,6 +26,8 @@ def plot_lipid_enrichment_matrix(cfg,root):
         ("_fold", "Composition enrichment: local / leaflet mole fraction", "lipid_enrichment_heatmap.png"),
         ("_area_density_ratio", "Density ratio: protein-excluded planar area model", "lipid_area_density_heatmap.png"),
     ):
+        if not figure_enabled(cfg, f"lipid_enrichment:{Path(filename).stem}"):
+            continue
         selected=frame[frame["metric"].str.startswith("lipid_footprint_")
                        &frame["metric"].str.endswith(suffix)].copy()
         if selected.empty:continue
@@ -54,7 +60,8 @@ def plot_lipid_enrichment_matrix(cfg,root):
         cb=fig.colorbar(image,ax=ax,pad=.025);cb.set_label("log₂ ratio (display clipped)")
         fig.tight_layout()
         dest=ensure_dir(Path(root)/"project_summary"/"figures"/"membrane")
-        fig.savefig(dest/filename,dpi=int(cfg.get("plots",{}).get("dpi",250)))
+        fig.savefig(dest/filename,dpi=figure_dpi(cfg, f"lipid_enrichment:{Path(filename).stem}",
+                                                  int(cfg.get("plots",{}).get("dpi",250))))
         plt.close(fig)
 
 
@@ -79,9 +86,12 @@ def plot_lipid_contacts(cfg, root, system_repouts):
         return
     replicas = pd.concat(tables, ignore_index=True)
     dest = ensure_dir(Path(root) / 'project_summary/figures/lipid_contacts')
-    replicas.to_csv(dest / 'replicate_matrices.csv', index=False)
+    if cfg.get("plots", {}).get("include") is None:
+        replicas.to_csv(dest / 'replicate_matrices.csv', index=False)
 
     def draw(values, title, metric, filename, *, difference=False):
+        if not figure_enabled(cfg, f"lipid_contacts:{Path(filename).stem}"):
+            return
         fig, ax = plt.subplots(figsize=(7, 6))
         cmap = plt.get_cmap('RdBu_r' if difference else 'viridis').with_extremes(bad='lightgrey')
         scale = {}
@@ -98,7 +108,8 @@ def plot_lipid_contacts(cfg, root, system_repouts):
         units = 'Neighbors per molecule' if metric == 'neighbors_per_molecule' else 'Contact share / possible-pair share'
         fig.colorbar(image, ax=ax, label=f'Difference in {units.lower()}' if difference else units)
         fig.tight_layout()
-        fig.savefig(dest / filename, dpi=int(cfg.get('plots', {}).get('dpi', 180)))
+        fig.savefig(dest / filename, dpi=figure_dpi(cfg, f"lipid_contacts:{Path(filename).stem}",
+                                                    int(cfg.get('plots', {}).get('dpi', 180))))
         plt.close(fig)
 
     for (system, leaflet), group in replicas.groupby(['system', 'leaflet']):
@@ -128,7 +139,7 @@ def plot_lipid_contacts(cfg, root, system_repouts):
 
 def plot_project_diffusion(cfg, root):
     """Render independent replica estimates from the saved numerical summary."""
-    if not plot_enabled(cfg, "diffusion"):
+    if not figure_enabled(cfg, "diffusion:diffusion_coefficients"):
         return
     out = Path(root) / "project_summary" / "diffusion"
     source = out / "replicate_coefficients.parquet"
@@ -149,5 +160,6 @@ def plot_project_diffusion(cfg, root):
     ax.set_ylabel("Lateral diffusion coefficient (nm²/ns)")
     ax.set_title("Single-origin MSD replicate estimates")
     fig.tight_layout()
-    fig.savefig(out / "diffusion_coefficients.png", dpi=int(cfg.get("plots", {}).get("dpi", 250)))
+    fig.savefig(out / "diffusion_coefficients.png", dpi=figure_dpi(
+        cfg, "diffusion:diffusion_coefficients", int(cfg.get("plots", {}).get("dpi", 250))))
     plt.close(fig)

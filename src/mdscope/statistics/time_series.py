@@ -82,13 +82,13 @@ def _conditional_geometry_bootstrap(values, times, cfg, draws, rng):
     return means, medians, block, True
 
 
-def collect_time_series(repout: Path) -> dict[tuple[str | None, str], pd.DataFrame]:
+def collect_time_series(repout: Path, *, sources: set[str] | None = None) -> dict[tuple[str | None, str], pd.DataFrame]:
     out = {}
     for path, group_col in(
         (Path(repout) / "summary" / "timeseries.parquet", None),
         (Path(repout) / "summary" / "group_timeseries.parquet", "group")
     ):
-        if not path.exists():
+        if not path.exists() or (sources is not None and "summary" not in sources):
             continue
         data = pd.read_parquet(path)
         groups = [(None, data)] if group_col is None else data.groupby(group_col, sort=False)
@@ -110,7 +110,7 @@ def collect_time_series(repout: Path) -> dict[tuple[str | None, str], pd.DataFra
     # every other MDscope time series. Never resample individual lipid molecules
     # or water contacts as if they were independent simulation replicates.
     solvation = Path(repout) / "extensions" / "solvation" / "species_timeseries.parquet"
-    if solvation.exists():
+    if solvation.exists() and (sources is None or "solvation" in sources):
         data = pd.read_parquet(solvation)
         required = {"solvent", "target_class", "site_class", "time_ps",
                     "mean_n_solvent"}
@@ -129,7 +129,7 @@ def collect_time_series(repout: Path) -> dict[tuple[str | None, str], pd.DataFra
                     out[(group_id, metric)] = group[["time_ps", metric]].rename(
                         columns={metric: "value"})
     hydration = Path(repout) / "extensions" / "hydration" / "aggregate_counts.parquet"
-    if hydration.exists():
+    if hydration.exists() and (sources is None or "hydration" in sources):
         data = pd.read_parquet(hydration)
         required = {"time_ps", "compartment", "level", "group_id",
                     "water_count", "water_per_site"}
@@ -155,7 +155,7 @@ def collect_time_series(repout: Path) -> dict[tuple[str | None, str], pd.DataFra
                 out[(identity, metric)] = group[["time_ps", column]].rename(
                     columns={column: "value"})
     bridges = Path(repout)/"extensions/solvation/bridge_pair_timeseries.parquet"
-    if bridges.exists():
+    if bridges.exists() and (sources is None or "solvation_bridges" in sources):
         import json
         data = pd.read_parquet(bridges)
         required = {"time_ps", "solvent", "target_a", "target_b", "bridge_entity_count", "bridge_present_fraction"}
@@ -171,7 +171,7 @@ def collect_time_series(repout: Path) -> dict[tuple[str | None, str], pd.DataFra
                     continue
                 out[(identity, metric)] = group.sort_values("time_ps")[["time_ps", metric]].rename(columns={metric: "value"})
     matrix = Path(repout)/'extensions/lipid_contacts/matrix.parquet'
-    if matrix.exists():
+    if matrix.exists() and (sources is None or "lipid_contacts" in sources):
         data = pd.read_parquet(matrix)
         for (leaf, a, b), group in data.groupby(['leaflet','species_a','species_b'], sort=False):
             for metric in ('neighbors_per_molecule','enrichment'):

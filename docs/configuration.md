@@ -66,6 +66,33 @@ analyses:
 
 Default geometric radii (Å): H 1.20; C 1.70; N 1.55; O 1.52; P/S 1.80; F 1.47; Cl 1.75; Br 1.85; I 1.98. Ambiguous atom-name inference must be resolved in the topology.
 
+## Select individual figures
+
+When `plots.include` is absent, the existing family-level plot switches are unchanged. To produce **only** specific supported figures, provide exact plot IDs:
+
+```yaml
+plots:
+  enabled: true
+  include:
+    - time_series:rmsd_A:timeseries
+    - time_series:rmsd_A__group_chain_A:distribution
+    - solvation:shell_rdf
+  options:
+    time_series:rmsd_A:timeseries:
+      dpi: 300
+```
+
+- **Dynamic IDs:** `time_series:<saved_metric_or_group_stem>:<timeseries|distribution|autocorrelation|bootstrap_table|comparison_table>`; `profiles:<saved_profile_stem>:<profile|distribution|system_difference|bootstrap_table|comparison_table>`; `interactions:<kind>:<occupancy_heatmap|lifetime_distribution>`, with an additional `:<metric>:<bootstrap_table|comparison_table>` for interaction statistics tables.
+- **Distance heatmaps:** `profiles:residue_membrane_distance__<run_id>:<system_id>:distance_heatmap`.
+- **Named static figures:** `solvation:shell_rdf`, `solvation:water_and_ions`, `solvation:contact_survival`, `diffusion:diffusion_coefficients`, `lipid_enrichment:lipid_enrichment_heatmap`, `lipid_enrichment:lipid_area_density_heatmap`.
+- **Shared-state figures:** `shared_states:state_populations`, `shared_states:state_sampling_diagnostics`.
+- **SDC4 condition figures:** `sdc4:<system_id>:<figure_stem>`; supported stems include `nxip_height_occlusion_joint`, `vvhplvpl_proline_ramachandran`, `lipid_density_maps`, `lipid_enrichment_maps`, and the five `lipid_region_*` charts. A single PNG is saved under `project_summary/figures/sdc4/<system_id>/`; each independent replica appears as an explicitly labelled panel or trace. The *numerical* Parquet/NPZ measurements remain per replica in `systems/<replicate>/extensions/sdc4_mechanisms/`. Previous per-rep diagnostic PNGs from older runs are not automatically deleted; archive them when regenerating plots. No trajectories or statistical CIs are pooled to draw these condition diagnostics.
+- **Lipid-contact figures:** `lipid_contacts:<figure_stem>` for each saved `lipid_contact_matrix_*` or `lipid_contact_difference_*` figure; valid endings are `_neighbors_per_molecule` or `_enrichment`.
+
+Per-figure `plots.options.<plot ID>.dpi` is supported for resolution overrides (integer 50–600); it does not change scientific results, axis definitions or statistical estimands. Unsupported per-plot keys fail configuration validation.
+
+Plot IDs are matched exactly, not by wildcard or substring. Unrecognized figure IDs fail YAML validation. An enabled ID does **not** generate missing statistical inputs; source data and the corresponding family prerequisites remain necessary. The plot ID format is checked during YAML validation; data-dependent metrics, run IDs, species and systems are verified only when persisted inputs exist. An unknown data-derived identifier cannot be rejected merely from its syntax. When selecting solvation by an explicit ID, no separate `plots.families.solvation` opt-in is needed. `plots.include: []` disables all figures.
+
 ## Plot and statistics controls
 
 ```yaml

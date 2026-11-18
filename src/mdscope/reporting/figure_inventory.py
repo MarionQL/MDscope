@@ -62,7 +62,7 @@ def figure_inventory(root, system_repouts, cfg=None, include_rejected=False):
 
 def figure_family(path):
     parts = Path(path).parts
-    for token, family in (('shared_states','shared_states'),('sdc4_mechanisms','sdc4'),
+    for token, family in (('shared_states','shared_states'),('sdc4','sdc4'),('sdc4_mechanisms','sdc4'),
                           ('solvation','solvation'),('diffusion','diffusion'),
                           ('lipid_contacts','lipid_contacts'),('membrane','lipid_enrichment'),
                           ('interactions','interactions'),('profiles','profiles'),
@@ -152,11 +152,21 @@ def record_generated_figures(cfg, root, system_repouts, before):
 def figure_status(path, cfg, root, system_repouts, records=None):
     import json
     from PIL import Image
-    from ..config import plot_enabled
+    from ..config import plot_enabled, figure_enabled
+    from .plot_ids import id_from_figure_path
     root, path = Path(root), Path(path)
     family = figure_family(path)
+    # Old SDC4 diagnostics lived beside each replica's Parquet files.
+    # The current figure renderer writes condition-level PNGs instead. Do not
+    # advertise stale legacy PNGs as active, and never delete user artifacts.
+    if family == "sdc4" and "extensions" in path.parts and "sdc4_mechanisms" in path.parts:
+        return 'disabled'
     if not plot_enabled(cfg, family):
         return 'disabled'
+    if cfg.get("plots", {}).get("include") is not None:
+        identifier = id_from_figure_path(path)
+        if identifier is None or not figure_enabled(cfg, identifier):
+            return 'disabled'
     parts = path.parts
     if family == 'interactions':
         kind = parts[parts.index('interactions')+1]

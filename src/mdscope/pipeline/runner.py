@@ -606,11 +606,30 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
         with stage_progress("Statistics replica validation", enabled=verbose):
             _validate_replica_products(cfg, root, replicates)
     else:
-        manifest = root / "project_summary/statistics/manifest.json"
-        if not manifest.is_file() or json.loads(manifest.read_text()).get("status") != "complete":
-            raise RuntimeError("Plotting requires completed statistics")
         if not cfg.get("plots", {}).get("enabled", False):
             raise ValueError("Set plots.enabled: true to generate diagnostic plots")
+        selected_figures = cfg.get("plots", {}).get("include")
+        if selected_figures is not None:
+            # With an exact allowlist, raw-data plots can be regenerated before
+            # statistics. Check their actual source contracts, not plot names.
+            from ..reporting.plot_ids import describe_plot
+            from ..config import figure_enabled
+            requires_statistics = any(
+                any(source.startswith("project_summary/statistics/")
+                    for source in describe_plot(identifier)["source_candidates"])
+                for identifier in selected_figures if figure_enabled(cfg, identifier)
+            )
+        else:
+            # Legacy family-wide plotting can dispatch statistical figures.
+            requires_statistics = True
+        if requires_statistics:
+            manifest = root / "project_summary/statistics/manifest.json"
+            if not manifest.is_file() or json.loads(manifest.read_text()).get("status") != "complete":
+                raise RuntimeError("Plotting requires completed statistics for selected statistical figures")
+        else:
+            # Even descriptive figures must not read incomplete, stale or
+            # corrupted per-replica products.
+            _validate_replica_products(cfg, root, replicates)
     project_summary = root / "project_summary"
     if phase != "plotting" and project_summary.exists():
         archived=_archive_previous_output(project_summary,root/".archives"/"project_summary","previous")
