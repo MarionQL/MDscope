@@ -10,6 +10,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from ..config import ensure_dir, plot_enabled, figure_enabled
 from .figure_inventory import current_statistics
+from .plot_ids import figure_dpi
 
 def plot_lipid_enrichment_matrix(cfg,root):
     if not any(figure_enabled(cfg, "lipid_enrichment:" + name)
@@ -59,7 +60,8 @@ def plot_lipid_enrichment_matrix(cfg,root):
         cb=fig.colorbar(image,ax=ax,pad=.025);cb.set_label("log₂ ratio (display clipped)")
         fig.tight_layout()
         dest=ensure_dir(Path(root)/"project_summary"/"figures"/"membrane")
-        fig.savefig(dest/filename,dpi=int(cfg.get("plots",{}).get("dpi",250)))
+        fig.savefig(dest/filename,dpi=figure_dpi(cfg, f"lipid_enrichment:{Path(filename).stem}",
+                                                  int(cfg.get("plots",{}).get("dpi",250))))
         plt.close(fig)
 
 
@@ -106,7 +108,8 @@ def plot_lipid_contacts(cfg, root, system_repouts):
         units = 'Neighbors per molecule' if metric == 'neighbors_per_molecule' else 'Contact share / possible-pair share'
         fig.colorbar(image, ax=ax, label=f'Difference in {units.lower()}' if difference else units)
         fig.tight_layout()
-        fig.savefig(dest / filename, dpi=int(cfg.get('plots', {}).get('dpi', 180)))
+        fig.savefig(dest / filename, dpi=figure_dpi(cfg, f"lipid_contacts:{Path(filename).stem}",
+                                                    int(cfg.get('plots', {}).get('dpi', 180))))
         plt.close(fig)
 
     for (system, leaflet), group in replicas.groupby(['system', 'leaflet']):
@@ -157,5 +160,6 @@ def plot_project_diffusion(cfg, root):
     ax.set_ylabel("Lateral diffusion coefficient (nm²/ns)")
     ax.set_title("Single-origin MSD replicate estimates")
     fig.tight_layout()
-    fig.savefig(out / "diffusion_coefficients.png", dpi=int(cfg.get("plots", {}).get("dpi", 250)))
+    fig.savefig(out / "diffusion_coefficients.png", dpi=figure_dpi(
+        cfg, "diffusion:diffusion_coefficients", int(cfg.get("plots", {}).get("dpi", 250))))
     plt.close(fig)
