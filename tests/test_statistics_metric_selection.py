@@ -245,7 +245,7 @@ def test_merged_temporal_cache_and_selective_rng_can_execute_together():
         frames, np.array([], float), pd.DataFrame(), cfg, 100,
         rng, cache, ("system", "rep1"), zeros, 2026,
     )
-    assert meta_a == meta_b
+    np.testing.assert_equal(meta_a, meta_b)
     assert len(zeros) == 1
     for metric in one:
         np.testing.assert_array_equal(one[metric], two[metric])
