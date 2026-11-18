@@ -19,6 +19,11 @@ def analyze_multi_origin_diffusion(cfg, root, system_repouts):
         return
     settings = cfg.get("analyses", {}).get("membrane", {}).get("msd", {})
     if not settings.get("enabled") or not settings.get("multi_origin"):
+        if selected:
+            raise ValueError(
+                "Selected diffusion statistics require analyses.membrane.msd "
+                "enabled with multi_origin: true"
+            )
         return
     curves = {}
     discovered = set()
