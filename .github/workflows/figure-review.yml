@@ -42,6 +42,18 @@ jobs:
             --base "$RUNNER_TEMP/mdscope-plot-review/base" \
             --head "$RUNNER_TEMP/mdscope-plot-review/head" \
             --output "$RUNNER_TEMP/mdscope-plot-review/index.html"
+          # Deliberately probe the new allowlist: older base revisions
+          # render extra figures, while plot-ID aware heads render only one.
+          PYTHONPATH="$RUNNER_TEMP/mdscope-base/src" python scripts/plot_preview.py \
+            --output "$RUNNER_TEMP/mdscope-plot-review/base-selected" \
+            --include time_series:rmsd_A:timeseries
+          PYTHONPATH="$GITHUB_WORKSPACE/src" python scripts/plot_preview.py \
+            --output "$RUNNER_TEMP/mdscope-plot-review/head-selected" \
+            --include time_series:rmsd_A:timeseries
+          python scripts/figure_gallery.py \
+            --base "$RUNNER_TEMP/mdscope-plot-review/base-selected" \
+            --head "$RUNNER_TEMP/mdscope-plot-review/head-selected" \
+            --output "$RUNNER_TEMP/mdscope-plot-review/selection/index.html"
       - name: Upload HTML and figure comparisons
         if: always()
         uses: actions/upload-artifact@v4
