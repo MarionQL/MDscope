@@ -146,6 +146,7 @@ def test_overlapping_analysis_groups_are_valid_distinct_outputs(tmp_path, projec
     (("analyses", "solvation", "targets", "protein", "site", "selecton"), "selection"),
     (("analyses", "sdc4_mechanisms", "hs_auto", "glycn_selection"), "glycan_selection"),
     (("statistics", "block", "tau_multiplir"), "tau_multiplier"),
+    (("statistics", "adaptive_hierarchy", "min_daws"), "min_draws"),
     (("statistics", "families", "profiles", "bootstrp"), "bootstrap"),
     (("statistics", "families", "time_series", "adaptive_hierarchy", "min_daws"), "min_draws"),
     (("selections", "groups", "A", "alignment_selecton"), "alignment_selection"),
