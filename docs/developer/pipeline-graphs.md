@@ -77,9 +77,10 @@ flowchart TD
     PREF --> BAD{"Existing artifact invalid?"}
     BAD -->|Yes| STOP["Fail without overwriting existing results"]
     BAD -->|No| CORE{"Primary streaming required?"}
-    CORE -->|Yes| STATE{"Completed stream marker?"}
-    STATE -->|Yes| REUSE["Validate committed stream inventory; reuse core products"]
-    STATE -->|No| STREAM["Resume or run primary stream after checkpoint validation"]
+    CORE -->|Yes| STATE{"Stream checkpoint state?"}
+    STATE -->|Completed, valid| REUSE["Validate committed stream inventory; reuse core products"]
+    STATE -->|Absent or resumable| STREAM["Resume or run primary stream after checkpoint validation"]
+    STATE -->|Invalid or inconsistent| STOP
     REUSE --> FAMILY["Check fused-family output contracts"]
     STREAM --> FAMILY
     FAMILY -->|Missing primary outputs| FALL["Select only missing membrane / extension / distance / SDC4 outputs"]
