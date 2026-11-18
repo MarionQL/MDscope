@@ -21,6 +21,35 @@ Use `run_mdscope.sh`, `statistics_mdscope.sh`, `plotting_mdscope.sh` and `finali
 
 The statistics job reports its current stage and elapsed time in `slurm-out/mdscope/mdscope_statistics-<jobid>.out`. Long stages print a heartbeat every minute. Set `progress.enabled: false` to suppress progress messages.
 
+## Selective time-series inference (issue #179, first slice)
+
+Existing YAML without `statistics.metric_selection` retains all enabled
+family-level inference. An explicit `time_series: []` computes **no**
+time-series inference, even when raw RMSD, lipid and membrane analyses remain
+enabled. Match the persisted `(group, metric)` identity exactly:
+
+```yaml
+statistics:
+  metric_selection:
+    time_series:
+      - {group: PROA, metric: rmsd_A}
+      - {metric: membrane_thickness_A}
+      - {group: lipid_contacts/upper/DOPC/GM1a, metric: enrichment}
+```
+
+Omit `group` for the ungrouped summary series. The lipid-contact group uses
+the exact saved `lipid_contacts/<leaflet>/<species_a>/<species_b>` identity.
+`mdscope plan` reports the requested identities and marks dynamic identities
+as saved-data-dependent. Unsupported selector families currently fail
+configuration validation; this first stage does **not** claim that profiles,
+interactions, RDFs, diffusion or coupling implement metric-level selection.
+Plot IDs remain independently controlled by `plots.include`.
+
+Selections filter before temporal bootstrap/CI/permutation calculations and
+avoid reading irrelevant top-level saved source tables where possible.
+Statistical products are regenerated with the existing archive/manifest
+contract; previous results are not silently reused after selection changes.
+
 ## Data flow
 
 ```mermaid
