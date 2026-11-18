@@ -137,16 +137,18 @@ def fused_output(repout: Path, name: str, *, run_id: str | None = None) -> Fused
 
 def fused_output_plan(cfg: dict, repout: Path) -> tuple[FusedOutput, ...]:
     """Plan enabled fused outputs without creating readers or opening trajectories."""
-    # Imports stay local: registry is also used by postprocessing.
-    from .pipeline.fused_membrane import enabled_names as membrane_enabled
-    from .pipeline.fused_extensions import enabled_names as extensions_enabled
-    from .config import analysis_runs
-    from .pipeline.fused_distance import enabled_names as distance_enabled
-    from .mechanisms.sdc4_mechanisms import enabled as sdc4_enabled
+    # Share production scheduling predicates without importing heavy producers.
+    from .pipeline.analysis_selection import (
+        membrane_enabled_names as membrane_enabled,
+        extensions_enabled_names as extensions_enabled,
+        distance_enabled_names as distance_enabled,
+        sdc4_enabled,
+    )
     entries = [fused_output(repout, name) for name in membrane_enabled(cfg)]
-    entries.extend(fused_output(repout, name) for name in extensions_enabled(cfg)
+    extensions = extensions_enabled(cfg)
+    entries.extend(fused_output(repout, name) for name in extensions
                    if name != "sasa")
-    if "sasa" in extensions_enabled(cfg):
+    if "sasa" in extensions:
         entries.extend(fused_output(repout, "sasa", run_id=run.run_id)
                        if run.run_id != "default" else fused_output(repout, "sasa")
                        for run in analysis_runs(cfg, "sasa"))
