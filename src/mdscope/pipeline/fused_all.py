@@ -76,7 +76,9 @@ def run_fused_only(rep, cfg, repout, *, only=None):
                        if requested is not None else {})
             observers.append(FusedDistances(u, cfg, repout, **options))
         if want_sdc4:
-            observers.append(SDC4Mechanisms(u, cfg, repout))
+            options = ({"cache_dir": staging("sdc4")}
+                       if requested is not None else {})
+            observers.append(SDC4Mechanisms(u, cfg, repout, **options))
         for observer in observers:
             observer.prune_from(0)
         frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr["stride"]))]
