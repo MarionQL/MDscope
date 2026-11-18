@@ -120,6 +120,8 @@ relative_tolerance: 0.05
 
 ## Validate before long runs
 
+Unknown YAML option names, including nested analysis and statistics options, now fail with a dotted path and a suggested correction when available. This check also applies to disabled analyses. System, group, species, motif, solvation-site and named-run identifiers remain user-defined; their option fields are still validated.
+
 ```bash
 mdscope validate analysis.yaml
 mdscope run analysis.yaml

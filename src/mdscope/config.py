@@ -423,6 +423,8 @@ def load_config(path: str | Path) -> dict[str, Any]:
         raise ValueError("Use statistics.block.tau_multiplier and statistics.block.max_acf_lag.")
     if {"autocorrelation", "distribution_statistics"} & raw.get("analyses", {}).keys():
         raise ValueError("Remove retired analyses.autocorrelation or analyses.distribution_statistics.")
+    from .config_schema import validate_known_keys
+    validate_known_keys(raw, DEFAULTS)
     for name, raw_spec in (raw.get("analyses", {}) or {}).items():
         if isinstance(raw_spec, dict) and "runs" in raw_spec and "enabled" not in raw_spec:
             cfg.setdefault("analyses", {}).setdefault(name, {})["enabled"] = True
