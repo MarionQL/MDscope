@@ -1,0 +1,51 @@
+name: MDscope figure review
+
+on:
+  pull_request:
+    paths:
+      - "src/mdscope/reporting/**"
+      - "src/mdscope/config.py"
+      - "src/mdscope/pipeline/runner.py"
+      - "src/mdscope/cli.py"
+      - "scripts/plot_preview.py"
+      - "scripts/figure_gallery.py"
+      - ".github/workflows/figure-review.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  before-after-plots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install MDscope rendering dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[test]' Pillow
+      - name: Create independent base checkout
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: git worktree add --detach "$RUNNER_TEMP/mdscope-base" "$BASE_SHA"
+      - name: Render identical synthetic inputs with base and head renderers
+        run: |
+          PYTHONPATH="$RUNNER_TEMP/mdscope-base/src" python scripts/plot_preview.py \
+            --output "$RUNNER_TEMP/mdscope-plot-review/base"
+          PYTHONPATH="$GITHUB_WORKSPACE/src" python scripts/plot_preview.py \
+            --output "$RUNNER_TEMP/mdscope-plot-review/head"
+          python scripts/figure_gallery.py \
+            --base "$RUNNER_TEMP/mdscope-plot-review/base" \
+            --head "$RUNNER_TEMP/mdscope-plot-review/head" \
+            --output "$RUNNER_TEMP/mdscope-plot-review/index.html"
+      - name: Upload HTML and figure comparisons
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mdscope-figure-review
+          path: ${{ runner.temp }}/mdscope-plot-review/
+          if-no-files-found: warn
