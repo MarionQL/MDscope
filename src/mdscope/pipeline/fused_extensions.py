@@ -28,8 +28,8 @@ from ..observables.sasa import sasa_instances, sasa_residue_rows, write_sasa_bur
 from ..observables.solvation import SolvationObserver
 from ..mechanisms.hs_hydration import HydrationObserver
 from ..core.profiling import _residue_label
-from ..biophysical_common import heavy, box_of, residue_pairs, sequence_motifs
-from MDAnalysis.lib.distances import distance_array
+from ..biophysical_common import heavy
+from ..mechanisms.local_environment import prepare_local_environment, local_environment_frame
 
 
 from .analysis_selection import extensions_enabled_names as enabled_names
@@ -196,27 +196,7 @@ class FusedExtensions:
         self.sasa = sasa_instances(self.u, self.cfg)
 
     def _setup_local(self):
-        s = self.cfg["analyses"]["local_environment"]
-        prot = heavy(self.u.select_atoms(s.get("protein_selection") or self.cfg["selections"]["protein"]))
-        lip = heavy(self.u.select_atoms(s.get("lipid_selection", "resname POPC POPE POPI POPS DOPC DPPC PSM CHL1 CER160 CER1 BGAL GM1a")))
-        if not len(lip) or not len(prot):
-            raise ValueError("No protein/lipid atoms matched local_environment selections")
-        glycan = heavy(self.u.select_atoms(s.get("glycan_selection", "resname AGLCNA AIDOA BGLCA BGAL BXYL")))
-        ions = heavy(self.u.select_atoms(s.get("ion_selection", "resname SOD NA CLA CL POT K CAL CA")))
-        cutoff = float(s.get("contact_cutoff_A", 5.))
-        motifs = sequence_motifs(prot.residues, s.get("motifs", {
-            "nxip": "N.IP", "gxxxg": "G...G", "hs_candidate": "SG"
-        }))
-        groups = {}
-        for hit in motifs:
-            key = "motif_" + hit["motif"] + "_" + hit["chain"] + "_" + str(hit["start_resid"])
-            groups[key] = heavy(self.u.atoms[np.isin(self.u.atoms.resindices, hit["resindices"])])
-        grouped = {str(name): lip[lip.resnames == name] for name in np.unique(lip.resnames)}
-        meta = [{"motif_id": key, "sequence": "",
-                 "resids": ",".join(map(str, group.residues.resids))}
-                for key, group in groups.items()]
-        self.local = {"prot": prot, "lip": lip, "glycan": glycan, "ions": ions,
-                      "groups": groups, "grouped": grouped, "meta": meta, "cutoff": cutoff}
+        self.local = prepare_local_environment(self.u, self.cfg)
 
     def update(self, ts, frame_index):
         t = time_ps(ts, frame_index, self.cfg)
@@ -256,34 +236,9 @@ class FusedExtensions:
         self.frames += 1
 
     def _update_local(self, t):
-        s = self.local
-        prot, lip, cutoff = s["prot"], s["lip"], s["cutoff"]
-        box = box_of(self.u)
-        row = {"time_ps": t}
-        cp = residue_pairs(prot, lip, cutoff, box)
-        contacted = np.unique(cp[:, 0]) if len(cp) else np.empty(0, int)
-        row["local_protein_lipid_contact_residues_count"] = len(contacted)
-        if len(cp):
-            a, b = np.unique(cp[:, 0], return_counts=True)
-            self.rows["local_residue"].extend((t, int(resid), int(n)) for resid, n in zip(a, b))
-        for species, atoms in s["grouped"].items():
-            hits = residue_pairs(prot, atoms, cutoff, box)
-            row["local_" + species + "_contact_residues_count"] = len(np.unique(hits[:, 0])) if len(hits) else 0
-        for name, group in s["groups"].items():
-            if len(group):
-                d = distance_array(group.positions, lip.positions, box=box)
-                row[name + "_min_lipid_distance_A"] = float(d.min())
-                row[name + "_lipid_contact_fraction"] = float(np.mean(d.min(axis=1) <= cutoff))
-                others = prot[~np.isin(prot.indices, group.indices)]
-                if len(others):
-                    d2 = distance_array(group.positions, others.positions, box=box)
-                    row[name + "_protein_occlusion_fraction"] = float(np.mean(np.any(d2 < cutoff, axis=1)))
-        if len(s["glycan"]):
-            contacts = residue_pairs(s["glycan"], lip, cutoff, box)
-            row["local_hs_lipid_contact_pairs_count"] = len(contacts)
-            if len(s["ions"]):
-                row["local_hs_ion_contacts_count"] = len(residue_pairs(s["glycan"], s["ions"], 3.5, box))
+        row, residue_contacts = local_environment_frame(self.local, self.u, t)
         self.rows["local_environment"].append(row)
+        self.rows["local_residue"].extend(residue_contacts)
 
     def flush(self, part):
         start = time.perf_counter()

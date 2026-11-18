@@ -121,3 +121,53 @@ def test_hbond_and_local_observers_restart_parity(tmp_path):
     assert len(pd.read_parquet(clean / "extensions/local_environment/timeseries.parquet")) == 5
     timing = json.loads((clean / "fused_extensions_timings.json").read_text())
     assert set(timing["enabled"]) == {"hydrogen_bonds", "local_environment"}
+
+
+def test_standalone_local_environment_matches_fused_saved_outputs(tmp_path):
+    """Both execution paths must save the same frame and residue contracts."""
+    from mdscope.config import Replicate
+    from mdscope.mechanisms.local_environment import run_local_environment
+    from mdscope.pipeline.fused_extensions import run_fused_extensions
+
+    u = _universe()
+    pdb, dcd = tmp_path / "local.pdb", tmp_path / "local.dcd"
+    with mda.Writer(str(pdb), n_atoms=len(u.atoms)) as writer:
+        writer.write(u.atoms)
+    with mda.Writer(str(dcd), n_atoms=len(u.atoms)) as writer:
+        for frame in u.trajectory:
+            writer.write(u.atoms)
+
+    cfg = _cfg()
+    cfg["analyses"]["hydrogen_bonds"]["enabled"] = False
+    rep = Replicate("toy", 1, pdb, dcd, "rep1")
+    standalone, fused = tmp_path / "standalone", tmp_path / "fused"
+    direct = run_local_environment(rep, cfg, standalone)
+    run_fused_extensions(rep, cfg, fused, names=("local_environment",))
+    assert direct["frames"] == 5
+
+    for filename in ("timeseries.parquet", "residue_contacts.parquet"):
+        path = "extensions/local_environment/" + filename
+        pd.testing.assert_frame_equal(
+            pd.read_parquet(standalone / path),
+            pd.read_parquet(fused / path),
+            check_dtype=False, check_exact=False, rtol=0, atol=1e-12,
+        )
+
+
+def test_local_environment_measurement_returns_topology_residue_contacts():
+    """Source-frame contact counts are retained without trajectory execution."""
+    from mdscope.mechanisms.local_environment import (
+        prepare_local_environment, local_environment_frame,
+    )
+
+    u, cfg = _universe(), _cfg()
+    u.trajectory[0]
+    state = prepare_local_environment(u, cfg)
+    row, contacts = local_environment_frame(state, u, 10.0)
+    assert row["time_ps"] == 10.0
+    # Direct Euclidean reference for frame 0: protein residue 0 touches
+    # POPC, while residue 1 touches both POPC and POPE within 5 Angstrom.
+    assert row["local_protein_lipid_contact_residues_count"] == 2
+    assert row["local_POPC_contact_residues_count"] == 2
+    assert row["local_POPE_contact_residues_count"] == 1
+    assert contacts == [(10.0, 0, 1), (10.0, 1, 2)]

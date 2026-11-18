@@ -18,7 +18,6 @@ from ..observables.residue_membrane_distance import run_residue_membrane_distanc
 from ..observables.membrane_order import run_membrane_order
 from ..observables.structure_profiles import run_structure_profiles
 from ..interactions.hydrogen_bonds import run_hydrogen_bonds
-from ..mechanisms.local_environment import run_local_environment
 from ..mechanisms.potassium_bridge_audit import run_potassium_bridge_audit
 from ..observables.bilayer_normal import run_bilayer_normal
 from ..interactions.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
@@ -40,9 +39,6 @@ def specialized_tasks(cfg):
         yield AnalysisTask("profiles",run_structure_profiles)
     if cfg["analyses"]["hydrogen_bonds"].get("enabled",False):
         yield AnalysisTask("hydrogen-bonds",run_hydrogen_bonds)
-    if cfg.get("analyses",{}).get("local_environment",{}).get("enabled",False):
-        yield AnalysisTask("local_environment", run_local_environment)
-
     if analysis_enabled(cfg, "potassium_bridge_audit"):
         yield AnalysisTask("potassium_bridge_audit", run_potassium_bridge_audit)
 

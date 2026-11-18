@@ -455,10 +455,9 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
             continue
         if task.key in {"membrane-order", "bilayer_normal"}:
             continue
-        if task.key in {"hydrogen-bonds", "lipid_hydrogen_bonds", "local_environment"} and {
+        if task.key in {"hydrogen-bonds", "lipid_hydrogen_bonds"} and {
             "hydrogen-bonds": "hydrogen_bonds",
             "lipid_hydrogen_bonds": "lipid_hydrogen_bonds",
-            "local_environment": "local_environment",
         }[task.key] in extension_names:
             continue
         if task.key == "profiles" and all(
