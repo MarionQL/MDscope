@@ -210,3 +210,34 @@ def test_implicit_hydration_uses_complete_analysis_descriptor(tmp_path, project)
     assert hydration["plot_family_eligibility"]
     assert set(hydration) == set(next(
         item for item in plan["analyses"] if item["analysis"] == "rmsd"))
+
+
+def test_schema_only_statistics_metric_contracts_are_discoverable(tmp_path, project):
+    path, root = project("plan_metric_selection")
+    cfg = yaml.safe_load(path.read_text())
+    cfg["statistics"]["metric_selection"] = {
+        "time_series": [{"group": "PROA", "metric": "rmsd_A"}],
+        "profiles": [],
+        "interactions": [{"kind": "salt_bridges", "metric": "occupancy"}],
+        "solvation_rdfs": [],
+        "diffusion": [],
+        "coupling": [],
+    }
+    path.write_text(yaml.safe_dump(cfg))
+    plan = build_plan(load_config(path, check_paths=False), path)
+    families = {row["family"]: row for row in plan["statistics_families"]}
+    assert families["profiles"]["status"] == "disabled"
+    assert families["time_series"]["metric_selection"] == [
+        {"group": "PROA", "metric": "rmsd_A"}]
+    assert families["interactions"]["metric_contract"]["identity_fields"] == [
+        "kind", "interaction", "metric"
+    ]
+    assert "bh_fdr" in families["interactions"]["metric_contract"]["supported_estimators"]
+    assert "shell_replicate_contrast" in families["solvation_rdfs"]["metric_contract"]["supported_estimators"]
+    assert all(
+        row["metric_identity_status"].startswith("saved_data_dependent")
+        for family, row in families.items()
+        if family in {"time_series", "interactions", "profiles",
+                      "solvation_rdfs", "diffusion", "coupling"}
+    )
+    assert not root.exists()
