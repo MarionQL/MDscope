@@ -61,9 +61,35 @@ kind; omitting `metric` selects all five metrics. An explicit
 identities fail before statistical outputs are written. The existing
 `interaction_min_occupancy` filter still applies to selected identities.
 
-Unsupported selector families currently fail configuration validation;
-profiles, RDFs, diffusion and coupling remain family-controlled. Plot IDs
-remain independently controlled by `plots.include`.
+The same optional `metric_selection` contract now supports all statistics
+families. Each selector uses the scientific identity actually persisted by its
+writer; no inferred residue/site IDs or RDF-bin pseudo-replicates are created:
+
+```yaml
+statistics:
+  metric_selection:
+    profiles:
+      - {profile: rmsf}
+    solvation_rdfs:
+      - {solvent: water, target_class: protein, site_class: carboxylate}
+    diffusion:
+      - {metric: DOPC}
+    coupling:
+      - {mechanism: membrane_coupling}
+```
+
+Profile names and diffusion metric strings above are illustrative: check the
+saved outputs or `mdscope plan` and use the exact names in your data. An
+empty list for any family disables that family's statistical work. Unknown
+saved identities are rejected before numerical outputs are written. RDF
+selection includes all radial bins for the selected chemical class, preserving
+shell integration and replica-level inference; diffusion selection includes
+its full lag grid. Coupling names are checked against configured pairs.
+Raw analyses and `plots.include` remain independently controlled.
+
+`mdscope plan` exposes each family's identity fields, supported estimators,
+conditional output paths and figure-ID patterns. Most concrete identities
+are **saved-data-dependent**; the plan does not fabricate them.
 
 Selections filter before temporal bootstrap/CI/permutation calculations and
 avoid reading irrelevant top-level saved source tables where possible.
