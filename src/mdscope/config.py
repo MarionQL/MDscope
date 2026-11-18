@@ -860,6 +860,8 @@ def validate_config(cfg: dict, base: Path = Path("."), *, check_paths: bool = Tr
     if not isinstance(excluded, list) or any(not isinstance(value, str) for value in excluded):
         raise ValueError("plots.interaction_exclude_kinds must be a list")
     stats = cfg.get("statistics", {})
+    from .statistics.selection import validate_metric_selection
+    validate_metric_selection(stats)
     for field in ("block", "hypothesis_tests"):
         if stats.get(field) is not None and not isinstance(stats[field], dict):
             raise ValueError(f"statistics.{field} must be a mapping")
