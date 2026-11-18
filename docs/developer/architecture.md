@@ -120,6 +120,14 @@ consumers have been audited; prefer direct canonical imports in *new* code.
 function API rather than using `import *`; new consumers should import from
 the owning submodule directly. Neither boundary justifies a second implementation.
 
+### Scientific reuse audit: local environment and numerical policies
+
+- `mechanisms/local_environment.py` now owns one topology-setup and per-frame contact estimator, shared by its standalone reader and `pipeline/fused_extensions.py`. Fused execution retains chunk/restart ownership; the standalone entry point remains usable for targeted parity checks.
+- `pipeline/replica_tasks.py` no longer advertises a `local_environment` task that production always skips: `analysis_selection.extensions_enabled_names` enables it in fused extensions.
+- Do **not** merge `biophysical_common.heavy` with `mechanistic_common.heavy`: they deliberately select different hydrogen-inference policies. Likewise, all-pairs planar distances, point-to-anchor distances, mass-weighted centers, and fixed versus dynamic leaflet definitions differ in scientific contracts.
+- `mechanisms/shared_states.py` consumes saved feature tables and fits one shared state model across replicas; it is not a duplicate of the inferential `statistics/` dispatcher. No offline aggregation or estimator schema changes are in this refactor.
+- Further review candidate: task descriptors for membrane-order, bilayer-normal, and other fused families can be assessed separately for unreachable fallback branches; preserve alternative DSSP backends and restart semantics before pruning.
+
 ### Specialized task and lipid-enrichment boundaries
 
 - `pipeline/replica_tasks.py` is **execution-only**: it assembles specialized callable tasks, preserves legacy checkpoint keys and collects optional saved scalar tables. The runner uses it for specialized fallbacks after fused scheduling. Do not merge those callable imports into the read-only registry.
