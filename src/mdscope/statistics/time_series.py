@@ -116,14 +116,17 @@ def collect_time_series(repout: Path, *, sources: set[str] | None = None,
         for group_id, subset in groups:
             out.update(_hs_contact_observables(subset, group_id))
             for metric in subset.columns:
-                if selected is not None and (None if group_id is None else str(group_id), metric) not in selected:
-                    continue
+                identity = (None if group_id is None else str(group_id), metric)
+                availability_key = (None, metric + "_available_fraction")
                 if (group_id is None and _has_conditional_support(metric)
-                        and not metric.endswith("_hs_contacts_during_contact")):
+                        and not metric.endswith("_hs_contacts_during_contact")
+                        and (selected is None or availability_key in selected)):
                     available = pd.to_numeric(subset[metric], errors="coerce").map(np.isfinite)
-                    out[(None, metric + "_available_fraction")] = pd.DataFrame({
+                    out[availability_key] = pd.DataFrame({
                         "time_ps": subset.time_ps, "value": available.astype(float),
                     })
+                if selected is not None and identity not in selected:
+                    continue
                 if metric not in {"time_ps", "group"} and len(finite(subset[metric])):
                     out[(
                         None if group_id is None else str(group_id),
