@@ -196,3 +196,30 @@ def test_legacy_interaction_selection_is_unrestricted(tmp_path):
         "median_lifetime_ps", "total_lifetime_ps"
     }
     assert len(set(rows.interaction)) == 3
+
+
+def test_interaction_selected_rng_invariant_to_other_requested_identities(tmp_path):
+    """Selecting an unrelated pair cannot perturb an existing pair's CIs."""
+    from test_interaction_statistics_reference import fixture
+    from mdscope.statistics.interactions import analyze_interactions
+    cfg, paths = fixture(tmp_path / "input")
+    key = "ASP0 | LYS7 | interchain"
+    cfg["statistics"]["metric_selection"] = {"interactions": [
+        {"kind": "salt_bridges", "interaction": key, "metric": "occupancy"}
+    ]}
+    analyze_interactions(cfg, tmp_path / "one", paths)
+    cfg["statistics"]["metric_selection"]["interactions"].insert(0, {
+        "kind": "salt_bridges", "interaction": "ASP1 | LYS7 | interchain",
+        "metric": "occupancy",
+    })
+    analyze_interactions(cfg, tmp_path / "two", paths)
+    root = "project_summary/statistics/interactions"
+    for filename in (
+        "replicate_interaction_metrics.parquet",
+        "system_interaction_metrics.parquet",
+        "system_interaction_comparisons.parquet",
+    ):
+        original = pd.read_parquet(tmp_path / "one" / root / filename)
+        expanded = pd.read_parquet(tmp_path / "two" / root / filename)
+        expanded = expanded.loc[expanded.interaction.eq(key)].reset_index(drop=True)
+        pd.testing.assert_frame_equal(original, expanded, check_exact=True)
