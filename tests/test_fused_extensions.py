@@ -171,3 +171,46 @@ def test_local_environment_measurement_returns_topology_residue_contacts():
     assert row["local_POPC_contact_residues_count"] == 2
     assert row["local_POPE_contact_residues_count"] == 1
     assert contacts == [(10.0, 0, 1), (10.0, 1, 2)]
+
+
+def test_selective_extension_chunk_pruning_preserves_other_completed_analyses(
+        tmp_path):
+    """A partial SASA replay must not remove completed H-bond/SASA chunks."""
+    import types
+
+    cache = tmp_path / "cache"
+    for name in ("sasa__environment", "sasa__baseline",
+                 "sasa_atoms_environment", "hydrogen_bonds"):
+        folder = cache / name
+        folder.mkdir(parents=True)
+        (folder / "part-000000.parquet").write_bytes(name.encode())
+
+    observer = FusedExtensions.__new__(FusedExtensions)
+    observer.cache = cache
+    observer.solvation = None
+    observer.hydration = None
+    observer.hb = {}
+    observer.dssp = None
+    observer.local = None
+    observer.sasa = {"environment": types.SimpleNamespace()}
+    observer.prune_from(0)
+
+    assert not (cache / "sasa__environment/part-000000.parquet").exists()
+    assert not (cache / "sasa_atoms_environment/part-000000.parquet").exists()
+    assert (cache / "sasa__baseline/part-000000.parquet").read_bytes() == b"sasa__baseline"
+    assert (cache / "hydrogen_bonds/part-000000.parquet").read_bytes() == b"hydrogen_bonds"
+
+
+def test_sasa_replay_filters_validated_named_runs(monkeypatch):
+    """Keep complete reference validation but process only requested states."""
+    import mdscope.pipeline.fused_extensions as extension_module
+
+    all_states = {"baseline": object(), "environment": object()}
+    monkeypatch.setattr(extension_module, "sasa_instances",
+                        lambda u, cfg: all_states)
+    observer = FusedExtensions.__new__(FusedExtensions)
+    observer.u = object()
+    observer.cfg = {}
+    observer.sasa_run_ids = ("environment",)
+    observer._setup_sasa()
+    assert list(observer.sasa) == ["environment"]

@@ -248,10 +248,11 @@ def water_donor_hbonds(site_xyz, water_xyz, water_hydrogens, pairs, box,
 class SolvationObserver:
     """Fused observer. Histograms and compact tables are checkpointed per chunk."""
 
-    def __init__(self, universe, cfg, repout):
+    def __init__(self, universe, cfg, repout, *, cache_dir=None):
         self.u = universe
         self.spec = cfg["analyses"]["solvation"]
         self.repout = Path(repout)
+        self.cache = Path(cache_dir) if cache_dir is not None else self.repout / "cache" / "solvation"
         preset = self.spec.get("preset", "standard")
         if preset not in PRESETS:
             raise ValueError("solvation.preset: expected standard, detailed or kinetics")
@@ -603,7 +604,7 @@ class SolvationObserver:
         self.frames += 1
 
     def flush(self, part):
-        root = ensure_dir(self.repout / "cache" / "solvation")
+        root = ensure_dir(self.cache)
         for name, values, columns in (
             ("counts", self.rows, COUNT_COLUMNS),
             ("events", self.events, EVENT_COLUMNS),
@@ -648,7 +649,7 @@ class SolvationObserver:
         self.exposure.clear()
 
     def prune_from(self, part):
-        for path in (self.repout / "cache" / "solvation").glob("*.parquet"):
+        for path in (self.cache).glob("*.parquet"):
             try:
                 number = int(path.stem.rsplit("-", 1)[1])
             except (IndexError, ValueError):
@@ -657,7 +658,7 @@ class SolvationObserver:
                 path.unlink()
 
     def finalize(self):
-        cache = self.repout / "cache" / "solvation"
+        cache = self.cache
         dest = ensure_dir(self.repout / "extensions" / "solvation")
         def read(name):
             files = sorted(cache.glob(f"{name}-*.parquet"))
@@ -738,7 +739,7 @@ class SolvationObserver:
                 dest / "episodes.parquet")
         from .solvation_postprocess import write_solvation_derivatives
         write_solvation_derivatives(dest, self.repout,
-            sasa_run=self.spec.get("sasa_run", "default"))
+            sasa_run=self.spec.get("sasa_run", "default"), cache_dir=self.cache)
         if self.eligible_bridge_pairs:
             from .solvation_postprocess import bridge_pair_occupancy, bridge_pair_evidence
             frame_times = read("frames").drop_duplicates("frame").sort_values("frame").time_ps.to_numpy(float)

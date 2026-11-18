@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import re
 import time
 
@@ -45,10 +46,12 @@ def _concat(path):
 
 
 class FusedExtensions:
-    def __init__(self, universe, cfg, repout, *, names=None):
+    def __init__(self, universe, cfg, repout, *, names=None, sasa_run_ids=None, cache_dir=None):
         self.u, self.cfg, self.repout = universe, cfg, Path(repout)
         self.names = enabled_names(cfg) if names is None else tuple(names)
-        self.cache = ensure_dir(self.repout / "cache" / "fused_extensions")
+        self.sasa_run_ids = None if sasa_run_ids is None else tuple(sasa_run_ids)
+        self.cache = ensure_dir(Path(cache_dir) if cache_dir is not None
+                                else self.repout / "cache" / "fused_extensions")
         self.rows = defaultdict(list)
         self.hb = {}
         self.dssp = None
@@ -69,9 +72,13 @@ class FusedExtensions:
         if "local_environment" in self.names:
             self._setup_local()
         if "solvation" in self.names:
-            self.solvation = SolvationObserver(universe, cfg, repout)
+            opts = ({"cache_dir": self.cache / "solvation"}
+                    if cache_dir is not None else {})
+            self.solvation = SolvationObserver(universe, cfg, repout, **opts)
         if "hydration" in self.names:
-            self.hydration = HydrationObserver(universe, cfg, repout)
+            opts = ({"cache_dir": self.cache / "hydration"}
+                    if cache_dir is not None else {})
+            self.hydration = HydrationObserver(universe, cfg, repout, **opts)
 
     def _setup_protein_hba(self):
         spec = self.cfg["analyses"]["hydrogen_bonds"]
@@ -193,7 +200,17 @@ class FusedExtensions:
         self.dssp = {"analysis": dssp, "residues": residues, "times": []}
 
     def _setup_sasa(self):
-        self.sasa = sasa_instances(self.u, self.cfg)
+        # Validate every named run/reference against the original config,
+        # but calculate and persist only the requested runs.
+        states = sasa_instances(self.u, self.cfg)
+        if self.sasa_run_ids is None:
+            self.sasa = states
+            return
+        unknown = set(self.sasa_run_ids) - set(states)
+        if unknown:
+            raise ValueError(f"Unknown SASA run IDs: {sorted(unknown)}")
+        self.sasa = {key: value for key, value in states.items()
+                     if key in self.sasa_run_ids}
 
     def _setup_local(self):
         self.local = prepare_local_environment(self.u, self.cfg)
@@ -305,10 +322,20 @@ class FusedExtensions:
             self.solvation.prune_from(next_part)
         if self.hydration is not None:
             self.hydration.prune_from(next_part)
-        for path in self.cache.rglob("part-*"):
-            match = re.search(r"part-(\d+)", path.name)
-            if match and int(match.group(1)) >= next_part and path.is_file():
-                path.unlink()
+        active = set(self.hb)
+        if self.dssp is not None:
+            active.add("dssp")
+        if self.local is not None:
+            active.update(("local_environment", "local_residue"))
+        if self.sasa is not None:
+            for run_id in self.sasa:
+                active.add("sasa" if run_id == "default" else f"sasa__{run_id}")
+                active.add(f"sasa_atoms_{run_id}")
+        for name in active:
+            for path in (self.cache / name).glob("part-*"):
+                match = re.search(r"part-(\d+)", path.name)
+                if match and int(match.group(1)) >= next_part and path.is_file():
+                    path.unlink()
 
     def finalize(self):
         start = time.perf_counter()
@@ -381,24 +408,28 @@ class FusedExtensions:
         return results
 
 
-def run_fused_extensions(rep, cfg, repout, *, names=None):
-    """One shared fallback trajectory pass if protein streaming is disabled."""
+def run_fused_extensions(rep, cfg, repout, *, names=None, sasa_run_ids=None):
+    """Replay selected missing extensions without touching committed stream chunks."""
     if not enabled_names(cfg):
         return {}
     u = mda.Universe(str(rep.topology), str(rep.trajectory))
     tr = cfg["trajectory"]
     start = 0 if tr.get("start") is None else int(tr["start"])
     u.trajectory[start]
-    observer = FusedExtensions(u, cfg, repout, names=names)
-    observer.prune_from(0)
-    frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr["stride"]))]
     chunk = max(1, int(tr.get("chunk_frames", 1000)))
-    for i, ts in enumerate(track(frames, total=len(frames),
-                                 desc=f"{rep.system}/{rep.label}: fused extensions",
-                                 enabled=cfg.get("progress", {}).get("enabled", True))):
-        observer.update(ts, i)
-        if (i + 1) % chunk == 0:
-            observer.flush(i // chunk)
-    if observer.frames % chunk:
-        observer.flush(observer.frames // chunk)
-    return observer.finalize()
+    with TemporaryDirectory(dir=ensure_dir(Path(repout)), prefix=".extensions-recovery-") as scratch:
+        observer = FusedExtensions(
+            u, cfg, repout, names=names, sasa_run_ids=sasa_run_ids,
+            cache_dir=scratch,
+        )
+        observer.prune_from(0)
+        frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr["stride"]))]
+        for i, ts in enumerate(track(frames, total=len(frames),
+                                     desc=f"{rep.system}/{rep.label}: fused extensions",
+                                     enabled=cfg.get("progress", {}).get("enabled", True))):
+            observer.update(ts, i)
+            if (i + 1) % chunk == 0:
+                observer.flush(i // chunk)
+        if observer.frames % chunk:
+            observer.flush(observer.frames // chunk)
+        return observer.finalize()

@@ -1,21 +1,22 @@
 # Pipeline graphs
 
-Two different questions need two different diagrams. The **execution graph**
-describes trajectory passes and recovery. The **import graph** describes Python
-dependencies; an import arrow does not imply a new trajectory traversal.
+Three different questions need separate diagrams: **execution** (where
+frames pass), **recovery** (when saved products are reused or replayed),
+and **imports** (Python source dependencies). An import edge does not mean
+an analysis opened a trajectory.
 
-Regenerate both from a checkout:
+Regenerate all diagrams from a checkout:
 
 ```bash
 python scripts/pipeline_graphs.py --output /tmp/mdscope-graphs
 # Graphviz's dot executable is optional for SVG rendering.
-# Open execution.svg and imports_focused.svg, or the corresponding DOT files.
+# Open execution.svg, recovery.svg and imports_focused.svg (or their DOT files).
 ```
 
 The script regenerates the existing AST inventory using
-`scripts/architecture_map.py`; it also writes `imports_full.dot` and, when
-Graphviz is installed, `imports_full.svg`. The execution diagram is a
-**code-reviewed conceptual control-flow map**, not an instrumented trace. Its
+`scripts/architecture_map.py`; it also writes `recovery.dot`, `imports_full.dot`, and all four SVGs when
+Graphviz is installed. Execution and recovery diagrams are **code-reviewed
+conceptual flow maps**, not instrumented traces. Its
 conditions must be reviewed when `runner.py`, `streaming.py` or
 `fused_all.py` scheduling changes.
 
@@ -27,7 +28,7 @@ flowchart TD
     RUN --> PREF["Validate existing products"]
     PREF --> DEC{"Core streaming or aligned cache required?"}
     DEC -->|Yes| STR["streaming.run_streaming_pass<br/>Primary shared frame loop"]
-    DEC -->|No, outputs pending| FO["fused_all.run_fused_only<br/>Observer-only shared frame loop"]
+    DEC -->|No, pending instances| FO["fused_all.run_fused_only<br/>Selected observers and named runs, one frame loop"]
     DEC -->|No work needed| AUD["Per-family output audit"]
     STR --> CORE["Core measurements + checkpoints"]
     STR --> MEM["FusedMembrane"]
@@ -43,7 +44,7 @@ flowchart TD
     EXT --> AUD
     DIST --> AUD
     MECH --> AUD
-    AUD -.->|Missing or incomplete products| FALL["Conditional fused-family fallback readers"]
+    AUD -.->|Missing outputs after stream| FALL["Selective fused-family fallback readers"]
     AUD --> VER["Artifact validation + legacy stage markers"]
     FALL --> VER
     VER -.->|Enabled, not fused or already satisfied| TASK["Specialized tasks / multi-origin MSD"]
@@ -58,10 +59,61 @@ flowchart TD
 simultaneous calls; dashed arrows show conditions. All fused observer families
 consume the same **source-coordinate** frame before alignment in the primary
 stream, and can also run under observer-only scheduling. Some standalone or
-recovery operations reopen trajectories. The runner checks persisted artifact
-integrity rather than assuming that existing files are valid. The observer-only
-path and per-family fallbacks should be audited for overlapping work before
-changing scheduling.
+recovery operations reopen trajectories. The runner validates existing artifacts rather than assuming that files
+are valid. In observer-only execution it selects **pending (analysis, run ID)**
+pairs; completed named SASA and distance outputs are not recomputed. Replay
+chunks are staged separately from committed streaming chunks. Per-family
+fallbacks remain available after a completed streaming pass.
+
+## Recovery: reuse, replay, or fail safely
+
+This is **separate from execution** because output completeness and
+checkpoint provenance—not just the enabled analysis set—determine whether a
+trajectory must be reopened.
+
+```mermaid
+flowchart TD
+    START["run_replicate"] --> PREF["Preflight: validate existing primary and required companions"]
+    PREF --> BAD{"Existing artifact invalid?"}
+    BAD -->|Yes| STOP["Fail without overwriting existing results"]
+    BAD -->|No| CORE{"Primary streaming required?"}
+    CORE -->|Yes| STATE{"Stream checkpoint state?"}
+    STATE -->|Completed, valid| REUSE["Validate committed stream inventory; reuse core products"]
+    STATE -->|Absent or resumable| STREAM["Resume or run primary stream after checkpoint validation"]
+    STATE -->|Invalid or inconsistent| STOP
+    REUSE --> FAMILY["Check fused-family output contracts"]
+    STREAM --> FAMILY
+    FAMILY -->|Missing primary outputs| FALL["Select only missing membrane / extension / distance / SDC4 outputs"]
+    FAMILY -->|Complete| VALID["Validate registered artifacts and companions"]
+    FALL --> SCRATCH2["Independent selective replay; staging isolated from stream chunks"]
+    SCRATCH2 --> VALID
+    CORE -->|No| PENDING{"Any pending fused output instances?"}
+    PENDING -->|No| SKIP["Reuse saved fused products; do not open a trajectory"]
+    PENDING -->|Yes| ONLY["One observer-only source-frame pass<br/>Only requested analysis + run IDs"]
+    ONLY --> SCRATCH["Temporary chunks; publish selected results"]
+    SCRATCH --> VALID
+    SKIP --> VALID
+    VALID --> SUMMARY{"Summary reusable and inputs unchanged?"}
+    SUMMARY -->|Yes| EXTRA["Optional specialized / secondary passes"]
+    SUMMARY -->|No| BUILD["Rebuild summary from saved products"]
+    BUILD --> EXTRA
+    EXTRA --> DONE["Validated replica; project finalization is offline"]
+```
+
+**Recovery contract:** existing invalid primary or companion artifacts fail
+preflight; the pipeline must not silently replace them. Absent outputs can
+be computed, and an incomplete lipid footprint lacking its commit reference
+can be rebuilt. SDC4 residue occlusion has a documented companion-only
+completion path. Complete streaming checkpoints must pass their chunk
+inventory validation. If a non-streaming configuration has several pending
+fused families, they share **one** source-frame traversal. A stream-enabled
+configuration may require independent selective fallback passes for outputs
+that were added after the stream finished.
+
+Scratch replay chunks are discarded after successful publication; completed
+outputs are not regenerated just because another run in the same family is
+missing. This diagram is conceptual: see `runner.py`,
+`fused_all.py` and each observer's validation for exact failure modes.
 
 ## Dependencies: what imports what
 

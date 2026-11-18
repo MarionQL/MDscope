@@ -6,13 +6,14 @@ algorithm; only trajectory iteration and checkpoint storage are changed.
 from __future__ import annotations
 
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import re
 import time
 
 import MDAnalysis as mda
 import numpy as np
 
-from ..config import analysis_runs, time_ps
+from ..config import analysis_runs, ensure_dir, time_ps
 from ..observables.membrane_order import _atomic_npz
 from .progress import track
 from ..observables.residue_membrane_distance import (
@@ -25,14 +26,21 @@ from .analysis_selection import distance_enabled_names as enabled_names
 
 
 class FusedDistances:
-    def __init__(self, universe, cfg, repout):
+    def __init__(self, universe, cfg, repout, *, run_ids=None, cache_dir=None):
         self.u, self.cfg, self.repout = universe, cfg, Path(repout)
-        self.cache = self.repout / "cache" / "fused_distance"
+        self.cache = Path(cache_dir) if cache_dir is not None else self.repout / "cache" / "fused_distance"
         self.cache.mkdir(parents=True, exist_ok=True)
         self.runs = {}
         self.frames = 0
         self.compute_seconds = 0.
-        for run in analysis_runs(cfg, "residue_membrane_distance"):
+        configured = tuple(analysis_runs(cfg, "residue_membrane_distance"))
+        selected_ids = None if run_ids is None else set(run_ids)
+        unknown = (selected_ids or set()) - {run.run_id for run in configured}
+        if unknown:
+            raise ValueError(f"Unknown residue-distance run IDs: {sorted(unknown)}")
+        for run in configured:
+            if selected_ids is not None and run.run_id not in selected_ids:
+                continue
             spec = run.spec
             selection = str(spec.get("selection") or cfg["selections"]["protein"])
             selected = universe.select_atoms(selection)
@@ -96,10 +104,11 @@ class FusedDistances:
             entry["values"].clear()
 
     def prune_from(self, next_part):
-        for path in self.cache.rglob("part-*.npz"):
-            match = re.search(r"part-(\d+)", path.name)
-            if match and int(match.group(1)) >= next_part:
-                path.unlink()
+        for run_id in self.runs:
+            for path in (self.cache / run_id).glob("part-*.npz"):
+                match = re.search(r"part-(\d+)", path.name)
+                if match and int(match.group(1)) >= next_part:
+                    path.unlink()
 
     def finalize(self, rep):
         result = {}
@@ -118,25 +127,26 @@ class FusedDistances:
         return result
 
 
-def run_fused_distances(rep, cfg, repout):
-    """Fallback for systems with no regular streaming stage."""
-    if not enabled_names(cfg):
+def run_fused_distances(rep, cfg, repout, *, run_ids=None):
+    """Compute selected distance runs using disposable scratch chunks."""
+    if not enabled_names(cfg) or (run_ids is not None and not run_ids):
         return {}
     tr = cfg["trajectory"]
     u = mda.Universe(str(rep.topology), str(rep.trajectory))
     start = 0 if tr.get("start") is None else int(tr["start"])
     u.trajectory[start]
-    observer = FusedDistances(u, cfg, repout)
-    observer.prune_from(0)
-    frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr["stride"]))]
     chunk = max(1, int(tr.get("chunk_frames", 1000)))
-    for i, ts in enumerate(track(
-        frames, total=len(frames), desc=f"{rep.system}/{rep.label}: fused distances",
-        enabled=cfg.get("progress", {}).get("enabled", True),
-    )):
-        observer.update(ts, i)
-        if (i + 1) % chunk == 0:
-            observer.flush(i // chunk)
-    if observer.frames % chunk:
-        observer.flush(observer.frames // chunk)
-    return observer.finalize(rep)
+    with TemporaryDirectory(dir=ensure_dir(Path(repout)), prefix=".distance-recovery-") as scratch:
+        observer = FusedDistances(u, cfg, repout, run_ids=run_ids, cache_dir=scratch)
+        observer.prune_from(0)
+        frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr["stride"]))]
+        for i, ts in enumerate(track(
+            frames, total=len(frames), desc=f"{rep.system}/{rep.label}: fused distances",
+            enabled=cfg.get("progress", {}).get("enabled", True),
+        )):
+            observer.update(ts, i)
+            if (i + 1) % chunk == 0:
+                observer.flush(i // chunk)
+        if observer.frames % chunk:
+            observer.flush(observer.frames // chunk)
+        return observer.finalize(rep)

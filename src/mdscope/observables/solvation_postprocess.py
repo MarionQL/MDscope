@@ -277,7 +277,7 @@ def aggregate_coordination_parts(paths, *, batch_size=65536):
          "n_frames", "mean_n_solvent", "sd_n_solvent", "hydrated_fraction"]])
 
 
-def write_solvation_derivatives(directory, repout, *, sasa_run="default"):
+def write_solvation_derivatives(directory, repout, *, sasa_run="default", cache_dir=None):
     """Persist optional derived outputs from previous measurements only."""
     from pathlib import Path
     directory, repout = Path(directory), Path(repout)
@@ -285,7 +285,7 @@ def write_solvation_derivatives(directory, repout, *, sasa_run="default"):
     if rdf.exists():
         atomic_parquet(directory / "shell_candidates.parquet",
                        suggest_shell_boundaries(pd.read_parquet(rdf)))
-    cache = repout / "cache" / "solvation"
+    cache = Path(cache_dir) if cache_dir is not None else repout / "cache" / "solvation"
     histogram_parts = sorted(cache.glob("hist-*.parquet"))
     if histogram_parts and rdf.exists():
         hist = pd.concat([pd.read_parquet(p) for p in histogram_parts],
