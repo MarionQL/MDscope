@@ -6,6 +6,17 @@ means no time-series inference. Identities are the existing saved
 """
 from __future__ import annotations
 
+# Canonical persisted identity fields for statistics-family selectors.
+# Selectors identify whole scientific observables, never individual RDF bins,
+# correlated frames, or implicitly inferred run IDs.
+SIMPLE_FAMILY_KEYS = {
+    "profiles": ("profile",),
+    "solvation_rdfs": ("solvent", "target_class", "site_class"),
+    "diffusion": ("metric",),
+    "coupling": ("mechanism",),
+}
+
+
 INTERACTION_METRICS = frozenset({
     "occupancy", "event_rate_per_ns", "mean_lifetime_ps",
     "median_lifetime_ps", "total_lifetime_ps",
@@ -16,12 +27,27 @@ def validate_metric_selection(stats):
     selection = stats.get("metric_selection")
     if selection is None:
         return
-    if not isinstance(selection, dict) or set(selection) - {"time_series", "interactions"}:
-        raise ValueError("statistics.metric_selection supports time_series and interactions only")
+    if not isinstance(selection, dict) or set(selection) - {"time_series", "interactions", *SIMPLE_FAMILY_KEYS}:
+        raise ValueError("statistics.metric_selection contains unsupported family")
     for family, entries in selection.items():
         if not isinstance(entries, list):
             raise ValueError(f"statistics.metric_selection.{family} must be a list")
         seen = set()
+        if family in SIMPLE_FAMILY_KEYS:
+            keys = SIMPLE_FAMILY_KEYS[family]
+            for entry in entries:
+                if (not isinstance(entry, dict) or set(entry) != set(keys)
+                        or any(not isinstance(entry.get(key), str) or not entry[key].strip()
+                               for key in keys)):
+                    raise ValueError(
+                        f"statistics.metric_selection.{family} entries require "
+                        f"nonempty {', '.join(keys)}"
+                    )
+                identity = tuple(entry[key] for key in keys)
+                if identity in seen:
+                    raise ValueError(f"Duplicate statistics.metric_selection.{family}: {identity!r}")
+                seen.add(identity)
+            continue
         if family == "interactions":
             for entry in entries:
                 if (not isinstance(entry, dict) or set(entry) - {"kind", "interaction", "metric"}
@@ -92,3 +118,16 @@ def selected_interaction_metrics(selectors, kind, interaction):
     for metric in matches:
         accepted.update(INTERACTION_METRICS if metric is None else (metric,))
     return frozenset(accepted)
+
+
+def simple_family_selection(cfg, family):
+    """Return exact persisted identity tuples, or None for legacy all.
+
+    A present empty list means disabled. The caller must preflight requested
+    identities against saved inputs before publishing statistical outputs.
+    """
+    keys = SIMPLE_FAMILY_KEYS[family]
+    selection = cfg.get("statistics", {}).get("metric_selection")
+    if selection is None or family not in selection:
+        return None
+    return {tuple(item[key] for key in keys) for item in selection[family]}
