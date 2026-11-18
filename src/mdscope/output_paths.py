@@ -1,0 +1,22 @@
+"""Persisted analysis output paths shared by producers and the registry.
+
+This dependency-free module prevents output producers from importing the
+higher-level registry (which may inspect production enabled predicates).
+Paths and on-disk formats are existing MDscope contracts, not new defaults.
+"""
+
+FUSED_OUTPUTS = {
+    "lipid_contacts": "extensions/lipid_contacts/timeseries.parquet",
+    "membrane_order": "profiles/membrane_order/timeseries.parquet",
+    "bilayer_normal": "extensions/bilayer_normal/timeseries.parquet",
+    "lipid_enrichment": "extensions/lipid_footprint/timeseries.parquet",
+    "hydrogen_bonds": "interactions/hydrogen_bonds/events.parquet",
+    "lipid_hydrogen_bonds": "interactions/lipid_hydrogen_bonds/events.parquet",
+    "dssp": "profiles/dssp/assignments.parquet",
+    "sasa": "profiles/sasa/residue_sasa.parquet",
+    "local_environment": "extensions/local_environment/timeseries.parquet",
+    "solvation": "extensions/solvation/counts.parquet",
+    "hydration": "extensions/hydration/counts.parquet",
+    "sdc4_mechanisms": "extensions/sdc4_mechanisms/timeseries.parquet",
+    "potassium_bridge_audit": "extensions/potassium_bridge_audit/topology_audit.json",
+}

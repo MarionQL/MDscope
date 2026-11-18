@@ -33,14 +33,10 @@ from ..core.lipid_geometry import classify_leaflets
 from .progress import track
 
 
-FUSED_ANALYSES = ("membrane_order", "bilayer_normal", "lipid_enrichment", "lipid_contacts")
-
-
-def enabled_names(cfg):
-    return tuple(
-        name for name in FUSED_ANALYSES
-        if cfg.get("analyses", {}).get(name, {}).get("enabled", False)
-    )
+from .analysis_selection import (
+    FUSED_MEMBRANE_ANALYSES as FUSED_ANALYSES,
+    membrane_enabled_names as enabled_names,
+)
 
 
 def _parts(path, suffix):

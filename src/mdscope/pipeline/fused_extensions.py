@@ -32,21 +32,7 @@ from ..biophysical_common import heavy, box_of, residue_pairs, sequence_motifs
 from MDAnalysis.lib.distances import distance_array
 
 
-def enabled_names(cfg):
-    specs = cfg.get("analyses", {})
-    names = []
-    for name in ("hydrogen_bonds", "lipid_hydrogen_bonds", "dssp", "sasa", "local_environment", "solvation"):
-        if not specs.get(name, {}).get("enabled", False):
-            continue
-        # MDAnalysis parallel DSSP runs have different worker semantics.
-        # Keep their existing specialized implementation.
-        if name in {"dssp", "sasa"} and specs.get("dssp", {}).get("enabled", False) and specs["dssp"].get("backend", "serial") != "serial":
-            continue
-        names.append(name)
-    if (specs.get("hydration", {}).get("enabled", False)
-            or specs.get("sdc4_mechanisms", {}).get("hs_sugar_water_cutoff_A") is not None):
-        names.append("hydration")
-    return tuple(names)
+from .analysis_selection import extensions_enabled_names as enabled_names
 
 
 def _part_paths(path, extension):

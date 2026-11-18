@@ -87,8 +87,7 @@ def _add_acidic_patch_sasa(frame, motifs, isolated_dir, environment_dir):
     return frame
 
 
-def enabled(cfg):
-    return bool(cfg.get("analyses", {}).get("sdc4_mechanisms", {}).get("enabled", False))
+from ..pipeline.analysis_selection import sdc4_enabled as enabled
 
 
 def _id(label):

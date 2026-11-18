@@ -10,8 +10,10 @@ from scipy.spatial import cKDTree
 from ..config import atomic_json, atomic_parquet
 from ..core.atom_selection import select_heavy_atoms
 from ..core.lipid_geometry import circular_axis_mean
+from ..output_paths import FUSED_OUTPUTS
 
-FOOTPRINT_OUTPUT = "extensions/lipid_footprint"
+# Use the registry's persisted contract; do not duplicate the directory name.
+FOOTPRINT_OUTPUT = Path(FUSED_OUTPUTS["lipid_enrichment"]).parent.as_posix()
 
 
 def footprint_bands(anchors, protein, lengths, axis, edges, radius, half_width, grid):
