@@ -167,3 +167,35 @@ def test_hydration_water_selection_and_box_contract(tmp_path):
     ts.dimensions = [0., 30., 30., 90., 90., 90.]
     with pytest.raises(ValueError, match="periodic box"):
         observer.update(ts, 0)
+
+
+def test_hydration_scratch_replay_does_not_prune_stream_chunks(tmp_path):
+    """Nested hydration staging must preserve already checkpointed chunks."""
+    baseline, replay = tmp_path / "baseline", tmp_path / "replay"
+    cfg = _cfg()
+    _run(baseline, cfg)
+    completed = replay / "cache/hydration/counts-000000.parquet"
+    completed.parent.mkdir(parents=True)
+    completed.write_bytes(b"existing committed stream chunk")
+
+    universe = _universe()
+    observer = FusedExtensions(
+        universe, cfg, replay, names=("hydration",),
+        cache_dir=replay / ".replay-staging",
+    )
+    observer.prune_from(0)
+    for i, ts in enumerate(universe.trajectory):
+        observer.update(ts, i)
+        observer.flush(i)
+    observer.finalize()
+    assert completed.read_bytes() == b"existing committed stream chunk"
+    for relative in (
+        OUTPUT, "extensions/hydration/counts.parquet",
+        "extensions/hydration/aggregate_counts.parquet",
+        "extensions/hydration/target_metadata.parquet",
+    ):
+        pd.testing.assert_frame_equal(
+            pd.read_parquet(baseline / relative),
+            pd.read_parquet(replay / relative),
+            check_dtype=False,
+        )
