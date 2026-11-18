@@ -376,3 +376,19 @@ def test_unsupported_or_contradictory_estimator_flags_rejected(family, entry):
     from mdscope.statistics_selection import validate_metric_selection
     with pytest.raises(ValueError, match="metric_selection"):
         validate_metric_selection({"metric_selection": {family: [entry]}})
+
+
+def test_mixed_interaction_inference_draw_counts_do_not_share_incompatible_weights():
+    from mdscope.statistics.interactions import _interaction_bootstrap
+    times = np.arange(24, dtype=float) * 5
+    cfg = deepcopy(DEFAULTS)
+    cache, zero_cache = {}, {}
+    rng = np.random.default_rng(2026)
+    for draws in (0, 32, 0, 32):
+        boot, point = _interaction_bootstrap(
+            times, np.array([10., 25.]), pd.DataFrame(),
+            cfg, draws, rng, cache, ("system", "rep1"), zero_cache, 2026,
+        )
+        assert len(boot["occupancy"]) == draws
+        assert point["occupancy"] == pytest.approx(2 / len(times))
+    assert sorted({key[-1] for key in cache}) == [0, 32]
