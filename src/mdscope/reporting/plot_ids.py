@@ -80,6 +80,25 @@ def validate_plot_ids(include):
         )
 
 
+def validate_figure_options(options):
+    """Only presentation resolution is configurable per ID for now."""
+    if not isinstance(options, dict):
+        raise ValueError("plots.options must map named plot IDs to option mappings")
+    for identifier, spec in options.items():
+        validate_plot_ids([identifier])
+        if not isinstance(spec, dict) or set(spec) - {"dpi"}:
+            raise ValueError(f"plots.options.{identifier} supports only dpi")
+        if "dpi" in spec and (type(spec["dpi"]) is not int or
+                              not 50 <= spec["dpi"] <= 600):
+            raise ValueError(f"plots.options.{identifier}.dpi must be an integer from 50 to 600")
+
+
+def figure_dpi(cfg, plot_id, default):
+    if plot_id is None:
+        return default
+    return cfg.get("plots", {}).get("options", {}).get(plot_id, {}).get("dpi", default)
+
+
 def id_from_figure_path(path: Path) -> str | None:
     """Recover stable IDs for the supported persisted output filenames."""
     path = Path(path)
