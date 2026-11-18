@@ -136,7 +136,10 @@ def _selection_inputs(spec: dict) -> dict[str, Any]:
 
 def _source(name: str, cfg: dict) -> str:
     if name in FITTED_ANALYSES:
-        return "fitted"
+        # RMSD/RMSF use the source-frame features when structural fitting is
+        # disabled. Calling them "fitted" in the plan would misstate provenance.
+        return ("fitted" if cfg["analyses"]["alignment"].get("enabled", True)
+                else "source")
     if name in SAVED_DATA_ANALYSES:
         return "saved_replica_products"
     if name in CONTROL_ANALYSES:
@@ -215,12 +218,27 @@ def build_plan(cfg: dict, config_path: str | Path, *,
     # Hydration can be implicitly scheduled by enabled SDC4 sugar-water metrics.
     if "hydration" in registered_by_name and not any(
             item["analysis"] == "hydration" for item in selected):
+        meta = ANALYSIS_METADATA["hydration"]
         selected.append({
             "id": "hydration:default",
             "analysis": "hydration", "run_id": "default",
             "label": "Hydration (required by SDC4)",
+            "purpose": meta[0],
             "coordinate_source": "source",
             "selection_inputs": {},
+            "required_topology": list(REQUIRED_TOPOLOGY["hydration"]),
+            "topology_requirements_status": "partial_contract",
+            "statistics_eligibility": [
+                {"family": family,
+                 "status": ("enabled_conditional" if statistics_family_config(cfg, family)
+                            is not None else "disabled")}
+                for family in meta[1]
+            ],
+            "plot_family_eligibility": [
+                {"family": family,
+                 "status": "enabled_conditional" if plot_enabled(cfg, family) else "disabled"}
+                for family in meta[2]
+            ],
             "artifact_catalog_status": "registered_implicit",
         })
 
