@@ -83,7 +83,8 @@ CI thresholds for edge counts or SCC counts.
 | Topology/selection checks | `core/validation.py`, `core/atom_selection.py` | GUI parsing MDAnalysis expressions independently |
 | Atomic writes, archiving, checkpoints | `core/persistence.py`, `core/checkpoints.py` | New output writers inside scientific kernels |
 | Numeric observables and interaction identity | `observables/`, `interactions/interaction_tables.py` | Re-implementing measurements in the planner |
-| Enabled analysis discovery | `pipeline/analysis_selection.py` (also imported by producers) | Planner-only copies of scheduling predicates |\n| Streaming, task dispatch, restart and project finalization | `pipeline/streaming.py`, `pipeline/replica_tasks.py`, `pipeline/runner.py` | An extra trajectory pass for each observer |
+| Enabled analysis discovery | `pipeline/analysis_selection.py` (also imported by producers) | Planner-only copies of scheduling predicates |
+| Streaming, task dispatch, restart and project finalization | `pipeline/streaming.py`, `pipeline/replica_tasks.py`, `pipeline/runner.py` | An extra trajectory pass for each observer |
 | Replica-aware inference, resampling, comparisons | `statistics/` | Treating frames as independent replicates |
 | Figure generation and provenance | `reporting/` | Synthetic-preview-only rendering code |
 | Run/output introspection and persisted output contracts | `planning.py` over `registry.py` and `output_paths.py` | Duplicate expected-output filename lists |
