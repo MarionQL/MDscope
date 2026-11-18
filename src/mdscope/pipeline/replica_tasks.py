@@ -12,15 +12,10 @@ from typing import Callable
 
 import pandas as pd
 
-from ..config import analysis_enabled, analysis_runs
+from ..config import analysis_enabled
 from ..output_paths import FUSED_OUTPUTS
-from ..observables.residue_membrane_distance import run_residue_membrane_distance
-from ..observables.membrane_order import run_membrane_order
 from ..observables.structure_profiles import run_structure_profiles
-from ..interactions.hydrogen_bonds import run_hydrogen_bonds
 from ..mechanisms.potassium_bridge_audit import run_potassium_bridge_audit
-from ..observables.bilayer_normal import run_bilayer_normal
-from ..interactions.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
 
 
 @dataclass(frozen=True)
@@ -28,24 +23,20 @@ class AnalysisTask:
     key: str
     run: Callable
 
+
 def specialized_tasks(cfg):
-    """Yield uniquely checkpointed tasks; avoid re-reading trajectory unnecessarily."""
-    for run in analysis_runs(cfg,"residue_membrane_distance"):
-        yield AnalysisTask("residue-membrane-"+run.run_id,
-            lambda rep,cfg,out,run=run:run_residue_membrane_distance(rep,cfg,out,run.spec,run.run_id))
-    if cfg["analyses"]["membrane_order"].get("enabled",False):
-        yield AnalysisTask("membrane-order",run_membrane_order)
-    if cfg["analyses"]["dssp"].get("enabled",False) or cfg["analyses"]["sasa"].get("enabled",False):
-        yield AnalysisTask("profiles",run_structure_profiles)
-    if cfg["analyses"]["hydrogen_bonds"].get("enabled",False):
-        yield AnalysisTask("hydrogen-bonds",run_hydrogen_bonds)
+    """Only work not scheduled by fused observers, retaining legacy stage keys.
+
+    Non-serial DSSP runs through the structural-profile worker; when DSSP uses
+    that backend, SASA is also excluded from fused extensions and is handled by
+    the same profiles task. Potassium bridge audit remains an independent task.
+    """
+    dssp = cfg.get("analyses", {}).get("dssp", {})
+    if dssp.get("enabled", False) and dssp.get("backend", "serial") != "serial":
+        yield AnalysisTask("profiles", run_structure_profiles)
     if analysis_enabled(cfg, "potassium_bridge_audit"):
         yield AnalysisTask("potassium_bridge_audit", run_potassium_bridge_audit)
 
-    for name,fn in (("bilayer_normal",run_bilayer_normal),
-                    ("lipid_hydrogen_bonds",run_lipid_hydrogen_bonds)):
-        if cfg.get("analyses",{}).get(name,{}).get("enabled",False):
-            yield AnalysisTask(name, fn)
 
 def additional_time_series(repout: Path, cfg):
     """Read optional scalar products without constructing executable tasks.
