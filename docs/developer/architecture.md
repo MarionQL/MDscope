@@ -30,7 +30,9 @@ flowchart TD
 | `mdscope plotting X.yaml` | Optional saved-data figures |
 | `mdscope report STATISTICS_DIR` | Regenerate findings from a completed statistics export |
 
-Read-only `cli.py` commands import the runner, statistical estimators, and topology preflight only when their selected command requires them. `statistics_families.py` owns the lightweight family identifier list consumed by planning and the statistics dispatcher.\n\nKey interfaces: `cli.py`, `config.py` (`analysis_runs`, `iter_replicates`), `registry.py` (`analysis_output_plan`, `required_artifacts`), `output_paths.py` (shared immutable path contracts), `pipeline/analysis_selection.py` (shared enabled-analysis predicates), `pipeline/replica_tasks.py` (`specialized_tasks`, `additional_time_series`), `pipeline/runner.py`, `pipeline/streaming.py`.
+Read-only `cli.py` commands import the runner, statistical estimators, and topology preflight only when their selected command requires them. `statistics_families.py` owns the lightweight family identifier list consumed by planning and the statistics dispatcher.
+
+Key interfaces: `cli.py`, `config.py` (`analysis_runs`, `iter_replicates`), `registry.py` (`analysis_output_plan`, `required_artifacts`), `output_paths.py` (shared immutable path contracts), `pipeline/analysis_selection.py` (shared enabled-analysis predicates), `pipeline/replica_tasks.py` (`specialized_tasks`, `additional_time_series`), `pipeline/runner.py`, `pipeline/streaming.py`.
 
 ## Inspect the current module and call graph
 
@@ -61,15 +63,14 @@ failure. No trajectory, checkpoint or scientific calculation is executed.
 
 ### Static import-cycle review
 
-The first current-source CI inventory for #180 identified two two-module SCCs.
-Both involve **function-local/deferred** imports, not a demonstrated import-time
-cycle. The generated `architecture.json.import_sites` includes the file line
-and `module_load` versus `deferred` classification so reviewers can confirm
-the context before changing code.
+The original #180 inventory identified two deferred import cycles. Removing
+the unused lipid-enrichment runner wrapper eliminates one source-level back
+edge; only the solvation cycle should remain if no new dependencies appeared.
+Confirm against the next CI architecture artifact. `architecture.json.import_sites`
+distinguishes module-load from deferred imports.
 
 | Static cycle | Why it appears | Decision |
 |---|---|---|
-| `observables.lipid_enrichment` ↔ `pipeline.fused_membrane` | The optional `run_lipid_enrichment` wrapper imports the fused runner *inside the function*; the runner imports `LipidFootprint` at module load. | No eager circular import; investigate wrapper ownership only if an actual consumer/API refactor needs it. |
 | `observables.solvation` ↔ `observables.solvation_postprocess` | Solvation finalization lazily imports postprocessors; postprocessors lazily import `rdf_from_counts` and `EPISODE_COLUMNS` from the solvation implementation. | No eager circular import; preserve numerical and episode contracts until a concrete reason to extract shared definitions. |
 
 In this inventory, `pipeline.runner` has many outgoing imports because it
@@ -123,8 +124,8 @@ the owning submodule directly. Neither boundary justifies a second implementatio
 
 - `pipeline/replica_tasks.py` is **execution-only**: it assembles specialized callable tasks, preserves legacy checkpoint keys and collects optional saved scalar tables. The runner uses it for specialized fallbacks after fused scheduling. Do not merge those callable imports into the read-only registry.
 - `observables/lipid_enrichment.py` owns the `LipidFootprint` scientific estimator and saved composition summary; `pipeline/fused_membrane.py` coordinates its execution with other membrane observers in a shared source-frame pass.
-- The `run_lipid_enrichment` convenience entry point delegates to the fused runner through a function-local import. That deferred edge forms a static SCC, but is not evidence of an eager circular import. Remove the wrapper only after auditing all fallback and external callers, retaining output and restart parity.
-- `additional_time_series` currently derives scalar paths from specialized task records. A future cleanup may separate scalar discovery from executable callbacks, but must keep ordering and missing-file semantics unchanged.
+- The unused `run_lipid_enrichment` fused-execution wrapper and its redundant specialized task entry were removed. The production runner dispatches lipid enrichment through the shared fused membrane path and retains its checkpoint and output verification.
+- `additional_time_series` now reads optional scalar paths directly from the canonical `output_paths.FUSED_OUTPUTS` mapping. It preserves the established ordering (local environment, lipid enrichment, bilayer normal, SDC4, lipid contacts) and skips missing files.
 
 ## Files and lifecycle
 
