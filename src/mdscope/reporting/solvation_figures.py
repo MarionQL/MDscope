@@ -134,19 +134,23 @@ def solvation_survival_figure(system_repouts, *, max_curves=8):
 
 def plot_solvation(cfg, root, system_repouts):
     """Render a few solvation diagnostics when explicitly requested."""
-    from ..config import ensure_dir, plot_enabled
+    from ..config import ensure_dir, plot_enabled, figure_enabled
     from .figure_inventory import current_statistics
 
     if (not cfg.get("plots", {}).get("families", {}).get("solvation", False)
             or not plot_enabled(cfg, "solvation")):
         return
+    # Dispatch selected figures lazily: do not read unnecessary saved tables.
     figures = {
-        "shell_rdf": solvation_rdf_figure(root, system_repouts)
+        "shell_rdf": lambda: solvation_rdf_figure(root, system_repouts)
         if current_statistics(cfg, root, "solvation_rdfs") else None,
-        "water_and_ions": solvation_timeseries_figure(system_repouts),
-        "contact_survival": solvation_survival_figure(system_repouts),
+        "water_and_ions": lambda: solvation_timeseries_figure(system_repouts),
+        "contact_survival": lambda: solvation_survival_figure(system_repouts),
     }
-    for name, figure in figures.items():
+    for name, make in figures.items():
+        if not figure_enabled(cfg, f"solvation:{name}"):
+            continue
+        figure = make()
         if figure is not None:
             directory = ensure_dir(Path(root) / "project_summary/figures/solvation")
             (directory / f"{name}.png").write_bytes(figure[0].getvalue())
