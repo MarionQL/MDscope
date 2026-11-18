@@ -77,14 +77,10 @@ def inspect_package(root: Path) -> dict:
 
     calls: set[tuple[str, str]] = set()
     for func_name, func_node in functions.items():
-        module = next((m for m in modules if func_name.startswith(m + ".")
-                       and func_name.removeprefix(m + ".").count(".") <= 1
-                       and m == func_name.rsplit(".", 1)[0].rsplit(".", 1)[0]
-                       if "." in func_name.removeprefix(m + ".")), None)
-        # Prefer longest module prefix, so methods under subpackages resolve.
-        if module is None:
-            module = max((m for m in modules if func_name.startswith(m + ".")),
-                         key=len)
+        # An __init__.py package name prefixes child modules: choose the
+        # most specific module, not its parent package.
+        module = max((m for m in modules if func_name.startswith(m + ".")),
+                     key=len)
         local_class = func_name.removeprefix(module + ".").rsplit(".", 1)[0]
         if local_class == func_name.removeprefix(module + "."):
             local_class = None
@@ -182,10 +178,13 @@ def write_dot(path: Path, name: str, nodes: list[str], edges: list[list[str]]):
 
 
 def git_revision(repo_root: Path) -> str | None:
-    result = subprocess.run(
-        ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
-        capture_output=True, text=True, check=False,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=False,
+        )
+    except OSError:
+        return None
     return result.stdout.strip() if result.returncode == 0 else None
 
 
