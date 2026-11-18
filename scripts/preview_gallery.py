@@ -33,7 +33,7 @@ def _figure_group(name: str) -> tuple[str, str, str]:
     parts = Path(name).parts
     if len(parts) > 2 and parts[0].startswith("condition_"):
         return parts[0], parts[-1], parts[1]
-    if len(parts) > 5 and parts[:3] == ("project_summary", "figures", "sdc4"):
+    if len(parts) == 5 and parts[:3] == ("project_summary", "figures", "sdc4"):
         return parts[3], parts[-1], "all replicates"
     return "project", parts[-1], "all conditions"
 
