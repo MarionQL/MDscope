@@ -236,7 +236,7 @@ def test_selected_lipid_contact_time_series_still_reads_needed_matrix(tmp_path):
     cfg, repouts = _fake_data(tmp_path)
     rep = repouts["condition_A"][0]
     file = rep / "extensions/lipid_contacts/matrix.parquet"
-    file.parent.mkdir(parents=True)
+    file.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame({
         "time_ps": [0., 1000.],
         "leaflet": ["upper", "upper"],
