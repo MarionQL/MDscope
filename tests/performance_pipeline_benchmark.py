@@ -91,6 +91,9 @@ def _stats_experiment(source, root, frames, draws, template):
         "bootstrap_draws": draws,
         "elapsed_seconds": perf_counter() - started,
         "profile": _read(root / "project_summary/statistics/statistics_phase_profile.json"),
+        "interaction_detail": _read(
+            root / "project_summary/statistics/interactions/interaction_phase_profile.json"
+        ),
         "note": ("One replica per condition: this measures CPU/I/O only, "
                  "not inferential power or scientific uncertainty."),
     }
