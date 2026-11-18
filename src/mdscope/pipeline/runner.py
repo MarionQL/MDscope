@@ -451,21 +451,6 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
                              else "fused-only"})
 
     for task in specialized_tasks(cfg):
-        if task.key.startswith("residue-membrane-") and task.key[len("residue-membrane-"):] in distance_names:
-            continue
-        if task.key in {"membrane-order", "bilayer_normal"}:
-            continue
-        if task.key in {"hydrogen-bonds", "lipid_hydrogen_bonds"} and {
-            "hydrogen-bonds": "hydrogen_bonds",
-            "lipid_hydrogen_bonds": "lipid_hydrogen_bonds",
-        }[task.key] in extension_names:
-            continue
-        if task.key == "profiles" and all(
-            name in extension_names
-            for name in ("dssp", "sasa")
-            if cfg["analyses"][name].get("enabled", False)
-        ):
-            continue
         key=prefix+"-"+task.key
         if task.key == "potassium_bridge_audit":
             # The complete audit directory is published atomically. Reuse it
