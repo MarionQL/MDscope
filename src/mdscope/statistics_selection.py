@@ -131,3 +131,15 @@ def simple_family_selection(cfg, family):
     if selection is None or family not in selection:
         return None
     return {tuple(item[key] for key in keys) for item in selection[family]}
+
+
+def studio_metric_selection_defaults():
+    """New Studio configs opt out of all inference; old YAML stays legacy-all.
+
+    The Studio authoring layer should write this explicit mapping to YAML,
+    rather than changing DEFAULTS and silently invalidating existing projects.
+    """
+    return {family: [] for family in (
+        "time_series", "profiles", "interactions", "solvation_rdfs",
+        "diffusion", "coupling",
+    )}
