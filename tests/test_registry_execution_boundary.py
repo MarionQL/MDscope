@@ -67,13 +67,12 @@ def test_specialized_profiles_only_when_dssp_requires_workers(project):
     for name in ("dssp", "sasa"):
         cfg["analyses"][name]["enabled"] = True
 
-    assert "dssp" in __import__(
-        "mdscope.pipeline.analysis_selection", fromlist=["extensions_enabled_names"]
-    ).extensions_enabled_names(cfg)
+    from mdscope.pipeline.analysis_selection import extensions_enabled_names
+
+    assert "dssp" in extensions_enabled_names(cfg)
     assert [task.key for task in specialized_tasks(cfg)] == []
 
     cfg["analyses"]["dssp"]["backend"] = "parallel"
-    from mdscope.pipeline.analysis_selection import extensions_enabled_names
     assert "dssp" not in extensions_enabled_names(cfg)
     assert "sasa" not in extensions_enabled_names(cfg)
     assert [task.key for task in specialized_tasks(cfg)] == ["profiles"]
