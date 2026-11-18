@@ -93,7 +93,7 @@ def test_fused_only_analysis_families_have_no_specialized_task(project):
         "residue_membrane_distance", "membrane_order", "bilayer_normal",
         "hydrogen_bonds", "lipid_hydrogen_bonds", "sasa", "local_environment",
     ):
-        cfg["analyses"][name]["enabled"] = True
+        cfg["analyses"].setdefault(name, {})["enabled"] = True
     cfg["analyses"]["dssp"]["enabled"] = True
     cfg["analyses"]["dssp"]["backend"] = "serial"
     assert list(specialized_tasks(cfg)) == []
