@@ -100,3 +100,17 @@ def test_unknown_saved_identity_fails_before_statistics_outputs(tmp_path):
     with pytest.raises(ValueError, match="Unknown saved time-series metric"):
         analyze_time_series(cfg, tmp_path, paths)
     assert not (tmp_path / "project_summary/statistics/time_series").exists()
+
+
+def test_conditional_availability_can_be_selected_without_raw_metric(tmp_path):
+    from mdscope.statistics.time_series import collect_time_series
+    rep = tmp_path / "rep"
+    (rep / "summary").mkdir(parents=True)
+    pd.DataFrame({
+        "time_ps": np.arange(8, dtype=float),
+        "sdc4_local_upper_height_A": [1, 2, np.nan, 4, 5, 6, 7, 8],
+    }).to_parquet(rep / "summary/timeseries.parquet")
+    key = (None, "sdc4_local_upper_height_A_available_fraction")
+    series = collect_time_series(rep, selected={key})
+    assert set(series) == {key}
+    np.testing.assert_array_equal(series[key]["value"].to_numpy(), [1, 1, 0, 1, 1, 1, 1, 1])
