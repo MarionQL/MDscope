@@ -304,7 +304,18 @@ def render_preview(root: Path, *, include: list[str] | None = None):
         "input_data_kind": "deterministic synthetic Parquet",
         "requested_plot_ids": include,
         "plots": [str(path.relative_to(root)) for path in figures],
+        "plot_ids": {},
     }
+    try:
+        from mdscope.reporting.plot_ids import id_from_figure_path
+    except ImportError:
+        id_from_figure_path = None
+    if id_from_figure_path is not None:
+        record["plot_ids"] = {
+            str(path.relative_to(root)): identifier
+            for path in figures
+            if (identifier := id_from_figure_path(path)) is not None
+        }
     (root / "preview_manifest.json").write_text(json.dumps(record, indent=2) + "\n")
     return record
 
