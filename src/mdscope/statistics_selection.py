@@ -29,7 +29,8 @@ def validate_metric_selection(stats):
                         or ("interaction" in entry and
                             (not isinstance(entry["interaction"], str) or not entry["interaction"].strip()))
                         or ("metric" in entry and
-                            entry["metric"] not in INTERACTION_METRICS)):
+                            (not isinstance(entry["metric"], str)
+                             or entry["metric"] not in INTERACTION_METRICS))):
                     raise ValueError(
                         "statistics.metric_selection.interactions entries require a "
                         "nonempty kind, optional exact interaction and a supported metric"
