@@ -1011,6 +1011,10 @@ def statistics_family_config(cfg, family):
     option = {"enabled": option} if isinstance(option, bool) else option
     if not stats.get("enabled", True) or not option.get("enabled", True):
         return None
+    if family == "time_series":
+        selection = stats.get("metric_selection")
+        if selection is not None and selection.get("time_series") == []:
+            return None
     if not option and stats.get("bootstrap", True):
         return cfg
     result = deepcopy(cfg)
