@@ -12,14 +12,13 @@ from typing import Callable
 import pandas as pd
 
 from ..config import analysis_enabled, analysis_runs
-from ..registry import FUSED_OUTPUTS
+from ..output_paths import FUSED_OUTPUTS
 from ..observables.residue_membrane_distance import run_residue_membrane_distance
 from ..observables.membrane_order import run_membrane_order
 from ..observables.structure_profiles import run_structure_profiles
 from ..interactions.hydrogen_bonds import run_hydrogen_bonds
 from ..mechanisms.local_environment import run_local_environment
 from ..mechanisms.potassium_bridge_audit import run_potassium_bridge_audit
-from ..observables.lipid_enrichment import run_lipid_enrichment
 from ..observables.bilayer_normal import run_bilayer_normal
 from ..interactions.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
 
@@ -48,27 +47,26 @@ def specialized_tasks(cfg):
     if analysis_enabled(cfg, "potassium_bridge_audit"):
         yield AnalysisTask("potassium_bridge_audit", run_potassium_bridge_audit)
 
-    for name,fn in (("lipid_enrichment",run_lipid_enrichment),
-                    ("bilayer_normal",run_bilayer_normal),
+    for name,fn in (("bilayer_normal",run_bilayer_normal),
                     ("lipid_hydrogen_bonds",run_lipid_hydrogen_bonds)):
         if cfg.get("analyses",{}).get(name,{}).get("enabled",False):
             output = FUSED_OUTPUTS[name] if name != "lipid_hydrogen_bonds" else None
             yield AnalysisTask(name,fn,output)
 
-def additional_time_series(repout:Path,cfg):
-    """Discover scalar series from registered analysis output contracts."""
-    output=[]
-    for task in specialized_tasks(cfg):
-        if task.scalar_output is None:continue
-        path=Path(repout)/task.scalar_output
-        if path.exists():
-            output.append(pd.read_parquet(path))
-    if cfg.get("analyses", {}).get("sdc4_mechanisms", {}).get("enabled", False):
-        path = Path(repout) / "extensions/sdc4_mechanisms/timeseries.parquet"
-        if path.exists():
-            output.append(pd.read_parquet(path))
-    if cfg.get('analyses', {}).get('lipid_contacts', {}).get('enabled', False):
-        path = Path(repout)/'extensions/lipid_contacts/timeseries.parquet'
+def additional_time_series(repout: Path, cfg):
+    """Read optional scalar products without constructing executable tasks.
+
+    The ordering is a persisted summary contract: local environment, lipid
+    footprint, bilayer normal, SDC4 and lipid contacts.
+    """
+    output = []
+    for name in (
+        "local_environment", "lipid_enrichment", "bilayer_normal",
+        "sdc4_mechanisms", "lipid_contacts",
+    ):
+        if not analysis_enabled(cfg, name):
+            continue
+        path = Path(repout) / FUSED_OUTPUTS[name]
         if path.exists():
             output.append(pd.read_parquet(path))
     return output
