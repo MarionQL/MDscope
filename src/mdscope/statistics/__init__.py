@@ -10,8 +10,7 @@ from .coverage import write_contrast_coverage
 from .coupling import analyze_coupling
 from .windows import matched_grid
 
-# Shared with the read-only plan; keep in sync with analyze_project dispatch below.
-STATISTICS_FAMILIES = ("time_series", "profiles", "interactions", "solvation_rdfs", "diffusion", "coupling")
+from ..statistics_families import STATISTICS_FAMILIES
 
 
 def _input_snapshot(root, replicate_paths):
