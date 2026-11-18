@@ -6,7 +6,7 @@ import pandas as pd
 from pyarrow.parquet import read_schema
 
 from ..config import atomic_parquet, statistics_family_config
-from ..statistics_selection import simple_family_selection
+from ..statistics_selection import simple_family_selection, metric_inference
 from .common import _regular_times
 from .replicate_contrasts import replicate_mean_contrasts
 
@@ -106,8 +106,15 @@ def analyze_coupling(cfg, root, system_repouts):
         return
     dest = Path(root) / "project_summary" / "statistics" / "coupling"
     values = frame.rename(columns={"pearson_block_r": "value"})
-    comparisons = replicate_mean_contrasts(
-        values, ["mechanism", "x", "y"], system_repouts, cfg["statistics"]
+    inference_values = values.loc[
+        values.mechanism.map(
+            lambda mechanism: metric_inference(cfg, "coupling", (str(mechanism),))
+        )
+    ]
+    comparisons = (
+        replicate_mean_contrasts(
+            inference_values, ["mechanism", "x", "y"], system_repouts, cfg["statistics"]
+        ) if not inference_values.empty else pd.DataFrame()
     )
     atomic_parquet(dest / "replicate_correlations.parquet", frame)
     if not comparisons.empty:
