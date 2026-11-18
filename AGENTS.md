@@ -12,6 +12,15 @@ Read only the guides relevant to the change; do not duplicate them here.
 | SDC4-specific reference cases | [SDC4 fixtures](docs/developer/sdc4-fixtures.md) |
 | YAML, observable options, workflows | [Configuration](docs/configuration.md) · [Analyses](docs/analyses.md) · [Workflows](docs/workflows.md) |
 
+## Never add
+
+- Dead/orphaned code, stale exports, unreachable branches or superseded implementation paths.
+- Broad exception handling, swallowed errors, or redundant defensive checks that obscure failures.
+- Duplicated algorithms, unnecessary dependencies, or speculative configuration/features.
+- Verbose docs/comments where a short contract or link suffices.
+
+Use **GitHub Flow** and the issue title/acceptance conventions in [Contributing](docs/developer/contributing.md). Keep changes on a focused issue branch and PR, not directly on `main`.
+
 ## Before merging
 
 1. Identify intended behavior, inputs/outputs, units, populations, provenance and failure outcomes. Separate **numerical correctness** from **physical interpretation**.
