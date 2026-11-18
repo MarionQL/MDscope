@@ -137,8 +137,10 @@ def plot_solvation(cfg, root, system_repouts):
     from ..config import ensure_dir, plot_enabled, figure_enabled
     from .figure_inventory import current_statistics
 
-    if (not cfg.get("plots", {}).get("families", {}).get("solvation", False)
-            or not plot_enabled(cfg, "solvation")):
+    opts = cfg.get("plots", {})
+    if (not plot_enabled(cfg, "solvation")
+            or (opts.get("include") is None and not
+                opts.get("families", {}).get("solvation", False))):
         return
     # Dispatch selected figures lazily: do not read unnecessary saved tables.
     figures = {
