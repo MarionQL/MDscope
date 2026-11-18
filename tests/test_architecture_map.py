@@ -129,6 +129,11 @@ def test_pipeline_graphs_reuse_live_architecture_inventory(tmp_path):
     inventory = json.loads((output / "architecture.json").read_text())
     assert "mdscope.pipeline.streaming" in inventory["modules"]
     execution = (output / "execution.dot").read_text()
+    recovery = (output / "recovery.dot").read_text()
+    assert "digraph recovery" in recovery
+    assert '"invalid" -> "abort"' in recovery
+    assert '"pending" -> "shared"' in recovery
+    assert '"checkpoint" -> "replay_stream"' in recovery
     assert "streaming: shared primary frame pass" in execution
     assert '"fusedonly" [' in execution
     assert '"choice" -> "fusedonly"' in execution
