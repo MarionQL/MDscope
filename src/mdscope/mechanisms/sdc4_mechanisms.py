@@ -244,7 +244,7 @@ def _order_by_residue(o, box, axis):
 
 
 class SDC4Mechanisms:
-    def __init__(self, universe, cfg, repout):
+    def __init__(self, universe, cfg, repout, *, cache_dir=None):
         self.u, self.cfg, self.repout = universe, cfg, Path(repout)
         self.spec = cfg["analyses"]["sdc4_mechanisms"]
         s = self.spec
@@ -252,7 +252,8 @@ class SDC4Mechanisms:
         if self.axis != 2:
             raise ValueError("sdc4_mechanisms currently supports a z-normal membrane only")
         self.box = _box(universe)
-        self.cache = ensure_dir(self.repout / "cache" / "sdc4_mechanisms")
+        self.cache = ensure_dir(Path(cache_dir) if cache_dir is not None
+                                else self.repout / "cache" / "sdc4_mechanisms")
         self.rows = defaultdict(list)
         self.frame_count = 0
         self.timings = defaultdict(float)
