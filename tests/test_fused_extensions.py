@@ -165,8 +165,9 @@ def test_local_environment_measurement_returns_topology_residue_contacts():
     state = prepare_local_environment(u, cfg)
     row, contacts = local_environment_frame(state, u, 10.0)
     assert row["time_ps"] == 10.0
-    assert row["local_protein_lipid_contact_residues_count"] >= 1
-    assert row["local_POPC_contact_residues_count"] >= 0
-    assert row["local_POPE_contact_residues_count"] >= 0
-    assert all(time == 10.0 and residue in {0, 1} and count > 0
-               for time, residue, count in contacts)
+    # Direct Euclidean reference for frame 0: protein residue 0 touches
+    # POPC, while residue 1 touches both POPC and POPE within 5 Angstrom.
+    assert row["local_protein_lipid_contact_residues_count"] == 2
+    assert row["local_POPC_contact_residues_count"] == 2
+    assert row["local_POPE_contact_residues_count"] == 1
+    assert contacts == [(10.0, 0, 1), (10.0, 1, 2)]
