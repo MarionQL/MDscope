@@ -255,18 +255,25 @@ def build_plan(cfg: dict, config_path: str | Path, *,
             "independent_condition_units": "simulation_replicates",
             "metric_selection": (
                 cfg.get("statistics", {}).get("metric_selection", {}).get(family)
-                if family in {"time_series", "interactions"} and
+                if family in {"time_series", "interactions", "profiles",
+                               "solvation_rdfs", "diffusion", "coupling"} and
                 cfg.get("statistics", {}).get("metric_selection") is not None
                 else None
             ),
             "metric_identity": (
                 ["group", "metric"] if family == "time_series"
                 else ["kind", "interaction", "metric"] if family == "interactions"
+                else ["profile"] if family == "profiles"
+                else ["solvent", "target_class", "site_class"] if family == "solvation_rdfs"
+                else ["metric"] if family == "diffusion"
+                else ["mechanism"] if family == "coupling"
                 else None
             ),
             "metric_identity_status": (
                 "saved_data_dependent; no dynamic identities invented"
-                if family in {"time_series", "interactions"} else "not_yet_registered"
+                if family in {"time_series", "interactions", "profiles",
+                               "solvation_rdfs", "diffusion", "coupling"}
+                else "not_yet_registered"
             ),
         })
     if (cfg.get("statistics", {}).get("matched_window_ps") is not None and
