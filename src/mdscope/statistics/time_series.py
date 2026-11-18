@@ -98,17 +98,21 @@ def collect_time_series(repout: Path, *, sources: set[str] | None = None,
             if not relevant:
                 continue
             requested = {metric for _, metric in relevant if metric in available}
-            # Conditional-availability and HS episode metrics are derived from
-            # another raw column. Preserve those source columns, not fake zeros.
-            derived = any(
-                metric.endswith("_available_fraction")
-                or metric.endswith(("_hs_contacts_during_contact", "_hs_any_contact_state"))
-                for _, metric in relevant
-            )
-            if not requested and not derived:
+            # Derived metrics depend on a single persisted source column.
+            # Avoid reading unrelated time-series columns for one selector.
+            for _, metric in relevant:
+                source = None
+                if metric.endswith("_available_fraction"):
+                    source = metric.removesuffix("_available_fraction")
+                elif metric.endswith(("_hs_contacts_during_contact", "_hs_any_contact_state")):
+                    source = metric.removesuffix("_hs_contacts_during_contact").removesuffix(
+                        "_hs_any_contact_state") + "_glycan_contacts"
+                if source in available:
+                    requested.add(source)
+            if not requested:
                 continue
-            columns = None if derived else ["time_ps", *sorted(requested)]
-            if columns is not None and group_col:
+            columns = ["time_ps", *sorted(requested - {"time_ps"})]
+            if group_col:
                 columns.insert(0, group_col)
             data = pd.read_parquet(path, columns=columns)
         else:
