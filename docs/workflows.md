@@ -80,7 +80,32 @@ statistics:
 
 Profile names and diffusion metric strings above are illustrative: check the
 saved outputs or `mdscope plan` and use the exact names in your data. An
-empty list for any family disables that family's statistical work. Unknown
+empty list for any family disables that family's statistical work. Every
+selected metric defaults to `inference: true`; set `inference: false`
+to retain descriptive point estimates without computing block-bootstrap or
+hierarchical CIs, permutation p-values, or other inferential contrasts:
+
+```yaml
+statistics:
+  metric_selection:
+    time_series:
+      - {group: PROA, metric: rmsd_A, inference: true}
+      - {metric: membrane_thickness_A, inference: false}
+    interactions:
+      - {kind: salt_bridges, metric: occupancy, inference: false}
+plots:
+  # Statistical figures are independently controlled by explicit plot IDs.
+  include:
+    - "time_series:rmsd_A:bootstrap_table"
+```
+
+An inference-disabled metric cannot produce a valid interval or p-value;
+columns retained for output compatibility are null, with zero bootstrap draws.
+For whole-curve RDF selectors, `inference: false` retains descriptive
+g(r) and replicate dispersion but disables first-shell contrasts. For
+diffusion and coupling it retains per-replica estimates without
+between-condition inferential contrasts. Missing selectors preserve the
+original numerical behavior. Unknown
 saved identities are rejected before numerical outputs are written. RDF
 selection includes all radial bins for the selected chemical class, preserving
 shell integration and replica-level inference; diffusion selection includes
