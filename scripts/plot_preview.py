@@ -188,6 +188,40 @@ def create_fixture(root: Path):
                 "sdc4_proline_A_1_psi_deg": 110 + 35*np.cos(t),
             }).to_parquet(mechanism_dir / "timeseries.parquet", index=False)
 
+            grid = np.linspace(-24., 24., 13)
+            mesh_x, mesh_y = np.meshgrid(
+                (grid[:-1] + grid[1:]) / 2,
+                (grid[:-1] + grid[1:]) / 2, indexing="ij"
+            )
+            layer = np.exp(-(mesh_x**2 + mesh_y**2) / 240)
+            density = np.stack([0.13 + layer / 8,
+                                0.10 + layer / 12]).astype(np.float32)
+            fold = np.stack([0.85 + 0.4*layer,
+                             0.95 + 0.3*layer]).astype(np.float32)
+            np.savez_compressed(
+                mechanism_dir / "lipid_density_maps.npz",
+                species=np.array(["POPC", "DOPC"]),
+                leaflet=np.array(["upper", "lower"]),
+                density_per_nm2=density,
+                enrichment_fold=fold,
+                x_edges_A=grid, y_edges_A=grid,
+            )
+            pd.DataFrame([
+                {
+                    "region": region, "species": lipid, "leaflet": "upper",
+                    "moiety": moiety, "contact_fraction": 0.12 + 0.05*ridx
+                    + 0.07*lidx + 0.01*system_index,
+                    "local_composition_enrichment": 0.8 + 0.1*ridx + .15*lidx,
+                    "matched_local_contact_fraction": 0.09 + .06*ridx,
+                    "matched_local_composition_enrichment": 0.7 + .14*ridx,
+                }
+                for ridx, region in enumerate(("TM helix", "Acidic motif", "PRM"))
+                for lidx, lipid in enumerate(("POPC", "DOPC"))
+                for moiety in ("any", "glycan", "ceramide_head", "ceramide_tail")
+            ]).to_parquet(
+                mechanism_dir / "lipid_region_specificity.parquet", index=False
+            )
+
         vals = 0.24 + 0.025 * system_index + .006 + 0.065 * np.sin(positions / 2.5)
         condition_rows.extend({
             "system": system, "profile": "lipid_order__POPC__sn1",
