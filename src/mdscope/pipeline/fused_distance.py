@@ -21,8 +21,7 @@ from ..observables.residue_membrane_distance import (
 )
 
 
-def enabled_names(cfg):
-    return tuple(run.run_id for run in analysis_runs(cfg, "residue_membrane_distance"))
+from .analysis_selection import distance_enabled_names as enabled_names
 
 
 class FusedDistances:
