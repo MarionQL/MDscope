@@ -365,3 +365,68 @@ def test_selected_interaction_kind_honors_explicit_exclusion(tmp_path):
     plot_all(cfg, tmp_path, repouts)
     assert not list((tmp_path / "project_summary/figures").rglob("*.png"))
 
+
+def test_sdc4_condition_figures_keep_replica_traces_separate(tmp_path, monkeypatch):
+    from mdscope.reporting import sdc4_condition_figures as module
+    from mdscope.reporting.sdc4_figures import plot_sdc4_mechanisms
+
+    cfg, repouts = _fake_data(tmp_path)
+    cfg["plots"]["include"] = [
+        "sdc4:condition_A:nxip_height_occlusion_joint",
+        "sdc4:condition_A:lipid_density_maps",
+        "sdc4:condition_A:lipid_region_mean_contact_fraction",
+    ]
+    observed = []
+    original_save = module._save
+
+    def check_legend(fig, config, out, system, stem, **kwargs):
+        if stem == "nxip_height_occlusion_joint":
+            for ax in fig.axes:
+                legend = ax.get_legend()
+                assert legend is not None
+                labels = [text.get_text() for text in legend.get_texts()]
+                assert set(labels) == {"rep1", "rep2"}
+                # Separate scatter collections: no pooled regression.
+                assert len(ax.collections) == 2
+            observed.append(True)
+        return original_save(fig, config, out, system, stem, **kwargs)
+
+    monkeypatch.setattr(module, "_save", check_legend)
+    plot_sdc4_mechanisms(cfg, tmp_path, repouts)
+
+    root = tmp_path / "project_summary/figures/sdc4/condition_A"
+    assert sorted(path.name for path in root.glob("*.png")) == [
+        "lipid_density_maps.png", "lipid_region_mean_contact_fraction.png",
+        "nxip_height_occlusion_joint.png",
+    ]
+    assert observed
+    assert not (tmp_path / "project_summary/figures/sdc4/condition_B").exists()
+    for paths in repouts.values():
+        for repout in paths:
+            assert not list((repout / "extensions/sdc4_mechanisms").glob("*.png"))
+            assert (repout / "extensions/sdc4_mechanisms/timeseries.parquet").is_file()
+
+
+def test_condition_sdc4_missing_replica_is_visible_not_silently_averaged(tmp_path, monkeypatch):
+    import pandas as pd
+    from mdscope.reporting import sdc4_condition_figures as module
+    from mdscope.reporting.sdc4_figures import plot_sdc4_mechanisms
+
+    cfg, repouts = _fake_data(tmp_path)
+    cfg["plots"]["include"] = ["sdc4:condition_A:lipid_region_mean_contact_fraction"]
+    path = repouts["condition_A"][1] / "extensions/sdc4_mechanisms/lipid_region_specificity.parquet"
+    path.unlink()
+    inspected = []
+    original = module._save
+
+    def check_missing(fig, config, out, system, stem, **kwargs):
+        assert "1/2" in fig._suptitle.get_text()
+        assert any("Not measured" in text.get_text()
+                   for ax in fig.axes for text in ax.texts)
+        inspected.append(stem)
+        return original(fig, config, out, system, stem, **kwargs)
+
+    monkeypatch.setattr(module, "_save", check_missing)
+    plot_sdc4_mechanisms(cfg, tmp_path, repouts)
+    assert inspected == ["lipid_region_mean_contact_fraction"]
+
