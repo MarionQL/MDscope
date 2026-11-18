@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config, atomic_parquet, ensure_dir
+from ..statistics_selection import simple_family_selection
 from .replicate_contrasts import replicate_mean_contrasts
 
 
@@ -26,6 +27,10 @@ def analyze_solvation_rdfs(cfg, root, system_repouts):
         return
     if not cfg.get("statistics", {}).get("enabled", True):
         return
+    selected = simple_family_selection(cfg, "solvation_rdfs")
+    if selected is not None and not selected:
+        return
+    discovered = set()
     frames = []
     for system, reps in system_repouts.items():
         for repout in reps:
@@ -39,11 +44,24 @@ def analyze_solvation_rdfs(cfg, root, system_repouts):
                     f"incomplete solvation RDF in {source}: {sorted(required-set(rdf))}")
             if rdf.empty:
                 continue
+            if selected is not None:
+                identities = set(rdf[["solvent", "target_class", "site_class"]]
+                                 .itertuples(index=False, name=None))
+                discovered.update(identities)
+                rdf = rdf.loc[pd.MultiIndex.from_frame(
+                    rdf[["solvent", "target_class", "site_class"]]
+                ).isin(selected)]
+                if rdf.empty:
+                    continue
             if rdf.duplicated(RDF_KEYS).any():
                 raise ValueError(f"duplicate RDF radial bins in {source}")
             frames.append(rdf[RDF_KEYS+["g_bulk"] +
                 (["g_aqueous_reference"] if "g_aqueous_reference" in rdf else [])].assign(
                 system=system, replicate=Path(repout).name))
+    if selected is not None:
+        missing = selected - discovered
+        if missing:
+            raise ValueError(f"Unknown saved solvation RDF identities: {sorted(missing)}")
     if not frames:
         return
     reps = pd.concat(frames, ignore_index=True)
