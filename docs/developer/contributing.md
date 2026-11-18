@@ -15,6 +15,15 @@
 | `pipeline/` | Shared streaming, orchestration, finalization |
 | `cli.py`, `config.py`, `registry.py` | CLI, YAML and task discovery |
 
+## Visual review for plotting changes
+
+```bash
+python scripts/plot_preview.py --output /tmp/mdscope-preview
+# Open PNGs under /tmp/mdscope-preview/project_summary/figures in VS Code
+```
+
+Previews call the **production** time-series plotter using deterministic fake Parquet data (no TPR/XTC or statistics). Every PNG is marked **SYNTHETIC – NOT MD RESULTS**. Plotting-related PRs run the `MDscope figure review` GitHub Action, which renders identical fixture data with base/head code and uploads `mdscope-figure-review` containing an `index.html` before/after gallery and pixel differences. Inspect labels, legends, axes, units and clipping; the gallery is not an automatic scientific-validity gate. Add fixture schemas for other renderers as they are refactored, rather than building substitute drawing implementations.
+
 ## Change checklist
 
 - **Scope:** inspect callers, relevant contracts, tests and docs. Change one coherent responsibility at a time; avoid speculative abstractions.
