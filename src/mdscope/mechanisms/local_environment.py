@@ -18,7 +18,7 @@ from ..config import atomic_parquet, ensure_dir, time_ps
 
 def prepare_local_environment(universe, cfg):
     """Resolve topology selections once, before frame iteration."""
-    settings = cfg["analyses"]["local_environment"]
+    settings = cfg.get("analyses", {}).get("local_environment", {})
     protein = heavy(universe.select_atoms(
         settings.get("protein_selection") or cfg["selections"]["protein"]
     ))
