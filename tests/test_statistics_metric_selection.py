@@ -222,4 +222,9 @@ def test_interaction_selected_rng_invariant_to_other_requested_identities(tmp_pa
         original = pd.read_parquet(tmp_path / "one" / root / filename)
         expanded = pd.read_parquet(tmp_path / "two" / root / filename)
         expanded = expanded.loc[expanded.interaction.eq(key)].reset_index(drop=True)
+        # BH q-values correctly depend on the selected multiple-testing
+        # universe; point estimates, CIs and raw p-values must not.
+        if "q_value" in original:
+            original = original.drop(columns="q_value")
+            expanded = expanded.drop(columns="q_value")
         pd.testing.assert_frame_equal(original, expanded, check_exact=True)
