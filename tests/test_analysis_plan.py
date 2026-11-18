@@ -241,3 +241,26 @@ def test_schema_only_statistics_metric_contracts_are_discoverable(tmp_path, proj
                       "solvation_rdfs", "diffusion", "coupling"}
     )
     assert not root.exists()
+
+
+def test_schema_only_metric_contract_includes_sources_and_inferential_figures(tmp_path, project):
+    path, root = project("metric_catalog")
+    cfg = yaml.safe_load(path.read_text())
+    cfg["statistics"]["metric_selection"] = {
+        "time_series": [{"group": "PROA", "metric": "rmsd_A", "inference": False}]
+    }
+    cfg["plots"]["include"] = ["time_series:rmsd_A:comparison_table"]
+    path.write_text(yaml.safe_dump(cfg))
+    plan = build_plan(load_config(path, check_paths=False), path)
+    by_family = {row["family"]: row for row in plan["statistics_families"]}
+    chosen = by_family["time_series"]
+    assert chosen["metric_contract"]["inferential_selection"] == (
+        "per_entry_inference_boolean_default_true"
+    )
+    assert chosen["metric_contract"]["configured_statistical_figure_ids"] == [
+        "time_series:rmsd_A:comparison_table"
+    ]
+    assert any(item["analysis"] == "rmsd" and item["run_id"] == "default"
+               for item in chosen["candidate_source_runs"])
+    assert "replicate_independence" in chosen["metric_contract"]["eligibility_requirements"]
+    assert not root.exists()
