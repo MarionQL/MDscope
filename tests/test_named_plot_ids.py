@@ -113,3 +113,98 @@ def test_solvation_not_selected_never_opens_rdf(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "solvation_timeseries_figure", lambda *args: None)
     cfg = {"plots": {"enabled": True, "include": ["solvation:water_and_ions"]}}
     module.plot_solvation(cfg, tmp_path, {"condition": []})
+
+
+def test_sdc4_replica_selection_does_not_open_unselected_maps(tmp_path):
+    import numpy as np
+    import pandas as pd
+    from mdscope.reporting.sdc4_figures import plot_sdc4_mechanisms
+
+    rep = tmp_path / "condition" / "rep1"
+    folder = rep / "extensions/sdc4_mechanisms"
+    folder.mkdir(parents=True)
+    # A corrupt non-selected map must never be opened.
+    (folder / "lipid_density_maps.npz").write_bytes(b"not npz")
+    (folder / "lipid_region_specificity.parquet").write_bytes(b"not parquet")
+    t = np.linspace(0, 1, 20)
+    pd.DataFrame({
+        "time_ps": t * 1000,
+        "sdc4_ectodomain_A_height_A": 17 + 2*t,
+        "sdc4_ectodomain_B_height_A": 18 + t,
+        "sdc4_motif_NxIP_PROA_1_steric_occlusion_fraction": t,
+        "sdc4_motif_NxIP_PROB_1_steric_occlusion_fraction": 1-t,
+    }).to_parquet(folder / "timeseries.parquet")
+    cfg = {
+        "plots": {"enabled": True,
+                  "include": ["sdc4:condition:rep1:nxip_height_occlusion_joint"]},
+        "analyses": {"sdc4_mechanisms": {"enabled": True}},
+    }
+    plot_sdc4_mechanisms(cfg, tmp_path, {"condition": [rep]})
+    assert (folder / "nxip_height_occlusion_joint.png").is_file()
+    assert not (folder / "vvhplvpl_proline_ramachandran.png").exists()
+    assert id_from_figure_path(folder / "nxip_height_occlusion_joint.png") == (
+        "sdc4:condition:rep1:nxip_height_occlusion_joint")
+
+
+def test_shared_state_sampling_only_does_not_require_populations(tmp_path):
+    import pandas as pd
+    from mdscope.reporting.sdc4_figures import plot_sdc4_mechanisms
+
+    out = tmp_path / "project_summary/shared_states"
+    out.mkdir(parents=True)
+    pd.DataFrame({
+        "system": ["condition"], "replicate": ["rep1"],
+        "first_second_half_js_divergence": [0.015],
+    }).to_parquet(out / "sampling_diagnostics.parquet")
+    cfg = {
+        "plots": {"enabled": True,
+                  "include": ["shared_states:state_sampling_diagnostics"]},
+        "analyses": {"sdc4_mechanisms": {"enabled": True}},
+    }
+    plot_sdc4_mechanisms(cfg, tmp_path, {"condition": []})
+    assert (out / "state_sampling_diagnostics.png").is_file()
+    assert not (out / "state_populations.png").exists()
+
+
+def test_lipid_contact_include_one_exact_heatmap(tmp_path):
+    import pandas as pd
+    from mdscope.reporting.membrane_figures import plot_lipid_contacts
+
+    rep = tmp_path / "condition" / "rep1"
+    matrix = rep / "extensions/lipid_contacts/matrix.parquet"
+    matrix.parent.mkdir(parents=True)
+    pd.DataFrame({
+        "time_ps": [0.0, 1000.0], "leaflet": ["upper"]*2,
+        "species_a": ["POPC"]*2, "species_b": ["DOPC"]*2,
+        "neighbors_per_molecule": [1.3, 1.6], "enrichment": [1.15, 1.22],
+        "pair_count_undirected": [10, 12],
+        "molecules_a": [20, 20], "molecules_b": [20, 20],
+    }).to_parquet(matrix)
+    cfg = {
+        "plots": {"enabled": True,
+                  "include": ["lipid_contacts:lipid_contact_matrix_condition_upper_enrichment"]},
+        "analyses": {"lipid_contacts": {"enabled": True}},
+    }
+    plot_lipid_contacts(cfg, tmp_path, {"condition": [rep]})
+    dest = tmp_path / "project_summary/figures/lipid_contacts"
+    names = sorted(p.name for p in dest.iterdir())
+    assert names == ["lipid_contact_matrix_condition_upper_enrichment.png"]
+    assert id_from_figure_path(dest / names[0]) == cfg["plots"]["include"][0]
+
+
+def test_specialized_figure_ids_are_validated():
+    for item in [
+        "sdc4:condition:rep1:nxip_height_occlusion_joint",
+        "sdc4:condition:rep1:lipid_density_maps",
+        "shared_states:state_sampling_diagnostics",
+        "lipid_contacts:lipid_contact_matrix_condition_upper_enrichment",
+        "lipid_contacts:lipid_contact_difference_first__second_upper_neighbors_per_molecule",
+    ]:
+        validate_plot_ids([item])
+    for item in [
+        "sdc4:condition:rep1:unknown",
+        "lipid_contacts:other.png", "shared_states:some_chart",
+    ]:
+        with pytest.raises(ValueError, match="unsupported plot ID"):
+            validate_plot_ids([item])
+
