@@ -59,6 +59,24 @@ dynamic imports, aliased attributes and reexports can be missed or misleading.
 SCCs flag places to inspect; they do **not** prove a runtime circular-import
 failure. No trajectory, checkpoint or scientific calculation is executed.
 
+### Static import-cycle review
+
+The first current-source CI inventory for #180 identified two two-module SCCs.
+Both involve **function-local/deferred** imports, not a demonstrated import-time
+cycle. The generated `architecture.json.import_sites` includes the file line
+and `module_load` versus `deferred` classification so reviewers can confirm
+the context before changing code.
+
+| Static cycle | Why it appears | Decision |
+|---|---|---|
+| `observables.lipid_enrichment` ↔ `pipeline.fused_membrane` | The optional `run_lipid_enrichment` wrapper imports the fused runner *inside the function*; the runner imports `LipidFootprint` at module load. | No eager circular import; investigate wrapper ownership only if an actual consumer/API refactor needs it. |
+| `observables.solvation` ↔ `observables.solvation_postprocess` | Solvation finalization lazily imports postprocessors; postprocessors lazily import `rdf_from_counts` and `EPISODE_COLUMNS` from the solvation implementation. | No eager circular import; preserve numerical and episode contracts until a concrete reason to extract shared definitions. |
+
+In this inventory, `pipeline.runner` has many outgoing imports because it
+coordinates stages; `config.py` is imported widely because it owns resolved
+settings. Neither degree count alone justifies splitting a module. Do not add
+CI thresholds for edge counts or SCC counts.
+
 | Responsibility | Canonical owner | Avoid |
 |---|---|---|
 | YAML defaults, schema, user selection configuration | `config.py`, `config_schema.py` | Another Studio-only configuration engine |
