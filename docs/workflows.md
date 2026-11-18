@@ -70,8 +70,9 @@ avoid reading irrelevant top-level saved source tables where possible.
 Interaction selection skips unrelated kinds and interaction identities before
 the expensive per-identity loop. Selective inference uses identity-keyed
 Monte Carlo streams so changing the selection does not shift existing selected
-identities' bootstrap and permutation results. The legacy no-selector RNG
-sequence remains unchanged. For a selected identity, the shared temporal
+identities' bootstrap and permutation results. **BH q-values may change**
+when the selected hypothesis family changes; this is mathematically required,
+not RNG instability. The legacy no-selector RNG sequence remains unchanged. For a selected identity, the shared temporal
 bootstrap kernel still prepares all five summary arrays; unselected metrics
 skip CI, hierarchy, comparisons, and persistence. This is not yet full
 metric-specific kernel factorization (see #156).
