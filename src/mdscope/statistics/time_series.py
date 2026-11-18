@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config
+from .selection import time_series_selection
 from ..core.persistence import atomic_parquet, ensure_dir
 from ..interactions.interaction_tables import event_lifetimes
 from ..interactions.interaction_tables import interaction_tables
@@ -77,8 +78,11 @@ def _conditional_geometry_bootstrap(values, times, cfg, draws, rng):
     return means, medians, block, True
 
 
-def collect_time_series(repout: Path, *, sources: set[str] | None = None) -> dict[tuple[str | None, str], pd.DataFrame]:
+def collect_time_series(repout: Path, *, sources: set[str] | None = None,
+                        selected: set[tuple[str | None, str]] | None = None) -> dict[tuple[str | None, str], pd.DataFrame]:
     out = {}
+    if selected is not None and not selected:
+        return out
     for path, group_col in(
         (Path(repout) / "summary" / "timeseries.parquet", None),
         (Path(repout) / "summary" / "group_timeseries.parquet", "group")
@@ -171,6 +175,8 @@ def collect_time_series(repout: Path, *, sources: set[str] | None = None) -> dic
         for (leaf, a, b), group in data.groupby(['leaflet','species_a','species_b'], sort=False):
             for metric in ('neighbors_per_molecule','enrichment'):
                 out[(f'lipid_contacts/{leaf}/{a}/{b}', metric)] = group[['time_ps',metric]].rename(columns={metric:'value'})
+    if selected is not None:
+        return {key: value for key, value in out.items() if key in selected}
     return out
 
 
@@ -183,6 +189,9 @@ def analyze_time_series(
     if not cfg.get("statistics", {}).get("enabled", True):
         return
     stats = cfg["statistics"]
+    selected = time_series_selection(cfg)
+    if selected is not None and not selected:
+        return
     scalar_window = stats.get("scalar_window_ps")
     draws, level = int(stats.get("bootstrap_draws", 2000)), float(stats.get("ci", 0.95))
     system_draws = draws if stats.get("hierarchy", {}).get("enabled", True) else 0
@@ -204,7 +213,7 @@ def analyze_time_series(
             local_rows, local_acf = [], []
             if verbose:
                 print(f"Statistics {output_name}: loading {system}/{repout.name}", flush=True)
-            series = collect_time_series(repout)
+            series = collect_time_series(repout, selected=selected)
             if verbose:
                 print(f"Statistics {output_name}: processing {len(series)} observables "
                       f"for {system}/{repout.name}", flush=True)
