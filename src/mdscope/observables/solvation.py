@@ -19,6 +19,7 @@ from MDAnalysis.lib.mdamath import triclinic_vectors
 from ..core.geometry import minimum_image_displacements
 
 from ..config import atomic_json, atomic_parquet, ensure_dir
+from .solvation_common import EPISODE_COLUMNS, rdf_from_counts
 
 PRESETS = {"standard": (False, False), "detailed": (True, True),
            "kinetics": (True, True)}
@@ -31,19 +32,6 @@ BRIDGE_COLUMNS = ["frame", "time_ps", "solvent", "solvent_id", "target_a", "targ
 SPATIAL_OFFSETS = tuple(pair for pair in product((0., 1/3, 2/3), repeat=2) if any(pair))
 SPATIAL_COLUMNS = ["frame", "time_ps", "solvent", "target_a", "target_b",
                    "offset_u_fraction", "offset_v_fraction", "bridge_entity_count"]
-
-EPISODE_COLUMNS = ["solvent", "target_id", "solvent_id", "start_frame", "end_frame",
-                   "duration_ps", "left_censored", "right_censored",
-                   "sampled_duration_ps", "duration_convention"]
-
-
-def rdf_from_counts(counts, edges, density_exposure):
-    """Observed pairs / expected pairs at the supplied reference density exposure."""
-    shell_volume = (4 * np.pi / 3) * np.diff(np.asarray(edges, float) ** 3)
-    if density_exposure <= 0:
-        return np.full(len(counts), np.nan)
-    return np.asarray(counts, float) / (shell_volume * density_exposure)
-
 
 def aqueous_slab_density(solvent_positions, membrane_positions, box, half_width_A, axis=2):
     """Selected entities / geometric volume outside an explicit membrane slab.

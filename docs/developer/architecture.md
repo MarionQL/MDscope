@@ -65,15 +65,19 @@ failure. No trajectory, checkpoint or scientific calculation is executed.
 
 ### Static import-cycle review
 
-The original #180 inventory identified two deferred import cycles. Removing
-the unused lipid-enrichment runner wrapper eliminates one source-level back
-edge; only the solvation cycle should remain if no new dependencies appeared.
-Confirm against the next CI architecture artifact. `architecture.json.import_sites`
-distinguishes module-load from deferred imports.
+The original #180 inventory found two deferred import cycles. The
+lipid-enrichment runner back-edge was removed first. The solvation cycle was
+then removed by making `observables.solvation_common` the single owner of
+`rdf_from_counts` and `EPISODE_COLUMNS`. Both the streaming observer and
+offline postprocessor import these definitions; `solvation.py` re-exports
+them for existing callers. RDF normalization, episode column order, and
+saved-output schemas are unchanged. The observer still imports offline
+postprocessing lazily at finalization.
 
-| Static cycle | Why it appears | Decision |
-|---|---|---|
-| `observables.solvation` ↔ `observables.solvation_postprocess` | Solvation finalization lazily imports postprocessors; postprocessors lazily import `rdf_from_counts` and `EPISODE_COLUMNS` from the solvation implementation. | No eager circular import; preserve numerical and episode contracts until a concrete reason to extract shared definitions. |
+Rebuild `architecture.json` to verify that the postprocessor has no import
+back-edge to `solvation.py` and inspect `architecture.json.import_sites`
+for deferred dependencies. This is a static dependency cleanup, not a claim
+about trajectory convergence or a new numerical estimator.
 
 In this inventory, `pipeline.runner` has many outgoing imports because it
 coordinates stages; `config.py` is imported widely because it owns resolved

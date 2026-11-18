@@ -179,3 +179,35 @@ def test_survival_plot_uses_the_persisted_duration_axis(tmp_path, monkeypatch):
     observed.clear()
     assert solvation_survival_figure({'condition':[rep]}) is not None
     assert observed==[[1.,2.,3.]]
+
+
+def test_solvation_shared_contracts_keep_original_exports_and_identity():
+    """Changing import ownership must not change RDF or episode APIs."""
+    from mdscope.observables import solvation, solvation_common, solvation_postprocess
+
+    assert solvation.rdf_from_counts is solvation_common.rdf_from_counts
+    assert solvation_postprocess.rdf_from_counts is solvation_common.rdf_from_counts
+    assert solvation.EPISODE_COLUMNS is solvation_common.EPISODE_COLUMNS
+    assert solvation_postprocess.EPISODE_COLUMNS is solvation_common.EPISODE_COLUMNS
+    assert solvation.EPISODE_COLUMNS == [
+        "solvent", "target_id", "solvent_id", "start_frame", "end_frame",
+        "duration_ps", "left_censored", "right_censored",
+        "sampled_duration_ps", "duration_convention",
+    ]
+
+
+def test_offline_solvation_import_does_not_load_trajectory_observer():
+    """Offline analysis can load without importing the trajectory implementation."""
+    import subprocess
+    import sys
+
+    command = (
+        "import sys\n"
+        "import mdscope.observables.solvation_postprocess\n"
+        "assert 'mdscope.observables.solvation' not in sys.modules\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", command],
+        capture_output=True, text=True, check=False, timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
