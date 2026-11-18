@@ -208,3 +208,46 @@ def test_specialized_figure_ids_are_validated():
         with pytest.raises(ValueError, match="unsupported plot ID"):
             validate_plot_ids([item])
 
+
+def test_single_metric_ignores_unselected_solvation_and_lipid_tables(tmp_path):
+    cfg, repouts = _fake_data(tmp_path)
+    for paths in repouts.values():
+        for rep in paths:
+            for folder, name in (
+                ("lipid_contacts", "matrix.parquet"),
+                ("solvation", "species_timeseries.parquet"),
+                ("solvation", "bridge_pair_timeseries.parquet"),
+                ("hydration", "aggregate_counts.parquet"),
+            ):
+                path = rep / "extensions" / folder / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"invalid high-cardinality parquet that must not be read")
+    cfg["plots"]["include"] = ["time_series:rmsd_A:timeseries"]
+    plot_all(cfg, tmp_path, repouts)
+    assert sorted(path.name for path in (
+        tmp_path / "project_summary/figures").rglob("*.png")) == [
+        "rmsd_A__timeseries.png"
+    ]
+
+
+def test_selected_lipid_contact_time_series_still_reads_needed_matrix(tmp_path):
+    import pandas as pd
+
+    cfg, repouts = _fake_data(tmp_path)
+    rep = repouts["condition_A"][0]
+    file = rep / "extensions/lipid_contacts/matrix.parquet"
+    file.parent.mkdir(parents=True)
+    pd.DataFrame({
+        "time_ps": [0., 1000.],
+        "leaflet": ["upper", "upper"],
+        "species_a": ["POPC", "POPC"], "species_b": ["DOPC", "DOPC"],
+        "neighbors_per_molecule": [1.2, 1.3], "enrichment": [1.1, 1.2],
+    }).to_parquet(file)
+    cfg["plots"]["include"] = [
+        "time_series:enrichment__group_lipid_contacts_upper_POPC_DOPC:timeseries"
+    ]
+    plot_all(cfg, tmp_path, repouts)
+    produced = [path.name for path in (
+        tmp_path / "project_summary/figures").rglob("*.png")]
+    assert produced == ["enrichment__group_lipid_contacts_upper_POPC_DOPC__timeseries.png"]
+
