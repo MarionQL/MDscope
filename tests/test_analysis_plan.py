@@ -264,3 +264,26 @@ def test_schema_only_metric_contract_includes_sources_and_inferential_figures(tm
                for item in chosen["candidate_source_runs"])
     assert "replicate_independence" in chosen["metric_contract"]["eligibility_requirements"]
     assert not root.exists()
+
+
+def test_metric_estimator_flags_validate_through_real_yaml_schema(tmp_path, project):
+    path, _ = project("metric_estimator_flags")
+    cfg = yaml.safe_load(path.read_text())
+    cfg["statistics"]["metric_selection"] = {
+        "time_series": [{"group": "PROA", "metric": "rmsd_A",
+                         "ci": False, "hypothesis_tests": True}],
+        "solvation_rdfs": [{"solvent": "water", "target_class": "protein",
+                            "site_class": "acidic", "ci": False}],
+    }
+    path.write_text(yaml.safe_dump(cfg))
+    resolved = load_config(path, check_paths=False)
+    plan = build_plan(resolved, path)
+    by_family = {row["family"]: row for row in plan["statistics_families"]}
+    assert set(by_family["time_series"]["metric_contract"]["independent_estimator_toggles"]) == {
+        "ci", "hypothesis_tests"
+    }
+    assert by_family["solvation_rdfs"]["metric_contract"]["independent_estimator_toggles"] == ["ci"]
+    cfg["statistics"]["metric_selection"]["solvation_rdfs"][0]["hypothesis_tests"] = True
+    path.write_text(yaml.safe_dump(cfg))
+    with pytest.raises(ValueError, match="metric_selection"):
+        load_config(path, check_paths=False)
