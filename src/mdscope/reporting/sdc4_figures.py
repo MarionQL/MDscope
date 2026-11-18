@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from ..config import plot_enabled, figure_enabled
+from .plot_ids import figure_dpi
 
 
 def _plot_sdc4_replica_figures(cfg, root, system_repouts):
@@ -62,7 +63,7 @@ def _plot_sdc4_replica_figures(cfg, root, system_repouts):
                     fig.savefig(
                         specificity_file.with_name(
                             "lipid_region_moiety_contact_fraction.png"
-                        ), dpi=180,
+                        ), dpi=figure_dpi(cfg, prefix + "lipid_region_moiety_contact_fraction", 180),
                     )
                     plt.close(fig)
                 contacts = all_contacts.loc[all_contacts.moiety.eq("any")]
@@ -120,7 +121,7 @@ def _plot_sdc4_replica_figures(cfg, root, system_repouts):
                         fig.tight_layout()
                         fig.savefig(
                             specificity_file.with_name(f"lipid_region_{metric}.png"),
-                            dpi=180,
+                            dpi=figure_dpi(cfg, prefix + "lipid_region_" + metric, 180),
                         )
                         plt.close(fig)
             path = Path(repout) / "extensions/sdc4_mechanisms/lipid_density_maps.npz"
@@ -156,7 +157,8 @@ def _plot_sdc4_replica_figures(cfg, root, system_repouts):
                     ax.set_title(f"{species[i]} · {leaf[i]}")
                     fig.colorbar(img, ax=ax, label=label)
                 fig.suptitle(f"{system}/{Path(repout).name}: protein-centered {field}")
-                fig.savefig(path.parent / f"lipid_{field}_maps.png", dpi=180)
+                fig.savefig(path.parent / f"lipid_{field}_maps.png",
+                            dpi=figure_dpi(cfg, prefix + f"lipid_{field}_maps", 180))
                 plt.close(fig)
 
     # Exploratory within-replica NxIP coupling diagnostic. Avoid pooled
@@ -199,7 +201,8 @@ def _plot_sdc4_replica_figures(cfg, root, system_repouts):
                     n_panels += 1
                 if n_panels:
                     fig.suptitle(f"{system}/{Path(repout).name}: exploratory NxIP–conformation coupling")
-                    fig.savefig(folder / "nxip_height_occlusion_joint.png", dpi=190)
+                    fig.savefig(folder / "nxip_height_occlusion_joint.png",
+                                dpi=figure_dpi(cfg, prefix + "nxip_height_occlusion_joint", 190))
                 plt.close(fig)
 
             # Per-proline Ramachandran distributions, not averages of wrapped
@@ -226,7 +229,8 @@ def _plot_sdc4_replica_figures(cfg, root, system_repouts):
                            xlabel="φ (degrees)", ylabel="ψ (degrees)",
                            title=label.removeprefix("sdc4_proline_"))
                     ax.set_aspect("equal", adjustable="box")
-                fig.savefig(folder / "vvhplvpl_proline_ramachandran.png", dpi=180)
+                fig.savefig(folder / "vvhplvpl_proline_ramachandran.png",
+                            dpi=figure_dpi(cfg, prefix + "vvhplvpl_proline_ramachandran", 180))
                 plt.close(fig)
 
 
@@ -261,7 +265,8 @@ def _plot_shared_state_figures(cfg, root):
                 ax.set_title("Shared-state populations (points = independent replicates)")
                 ax.legend()
                 fig.tight_layout()
-                fig.savefig(state_dir / "state_populations.png", dpi=200)
+                fig.savefig(state_dir / "state_populations.png",
+                            dpi=figure_dpi(cfg, "shared_states:state_populations", 200))
                 plt.close(fig)
 
     if figure_enabled(cfg, "shared_states:state_sampling_diagnostics"):
@@ -276,7 +281,8 @@ def _plot_shared_state_figures(cfg, root):
                 ax.set_ylabel("Jensen–Shannon divergence (bits)")
                 ax.set_title("First- vs second-half state populations")
                 fig.tight_layout()
-                fig.savefig(state_dir / "state_sampling_diagnostics.png", dpi=200)
+                fig.savefig(state_dir / "state_sampling_diagnostics.png",
+                            dpi=figure_dpi(cfg, "shared_states:state_sampling_diagnostics", 200))
                 plt.close(fig)
 
 
