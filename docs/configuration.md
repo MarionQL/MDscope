@@ -66,6 +66,25 @@ analyses:
 
 Default geometric radii (Å): H 1.20; C 1.70; N 1.55; O 1.52; P/S 1.80; F 1.47; Cl 1.75; Br 1.85; I 1.98. Ambiguous atom-name inference must be resolved in the topology.
 
+## Select individual figures
+
+When `plots.include` is absent, the existing family-level plot switches are unchanged. To produce **only** specific supported figures, provide exact plot IDs:
+
+```yaml
+plots:
+  enabled: true
+  include:
+    - time_series:rmsd_A:timeseries
+    - time_series:rmsd_A__group_chain_A:distribution
+    - solvation:shell_rdf
+```
+
+- **Dynamic IDs:** `time_series:<saved_metric_or_group_stem>:<timeseries|distribution|autocorrelation|bootstrap_table|comparison_table>`; `profiles:<saved_profile_stem>:<profile|distribution|system_difference|bootstrap_table|comparison_table>`; `interactions:<kind>:<occupancy_heatmap|lifetime_distribution>`, with an additional `:<metric>:<bootstrap_table|comparison_table>` for interaction statistics tables.
+- **Distance heatmaps:** `profiles:residue_membrane_distance__<run_id>:<system_id>:distance_heatmap`.
+- **Named static figures:** `solvation:shell_rdf`, `solvation:water_and_ions`, `solvation:contact_survival`, `diffusion:diffusion_coefficients`, `lipid_enrichment:lipid_enrichment_heatmap`, `lipid_enrichment:lipid_area_density_heatmap`.
+
+Plot IDs are matched exactly, not by wildcard or substring. Unrecognized figure IDs fail YAML validation. An enabled ID does **not** generate missing statistical inputs; source data and the corresponding family prerequisites remain necessary. Other SDC4/lipid-contact figures still use family switches until individually cataloged. When selecting solvation by an explicit ID, no separate `plots.families.solvation` opt-in is needed. `plots.include: []` disables all figures.
+
 ## Plot and statistics controls
 
 ```yaml
