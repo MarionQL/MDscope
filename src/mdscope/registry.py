@@ -89,6 +89,94 @@ FUSED_OUTPUTS = {
 }
 
 
+# Precise schema details live with the artifact registry, not the GUI.
+# A missing column/shape description means the corresponding producer has
+# a dynamic or as-yet-uncataloged contract; it is *not* a zero-length table.
+def artifact_schema(entry: "FusedOutput", path: Path) -> dict:
+    """Known persisted fields, shapes and units for a registered artifact."""
+    name = Path(path).name
+    analysis = entry.name
+    fields = None
+    shape = None
+    units = None
+    dtype = None
+    if analysis == "sasa":
+        if name == "residue_sasa.parquet":
+            fields = ["time_ps", "topology_residue_index", "residue", "sasa_nm2"]
+            units = {"time_ps": "ps", "sasa_nm2": "nm^2"}
+        elif name == "atom_sasa.parquet":
+            fields = ["time_ps", "atom_index", "topology_residue_index",
+                      "atom_name", "sasa_nm2"]
+            units = {"time_ps": "ps", "sasa_nm2": "nm^2"}
+        elif name == "residue_burial_summary.parquet":
+            fields = ["topology_residue_index", "residue", "mean_buried_sasa_nm2",
+                      "std_buried_sasa_nm2", "mean_buried_fraction",
+                      "mean_environment_sasa_nm2", "mean_isolated_sasa_nm2"]
+            units = {"mean_buried_sasa_nm2": "nm^2",
+                     "std_buried_sasa_nm2": "nm^2",
+                     "mean_buried_fraction": "fraction"}
+    elif analysis == "residue_membrane_distance":
+        if name == "distance_matrix_A.npy":
+            shape, dtype, units = ["sampled_frames", "selected_residues"], "float32", "angstrom"
+        elif name == "time_ps.npy":
+            shape, units = ["sampled_frames"], "ps"
+        elif name == "membrane_atom_indices.npy":
+            shape, dtype = ["membrane_atoms"], "int64"
+        elif name == "residues.parquet":
+            fields = ["analysis_instance", "analysis_label", "residue_order",
+                      "topology_residue_index", "segid", "resid", "resname",
+                      "residue", "n_selected_atoms"]
+        elif name == "median_profile.parquet":
+            fields = ["analysis_instance", "analysis_label", "residue_order",
+                      "topology_residue_index", "segid", "resid", "resname",
+                      "residue", "n_selected_atoms", "n_frames",
+                      "mean_min_distance_A", "sd_min_distance_A",
+                      "median_min_distance_A", "q1_min_distance_A",
+                      "q3_min_distance_A", "iqr_min_distance_A",
+                      "min_distance_A", "max_distance_A"]
+            units = {"distance_metrics_suffix_A": "angstrom"}
+    elif analysis == "membrane_order":
+        if name == "profile_index.parquet":
+            fields = ["profile", "file"]
+        elif name == "site_mapping.parquet":
+            fields = ["resname", "tail", "carbon_position", "atom_name", "n_lipids"]
+    elif analysis == "solvation":
+        if name == "counts.parquet":
+            from .observables.solvation import COUNT_COLUMNS
+            fields = list(COUNT_COLUMNS)
+            units = {"time_ps": "ps", "n_solvent": "entities"}
+        elif name == "rdf.parquet":
+            fields = ["solvent", "target_class", "site_class",
+                      "r_inner_A", "r_outer_A", "pair_count", "g_bulk"]
+            units = {"r_inner_A": "angstrom", "r_outer_A": "angstrom",
+                     "g_bulk": "dimensionless; full-cell density reference"}
+        elif name == "target_residues.parquet":
+            fields = ["target_id", "topology_residue_index"]
+    elif analysis == "hydration":
+        if name in {"counts.parquet", "aggregate_counts.parquet", "target_metadata.parquet"}:
+            from .mechanisms.hs_hydration import HydrationObserver
+            fields = list({
+                "counts.parquet": HydrationObserver.COUNT_COLUMNS,
+                "aggregate_counts.parquet": HydrationObserver.AGGREGATE_COLUMNS,
+                "target_metadata.parquet": HydrationObserver.TARGET_COLUMNS,
+            }[name])
+            units = {"time_ps": "ps", "water_cutoff_A": "angstrom",
+                     "water_count": "unique water entities"}
+        elif name == "hs_sugar_hydration.parquet":
+            from .mechanisms.hs_hydration import HydrationObserver
+            fields = list(HydrationObserver.SUGAR_COLUMNS)
+            units = {"time_ps": "ps", "water_cutoff_A": "angstrom",
+                     "water_count": "unique water entities"}
+    return {
+        "columns": fields,
+        "columns_status": "verified_fixed" if fields is not None else "not_registered",
+        "shape_axes": shape,
+        "dtype": dtype,
+        "units": units,
+    }
+
+
+
 @dataclass(frozen=True)
 class FusedOutput:
     name: str
