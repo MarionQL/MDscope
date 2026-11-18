@@ -159,12 +159,14 @@ def create_fixture(root: Path):
             contacts.mkdir(parents=True)
             pd.DataFrame([
                 {
+                    "time_ps": float(sample_time),
                     "leaflet": "upper", "species_a": a, "species_b": b,
                     "neighbors_per_molecule": 2.2 + .2*system_index + .12*i + .09*j,
                     "enrichment": .88 + .10*system_index + .07*i - .03*j,
                     "pair_count_undirected": 40 + i + j,
                     "molecules_a": 25, "molecules_b": 25,
                 }
+                for sample_time in (0., 60_000., 120_000.)
                 for i, a in enumerate(("POPC", "DOPC"))
                 for j, b in enumerate(("POPC", "DOPC"))
             ]).to_parquet(contacts / "matrix.parquet", index=False)
