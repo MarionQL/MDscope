@@ -266,12 +266,14 @@ def mark_synthetic(path: Path):
     captioned.save(path)
 
 
-def render_preview(root: Path):
+def render_preview(root: Path, *, include: list[str] | None = None):
     root = Path(root)
     if root.exists() and any(root.iterdir()):
         raise FileExistsError(f"Refusing to replace preview or results in nonempty {root}")
     root.mkdir(parents=True, exist_ok=True)
     cfg, system_repouts = create_fixture(root)
+    if include is not None:
+        cfg["plots"]["include"] = list(include)
     # These are the same plotting functions used by runner.finalize_project.
     from mdscope.reporting.membrane_figures import (
         plot_lipid_enrichment_matrix, plot_lipid_contacts, plot_project_diffusion,
@@ -290,8 +292,9 @@ def render_preview(root: Path):
         if ("project_summary" in path.parts or
             ("extensions" in path.parts and "sdc4_mechanisms" in path.parts))
     )
-    if len(figures) < 15:
-        raise RuntimeError(f"Expected at least 15 representative plot previews; got {len(figures)}")
+    minimum = 1 if include is not None else 15
+    if len(figures) < minimum:
+        raise RuntimeError(f"Expected at least {minimum} figure preview(s); got {len(figures)}")
     for path in figures:
         mark_synthetic(path)
     import mdscope
@@ -299,6 +302,7 @@ def render_preview(root: Path):
         "notice": STAMP,
         "renderer_module": str(Path(mdscope.__file__).resolve()),
         "input_data_kind": "deterministic synthetic Parquet",
+        "requested_plot_ids": include,
         "plots": [str(path.relative_to(root)) for path in figures],
     }
     (root / "preview_manifest.json").write_text(json.dumps(record, indent=2) + "\n")
@@ -308,8 +312,9 @@ def render_preview(root: Path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--include", action="append", help="Select exact plot ID (repeatable)")
     args = parser.parse_args()
-    record = render_preview(args.output)
+    record = render_preview(args.output, include=args.include)
     print(f"Rendered {len(record['plots'])} marked synthetic previews in {args.output}")
 
 
