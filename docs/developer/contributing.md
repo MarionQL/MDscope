@@ -13,7 +13,8 @@
 | `statistics/` | Replicate-level inference and comparisons |
 | `reporting/` | Findings, scientific figures and exports |
 | `pipeline/` | Shared streaming, orchestration, finalization |
-| `cli.py`, `config.py`, `registry.py` | CLI, YAML and task discovery |
+| `cli.py`, `config.py`, `registry.py` | CLI, YAML, persisted output paths and schemas |
+| `pipeline/replica_tasks.py` | Specialized executable task dispatch and saved scalar inputs |
 
 ## Visual review for plotting changes
 
