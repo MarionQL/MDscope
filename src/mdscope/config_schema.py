@@ -144,6 +144,7 @@ def _schema(defaults):
         },
     }
     stats["families"] = {"*": family}
+    stats["adaptive_hierarchy"] = deepcopy(family["adaptive_hierarchy"])
     stats["hypothesis_families"] = {"*": None}
 
     plots = schema["plots"]
@@ -171,9 +172,7 @@ def _check_keys(value, allowed, path):
                     if closest else "")
             raise ValueError(f"Unknown YAML option {full_path}{hint}")
         child_path = f"{path}.{key}" if path else str(key)
-        if path == "analyses" and key in {"density_1d", "sasa", "residue_membrane_distance"}:
-            _check_keys(nested, child, child_path)
-        elif path.startswith("analyses.") and path.count(".") == 1 and key == "runs":
+        if path.startswith("analyses.") and path.count(".") == 1 and key == "runs":
             # Run names are user-defined but their options match the parent
             # analysis, excluding recursive runs. Booleans remain supported.
             if isinstance(nested, dict):
