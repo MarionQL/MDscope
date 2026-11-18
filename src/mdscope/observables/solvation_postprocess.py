@@ -2,6 +2,7 @@
 import numpy as np
 import pandas as pd
 from ..config import atomic_parquet
+from .solvation_common import EPISODE_COLUMNS, rdf_from_counts
 
 
 def suggest_shell_boundaries(rdf, *, min_peak_r_A=1.8,
@@ -154,7 +155,6 @@ def calibration_stability(chunk_histograms, edges, *, min_chunks=4, tolerance_A=
         return pd.DataFrame(columns=columns)
     bin_cols = sorted((c for c in chunk_histograms if c.startswith("bin_")),
                       key=lambda c: int(c[4:]))
-    from .solvation import rdf_from_counts
     output = []
     for key, group in chunk_histograms.groupby(
             ["solvent", "target_class", "site_class"], sort=True):
@@ -402,7 +402,6 @@ def write_contact_episodes(event_paths, observed_frames, destination):
     import pyarrow as pa
     import pyarrow.parquet as pq
     from ..core.residence import sampled_episode_durations
-    from .solvation import EPISODE_COLUMNS
     destination = Path(destination)
     frames = [int(frame) for frame, _ in observed_frames]
     times = np.asarray([time for _, time in observed_frames], float)
