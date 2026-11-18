@@ -12,7 +12,6 @@ from typing import Callable
 import pandas as pd
 
 from ..config import analysis_enabled, analysis_runs
-from ..output_paths import FUSED_OUTPUTS
 from ..observables.residue_membrane_distance import run_residue_membrane_distance
 from ..observables.membrane_order import run_membrane_order
 from ..observables.structure_profiles import run_structure_profiles
@@ -27,7 +26,6 @@ from ..interactions.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
 class AnalysisTask:
     key: str
     run: Callable
-    scalar_output: str|None=None
 
 def specialized_tasks(cfg):
     """Yield uniquely checkpointed tasks; avoid re-reading trajectory unnecessarily."""
@@ -41,8 +39,7 @@ def specialized_tasks(cfg):
     if cfg["analyses"]["hydrogen_bonds"].get("enabled",False):
         yield AnalysisTask("hydrogen-bonds",run_hydrogen_bonds)
     if cfg.get("analyses",{}).get("local_environment",{}).get("enabled",False):
-        yield AnalysisTask("local_environment",run_local_environment,
-                           "extensions/local_environment/timeseries.parquet")
+        yield AnalysisTask("local_environment", run_local_environment)
 
     if analysis_enabled(cfg, "potassium_bridge_audit"):
         yield AnalysisTask("potassium_bridge_audit", run_potassium_bridge_audit)
@@ -50,8 +47,7 @@ def specialized_tasks(cfg):
     for name,fn in (("bilayer_normal",run_bilayer_normal),
                     ("lipid_hydrogen_bonds",run_lipid_hydrogen_bonds)):
         if cfg.get("analyses",{}).get(name,{}).get("enabled",False):
-            output = FUSED_OUTPUTS[name] if name != "lipid_hydrogen_bonds" else None
-            yield AnalysisTask(name,fn,output)
+            yield AnalysisTask(name, fn)
 
 def additional_time_series(repout: Path, cfg):
     """Read optional scalar products without constructing executable tasks.
