@@ -507,12 +507,18 @@ def inspect_saved_statistics(root: str | Path, *, max_identities: int = 256) -> 
                     truncated = True
                     break
                 seen.add(identity)
-                identities.append(dict(zip(columns, identity)))
+                identities.append({
+                    **dict(zip(columns, identity)),
+                    "id": (f"statistics:{family}:"
+                           + json.dumps(identity, separators=(",", ":"), ensure_ascii=False)),
+                })
             if truncated:
                 break
         result[family] = {
             "status": "saved",
             "identity_columns": list(columns),
+            "identity_id_format": "statistics:<family>:<JSON array of persisted identity values>",
+            "source_analysis_run_status": "not inferred from statistics rows; see plan candidate_source_runs",
             "identities": identities,
             "identities_truncated": truncated,
             "files": files,
