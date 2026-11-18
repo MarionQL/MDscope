@@ -132,7 +132,12 @@ def _schema(defaults):
             interaction_include_kinds=None, interaction_exclude_kinds=None,
             interaction_progress_every=None, adaptive_hierarchy=None,
             metric_selection={"time_series": [{"metric": None, "group": None}],
-                              "interactions": [{"kind": None, "interaction": None, "metric": None}]})
+                              "interactions": [{"kind": None, "interaction": None, "metric": None}],
+                              "profiles": [{"profile": None}],
+                              "solvation_rdfs": [{"solvent": None, "target_class": None,
+                                                  "site_class": None}],
+                              "diffusion": [{"metric": None}],
+                              "coupling": [{"mechanism": None}]})
     stats["hierarchy"]["enabled"] = None
     family = {
         "enabled": None, "bootstrap": None, "bootstrap_draws": None,
