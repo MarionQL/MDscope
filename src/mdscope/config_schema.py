@@ -130,7 +130,8 @@ def _schema(defaults):
     _extend(stats, bootstrap=None, scalar_window_ps=None,
             matched_window_ps=None, interaction_min_occupancy=None,
             interaction_include_kinds=None, interaction_exclude_kinds=None,
-            interaction_progress_every=None, adaptive_hierarchy=None)
+            interaction_progress_every=None, adaptive_hierarchy=None,
+            metric_selection={"time_series": [{"metric": None, "group": None}]})
     stats["hierarchy"]["enabled"] = None
     family = {
         "enabled": None, "bootstrap": None, "bootstrap_draws": None,
