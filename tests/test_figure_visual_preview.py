@@ -86,3 +86,58 @@ def test_html_gallery_displays_before_after_and_no_scientific_claims(tmp_path):
     assert json.loads((base / "preview_manifest.json").read_text())["plots"] == (
         json.loads((head / "preview_manifest.json").read_text())["plots"]
     )
+
+
+def test_csv_samples_include_every_column_but_only_bounded_rows(tmp_path):
+    import csv
+    from runpy import run_path
+
+    preview, _ = _scripts()
+    root = tmp_path / "preview"
+    report = preview["render_preview"](root)
+    assert report["table_previews"]
+    catalog = root / report["table_inventory_csv"]
+    with catalog.open(newline="") as handle:
+        entries = list(csv.DictReader(handle))
+    assert len(entries) >= 15
+    named = next(item for item in entries
+                 if item["source_parquet"] == "condition_A/rep1/summary/timeseries.parquet")
+    assert int(named["n_rows"]) == 61
+    assert int(named["sample_rows"]) == 5
+    with (root / named["columns_csv"]).open(newline="") as handle:
+        cols = list(csv.DictReader(handle))
+    assert "time_ps" in {row["column"] for row in cols}
+    assert "rmsd_A" in {row["column"] for row in cols}
+    with (root / named["sample_csv"]).open(newline="") as handle:
+        sample = list(csv.DictReader(handle))
+    assert len(sample) == 5
+    assert set(sample[0]) == {row["column"] for row in cols}
+    assert all("SYNTHETIC" not in row["time_ps"] for row in sample)
+    assert "SYNTHETIC" in (root / "table_previews/README.txt").read_text()
+
+
+def test_preview_gallery_groups_condition_figures_without_confusing_revisions(tmp_path):
+    from runpy import run_path
+
+    preview, _ = _scripts()
+    root = tmp_path / "current"
+    preview["render_preview"](root)
+    builder = run_path(str(Path(__file__).resolve().parents[1]
+                           / "scripts/preview_gallery.py"))["build_preview_gallery"]
+    main = tmp_path / "index.html"
+    n = builder(root, main)
+    html = main.read_text()
+    assert n >= 30
+    assert "condition-centered figure preview" in html
+    assert 'id="condition_A"' in html
+    assert 'id="condition_B"' in html
+    assert 'id="project"' in html
+    assert "CSV table previews" in html
+    assert "table_inventory.csv" in html
+    assert "before/after comparison" in html
+    # Both replicas are clearly tagged within their condition.
+    assert "rep1" in html and "rep2" in html
+    # No automatic cross-labeling of one replica as a different condition.
+    a = html.split('<section id="condition_A">')[1].split("</section>")[0]
+    assert "condition_B/rep2/extensions" not in a
+
