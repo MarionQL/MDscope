@@ -133,7 +133,13 @@ its full lag grid. Coupling names are checked against configured pairs.
 Raw analyses and `plots.include` remain independently controlled.
 
 `mdscope plan` exposes each family's identity fields, supported estimators,
-conditional output paths and figure-ID patterns. Most concrete identities
+conditional output paths and figure-ID patterns. After a completed
+statistics run, `mdscope.planning.inspect_saved_statistics(output_root)`
+provides the **actual** Parquet column schemas and saved metric identities
+in a read-only, bounded catalog (`max_identities` defaults to 256;
+`identities_truncated` flags incomplete identity lists). This is intended
+for Studio's data-backed metric card; it does not open trajectories.
+ Most concrete identities
 are **saved-data-dependent**; the plan does not fabricate them.
 
 Selections filter before temporal bootstrap/CI/permutation calculations and
