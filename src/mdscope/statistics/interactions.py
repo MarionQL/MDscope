@@ -182,9 +182,15 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
             sources[(system, repout.name)] = (times, tables)
             kinds.update(tables)
     if selectors is not None:
-        available = set()
-        for kind in kinds - excluded_kinds:
-            known = set()
+        requested = {(kind, identity) for kind, identity, _ in selectors}
+        existing = {(kind, None) for kind in kinds - excluded_kinds}
+        # Kind-wide selections need only directory discovery, not another
+        # 10k-identity string materialization. Exact labels are checked
+        # against the saved canonical key columns before any output write.
+        explicit = {(kind, identity) for kind, identity in requested
+                    if identity is not None}
+        for kind in {kind for kind, _ in explicit} & (kinds - excluded_kinds):
+            wanted = {identity for group, identity in explicit if group == kind}
             for _, tables in sources.values():
                 tab = tables.get(kind, {})
                 for name in ("presence", "lifetimes"):
@@ -192,15 +198,15 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                     if data is None or data.empty:
                         continue
                     keys = interaction_key_columns(kind, data)
-                    missing = [key for key in keys if key not in data.columns]
-                    if missing:
-                        raise ValueError(f"Interaction {kind} missing identity columns: {missing}")
-                    known.update(data[keys].astype(str).agg(" | ".join, axis=1)
-                                 if keys else ["interaction"])
-            available.update((kind, value) for value in known)
-            available.add((kind, None))
-        requested = {(kind, identity) for kind, identity, _ in selectors}
-        missing = requested - available
+                    missing_columns = [key for key in keys if key not in data.columns]
+                    if missing_columns:
+                        raise ValueError(
+                            f"Interaction {kind} missing identity columns: {missing_columns}")
+                    labels = (data[keys].astype(str).agg(" | ".join, axis=1)
+                              if keys else pd.Series(["interaction"]))
+                    existing.update((kind, identity) for identity in wanted
+                                    if identity in set(labels))
+        missing = requested - existing
         if missing:
             raise ValueError(
                 "Unknown saved interaction identities or excluded kinds: "
