@@ -438,3 +438,32 @@ def test_changing_metric_selection_rebuilds_statistics_without_touching_raw_data
     assert manifest["methods"]["metric_selection"]["time_series"][0]["metric"] == (
         "membrane_thickness_A"
     )
+
+
+@pytest.mark.parametrize("raw_metric,derived_metric", [
+    ("sdc4_local_thickness_A", "sdc4_local_thickness_A_available_fraction"),
+    ("sdc4_motif_A_glycan_contacts", "sdc4_motif_A_hs_contacts_during_contact"),
+    ("sdc4_motif_A_glycan_contacts", "sdc4_motif_A_hs_any_contact_state"),
+])
+def test_selected_derived_time_series_loads_only_source_columns(
+        tmp_path, monkeypatch, raw_metric, derived_metric):
+    from mdscope.statistics.time_series import collect_time_series
+    path = tmp_path / "summary" / "timeseries.parquet"
+    path.parent.mkdir(parents=True)
+    pd.DataFrame({
+        "time_ps": [0., 1., 2.],
+        raw_metric: [0., 1., 2.],
+        "unrelated_expensive_observable": [9., 9., 9.],
+    }).to_parquet(path)
+    original = pd.read_parquet
+    observed = []
+
+    def tracked(source, *args, **kwargs):
+        observed.append(kwargs.get("columns"))
+        return original(source, *args, **kwargs)
+
+    monkeypatch.setattr(pd, "read_parquet", tracked)
+    result = collect_time_series(tmp_path, selected={(None, derived_metric)})
+    assert (None, derived_metric) in result
+    assert observed == [["time_ps", raw_metric]]
+    assert "unrelated_expensive_observable" not in result
