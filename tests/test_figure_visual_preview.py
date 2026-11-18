@@ -27,14 +27,24 @@ def test_synthetic_plot_preview_is_read_only_with_respect_to_trajectory(tmp_path
     report = preview["render_preview"](root)
     assert "SYNTHETIC" in report["notice"]
     assert report["plots"]
-    assert "rmsd_A__timeseries.png" in {
-        Path(name).name for name in report["plots"]
+    expected = {
+        "rmsd_A__timeseries.png",
+        "lipid_order__POPC__sn1__profile.png",
+        "lipid_order__POPC__sn1__system_difference.png",
+        "occupancy_heatmap.png", "lifetime_distribution.png",
+        "shell_rdf.png", "contact_survival.png", "water_and_ions.png",
+        "lipid_enrichment_heatmap.png", "diffusion_coefficients.png",
+        "state_populations.png", "nxip_height_occlusion_joint.png",
     }
+    assert expected <= {Path(name).name for name in report["plots"]}
+    assert len(report["plots"]) >= 30
     for name in report["plots"]:
         with Image.open(root / name) as im:
             im.verify()
         with Image.open(root / name) as im:
             assert im.width >= 300 and im.height >= 150
+            # A separate header band must not overwrite the Matplotlib figure.
+            assert im.getpixel((0, 0)) == (255, 255, 255)
     with pytest.raises(FileExistsError, match="Refusing to replace"):
         preview["render_preview"](root)
 
