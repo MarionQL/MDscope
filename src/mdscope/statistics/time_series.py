@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config
-from ..statistics_selection import time_series_selection, metric_inference
+from ..statistics_selection import time_series_selection, metric_estimator_enabled
 from .common import selected_rng
 from ..core.persistence import atomic_parquet, ensure_dir
 from ..interactions.interaction_tables import event_lifetimes
@@ -268,7 +268,7 @@ def analyze_time_series(
                 print(f"Statistics {output_name}: processing {len(series)} observables "
                       f"for {system}/{repout.name}", flush=True)
             for (group, metric), table in series.items():
-                infer = metric_inference(cfg, "time_series", (group, metric))
+                infer = metric_estimator_enabled(cfg, "time_series", (group, metric), "ci")
                 local_draws = draws if infer else 0
                 metric_rng = (rng if selected is None else
                               selected_rng(seed, "time_series", "replicate", system,
@@ -391,7 +391,7 @@ def analyze_time_series(
         gid = None if pd.isna(group) else str(group)
         rows = sub.to_dict("records")
         keys = [(system, r["replicate"], gid, metric) for r in rows]
-        infer = metric_inference(cfg, "time_series", (gid, metric))
+        infer = metric_estimator_enabled(cfg, "time_series", (gid, metric), "ci")
         local_system_draws = system_draws if infer else 0
         system_rng = (rng if selected is None else
                       selected_rng(seed, "time_series", "hierarchy", system, gid, metric))
@@ -453,7 +453,10 @@ def analyze_time_series(
         name=None
     ):
         gid = None if pd.isna(group) else str(group)
-        infer = metric_inference(cfg, "time_series", (gid, metric))
+        infer = metric_estimator_enabled(cfg, "time_series", (gid, metric), "ci")
+        test_enabled = metric_estimator_enabled(
+            cfg, "time_series", (gid, metric), "hypothesis_tests"
+        )
         local_system_draws = system_draws if infer else 0
         available = [s for s in system_repouts if (s, gid, metric) in sys_boot]
         for s1, s2 in combinations(available, 2):
@@ -518,12 +521,12 @@ def analyze_time_series(
                           "mean_difference_ci_low": mlo, "mean_difference_ci_high": mhi,
                           "mean_probability_difference_gt_0": pgt,
                           "mean_probability_difference_lt_0": plt,
-                          "mean_p_value": _permutation(amap, bmap, cfg, comparison_rng) if infer else np.nan,
+                          "mean_p_value": _permutation(amap, bmap, cfg, comparison_rng) if test_enabled else np.nan,
                           "median_difference_system2_minus_system1": median_difference,
                           "median_difference_ci_low": dlo, "median_difference_ci_high": dhi,
                           "median_probability_difference_gt_0": dpgt,
                           "median_probability_difference_lt_0": dplt,
-                          "median_p_value": _permutation(amed, bmed, cfg, comparison_rng) if infer else np.nan,
+                          "median_p_value": _permutation(amed, bmed, cfg, comparison_rng) if test_enabled else np.nan,
                           "ci_status": "unavailable_temporal_support" if not regular else None,
                           "bootstrap_draws": len(dmean) if adaptive and infer else local_system_draws,
                           "ci_level": level, **adaptive_provenance, **precision})
