@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import atomic_parquet, statistics_family_config
-from ..statistics_selection import simple_family_selection, metric_inference
+from ..statistics_selection import simple_family_selection, metric_estimator_enabled
 from ..observables.multi_origin_msd import fit_multi_origin_curve
 from .replicate_contrasts import replicate_mean_contrasts
 
@@ -100,7 +100,7 @@ def analyze_multi_origin_diffusion(cfg, root, system_repouts):
         return
     replicas = pd.DataFrame(rows)
     infer = replicas.loc[
-        replicas.metric.map(lambda metric: metric_inference(cfg, "diffusion", (str(metric),)))
+        replicas.metric.map(lambda metric: metric_estimator_enabled(cfg, "diffusion", (str(metric),), "ci"))
     ]
     comparisons = (
         replicate_mean_contrasts(infer, ["metric"], system_repouts, cfg["statistics"])
