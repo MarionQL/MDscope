@@ -15,9 +15,10 @@ Relative topology, trajectory and output paths resolve from that directory.
    with guided controls. Add/remove conditions and replicas; the last of each is
    protected. Advanced YAML remains available and preserves supported options.
 2. Enter global selections and any reusable MDAnalysis groups. Fitting atoms can
-   differ from measurement atoms. Group RMSD measures the intersection with
-   `selections.features`; group Rg intersects its own selection. Group filters
-   do not suppress the global scalar.
+   differ from measurement atoms. Use **Preview selections from topology** to
+   inspect actual per-condition matches without loading trajectories. Group RMSD
+   measures the intersection with `selections.features`; group Rg intersects its
+   own selection. Group filters do not suppress the global scalar.
 3. Enable analyses individually. Edit supported backend options, inspect saved
    schema/path contracts, then choose descriptive figures. Everything starts off.
 4. Optionally enable statistics and select exact variables and estimators.
@@ -39,7 +40,7 @@ show the production plot ID and destination; they do not compute example plots.
 | No-data RMSD/Rg schema, selection provenance and exact figure IDs | Guided |
 | Figure and inference defaults off; inactive scalar figures removed | Implemented |
 | Named groups: add, duplicate, rename, delete | Implemented |
-| Actual topology counts, atom preview, segment/residue labels | Production preflight |
+| Actual topology counts, atom preview, segment/residue labels | Explicit preview in Selections and export preflight |
 | Supported analysis options | Backend settings + advanced YAML |
 | Named runs (SASA, density, residue distance) | Add/delete editor with inherited per-run option panels |
 | All registered artifact schemas | Displayed; uncatalogued shapes explicitly unknown |
