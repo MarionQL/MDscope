@@ -559,7 +559,8 @@ def main():
                             st.code(f"{family['output_directory']}{schema['filename']}")
                             st.table(schema["sample_rows"])
                             st.caption(schema["limitations"])
-                        st.json({key: family[key] for key in ("family", "files", "metric_contract")
+                        st.json({key: family[key] for key in
+                                 ("family", "metric_selection", "files", "metric_contract")
                                  if key in family})
                 from mdscope.planning import authoring_catalog
                 figures = authoring_catalog(resolve_config(doc))["figures"].get("statistics", [])
