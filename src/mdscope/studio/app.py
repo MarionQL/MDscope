@@ -571,11 +571,38 @@ def main():
                          "This filters interaction identities before statistical inference.")
                 if "interaction_min_occupancy" in stats or selected_cutoff != 0.0:
                     stats["interaction_min_occupancy"] = selected_cutoff
-                controls = yaml_editor("CI / block / test settings", {key: val for key, val in stats.items()
-                                                                     if key not in {"enabled", "metric_selection", "interaction_min_occupancy"}}, "stats:settings") or {}
-                if set(controls) & {"enabled", "metric_selection", "interaction_min_occupancy"}:
-                    raise ValueError("Use the statistics selectors above")
-                stats.update(controls)
+                st.markdown("**Statistical methods**")
+                st.caption("Methods apply to eligible measurements; simulation replicas are independent units.")
+                stats["bootstrap"] = st.checkbox("Bootstrap confidence intervals",
+                    value=stats.get("bootstrap", True), key="stats:bootstrap",
+                    help="Resample blocks and replicas according to the configured hierarchy.")
+                stats["ci"] = st.number_input("Confidence level", min_value=0.50,
+                    max_value=0.999, step=0.01, value=float(stats.get("ci", 0.95)),
+                    key="stats:ci", disabled=not stats["bootstrap"])
+                tests = stats.setdefault("hypothesis_tests", {})
+                tests["enabled"] = st.checkbox("Hypothesis tests",
+                    value=tests.get("enabled", True), key="stats:tests")
+                correction = ["fdr_bh", "none"]
+                tests["multiple_testing"] = st.selectbox("Multiple-testing correction",
+                    options=correction, index=correction.index(tests.get("multiple_testing", "fdr_bh")),
+                    format_func=lambda v: "Benjamini–Hochberg FDR" if v == "fdr_bh" else "None",
+                    disabled=not tests["enabled"], key="stats:fdr")
+                with st.expander("Advanced: resampling, test design and backend settings"):
+                    controls = yaml_editor("Advanced statistics YAML",
+                        {key: val for key, val in stats.items() if key not in
+                         {"enabled", "metric_selection", "interaction_min_occupancy",
+                          "bootstrap", "ci", "hypothesis_tests"}}, "stats:settings") or {}
+                    if set(controls) & {"enabled", "metric_selection", "interaction_min_occupancy",
+                                        "bootstrap", "ci", "hypothesis_tests"}:
+                        raise ValueError("Use the statistical methods controls above")
+                    stats.update(controls)
+                    extra_tests = yaml_editor("Advanced hypothesis test options",
+                        {key: val for key, val in tests.items()
+                         if key not in {"enabled", "multiple_testing"}},
+                        "stats:tests:advanced") or {}
+                    if set(extra_tests) & {"enabled", "multiple_testing"}:
+                        raise ValueError("Use the hypothesis test controls above")
+                    tests.update(extra_tests)
                 # Statistics-stage previews must reflect the current rerun's
                 # edited metric selection, not the earlier analysis-card plan.
                 plan, _ = preview_document(yaml.safe_dump(doc, sort_keys=False), base)
