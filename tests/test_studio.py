@@ -292,10 +292,11 @@ def test_app_preserves_legacy_inference_and_plot_switches(tmp_path, monkeypatch)
     assert raw["statistics"]["metric_selection"] is None
     assert raw["analyses"]["alignment"]["enabled"]
     assert raw["analyses"]["rmsf"]["enabled"]
-    at.checkbox(key="stats:exact").check().run()
+    at.checkbox(key="stats:tree:family:time_series").uncheck().run()
     assert not at.exception
     raw = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
-    assert all(value == [] for value in raw["statistics"]["metric_selection"].values())
+    assert raw["statistics"]["metric_selection"]["time_series"] == []
+    assert "profiles" not in raw["statistics"]["metric_selection"]
 
 
 def test_topology_required_export_invalidates_after_selection_edit(project, monkeypatch):
@@ -750,7 +751,7 @@ def test_app_global_selection_yaml_deletion_preserves_named_groups(tmp_path, mon
     assert exported["selections"]["groups"] == doc["selections"]["groups"]
 
 
-def test_app_statistics_exact_mode_can_return_to_legacy(tmp_path, monkeypatch):
+def test_app_statistics_tree_preserves_dynamic_all_and_exact_choices(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
     from mdscope.studio import app
@@ -766,21 +767,15 @@ def test_app_statistics_exact_mode_can_return_to_legacy(tmp_path, monkeypatch):
     exported = lambda: yaml.safe_load(
         next(item.value for item in at.code if "analyses:" in item.value))
     assert exported()["statistics"]["metric_selection"] is None
-    at.checkbox(key="stats:exact").check().run()
+    at.checkbox(key="stats:tree:family:time_series").uncheck().run()
     assert not at.exception
-    assert exported()["statistics"]["metric_selection"] is not None
+    assert exported()["statistics"]["metric_selection"]["time_series"] == []
     at.checkbox(key="stats:rmsd_A:None").check().run()
     assert not at.exception
-    chosen = deepcopy(exported()["statistics"]["metric_selection"])
-    assert chosen["time_series"]
-    at.checkbox(key="stats:exact").uncheck().run()
+    assert exported()["statistics"]["metric_selection"]["time_series"]
+    at.checkbox(key="stats:tree:family:time_series").check().run()
     assert not at.exception
-    assert exported()["statistics"]["metric_selection"] is None
-    at.checkbox(key="stats:exact").check().run()
-    assert not at.exception
-    assert exported()["statistics"]["metric_selection"] == chosen
-    at.checkbox(key="stats:exact").uncheck().run()
-    assert exported()["statistics"]["metric_selection"] is None
+    assert "time_series" not in exported()["statistics"]["metric_selection"]
 
 
 @pytest.mark.parametrize("operation", ["group", "run", "condition"])
@@ -940,7 +935,7 @@ def test_app_legacy_import_preserves_all_metric_selection_on_noop(tmp_path, monk
     at.session_state["document"] = deepcopy(doc)
     at.run()
     assert not at.exception
-    assert not at.checkbox(key="stats:exact").value
+    assert at.checkbox(key="stats:tree:family:time_series").value
     exported = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
     assert exported["statistics"]["metric_selection"] is None
 
