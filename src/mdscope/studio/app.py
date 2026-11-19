@@ -638,12 +638,18 @@ def main():
         st.caption("Figures · select all, whole categories, or individual outputs.")
         from mdscope.planning import authoring_catalog
         from mdscope.config import merge, figure_enabled
-        catalog = authoring_catalog(merge(DEFAULTS, doc), include_inactive=True)["figures"]
+        merged = merge(DEFAULTS, doc)
+        catalog = authoring_catalog(merged, include_inactive=True)["figures"]
+        active_catalog = authoring_catalog(merged)["figures"]
         figures_by_family = {}
-        for owner, figures in catalog.items():
+        for owner, figures in active_catalog.items():
             for fig in figures:
                 family = fig["id"].split(":", 1)[0]
                 figures_by_family.setdefault(family, []).append((owner, fig))
+        if not figures_by_family:
+            st.info("No eligible figures. Enable an analysis or statistics producer first.")
+        else:
+            st.caption("Only currently eligible outputs appear below. Imported selections are preserved until edited.")
         all_ids = list(dict.fromkeys(
             fig["id"] for entries in figures_by_family.values() for _, fig in entries))
         exact_import = plots.get("include") is not None
