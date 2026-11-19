@@ -649,6 +649,27 @@ def inspect_saved_plot_ids(cfg: dict, root: str | Path, config_path: str | Path,
                 if (kind / "lifetimes.parquet").is_file():
                     add("interactions", safe_plot_stem(kind.name), ("lifetime_distribution",))
 
+    from .config import profile_dir
+    for run in analysis_runs(cfg, "residue_membrane_distance"):
+        for system in cfg["systems"]:
+            if any(
+                all((directory / filename).is_file()
+                    for filename in ("distance_matrix_A.npy", "time_ps.npy",
+                                     "residues.parquet"))
+                for rep in replicas if rep.system == system
+                for directory in [profile_dir(
+                    root / rep.system / rep.label,
+                    "residue_membrane_distance", run.run_id)]
+            ):
+                identifier = (
+                    f"profiles:residue_membrane_distance__{safe_plot_stem(run.run_id)}:"
+                    f"{safe_plot_stem(system)}:distance_heatmap"
+                )
+                if len(found) < max_identities:
+                    found.add(identifier)
+                else:
+                    truncated = True
+
     stats_root = root / "project_summary" / "statistics"
     manifest_file = stats_root / "manifest.json"
     if manifest_file.is_file() and json.loads(manifest_file.read_text()).get("status") == "complete":
