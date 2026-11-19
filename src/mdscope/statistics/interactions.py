@@ -26,8 +26,11 @@ def _interaction_labels(table: pd.DataFrame, keys: list[str]) -> np.ndarray:
     """Format a label once per unique identity, preserving persisted key semantics."""
     if not keys:
         return np.full(len(table), "interaction", dtype=object)
-    values = table[keys].astype(str)
-    codes, unique = pd.factorize(pd.MultiIndex.from_frame(values), sort=False)
+    # Convert missing values explicitly: pandas 3 keeps nulls in astype(str),
+    # while saved identity strings must remain stable across pandas versions.
+    columns = [np.frompyfunc(str, 1, 1)(table[key].to_numpy(dtype=object))
+               for key in keys]
+    codes, unique = pd.factorize(pd.MultiIndex.from_arrays(columns), sort=False)
     labels = np.asarray([" | ".join(row) for row in unique], dtype=object)
     return labels[codes]
 
