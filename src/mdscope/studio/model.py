@@ -571,32 +571,38 @@ def add_named_run(document, name, run_id):
 
 
 def add_group(document, group_id):
+    """Validate a detached group addition before modifying the draft."""
     from ..config import analysis_groups
-    groups = document.setdefault("selections", {}).setdefault("groups", {})
+    candidate = deepcopy(document)
+    groups = candidate.setdefault("selections", {}).setdefault("groups", {})
     if not group_id or group_id in groups:
         raise ValueError("Enter a unique filesystem-safe group ID")
-    candidate = deepcopy(document)
-    candidate["selections"]["groups"][group_id] = {"selection": "all"}
-    analysis_groups(candidate)
     groups[group_id] = {"label": group_id, "selection": "all"}
+    analysis_groups(candidate)
+    commit_draft(document, candidate)
 
 
 def add_system(document, system_id):
-    """Add a condition using the backend's identifier contract."""
+    """Validate a detached condition addition before modifying the draft."""
     from ..config import _validate_path_component
-    _validate_path_component(system_id, "system name")
-    systems = document.setdefault("systems", {})
-    if not system_id or system_id in systems:
+    if not system_id or system_id in document.get("systems", {}):
         raise ValueError("Enter a unique filesystem-safe condition ID")
-    systems[system_id] = {"topology": "topology.tpr", "replicates": [
-        {"label": "rep1", "trajectory": "rep1.xtc"}]}
-
+    _validate_path_component(system_id, "system name")
+    candidate = deepcopy(document)
+    candidate.setdefault("systems", {})[system_id] = {
+        "topology": "topology.tpr",
+        "replicates": [{"label": "rep1", "trajectory": "rep1.xtc"}],
+    }
+    commit_draft(document, candidate)
 
 
 def add_replica(document, system_id):
-    """Append a uniquely labeled replica without mutating on invalid input."""
+    """Add a unique, validated replica to a detached draft."""
     from ..config import _validate_path_component
-    replicas = document["systems"][system_id]["replicates"]
+    candidate = deepcopy(document)
+    if system_id not in candidate.get("systems", {}):
+        raise ValueError(f"Unknown condition {system_id!r}")
+    replicas = candidate["systems"][system_id]["replicates"]
     used = {(rep.get("label") or f"rep{i}") if isinstance(rep, dict) else f"rep{i}"
             for i, rep in enumerate(replicas, 1)}
     number = 1
@@ -605,16 +611,21 @@ def add_replica(document, system_id):
     label = f"rep{number}"
     _validate_path_component(label, "replica label")
     replicas.append({"label": label, "trajectory": f"{label}.xtc"})
+    commit_draft(document, candidate)
 
 
 def remove_replica(document, system_id, index):
-    """Reject invalid/last-replica removal before changing the draft."""
-    replicas = document["systems"][system_id]["replicates"]
+    """Reject invalid removals without changing the draft or figure choices."""
+    candidate = deepcopy(document)
+    if system_id not in candidate.get("systems", {}):
+        raise ValueError(f"Unknown condition {system_id!r}")
+    replicas = candidate["systems"][system_id]["replicates"]
     if len(replicas) <= 1:
         raise ValueError("Keep at least one replica per condition")
     if not 0 <= index < len(replicas):
         raise ValueError(f"Unknown replica index {index}")
     replicas.pop(index)
+    commit_draft(document, candidate)
 
 
 def _delete_system(document, system_id, *, choices=None):
