@@ -398,11 +398,11 @@ def main():
                     spec = doc.setdefault("analyses", {}).setdefault(name, {"enabled": DEFAULTS["analyses"].get(name, {}).get("enabled", False)})
                     if isinstance(spec, bool):
                         spec = doc["analyses"][name] = {"enabled": spec}
-                    enabled = st.checkbox(f"Enable {name}", value=spec.get("enabled", False), key=f"enable:{name}")
+                    enabled = st.checkbox(f"Enable {analysis_title(name)}", value=spec.get("enabled", False), key=f"enable:{name}")
                     spec["enabled"] = enabled
                     if not enabled:
                         continue
-                    with st.expander(name, expanded=True):
+                    with st.expander(f"{analysis_title(name)} · settings", expanded=False):
                         try:
                             if name in {"rmsd", "radius_of_gyration"}:
                                 default = spec.get("groups", list(doc["selections"].get("groups", {})))
@@ -412,8 +412,9 @@ def main():
                             edited = analysis_settings(name, spec, doc)
                             doc["analyses"][name] = {"enabled": True, **edited,
                                                       **({"groups": spec["groups"]} if name in {"rmsd", "radius_of_gyration"} and "groups" in spec else {})}
+                            with st.expander("Technical option names"):
                             st.caption("Supported keys: " + ", ".join(key for key in schema if key != "enabled"))
-                            st.caption("Units: _A = Å; _ps = ps; _deg = degrees. Named runs are supported only where runs is listed.")
+                            st.caption("Units: Å for distances, ps for time, degrees for angles. Named runs are available where supported.")
                             card_previews.append((name, st.empty()))
                         except (ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
                             errors.append(str(exc)); st.error(str(exc))
@@ -633,35 +634,30 @@ def main():
             st.checkbox("Select All", value=all(selected(i) for i in all_ids),
                         key="figure:tree:all",
                         on_change=lambda: set_figures(all_ids, state["figure:tree:all"]))
+        # Scientific grouping mirrors the Analyses tab; output family is secondary.
+        by_category = {}
         for family, entries in figures_by_family.items():
-            ids = list(dict.fromkeys(fig["id"] for _, fig in entries))
-            with st.expander(f"{family.replace('_', ' ').title()} ({len(ids)} figures)"):
-                st.checkbox(f"Select all {family.replace('_', ' ')}",
-                            value=all(selected(i) for i in ids),
-                            key=f"figure:tree:family:{family}",
-                            on_change=lambda ids=ids, family=family: set_figures(
-                                ids, state[f"figure:tree:family:{family}"]))
-                by_analysis = {}
-                for owner, fig in entries:
-                    by_analysis.setdefault(owner, []).append(fig)
-                for owner, owned_figures in by_analysis.items():
-                    with st.expander(owner.replace("_", " ").title()):
-                        for fig in owned_figures:
-                            identifier = fig["id"]
-                            st.checkbox(fig.get("label", identifier).replace("_A", " (Å)").replace("_ps", " (ps)").replace("_deg", " (°)"),
-                                        value=identifier in initial, key=f"figure:tree:{identifier}",
-                                        help=identifier, on_change=changed_figure)
-                            st.caption(f"{owner} · {fig['destination']}")
-                            if "studio:results_inventory" in state and owner != "statistics":
-                                matches = [item for item in state["studio:results_inventory"]
-                                           if item["analysis"] == owner]
-                                if matches:
-                                    from mdscope.studio.model import results_coverage
-                                    for item in results_coverage(matches):
-                                        st.caption(
-                                            f"Saved {item['run_id']} / {item['condition']}: "
-                                            f"{item['verified']}/{item['total']} replicas verified "
-                                            f"({item['status']}). Unverified inputs require scheduling.")
+            for owner, fig in entries:
+                by_category.setdefault(analysis_category(owner), {}).setdefault(owner, {}).setdefault(family, []).append(fig)
+        for category, owners in by_category.items():
+            count = sum(len(figs) for families in owners.values() for figs in families.values())
+            with st.expander(f"{category} · {count} figures"):
+                for owner, families in owners.items():
+                    with st.expander(analysis_title(owner)):
+                        for family, figs in families.items():
+                            ids = list(dict.fromkeys(fig["id"] for fig in figs))
+                            with st.expander(f"{family.replace('_', ' ').title()} · {len(ids)} outputs"):
+                                st.checkbox(f"Select all {analysis_title(owner)} / {family.replace('_', ' ')}",
+                                            value=all(selected(i) for i in ids),
+                                            key=f"figure:tree:family:{family}:owner:{owner}",
+                                            on_change=lambda ids=ids, owner=owner, family=family: set_figures(
+                                                ids, state[f"figure:tree:family:{family}:owner:{owner}"]))
+                                for fig in figs:
+                                    identifier = fig["id"]
+                                    st.checkbox(figure_title(fig), value=identifier in initial,
+                                                key=f"figure:tree:{identifier}", help=identifier,
+                                                on_change=changed_figure)
+                                    st.caption(fig["destination"])
         exact_figures = exact_import or bool(state.get("figure:tree:edited"))
         if exact_import and not state.get("figure:tree:edited") and not state.choices:
             state.choices = {
