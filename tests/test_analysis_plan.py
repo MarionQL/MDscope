@@ -476,3 +476,27 @@ def test_saved_figure_discovery_limit_and_profile_manifest_gate(tmp_path, projec
     assert bounded["truncated"]
     with pytest.raises(ValueError, match="max_identities"):
         inspect_saved_plot_ids(cfg, root, path, max_identities=0)
+
+
+def test_saved_named_run_heatmap_requires_complete_companions(tmp_path, project):
+    from mdscope.config import profile_dir
+    from mdscope.planning import inspect_saved_plot_ids
+    path, root = project("saved_named_distance")
+    cfg = yaml.safe_load(path.read_text())
+    cfg["analyses"]["residue_membrane_distance"] = {
+        "enabled": True,
+        "runs": {"phosphate": {"membrane_selection": "name P"}},
+    }
+    path.write_text(yaml.safe_dump(cfg))
+    resolved = load_config(path, check_paths=False)
+    destination = profile_dir(root / "tiny" / "rep1",
+                              "residue_membrane_distance", "phosphate")
+    destination.mkdir(parents=True)
+    identifier = "profiles:residue_membrane_distance__phosphate:tiny:distance_heatmap"
+    (destination / "distance_matrix_A.npy").touch()
+    incomplete = inspect_saved_plot_ids(resolved, root, path)
+    assert identifier not in {row["id"] for row in incomplete["figures"]}
+    (destination / "time_ps.npy").touch()
+    (destination / "residues.parquet").touch()
+    complete = inspect_saved_plot_ids(resolved, root, path)
+    assert identifier in {row["id"] for row in complete["figures"]}
