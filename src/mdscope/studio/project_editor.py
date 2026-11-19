@@ -2,7 +2,7 @@
 import streamlit as st
 
 from mdscope.config import DEFAULTS
-from mdscope.studio.model import add_system, delete_system
+from mdscope.studio.model import add_replica, add_system, delete_system, remove_replica
 
 
 def project_settings(document, restart):
@@ -37,15 +37,10 @@ def project_settings(document, restart):
                     else:
                         rep.pop(field, None)
                 if st.button("Remove replica", key=f"edit:rep:{system_id}:{index}:remove", disabled=len(replicas) <= 1):
-                    replicas.pop(index)
+                    remove_replica(document, system_id, index)
                     restart(document)
             if st.button("Add replica", key=f"edit:system:{system_id}:add_rep"):
-                used = {(rep.get("label") or f"rep{i}") if isinstance(rep, dict) else f"rep{i}"
-                        for i, rep in enumerate(replicas, 1)}
-                number = 1
-                while f"rep{number}" in used:
-                    number += 1
-                replicas.append({"label": f"rep{number}", "trajectory": f"rep{number}.xtc"})
+                add_replica(document, system_id)
                 restart(document)
             if st.button("Remove condition", key=f"edit:system:{system_id}:remove", disabled=len(systems) <= 1):
                 delete_system(document, system_id, choices=st.session_state.choices)
