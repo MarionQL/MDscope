@@ -14,6 +14,7 @@ from .config import analysis_runs, iter_replicates, plot_enabled, statistics_fam
 from .registry import analysis_output_plan, required_artifacts, artifact_schema
 from .statistics_families import STATISTICS_FAMILIES
 from .statistics_selection import ESTIMATOR_FLAGS
+from .reporting.plot_ids import STATIC_IDS, describe_plot
 
 
 # Interpretation of coordinates, not a claim about PBC or bulk density.
@@ -358,16 +359,36 @@ def build_plan(cfg: dict, config_path: str | Path, *,
 
     plots = cfg.get("plots", {})
     figure_families = []
+    include = plots.get("include")
     for family in FIGURE_FAMILIES:
-        # Solvation renderer has an additional explicit family opt-in.
+        # Figure descriptions come from the production plot-ID registry.
         enabled = (plot_enabled(cfg, family) and
                    (family != "solvation" or
                     plots.get("families", {}).get("solvation", False)))
+        ids = (sorted(id for id in STATIC_IDS if id.startswith(f"{family}:"))
+               if include is None else
+               [identifier for identifier in include
+                if identifier.startswith(f"{family}:")])
+        figures = []
+        for identifier in ids:
+            descriptor = describe_plot(identifier)
+            descriptor["requires_statistics"] = any(
+                path.startswith("project_summary/statistics/")
+                for path in descriptor["source_candidates"]
+            )
+            descriptor["availability"] = (
+                "conditional_on_saved_data" if enabled else "disabled_by_configuration"
+            )
+            figures.append(descriptor)
         figure_families.append({
             "family": family,
             "status": "enabled_conditional" if enabled else "disabled",
-            "specific_figures": None,
-            "specific_figures_status": "not_registered",
+            "specific_figures": figures,
+            "specific_figures_status": (
+                "static_candidates_only; dynamic metric/run IDs require saved data"
+                if include is None else
+                "configured_ids_only; saved metric identity not validated"
+            ),
             "source": "saved_products_only",
         })
 
