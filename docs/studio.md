@@ -52,7 +52,9 @@ show the production plot ID and destination; they do not compute example plots.
 | Post-run figure editor | Deferred |
 
 Imported options and legacy all-variable/all-figure switches are retained until
-explicitly replaced by exact selectors. YAML comments/formatting are not retained. Review export
+explicitly replaced by exact selectors. Explicit figure choices override conflicting
+legacy family/variant switches in exported YAML; unrelated switches are preserved.
+YAML comments/formatting are not retained. Review export
 before replacing a configuration. Protein/features/alignment defaults are parsed
 only when enabled analyses consume them. Lipid-only membrane/density and explicit
 nonprotein solvation targets can pass preflight and execute without a protein.

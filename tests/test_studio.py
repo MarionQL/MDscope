@@ -181,6 +181,100 @@ def test_disabled_imported_figures_do_not_get_enabled_by_authoring(tmp_path):
     assert not raw["plots"]["enabled"]
 
 
+
+def test_exact_figures_override_conflicting_imported_plot_switches(tmp_path):
+    from mdscope.config import figure_enabled, plot_enabled
+
+    doc = rmsd_document()
+    doc["analyses"]["hydrogen_bonds"]["enabled"] = True
+    doc["statistics"]["enabled"] = True
+    doc["statistics"]["metric_selection"]["time_series"] = [
+        {"metric": "rmsd_A", "group": None}]
+    doc["plots"] = {
+        "enabled": True, "include": None, "time_series": False,
+        "interactions": False, "distributions": False,
+        "autocorrelation": False, "bootstrap_tables": False,
+        "families": {"time_series": False, "interactions": False, "profiles": False},
+    }
+    before = deepcopy(doc)
+    choices = {
+        "rmsd": ["time_series:rmsd_A:distribution"],
+        "hydrogen_bonds": ["interactions:hydrogen_bonds:occupancy_heatmap"],
+        "statistics": ["time_series:rmsd_A:autocorrelation",
+                       "time_series:rmsd_A:bootstrap_table"],
+    }
+    text, _ = review(doc, tmp_path, choices)
+    raw = yaml.safe_load(text)
+    plots = raw["plots"]
+    selected = [identifier for ids in choices.values() for identifier in ids]
+    assert plots["enabled"] is True
+    assert plots["include"] == selected
+    assert all(plots[key] is True for key in (
+        "time_series", "interactions", "distributions",
+        "autocorrelation", "bootstrap_tables"))
+    assert plots["families"] == {
+        "time_series": True, "interactions": True, "profiles": False}
+    exported = tmp_path / "analysis.yaml"
+    exported.write_text(text)
+    cfg = load_config(exported, check_paths=False)
+    assert all(figure_enabled(cfg, identifier) for identifier in selected)
+    assert not plot_enabled(cfg, "profiles")
+    assert doc == before  # Exact export must not rewrite imported legacy mode.
+    assert yaml.safe_load(review(doc, tmp_path)[0])["plots"] == before["plots"]
+
+
+def test_exact_figure_export_reaches_production_renderer(tmp_path):
+    import pandas as pd
+    from mdscope.reporting.plotting import plot_time_series
+
+    doc = rmsd_document()
+    doc["plots"] = {
+        "enabled": True, "include": None, "time_series": False,
+        "distributions": False, "families": {"time_series": False},
+    }
+    selected = "time_series:rmsd_A:distribution"
+    text, _ = review(doc, tmp_path, {"rmsd": [selected]})
+    cfg = resolve_config(yaml.safe_load(text))
+    root = tmp_path / "results"
+    rep = root / "condition1" / "rep1"
+    (rep / "summary").mkdir(parents=True)
+    pd.DataFrame({"time_ps": [0., 1., 2., 3., 4.],
+                  "rmsd_A": [1., 1.2, 1.5, 1.3, 1.4]}).to_parquet(
+                      rep / "summary" / "timeseries.parquet")
+    plot_time_series(cfg, root, {"condition1": [rep]})
+    assert (root / "project_summary/figures/time_series/rmsd_A__distribution.png").is_file()
+    assert not (root / "project_summary/figures/time_series/rmsd_A__timeseries.png").exists()
+
+
+def test_app_exact_figures_override_imported_disabled_family(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+
+    monkeypatch.chdir(tmp_path)
+    doc = rmsd_document()
+    doc["plots"] = {
+        "enabled": True, "include": None, "time_series": False,
+        "families": {"time_series": False},
+    }
+    at = AppTest.from_file(app.__file__)
+    at.session_state["document"] = deepcopy(doc)
+    at.run()
+    assert not at.exception
+    exported = lambda: yaml.safe_load(
+        next(item.value for item in at.code if "analyses:" in item.value))
+    assert exported()["plots"] == doc["plots"]
+    at.checkbox(key="edit:exact_figures").check().run()
+    at.checkbox(key="figure:rmsd:time_series:rmsd_A:timeseries").check().run()
+    assert not at.exception
+    selected = "time_series:rmsd_A:timeseries"
+    assert exported()["plots"]["include"] == [selected]
+    assert exported()["plots"]["families"]["time_series"] is True
+    assert exported()["plots"]["time_series"] is True
+    from mdscope.config import figure_enabled
+    assert figure_enabled(resolve_config(exported()), selected)
+
+
 def test_app_preserves_legacy_inference_and_plot_switches(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest

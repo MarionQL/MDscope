@@ -161,6 +161,14 @@ def review(document, base, choices=None):
                              ". Keep legacy figure mode or explicitly remove these IDs before exact export.")
         plots = raw.setdefault("plots", {})
         plots.update(enabled=bool(ids), include=list(dict.fromkeys(ids)))
+        # Exact figure choices supersede imported legacy switches that would
+        # otherwise suppress their production renderers. Unrelated switches
+        # and the original editable document remain unchanged.
+        for family in {identifier.split(":", 1)[0] for identifier in ids}:
+            if family in plots:
+                plots[family] = True
+            if family in plots.get("families", {}):
+                plots["families"][family] = True
         for variant, flag in (("distribution", "distributions"),
                               ("autocorrelation", "autocorrelation"),
                               ("bootstrap_table", "bootstrap_tables")):
