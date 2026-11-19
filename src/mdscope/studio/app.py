@@ -38,11 +38,42 @@ def analysis_settings(name, spec):
             edited = yaml_editor(label + " (YAML; null = backend default)", value, widget_key, height=80)
         if key in spec or edited != default:
             result[key] = edited
+    from mdscope.config import MULTI_RUN_ANALYSES, analysis_runs, merge
+    excluded = {"enabled", "groups"}
+    if name in MULTI_RUN_ANALYSES:
+        excluded.add("runs")
+        use_runs = st.checkbox("Configure named runs", value="runs" in spec, key=f"edit:runs:{name}:enabled")
+        if use_runs:
+            runs = spec.setdefault("runs", {})
+            for run_id in list(runs):
+                with st.expander(f"Run · {run_id}", expanded=True):
+                    current = runs[run_id]
+                    current = {"enabled": current} if isinstance(current, bool) else current
+                    run_options = yaml_editor("Run options (inherits analysis settings)", current,
+                                              f"edit:run:{name}:{run_id}")
+                    if not isinstance(run_options, dict):
+                        raise ValueError("Run options must be a mapping")
+                    runs[run_id] = run_options
+                    if st.button("Delete run", key=f"edit:run:{name}:{run_id}:delete"):
+                        del runs[run_id]
+                        st.rerun()
+            new_id = st.text_input("New run ID", key=f"edit:runs:{name}:new")
+            if st.button("Add run", key=f"edit:runs:{name}:add"):
+                if not new_id or new_id in runs:
+                    raise ValueError("Enter a unique run ID")
+                candidate = {**runs, new_id: {}}
+                cfg = merge(DEFAULTS, {"analyses": {name: {"enabled": True, "runs": candidate}}})
+                analysis_runs(cfg, name)
+                runs[new_id] = {}
+                st.rerun()
+            result["runs"] = runs
+        else:
+            spec.pop("runs", None)
     optional = {key: value for key, value in spec.items()
-                if key not in defaults and key not in {"enabled", "groups"}}
-    edited = yaml_editor("Additional supported options / named runs (YAML)", optional,
+                if key not in defaults and key not in excluded}
+    edited = yaml_editor("Additional supported options (YAML)", optional,
                          f"edit:analysis:{name}") or {}
-    if not isinstance(edited, dict) or set(edited) & (set(defaults) | {"enabled", "groups"}):
+    if not isinstance(edited, dict) or set(edited) & (set(defaults) | excluded):
         raise ValueError("Use the controls above for default options, enabled and groups")
     return {**result, **edited}
 

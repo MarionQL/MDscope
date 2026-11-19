@@ -374,3 +374,25 @@ def test_group_rename_and_delete_migrate_inference_identity():
     assert selectors["profiles"][0]["profile"] == "rmsf__group_renamed"
     change_group(doc, "renamed")
     assert selectors["time_series"] == selectors["profiles"] == []
+
+
+def test_app_named_sasa_runs_update_output_and_statistic_identity(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+    monkeypatch.chdir(tmp_path)
+    at = AppTest.from_file(app.__file__).run()
+    at.checkbox(key="enable:sasa").check().run()
+    at.checkbox(key="edit:runs:sasa:enabled").check().run()
+    at.text_input(key="edit:runs:sasa:new").set_value("isolated").run()
+    at.button(key="edit:runs:sasa:add").click().run()
+    assert not at.exception
+    raw = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
+    assert raw["analyses"]["sasa"]["runs"] == {"isolated": {}}
+    assert any("sasa/isolated/residue_sasa.parquet" in item.value for item in at.code)
+    at.checkbox(key="stats:master").check().run()
+    assert not at.checkbox(key="stats:profile:sasa_mean__isolated").value
+    at.checkbox(key="stats:profile:sasa_mean__isolated").check().run()
+    raw = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
+    assert raw["statistics"]["metric_selection"]["profiles"][0]["profile"] == "sasa_mean__isolated"
+    assert not raw["plots"]["include"]

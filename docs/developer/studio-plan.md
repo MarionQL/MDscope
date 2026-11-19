@@ -63,3 +63,7 @@ new changes require their own CI results.
   DSSP occupancies, with producer-matching identities, units and prerequisites.
   Exact selectors feed the existing statistical figure picker. Imported
   inference:false remains disabled when editing guided estimator switches.
+- [x] Named-run editor for the three backend-supported multi-run analyses:
+  add/delete controls and per-run option panels; backend validates IDs, inherited
+  settings and references. SASA UI test covers run creation → saved path → exact
+  profile selector → opt-in inference with no automatic plots.

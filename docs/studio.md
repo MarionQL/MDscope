@@ -38,7 +38,8 @@ show the production plot ID and destination; they do not compute example plots.
 | Figure and inference defaults off; inactive scalar figures removed | Implemented |
 | Named groups: add, duplicate, rename, delete | Implemented |
 | Actual topology counts, atom preview, segment/residue labels | Production preflight |
-| All supported analysis options / named runs | Backend settings + advanced YAML |
+| Supported analysis options | Backend settings + advanced YAML |
+| Named runs (SASA, density, residue distance) | Add/delete editor with inherited per-run option panels |
 | All registered artifact schemas | Displayed; uncatalogued shapes explicitly unknown |
 | RMSD/Rg statistics variables and separate figure selector | Guided |
 | Other statistics families | Advanced exact selectors; no fabricated IDs |
