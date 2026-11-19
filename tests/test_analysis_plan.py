@@ -526,3 +526,21 @@ def test_saved_interaction_statistics_expose_exact_metric_figure_ids(tmp_path, p
     ids = {item["id"] for item in result["figures"]}
     assert "interactions:salt_bridges:occupancy:bootstrap_table" in ids
     assert "interactions:salt_bridges:occupancy:comparison_table" in ids
+
+
+def test_plan_discovers_condition_specific_sdc4_figures(tmp_path, project):
+    from mdscope.reporting.plot_ids import SDC4_CONDITION_STEMS
+    path, root = project("plan_sdc4_figure_catalog")
+    raw = yaml.safe_load(path.read_text())
+    raw["analyses"]["sdc4_mechanisms"]["enabled"] = True
+    path.write_text(yaml.safe_dump(raw))
+    plan = build_plan(load_config(path, check_paths=False), path)
+    family = next(item for item in plan["figure_families"]
+                  if item["family"] == "sdc4")
+    assert {row["id"] for row in family["specific_figures"]} == {
+        f"sdc4:tiny:{stem}" for stem in SDC4_CONDITION_STEMS
+    }
+    assert all(row["system"] == "tiny" for row in family["specific_figures"])
+    assert all(row["availability"] == "conditional_on_saved_data"
+               for row in family["specific_figures"])
+    assert not root.exists()
