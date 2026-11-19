@@ -101,8 +101,8 @@ def test_app_rmsd_slice_and_statistics(tmp_path, monkeypatch):
     at.checkbox(key="enable:rmsd").check().run()
     assert not at.exception
     assert any("ILLUSTRATIVE" in item.value for item in at.caption)
-    assert not at.checkbox(key="figure:rmsd:time_series:rmsd_A:timeseries").value
-    at.checkbox(key="figure:rmsd:time_series:rmsd_A:timeseries").check().run()
+    assert not at.checkbox(key="figure:tree:time_series:rmsd_A:timeseries").value
+    at.checkbox(key="figure:tree:time_series:rmsd_A:timeseries").check().run()
     text = next(item.value for item in at.code if "analyses:" in item.value)
     assert yaml.safe_load(text)["plots"]["include"] == ["time_series:rmsd_A:timeseries"]
     at.checkbox(key="stats:master").check().run()
@@ -265,7 +265,7 @@ def test_app_exact_figures_override_imported_disabled_family(tmp_path, monkeypat
         next(item.value for item in at.code if "analyses:" in item.value))
     assert exported()["plots"] == doc["plots"]
     at.checkbox(key="edit:exact_figures").check().run()
-    at.checkbox(key="figure:rmsd:time_series:rmsd_A:timeseries").check().run()
+    at.checkbox(key="figure:tree:time_series:rmsd_A:timeseries").check().run()
     assert not at.exception
     selected = "time_series:rmsd_A:timeseries"
     assert exported()["plots"]["include"] == [selected]
