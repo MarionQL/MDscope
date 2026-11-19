@@ -1,6 +1,7 @@
 """Reusable topology/selection preflight; no trajectory processing or outputs."""
 from pathlib import Path
 import MDAnalysis as mda
+from MDAnalysis.exceptions import SelectionError
 from ..config import analysis_runs
 from ..observables.residue_membrane_distance import _without_hydrogens
 from ..mechanisms.hs_topology import discover_covalent_hs
@@ -18,8 +19,21 @@ def validate_selections(cfg, base=Path("."), *, systems=None, emit=None):
             continue
         topology = Path(spec["topology"])
         topology = topology if topology.is_absolute() else (base / topology).resolve()
-        universe = mda.Universe(str(topology))
-        counts = resolved_selection_counts(universe, cfg)
+        try:
+            universe = mda.Universe(str(topology))
+        except (OSError, ValueError) as exc:
+            raise ValueError(
+                f"System {system!r}: cannot read topology {topology}: {exc}. "
+                "Verify the topology file and format before running analyses."
+            ) from exc
+        try:
+            counts = resolved_selection_counts(universe, cfg)
+        except (SelectionError, ValueError, AttributeError) as exc:
+            raise ValueError(
+                f"System {system!r}: cannot resolve protein, feature, alignment "
+                f"or named group selections in {topology}: {exc}. "
+                "Check MDAnalysis selection syntax and topology attributes."
+            ) from exc
         resolved[system] = counts
         emit(
             f"  {system}: protein={counts['protein']}, "
@@ -27,14 +41,18 @@ def validate_selections(cfg, base=Path("."), *, systems=None, emit=None):
         )
         if counts["protein"] == 0 or counts["features"] == 0:
             raise ValueError(
-                f"System {system!r} has a zero-atom protein/feature selection"
+                f"System {system!r} has a zero-atom protein/feature selection "
+                f"(protein={counts['protein']}, features={counts['features']}) "
+                f"in {topology}. Check selections.protein and selections.features."
             )
         if (
             cfg["analyses"]["alignment"].get("enabled", True)
             and counts["alignment"] < 3
         ):
             raise ValueError(
-                f"System {system!r}: alignment requires at least three atoms"
+                f"System {system!r}: alignment requires at least three atoms "
+                f"(matched {counts['alignment']}) in {topology}. "
+                "Check selections.alignment."
             )
         for group_id, group in counts["groups"].items():
             emit(
@@ -44,14 +62,18 @@ def validate_selections(cfg, base=Path("."), *, systems=None, emit=None):
             )
             if not group["group_atoms"] or not group["feature_atoms"]:
                 raise ValueError(
-                    f"System {system!r}, group {group_id!r} resolves to zero atoms"
+                    f"System {system!r}, group {group_id!r} resolves to zero atoms "
+                    f"(group={group['group_atoms']}, features={group['feature_atoms']}) "
+                    f"in {topology}. Check selections.groups."
                 )
             if (
                 cfg["analyses"]["alignment"].get("enabled", True)
                 and group["alignment_atoms"] < 3
             ):
                 raise ValueError(
-                    f"System {system!r}, group {group_id!r}: alignment requires at least three atoms"
+                    f"System {system!r}, group {group_id!r}: alignment requires at least three atoms "
+                    f"(matched {group['alignment_atoms']}) in {topology}. "
+                    "Check the group's alignment_selection."
                 )
         if cfg["analyses"].get("sasa", {}).get("enabled", False):
             sasa_instances(universe, cfg, validate_only=True)

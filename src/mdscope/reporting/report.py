@@ -154,10 +154,31 @@ def _markdown(coverage, findings, inventory):
 def generate_report(statistics_dir: Path) -> Path:
     """Build a findings review without loading trajectories or rendering figures."""
     statistics_dir = Path(statistics_dir)
-    manifest = json.loads((statistics_dir / "manifest.json").read_text())
-    if manifest.get("status") != "complete":
-        raise ValueError("The findings report requires completed statistics")
-    coverage = pd.read_parquet(statistics_dir / "coverage/contrast_coverage.parquet")
+    manifest_path = statistics_dir / "manifest.json"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(
+            f"The findings report requires completed statistics: missing {manifest_path}. "
+            "Run 'mdscope statistics' before generating the report."
+        )
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"The findings report requires completed statistics: invalid {manifest_path}. "
+            "Inspect the saved manifest before retrying."
+        ) from exc
+    if not isinstance(manifest, dict) or manifest.get("status") != "complete":
+        raise ValueError(
+            f"The findings report requires completed statistics: "
+            f"{manifest_path} has no complete status."
+        )
+    coverage_path = statistics_dir / "coverage/contrast_coverage.parquet"
+    if not coverage_path.is_file():
+        raise FileNotFoundError(
+            f"Missing saved contrast coverage: {coverage_path}. "
+            "Complete statistics before generating findings."
+        )
+    coverage = pd.read_parquet(coverage_path)
     extra = _shared_state_coverage(statistics_dir)
     if extra:
         coverage = pd.concat([coverage, *extra], ignore_index=True)

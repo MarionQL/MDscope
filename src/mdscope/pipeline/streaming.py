@@ -164,7 +164,10 @@ def validate_stream_inventory(rep, repout: Path, *, completed=False) -> dict:
         validate_artifact_inventory(repout, artifacts, next_part)
     except (OSError, ValueError, KeyError, EOFError, TypeError, IndexError, BadZipFile) as exc:
         raise RuntimeError(
-            f"Invalid streaming checkpoint {checkpoint}: {exc}. Existing output was preserved."
+            f"Invalid streaming checkpoint {checkpoint} for "
+            f"{rep.system}/{rep.label}: {exc}. "
+            "Existing output was preserved; inspect or archive the affected "
+            "replica before rerunning. Do not delete committed chunks to bypass validation."
         ) from exc
     return artifacts
 
