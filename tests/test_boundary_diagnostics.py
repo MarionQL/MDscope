@@ -64,6 +64,7 @@ def test_corrupt_checkpoint_reports_replica_and_preserves_raw_bytes(tmp_path):
 @pytest.mark.parametrize("manifest_content,expected", [
     (None, "missing"),
     ("{invalid", "invalid"),
+    ("[]", "invalid"),
     ('{"status":"running"}', "running"),
 ])
 def test_statistical_plot_manifest_failure_preserves_existing_figures(
