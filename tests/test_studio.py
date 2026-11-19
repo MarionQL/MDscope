@@ -181,7 +181,7 @@ def test_app_preserves_legacy_inference_and_plot_switches(tmp_path, monkeypatch)
     from mdscope.studio import app
     monkeypatch.chdir(tmp_path)
     document = {"systems": new_document()["systems"],
-                "plots": {"enabled": True}, "statistics": {"bootstrap_draws": 100}}
+                "plots": {"enabled": True}, "statistics": {"bootstrap_draws": 100, "metric_selection": None}}
     at = AppTest.from_file(app.__file__)
     at.session_state["document"] = deepcopy(document)
     at.run()
@@ -190,9 +190,13 @@ def test_app_preserves_legacy_inference_and_plot_switches(tmp_path, monkeypatch)
     assert raw["plots"] == document["plots"]
     assert raw["statistics"]["bootstrap_draws"] == 100
     assert raw["statistics"]["enabled"]
-    assert "metric_selection" not in raw["statistics"]
+    assert raw["statistics"]["metric_selection"] is None
     assert raw["analyses"]["alignment"]["enabled"]
     assert raw["analyses"]["rmsf"]["enabled"]
+    at.checkbox(key="stats:exact").check().run()
+    assert not at.exception
+    raw = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
+    assert all(value == [] for value in raw["statistics"]["metric_selection"].values())
 
 
 def test_topology_required_export_invalidates_after_selection_edit(project, monkeypatch):

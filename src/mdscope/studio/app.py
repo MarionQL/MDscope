@@ -216,7 +216,9 @@ def main():
                 if not exact_stats:
                     st.info("Imported legacy statistics are preserved (all eligible variables). Enable exact variable selection to replace this behavior.")
                 else:
-                    selectors = stats.setdefault("metric_selection", studio_metric_selection_defaults())
+                    if stats.get("metric_selection") is None:
+                        stats["metric_selection"] = studio_metric_selection_defaults()
+                    selectors = stats["metric_selection"]
                     entries = []
                     figures = []
                     for var in plan["observable_contracts"]:
