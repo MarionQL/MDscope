@@ -32,3 +32,17 @@ Deferred gaps must remain visible in Studio and the PR. Full #173 closure requir
 all supported producer schemas/variable identities and their figure eligibility,
 plus topology/chemistry coverage beyond structural selections. Advanced YAML
 authoring does not imply that every option has a guided widget.
+
+## Delivery progress
+
+- [x] Guided exact identity/estimator tables for all backend statistics families.
+- [x] Registered artifact cards show illustrative columns, schema status, units
+  and resolved per-replica destinations without saved inputs.
+- [x] DSSP assignment columns, code/time units and residue/frame row grain.
+- [ ] Complete remaining producer schemas and column definitions.
+- [ ] Derive nonstructural figure eligibility and statistics previews from those contracts.
+- [ ] Resolve protein-free preconditions (#164) and complete acceptance review.
+
+Validation for this increment: 34 Studio/planner tests passed on Python 3.13.
+Previous PR head passed Python checks, figure review and real GROMACS smoke;
+new changes require their own CI results.

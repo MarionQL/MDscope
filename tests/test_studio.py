@@ -229,3 +229,12 @@ def test_guided_family_fields_reuse_backend_estimator_capabilities():
     assert statistics_selector_fields("profiles") == ["profile", "inference", "ci", "hypothesis_tests"]
     assert statistics_selector_fields("solvation_rdfs") == ["solvent", "target_class", "site_class", "inference", "ci"]
     assert "hypothesis_tests" not in statistics_selector_fields("diffusion")
+
+
+def test_dssp_card_contract_matches_writer_fields():
+    from mdscope.registry import FusedOutput, artifact_schema
+    from pathlib import Path
+    schema = artifact_schema(FusedOutput("dssp", Path("assignments.parquet")), Path("assignments.parquet"))
+    assert schema["columns"] == ["time_ps", "topology_residue_index", "residue", "dssp"]
+    assert schema["row_grain"] == "one residue per analyzed frame per replicate"
+    assert schema["units"]["time_ps"] == "ps"

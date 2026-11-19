@@ -77,7 +77,18 @@ def show_outputs(plan, name, document, base):
                             variable["path_within_replica"]))
     outputs = [item for item in plan["registered_replica_outputs"] if item["analysis"] == name]
     if outputs:
-        st.dataframe(outputs)
+        for output in outputs:
+            st.write(f"{output['run_id']} · {output['role']} · {output['format']}")
+            st.caption(output.get("row_grain") or "Row grain / array dimensions depend on the producer contract; unresolved fields remain unknown.")
+            if output.get("columns"):
+                st.table([{column: "illustrative placeholder" for column in output["columns"]}
+                          for _ in range(2)])
+                st.json({"units": output.get("units"), "columns_status": output["columns_status"]})
+            else:
+                st.caption("Column schema not registered; depends on selections/topology.")
+            for replica in plan["replicates"]:
+                st.code(str(Path(base) / plan["project"]["output"] / replica["system"] /
+                            replica["id"] / output["path_within_replica"]))
     elif not any(item["analysis"] == name for item in plan["observable_contracts"]):
         st.info("Output schema depends on selections/topology or is not yet registered. See review plan.")
 

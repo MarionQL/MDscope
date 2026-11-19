@@ -20,6 +20,7 @@ def artifact_schema(entry: "FusedOutput", path: Path) -> dict:
     shape = None
     units = None
     dtype = None
+    row_grain = None
     if analysis == "sasa":
         if name == "residue_sasa.parquet":
             fields = ["time_ps", "topology_residue_index", "residue", "sasa_nm2"]
@@ -35,6 +36,10 @@ def artifact_schema(entry: "FusedOutput", path: Path) -> dict:
             units = {"mean_buried_sasa_nm2": "nm^2",
                      "std_buried_sasa_nm2": "nm^2",
                      "mean_buried_fraction": "fraction"}
+    elif analysis == "dssp" and name == "assignments.parquet":
+        fields = ["time_ps", "topology_residue_index", "residue", "dssp"]
+        units = {"time_ps": "ps", "dssp": "secondary-structure code"}
+        row_grain = "one residue per analyzed frame per replicate"
     elif analysis == "residue_membrane_distance":
         if name == "distance_matrix_A.npy":
             shape, dtype, units = ["sampled_frames", "selected_residues"], "float32", "angstrom"
@@ -91,6 +96,7 @@ def artifact_schema(entry: "FusedOutput", path: Path) -> dict:
         analysis == "residue_membrane_distance" and name == "median_profile.parquet"
     )
     return {
+        "row_grain": row_grain,
         "columns": fields,
         "columns_status": ("verified_base_plus_optional" if dynamic_columns
                            else "verified_fixed" if fields is not None
