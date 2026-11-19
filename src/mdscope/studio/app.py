@@ -226,9 +226,10 @@ def main():
     all_ids = list(dict.fromkeys(
         fig["id"] for entries in figures_by_family.values() for _, fig in entries))
     exact_import = plots.get("include") is not None
+    resolved_figure_cfg = resolve_config(doc) if not exact_import else None
     initial = set(plots.get("include") or []) if exact_import else {
         identifier for identifier in all_ids
-        if figure_enabled(resolve_config(doc), identifier)
+        if figure_enabled(resolved_figure_cfg, identifier)
     }
     initial.update(identifier for values in state.choices.values() for identifier in values
                    if exact_import)
