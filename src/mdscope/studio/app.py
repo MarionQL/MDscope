@@ -180,21 +180,69 @@ def main():
     doc = deepcopy(state.document)
     choices_before = deepcopy(state.choices)
     plots = doc.get("plots", {})
-    exact_figures = st.checkbox("Select individual figures (advanced)", value=(plots.get("include") is not None
-                               or not plots.get("enabled", False)), key="edit:exact_figures")
+    # Imported category switches remain unchanged until the user edits them.
+    # New projects and exact imports use the hierarchical selector.
+    exact_figures = st.checkbox("Customize individual figures",
+                                value=(plots.get("include") is not None
+                                       or not plots.get("enabled", False)),
+                                key="edit:exact_figures")
     if not exact_figures:
-        st.caption("Quick selection: enable an entire figure category without selecting individual IDs.")
+        st.caption("Quick selection: category switches apply to every eligible figure in that family.")
         selected_families = []
-        # Entering Quick from an exact allowlist starts with no broad
-        # categories; never silently expand a narrow selection.
-        current_families = (quick_figure_families(doc)
-                            if plots.get("include") is None and plots.get("enabled", False) else set())
+        current_families = quick_figure_families(doc)
         for family in QUICK_FIGURE_FAMILIES:
             if st.checkbox(f"All {family.replace('_', ' ')} figures",
-                           value=family in current_families, key=f"edit:quick:figure:{family}"):
+                           value=family in current_families,
+                           key=f"edit:quick:figure:{family}"):
                 selected_families.append(family)
-        set_quick_figure_families(doc, selected_families)
-        st.caption("Category switches use the existing plotting backend; dynamic figures are included when eligible.")
+        # Do not rewrite imported shorthand/defaults on a no-op rerun.
+        if any(state.get(f"edit:quick:figure:{family}") != (family in current_families)
+               for family in QUICK_FIGURE_FAMILIES):
+            set_quick_figure_families(doc, selected_families)
+    else:
+        st.caption("Select all, select a category, or expand it to select individual figures.")
+        from mdscope.planning import authoring_catalog
+        from mdscope.config import merge
+        catalog = authoring_catalog(merge(DEFAULTS, doc), include_inactive=True)["figures"]
+        figures_by_family = {}
+        for owner, figures in catalog.items():
+            for fig in figures:
+                family = fig["id"].split(":", 1)[0]
+                figures_by_family.setdefault(family, []).append((owner, fig))
+        known_ids = {fig["id"] for figures in catalog.values() for fig in figures}
+        original_ids = set(plots.get("include") or [])
+        original_ids.update(identifier for values in state.choices.values() for identifier in values)
+        # Widget keys are stable exact IDs, even if the display label changes.
+        def set_figures(ids, checked):
+            for identifier in ids:
+                state[f"figure:tree:{identifier}"] = checked
+        all_figures = [fig for figures in figures_by_family.values() for _, fig in figures]
+        all_ids = list(dict.fromkeys(fig["id"] for fig in all_figures))
+        if all_ids:
+            st.checkbox("Select All", value=all(state.get(f"figure:tree:{i}", i in original_ids)
+                                                 for i in all_ids),
+                        key="figure:tree:all",
+                        on_change=lambda: set_figures(all_ids, state["figure:tree:all"]))
+        selected_ids = []
+        for family, entries in figures_by_family.items():
+            ids = list(dict.fromkeys(fig["id"] for _, fig in entries))
+            with st.expander(f"{family.replace('_', ' ').title()} ({len(ids)} figures)"):
+                st.checkbox(f"Select all {family.replace('_', ' ')}",
+                            value=all(state.get(f"figure:tree:{i}", i in original_ids) for i in ids),
+                            key=f"figure:tree:family:{family}",
+                            on_change=lambda ids=ids, family=family: set_figures(
+                                ids, state[f"figure:tree:family:{family}"]))
+                for owner, fig in entries:
+                    identifier = fig["id"]
+                    if st.checkbox(fig.get("label", identifier),
+                                   value=identifier in original_ids,
+                                   key=f"figure:tree:{identifier}", help=identifier):
+                        selected_ids.append(identifier)
+                    st.caption(f"{owner} · {fig['destination']}")
+        state.choices = {
+            owner: [fig["id"] for fig in figures if fig["id"] in selected_ids]
+            for owner, figures in catalog.items()
+        }
     tabs = st.tabs(["1 · Project & systems", "2 · Selections & alignment",
                     "3 · Analyses", "4 · Statistics", "5 · Review & export"])
     errors = []
@@ -304,8 +352,7 @@ def main():
                     show_outputs(plan, name, doc, base)
                     from mdscope.planning import authoring_catalog
                     figures = authoring_catalog(resolve_config(doc))["figures"].get(name, [])
-                    if exact_figures:
-                        state.choices[name] = figure_picker(figures, f"figure:{name}", state.choices.get(name, (doc.get("plots", {}).get("include") or []) if doc.get("plots", {}).get("enabled") else []))
+
                     if not figures:
                         st.caption("No analysis-only figure IDs verified for this card yet; no figures selected automatically.")
                 except (ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
@@ -402,8 +449,7 @@ def main():
                                      if key in family})
                     from mdscope.planning import authoring_catalog
                     figures = authoring_catalog(resolve_config(doc))["figures"].get("statistics", [])
-                    if exact_figures:
-                        state.choices["statistics"] = figure_picker(figures, "figure:statistics", state.choices.get("statistics", (doc.get("plots", {}).get("include") or []) if doc.get("plots", {}).get("enabled") else []))
+
             except (ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
                 errors.append(str(exc)); st.error(str(exc))
     with tabs[4]:
