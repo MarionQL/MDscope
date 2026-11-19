@@ -546,13 +546,20 @@ def _validate_replica_products(cfg, root, replicates):
         repout = root / rep.system / rep.label
         timeseries = repout / "summary" / "timeseries.parquet"
         if not timeseries.is_file():
-            missing.append(f"{rep.system}/{rep.label}: missing summary/timeseries.parquet")
+            missing.append(
+                f"{rep.system}/{rep.label}: missing {timeseries}; "
+                "finish the replica before offline statistics or plotting"
+            )
             continue
         try:
             times = pd.read_parquet(timeseries, columns=["time_ps"])["time_ps"]
             if (times.empty or not np.isfinite(times.to_numpy(dtype=float)).all()
                     or not times.is_monotonic_increasing or not times.is_unique):
-                missing.append(f"{rep.system}/{rep.label}: invalid time_ps")
+                missing.append(
+                    f"{rep.system}/{rep.label}: invalid time_ps in {timeseries} "
+                    "(empty, nonfinite, duplicated or nonmonotonic); "
+                    "inspect or regenerate the affected replica summary"
+                )
             for entry in analysis_output_plan(cfg, repout):
                 _validate_analysis_output(entry, cfg)
                 if entry.name == "lipid_enrichment" and footprint_pending(
@@ -577,10 +584,14 @@ def _validate_replica_products(cfg, root, replicates):
                         if count.shape != () or count.dtype.kind not in "iu" or len(times) != int(count):
                             raise ValueError("summary frame count disagrees with checkpoint")
         except (OSError, ValueError, KeyError, ImportError, EOFError, TypeError, IndexError, BadZipFile, RuntimeError) as exc:
-            missing.append(f"{rep.system}/{rep.label}: invalid persisted inputs ({exc})")
+            missing.append(
+                f"{rep.system}/{rep.label}: invalid persisted inputs under {repout} "
+                f"({exc}); inspect the affected saved artifact before retrying"
+            )
     if missing:
         raise RuntimeError(
-            "Cannot finalize: required persisted replicate data are missing or invalid. "
+            "Cannot finalize: required persisted replica data are missing or invalid. "
+            "Existing outputs were not replaced. "
             + "; ".join(missing)
         )
 
