@@ -1231,3 +1231,34 @@ def test_statistics_source_status_reports_verified_coverage_without_inventing_in
     assert coverage[0]["run_id"] == "A"
     assert coverage[0]["verified"] == 1
     assert coverage[0]["status"] == "partial"
+
+
+def test_explicit_results_root_rejects_missing_without_initialization(tmp_path):
+    from mdscope.pipeline.runner import finalize_project
+    doc = rmsd_document()
+    with pytest.raises(FileNotFoundError, match="Existing results directory"):
+        finalize_project(tmp_path / "analysis.yaml", cfg=resolve_config(doc, base=tmp_path),
+                         phase="statistics", results_dir=tmp_path / "absent")
+    assert not (tmp_path / "absent").exists()
+
+
+def test_explicit_results_root_rejects_unverified_before_mutating_saved_provenance(tmp_path):
+    from mdscope.pipeline.runner import finalize_project
+    doc = rmsd_document()
+    root = tmp_path / "saved"
+    root.mkdir()
+    original = "persisted scientific provenance"
+    (root / "resolved_config.yaml").write_text(original)
+    with pytest.raises(RuntimeError, match="not verified"):
+        finalize_project(tmp_path / "analysis.yaml", cfg=resolve_config(doc, base=tmp_path),
+                         phase="statistics", results_dir=root)
+    assert (root / "resolved_config.yaml").read_text() == original
+    assert not (root / "project_summary").exists()
+
+
+def test_explicit_results_root_refuses_conflicting_roots(tmp_path):
+    from mdscope.pipeline.runner import finalize_project
+    with pytest.raises(ValueError, match="either root or results_dir"):
+        finalize_project(tmp_path / "analysis.yaml",
+                         cfg=resolve_config(rmsd_document(), base=tmp_path),
+                         root=tmp_path, results_dir=tmp_path)
