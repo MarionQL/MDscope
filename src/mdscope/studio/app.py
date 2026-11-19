@@ -456,25 +456,32 @@ def main():
                     yaml.safe_dump(state.document, sort_keys=True))
                 source_status = statistics_source_status(
                     plan, state.get("studio:results_inventory") if inventory_fresh else None)
-                st.caption("Only variables produced by the configured analyses can be inferred. Select all statistics, entire families, or individual known variables. "
-                           "All includes dynamic identities that cannot be enumerated before execution.")
+                eligible_families = tuple(family for family in families if
+                    source_status.get(family, {}).get("scheduled_sources") or
+                    source_status.get(family, {}).get("existing_coverage"))
+                if not eligible_families:
+                    st.info("No eligible statistics sources. Enable an analysis or inspect verified saved results.")
+                st.caption("Only scheduled analyses and verified saved outputs are eligible. All measurements includes dynamic identities; estimator choices are separate.")
                 def set_family(family, checked):
+                    if family not in eligible_families:
+                        return
                     set_statistics_family_mode(state.document, family, "all" if checked else "none")
                     # The widget values are reset when the family changes mode.
                     state.pop(f"stats:table:{family}", None)
                     state.pop(f"stats:tree:convert:{family}", None)
                     state["stats:tree:all"] = all(
-                        statistics_family_mode(state.document, item) == "all" for item in families)
+                        statistics_family_mode(state.document, item) == "all" for item in eligible_families)
                 def set_all_families():
                     checked = state["stats:tree:all"]
-                    for family in families:
+                    for family in eligible_families:
                         set_family(family, checked)
                         state[f"stats:tree:family:{family}"] = checked
-                st.checkbox("Select All Statistics",
+                st.checkbox("Include all eligible measurements",
                             value=all(statistics_family_mode(doc, family) == "all"
-                                      for family in families),
-                            key="stats:tree:all", on_change=set_all_families)
-                for family in families:
+                                      for family in eligible_families) if eligible_families else False,
+                            key="stats:tree:all", on_change=set_all_families,
+                            disabled=not eligible_families)
+                for family in eligible_families:
                     mode = statistics_family_mode(doc, family)
                     availability = source_status.get(family, {"status": "unavailable", "scheduled_sources": []})
                     with st.expander(f"{family.replace('_', ' ').title()} · {mode.title()} · {availability['status']}"):
