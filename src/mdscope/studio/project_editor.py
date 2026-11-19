@@ -23,12 +23,16 @@ def path_picker(label, value, key, *, directory=False, optional=False):
             st.warning("Path exists but is not the expected file/directory type.")
         else:
             st.caption("Not yet verified on this machine" if optional else "⚠ Path not found on this machine")
+    pending_dir = st.session_state.pop(f"{key}:pending_dir", None)
+    if pending_dir is not None:
+        st.session_state[f"{key}:browse_dir"] = pending_dir
+        st.session_state.pop(f"{key}:browse_choice", None)
     with st.popover("Browse files" if not directory else "Browse folders"):
         location = st.text_input("Directory to browse", str(Path(value).expanduser().parent) if value else str(Path.cwd()),
                                  key=f"{key}:browse_dir")
         folder = Path(location).expanduser()
         if st.button("Go to parent folder", key=f"{key}:browse_parent"):
-            st.session_state[f"{key}:browse_dir"] = str(folder.parent)
+            st.session_state[f"{key}:pending_dir"] = str(folder.parent)
             st.rerun()
         if not folder.is_dir():
             st.warning("Directory not found or inaccessible.")
@@ -41,7 +45,7 @@ def path_picker(label, value, key, *, directory=False, optional=False):
                     chosen = st.selectbox("Choose a folder or file", options, key=f"{key}:browse_choice")
                     if Path(chosen).is_dir():
                         if st.button("Open folder", key=f"{key}:browse_open"):
-                            st.session_state[f"{key}:browse_dir"] = chosen
+                            st.session_state[f"{key}:pending_dir"] = chosen
                             st.rerun()
                     if directory or Path(chosen).is_file():
                         if st.button("Use selected path", key=f"{key}:browse_use"):
