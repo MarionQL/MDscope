@@ -45,7 +45,8 @@ show the production plot ID and destination; they do not compute example plots.
 | All-analysis guided figure eligibility and complete schema glossary | Remaining #173 work |
 | Post-run figure editor | Deferred |
 
-Imported options are retained, but YAML comments/formatting are not. Review export
+Imported options and legacy all-variable/all-figure switches are retained until
+explicitly replaced by exact selectors. YAML comments/formatting are not retained. Review export
 before replacing a configuration. The existing backend still requires nonempty
 protein/features even for some protein-free configurations (#164); Studio reports
 that preflight error rather than claiming validation. Topology success does not

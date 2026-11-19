@@ -105,6 +105,11 @@ def main():
         except (ValueError, yaml.YAMLError, UnicodeError) as exc:
             st.error(str(exc))
     doc = state.document
+    plots = doc.get("plots", {})
+    exact_figures = st.checkbox("Use exact figure choices", value=(plots.get("include") is not None
+                               or not plots.get("enabled", False)), key="edit:exact_figures")
+    if not exact_figures:
+        st.info("Imported legacy figure switches are preserved. Enable exact figure choices to replace them with an explicit allowlist.")
     tabs = st.tabs(["1 · Project & systems", "2 · Selections & alignment",
                     "3 · Analyses", "4 · Statistics", "5 · Review & export"])
     errors = []
@@ -193,57 +198,64 @@ def main():
                     show_outputs(plan, name, doc, base)
                     figures = [fig for var in plan["observable_contracts"] if var["analysis"] == name
                                for fig in var["figures"] if not fig["requires_statistics"]]
-                    state.choices[name] = figure_picker(figures, f"figure:{name}", state.choices.get(name, (doc.get("plots", {}).get("include") or []) if doc.get("plots", {}).get("enabled") else []))
+                    if exact_figures:
+                        state.choices[name] = figure_picker(figures, f"figure:{name}", state.choices.get(name, (doc.get("plots", {}).get("include") or []) if doc.get("plots", {}).get("enabled") else []))
                     if not figures:
                         st.caption("No analysis-only figure IDs verified for this card yet; no figures selected automatically.")
                 except (ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
                     errors.append(str(exc)); st.error(str(exc))
     with tabs[3]:
         stats = doc.setdefault("statistics", {})
-        stats["enabled"] = st.checkbox("Enable statistics", value=stats.get("enabled", False), key="stats:master")
+        stats["enabled"] = st.checkbox("Enable statistics", value=stats.get("enabled", DEFAULTS["statistics"]["enabled"]), key="stats:master")
         st.caption("Independent units: simulation replicates. Eligibility requires compatible sampling/identities; CI availability is determined by the backend, never by frame count alone.")
         if stats["enabled"]:
             try:
                 _, plan = review(doc, base)
-                selectors = stats.setdefault("metric_selection", studio_metric_selection_defaults())
-                entries = []
-                figures = []
-                for var in plan["observable_contracts"]:
-                    selector = var["statistics_selector"]
-                    key = f"stats:{var['metric']}:{var['group']}"
-                    selected = next((item for item in selectors.get("time_series", [])
-                                     if item.get("group") == selector["group"] and item["metric"] == selector["metric"]), None)
-                    if st.checkbox(f"Compute {var['metric']} statistics · {var['label']}", value=selected is not None, key=key):
-                        entry = dict(selector)
-                        for flag in sorted(ESTIMATOR_FLAGS["time_series"]):
-                            entry[flag] = st.checkbox(flag, value=(selected or {}).get(flag, True), key=f"{key}:{flag}")
-                        entries.append(entry)
-                        figures.extend(fig for fig in var["figures"] if fig["requires_statistics"])
-                known = {(var["metric"], var["group"]) for var in plan["observable_contracts"]}
-                selectors["time_series"] = entries + [item for item in selectors.get("time_series", [])
-                                                         if (item["metric"], item.get("group")) not in known]
-                advanced = yaml_editor("Exact metric selectors for all families (advanced)",
-                                       {key: val for key, val in selectors.items() if key != "time_series"}, "stats:selectors")
-                if not isinstance(advanced, dict) or "time_series" in advanced:
-                    raise ValueError("Use the controls above for time_series selectors")
-                stats["metric_selection"] = {"time_series": selectors["time_series"], **advanced}
-                controls = yaml_editor("CI / block / test settings", {key: val for key, val in stats.items()
-                                                                     if key not in {"enabled", "metric_selection"}}, "stats:settings") or {}
-                if set(controls) & {"enabled", "metric_selection"}:
-                    raise ValueError("Use the statistics selectors above")
-                stats.update(controls)
-                st.caption("Dynamic metric identities outside the structural scalar catalog require exact backend IDs. No identity or output schema is invented.")
-                with st.expander("Expected statistics outputs and eligibility"):
-                    st.caption("ILLUSTRATIVE — NO MD RESULTS. Candidate files are conditional on eligible data; complete writer schemas are not yet catalogued.")
-                    for family in plan["statistics_families"]:
-                        st.json({key: family[key] for key in ("family", "files", "metric_contract")
-                                 if key in family})
-                state.choices["statistics"] = figure_picker(figures, "figure:statistics", state.choices.get("statistics", (doc.get("plots", {}).get("include") or []) if doc.get("plots", {}).get("enabled") else []))
+                exact_stats = (stats.get("metric_selection") is not None or
+                               st.checkbox("Select statistics by exact variable", key="stats:exact"))
+                if not exact_stats:
+                    st.info("Imported legacy statistics are preserved (all eligible variables). Enable exact variable selection to replace this behavior.")
+                else:
+                    selectors = stats.setdefault("metric_selection", studio_metric_selection_defaults())
+                    entries = []
+                    figures = []
+                    for var in plan["observable_contracts"]:
+                        selector = var["statistics_selector"]
+                        key = f"stats:{var['metric']}:{var['group']}"
+                        selected = next((item for item in selectors.get("time_series", [])
+                                         if item.get("group") == selector["group"] and item["metric"] == selector["metric"]), None)
+                        if st.checkbox(f"Compute {var['metric']} statistics · {var['label']}", value=selected is not None, key=key):
+                            entry = dict(selector)
+                            for flag in sorted(ESTIMATOR_FLAGS["time_series"]):
+                                entry[flag] = st.checkbox(flag, value=(selected or {}).get(flag, True), key=f"{key}:{flag}")
+                            entries.append(entry)
+                            figures.extend(fig for fig in var["figures"] if fig["requires_statistics"])
+                    known = {(var["metric"], var["group"]) for var in plan["observable_contracts"]}
+                    selectors["time_series"] = entries + [item for item in selectors.get("time_series", [])
+                                                             if (item["metric"], item.get("group")) not in known]
+                    advanced = yaml_editor("Exact metric selectors for all families (advanced)",
+                                           {key: val for key, val in selectors.items() if key != "time_series"}, "stats:selectors")
+                    if not isinstance(advanced, dict) or "time_series" in advanced:
+                        raise ValueError("Use the controls above for time_series selectors")
+                    stats["metric_selection"] = {"time_series": selectors["time_series"], **advanced}
+                    controls = yaml_editor("CI / block / test settings", {key: val for key, val in stats.items()
+                                                                         if key not in {"enabled", "metric_selection"}}, "stats:settings") or {}
+                    if set(controls) & {"enabled", "metric_selection"}:
+                        raise ValueError("Use the statistics selectors above")
+                    stats.update(controls)
+                    st.caption("Dynamic metric identities outside the structural scalar catalog require exact backend IDs. No identity or output schema is invented.")
+                    with st.expander("Expected statistics outputs and eligibility"):
+                        st.caption("ILLUSTRATIVE — NO MD RESULTS. Candidate files are conditional on eligible data; complete writer schemas are not yet catalogued.")
+                        for family in plan["statistics_families"]:
+                            st.json({key: family[key] for key in ("family", "files", "metric_contract")
+                                     if key in family})
+                    if exact_figures:
+                        state.choices["statistics"] = figure_picker(figures, "figure:statistics", state.choices.get("statistics", (doc.get("plots", {}).get("include") or []) if doc.get("plots", {}).get("enabled") else []))
             except (ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
                 errors.append(str(exc)); st.error(str(exc))
     with tabs[4]:
         try:
-            text, plan = review(doc, base, state.choices if state.choices else None)
+            text, plan = review(doc, base, state.choices if exact_figures else None)
             st.warning("Schema-only validation: topology, chemistry, trajectory alignment and sampling eligibility remain unverified.")
             require_topology = st.checkbox("Require topology preflight before export")
             signature = text + str(Path(base).resolve())

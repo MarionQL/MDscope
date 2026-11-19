@@ -173,3 +173,23 @@ def test_disabled_imported_figures_do_not_get_enabled_by_authoring(tmp_path):
     doc["plots"] = {"enabled": False, "include": ["solvation:water_and_ions"]}
     raw = yaml.safe_load(review(doc, tmp_path, {"rmsd": []})[0])
     assert not raw["plots"]["enabled"]
+
+
+def test_app_preserves_legacy_inference_and_plot_switches(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+    monkeypatch.chdir(tmp_path)
+    document = {"systems": new_document()["systems"],
+                "plots": {"enabled": True}, "statistics": {"bootstrap_draws": 100}}
+    at = AppTest.from_file(app.__file__)
+    at.session_state["document"] = deepcopy(document)
+    at.run()
+    assert not at.exception
+    raw = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
+    assert raw["plots"] == document["plots"]
+    assert raw["statistics"]["bootstrap_draws"] == 100
+    assert raw["statistics"]["enabled"]
+    assert "metric_selection" not in raw["statistics"]
+    assert raw["analyses"]["alignment"]["enabled"]
+    assert raw["analyses"]["rmsf"]["enabled"]
