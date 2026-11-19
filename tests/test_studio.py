@@ -1041,3 +1041,74 @@ def test_statistics_exact_conversion_validates_atomically_and_preserves_other_fa
                                 catalog_complete=True)
     assert statistics_family_mode(doc, "time_series") == "exact"
     assert doc["statistics"]["metric_selection"]["profiles"] == [{"profile": "rmsf"}]
+
+
+def test_results_inventory_requires_registered_companions_and_is_read_only(tmp_path):
+    from mdscope.studio.model import inspect_results_directory
+    doc = rmsd_document()
+    doc["analyses"]["sasa"] = {"enabled": True}
+    root = tmp_path / "results"
+    root.mkdir()
+    before = deepcopy(doc)
+    inventory = inspect_results_directory(doc, tmp_path, root)
+    sasa = [item for item in inventory if item["analysis"] == "sasa"]
+    assert sasa
+    assert all(item["status"] == "missing" for item in sasa)
+    assert doc == before
+    artifact = root / "condition1" / "rep1" / "profiles" / "sasa" / "residue_sasa.parquet"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_bytes(b"placeholder")
+    inventory = inspect_results_directory(doc, tmp_path, root)
+    sasa = [item for item in inventory if item["analysis"] == "sasa"]
+    assert any(item["status"] == "candidate_unverified" for item in sasa)
+    assert not (root / "project_summary").exists()
+
+
+def test_results_inventory_rejects_missing_directory(tmp_path):
+    from mdscope.studio.model import inspect_results_directory
+    with pytest.raises(ValueError, match="does not exist"):
+        inspect_results_directory(rmsd_document(), tmp_path, tmp_path / "missing")
+
+
+@pytest.mark.parametrize("family", ["time_series", "profiles", "interactions",
+                                    "solvation_rdfs", "diffusion", "coupling"])
+def test_statistics_imported_family_semantics_are_preserved_without_conversion(family):
+    from mdscope.studio.model import statistics_family_mode
+    for selection, expected in ((None, "all"), ({}, "all"),
+                                ({family: []}, "none")):
+        doc = {"statistics": {"metric_selection": deepcopy(selection)}}
+        before = deepcopy(doc)
+        assert statistics_family_mode(doc, family) == expected
+        assert doc == before
+    entry = {
+        "time_series": {"metric": "rmsd_A"},
+        "profiles": {"profile": "rmsf"},
+        "interactions": {"kind": "hydrogen_bonds"},
+        "solvation_rdfs": {"solvent": "water", "target_class": "protein", "site_class": "backbone"},
+        "diffusion": {"metric": "lipid_diffusion"},
+        "coupling": {"mechanism": "protein_lipid"},
+    }[family]
+    doc = {"statistics": {"metric_selection": {family: [entry]}}}
+    before = deepcopy(doc)
+    assert statistics_family_mode(doc, family) == "exact"
+    assert doc == before
+
+
+def test_app_interaction_occupancy_cutoff_round_trip(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+
+    monkeypatch.chdir(tmp_path)
+    doc = rmsd_document()
+    doc["statistics"]["enabled"] = True
+    doc["statistics"]["interaction_min_occupancy"] = 0.20
+    at = AppTest.from_file(app.__file__)
+    at.session_state["document"] = deepcopy(doc)
+    at.run()
+    assert not at.exception
+    assert at.slider(key="stats:interaction_min_occupancy").value == 0.20
+    at.slider(key="stats:interaction_min_occupancy").set_value(0.35).run()
+    assert not at.exception
+    exported = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
+    assert exported["statistics"]["interaction_min_occupancy"] == pytest.approx(0.35)
