@@ -272,13 +272,18 @@ def inspect_results_directory(document, base, results_directory):
                         cfg, saved, replica.system, replica.label, entry.name)
                     if compatible and len(present) == len(required):
                         from ..pipeline.runner import (
-                            RunState, _check_artifact, _replicate_state_prefix,
+                            _check_artifact, _replicate_state_prefix,
                             _validate_analysis_output,
                         )
-                        state = RunState(root)
+                        import json
                         key = (_replicate_state_prefix(replica) + "-" +
                                entry.checkpoint_key)
-                        if not state.complete(key, required_artifacts=None):
+                        marker = root / ".state" / f"{key}.json"
+                        try:
+                            completed = json.loads(marker.read_text()).get("status") == "complete"
+                        except (OSError, ValueError, AttributeError):
+                            completed = False
+                        if not completed:
                             reason = "No completed analysis stage marker"
                         else:
                             _validate_analysis_output(entry, cfg)
