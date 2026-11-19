@@ -22,6 +22,23 @@ from ..interactions.interaction_tables import interaction_key_columns, interacti
 from .common import _temporal, _block_weights, _hierarchical, _hierarchical_difference, _ci, _direction, _permutation, _fdr, _range_meta, _point_difference, selected_rng as _selected_rng
 
 
+def _interaction_labels(table: pd.DataFrame, keys: list[str]) -> np.ndarray:
+    """Format a label once per unique identity, preserving persisted key semantics."""
+    if not keys:
+        return np.full(len(table), "interaction", dtype=object)
+    # Normalize absent keys before factorization: pandas may materialize
+    # Python None, NaN, or pd.NA for the same saved nullable field.
+    columns = [
+        np.frompyfunc(
+            lambda value: "nan" if pd.isna(value) else str(value), 1, 1
+        )(table[key].to_numpy(dtype=object))
+        for key in keys
+    ]
+    codes, unique = pd.factorize(pd.MultiIndex.from_arrays(columns), sort=False)
+    labels = np.asarray([" | ".join(row) for row in unique], dtype=object)
+    return labels[codes]
+
+
 def _presence_frame_indices(times, presence_times):
     indices = np.searchsorted(times, np.asarray(presence_times, float))
     valid = (indices < len(times)) & np.isclose(
@@ -79,16 +96,18 @@ def _interaction_bootstrap(
     starts = np.zeros(n, np.float32)
     complete_frames, durations = [], []
     if lifetimes is not None and not lifetimes.empty:
-        for row in lifetimes.itertuples():
-            if bool(getattr(row, "left_censored", False)):
-                continue
-            i = int(np.searchsorted(times, float(row.start_ps)))
-            if i >= n or not np.isclose(times[i], float(row.start_ps)):
-                continue
-            starts[i] += 1
-            if bool(getattr(row, "completed", False)):
-                complete_frames.append(i)
-                durations.append(float(row.lifetime_ps))
+        event_times = lifetimes["start_ps"].to_numpy(float)
+        indices, valid = _presence_frame_indices(times, event_times) if n else (
+            np.empty(len(event_times), dtype=int), np.zeros(len(event_times), dtype=bool)
+        )
+        if "left_censored" in lifetimes:
+            valid &= ~lifetimes["left_censored"].to_numpy(dtype=bool)
+        np.add.at(starts, indices[valid], 1)
+        completed = (lifetimes["completed"].to_numpy(dtype=bool)
+                     if "completed" in lifetimes else np.zeros(len(event_times), dtype=bool))
+        keep = valid & completed
+        complete_frames = indices[keep].tolist()
+        durations = lifetimes.loc[keep, "lifetime_ps"].to_numpy(float).tolist()
     event_rate = (
         weights.dot(starts) / duration_ns if np.isfinite(duration_ns)
         and duration_ns > 0 else np.full(draws, np.nan)
@@ -201,8 +220,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                     if missing_columns:
                         raise ValueError(
                             f"Interaction {kind} missing identity columns: {missing_columns}")
-                    labels = (data[keys].astype(str).agg(" | ".join, axis=1)
-                              if keys else pd.Series(["interaction"]))
+                    labels = _interaction_labels(data, keys)
                     existing.update((kind, identity) for identity in wanted
                                     if identity in set(labels))
         missing = requested - existing
@@ -239,11 +257,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                 )
             for table in (presence, life):
                 if not table.empty:
-                    table["interaction"] = (
-                        table[keys].astype(str).agg(" | ".join, axis=1)
-                        if keys
-                        else "interaction"
-                    )
+                    table["interaction"] = _interaction_labels(table, keys)
                     if requested_ids is not None:
                         table.drop(table.index[~table["interaction"].isin(requested_ids)],
                                    inplace=True)
