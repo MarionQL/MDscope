@@ -78,3 +78,37 @@ def test_occupancy_screen_keeps_boundary_and_all_replicas(tmp_path):
     assert len(occupancy) == 6
     assert occupancy.loc[("a", "rep1")] == pytest.approx(0.20)
     assert occupancy.drop(("a", "rep1")).lt(0.20).all()
+
+
+def test_factorized_labels_match_legacy_row_format_with_repeats_and_missing_values():
+    from mdscope.statistics.interactions import _interaction_labels
+    table = pd.DataFrame({
+        "residue_1": ["ASP1", "ASP1", "GLU2", None, "ASP1"],
+        "residue_2": ["LYS7", "LYS7", "ARG8", "ARG9", "LYS7"],
+    })
+    expected = table[["residue_1", "residue_2"]].astype(str).agg(" | ".join, axis=1)
+    assert _interaction_labels(table, ["residue_1", "residue_2"]).tolist() == expected.tolist()
+    assert _interaction_labels(table, []).tolist() == ["interaction"] * len(table)
+
+
+def test_batched_event_frame_mapping_preserves_censoring_and_event_multiplicity():
+    from mdscope.statistics.interactions import _interaction_bootstrap
+    cfg = deepcopy(DEFAULTS)
+    times = np.arange(6, dtype=float) * 10.
+    events = pd.DataFrame({
+        "start_ps": [10., 10., 20., 30., 21., 50.],
+        "lifetime_ps": [20., 40., 90., 30., 10., 10.],
+        "left_censored": [False, False, True, False, False, False],
+        "completed": [True, True, True, False, True, True],
+    })
+    boot, point = _interaction_bootstrap(
+        times, np.array([10., 20., 50.]), events, cfg,
+        0, np.random.default_rng(11), {}, ("a", "rep1")
+    )
+    assert point["n_event_starts"] == 4
+    assert point["n_completed_events"] == 3
+    assert point["mean_lifetime_ps"] == pytest.approx((20. + 40. + 10.) / 3.)
+    assert point["median_lifetime_ps"] == 20.
+    assert point["event_rate_per_ns"] == pytest.approx(4 / 0.06)
+    assert point["occupancy"] == pytest.approx(0.5)
+    assert all(not len(values) for values in boot.values())
