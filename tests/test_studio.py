@@ -1482,3 +1482,17 @@ def test_scientific_analysis_grouping_preserves_every_backend_option():
     assert analysis_category("membrane") == "Membrane structure & dynamics"
 
 
+
+
+def test_statistics_eligibility_only_scheduled_or_verified():
+    from mdscope.studio.app import eligible_statistics_families
+
+    families = ("time_series", "profiles", "interactions", "solvation_rdfs")
+    status = {
+        "time_series": {"scheduled_sources": ["rmsd"], "status": "scheduled"},
+        "profiles": {"scheduled_sources": [], "status": "verified_existing"},
+        "interactions": {"scheduled_sources": [], "status": "partial_existing"},
+        "solvation_rdfs": {"scheduled_sources": [], "status": "unavailable"},
+    }
+    assert eligible_statistics_families(status, families) == ("time_series", "profiles")
+    assert eligible_statistics_families({}, families) == ()
