@@ -271,10 +271,20 @@ def inspect_results_directory(document, base, results_directory):
                     compatible, reason = _verified_saved_configuration(
                         cfg, saved, replica.system, replica.label, entry.name)
                     if compatible and len(present) == len(required):
-                        from ..pipeline.runner import _validate_analysis_output
-                        _validate_analysis_output(entry, cfg)
-                        verified = True
-                        reason = "Validated registered artifacts and matching saved configuration"
+                        from ..pipeline.runner import (
+                            RunState, _check_artifact, _replicate_state_prefix,
+                            _validate_analysis_output,
+                        )
+                        state = RunState(root)
+                        key = (_replicate_state_prefix(replica) + "-" +
+                               entry.checkpoint_key)
+                        if not state.complete(key, required_artifacts=None):
+                            reason = "No completed analysis stage marker"
+                        else:
+                            _validate_analysis_output(entry, cfg)
+                            _check_artifact(replica_root / "summary" / "timeseries.parquet")
+                            verified = True
+                            reason = "Validated stage marker, saved configuration, summary and registered artifacts"
                 except (RuntimeError, OSError, ValueError, KeyError, TypeError) as exc:
                     reason = str(exc)
             inventory.append({
