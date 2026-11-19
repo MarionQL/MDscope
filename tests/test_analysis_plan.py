@@ -314,6 +314,10 @@ def test_saved_statistics_catalog_reads_real_parquet_schema_and_bounds_identitie
     assert item["identity_columns"] == ["group", "metric"]
     assert "mean_ci_low" in item["files"][source.name]["columns"]
     assert item["files"][source.name]["rows"] == 4
+    assert item["files"][source.name]["column_types"]["mean_ci_low"] == "double"
+    assert item["files"][source.name]["column_types"]["bootstrap_draws"] == "int64"
+    assert item["files"][source.name]["row_grain"] == "per-replica observable"
+    assert item["files"][source.name]["row_grain_status"] == "family_identity_source"
     assert result["families"]["profiles"]["status"] == "not_materialized"
     with pytest.raises(ValueError, match="max_identities"):
         inspect_saved_statistics(tmp_path, max_identities=0)
