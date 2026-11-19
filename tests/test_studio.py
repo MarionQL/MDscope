@@ -292,6 +292,8 @@ def test_app_preserves_legacy_inference_and_plot_switches(tmp_path, monkeypatch)
     assert raw["statistics"]["metric_selection"] is None
     assert raw["analyses"]["alignment"]["enabled"]
     assert raw["analyses"]["rmsf"]["enabled"]
+    at.radio(key="stats:selection_mode").set_value("exact").run()
+    assert not at.exception
     at.checkbox(key="stats:tree:family:time_series").uncheck().run()
     assert not at.exception
     raw = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
@@ -935,7 +937,7 @@ def test_app_legacy_import_preserves_all_metric_selection_on_noop(tmp_path, monk
     at.session_state["document"] = deepcopy(doc)
     at.run()
     assert not at.exception
-    assert at.checkbox(key="stats:tree:family:time_series").value
+    assert at.radio(key="stats:selection_mode").value == "legacy"
     exported = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
     assert exported["statistics"]["metric_selection"] is None
 
