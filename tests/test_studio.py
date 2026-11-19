@@ -836,3 +836,63 @@ def test_replica_lifecycle_rejects_invalid_removal_without_mutation():
     assert labels == ["rep1", "rep2", "rep3"]
     remove_replica(doc, "condition1", 1)
     assert [rep["label"] for rep in doc["systems"]["condition1"]["replicates"]] == ["rep1", "rep3"]
+
+
+def test_app_rejected_group_rename_preserves_committed_draft_and_choices(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+
+    monkeypatch.chdir(tmp_path)
+    doc = rmsd_document()
+    doc["selections"]["groups"] = {
+        "patch": {"selection": "protein"},
+        "existing": {"selection": "resid 1:5"},
+    }
+    at = AppTest.from_file(app.__file__)
+    at.session_state["document"] = deepcopy(doc)
+    at.session_state["choices"] = {"rmsd": ["time_series:rmsd_A:timeseries"]}
+    at.run()
+    assert not at.exception
+    before_doc = deepcopy(at.session_state["document"])
+    before_choices = deepcopy(at.session_state["choices"])
+    at.text_input(key="edit:group:patch:id").set_value("existing").run()
+    at.button(key="edit:group:patch:Rename").click().run()
+    assert not at.exception
+    assert any("already exists" in error.message for error in at.error)
+    assert at.session_state["document"] == before_doc
+    assert at.session_state["choices"] == before_choices
+    assert at.text_input(key="edit:group:patch:id").value == "existing"
+    at.text_input(key="edit:group:patch:id").set_value("renamed").run()
+    at.button(key="edit:group:patch:Rename").click().run()
+    assert not at.exception
+    assert "renamed" in at.session_state["document"]["selections"]["groups"]
+    assert "patch" not in at.session_state["document"]["selections"]["groups"]
+
+
+def test_app_rejected_condition_removal_preserves_committed_state(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app, model
+
+    monkeypatch.chdir(tmp_path)
+    doc = rmsd_document()
+    doc["systems"]["condition2"] = deepcopy(doc["systems"]["condition1"])
+    at = AppTest.from_file(app.__file__)
+    at.session_state["document"] = deepcopy(doc)
+    at.session_state["choices"] = {"rmsd": ["time_series:rmsd_A:timeseries"]}
+    at.run()
+    before_doc = deepcopy(at.session_state["document"])
+    before_choices = deepcopy(at.session_state["choices"])
+
+    def reject(*args, **kwargs):
+        raise ValueError("injected condition failure")
+
+    monkeypatch.setattr(model, "delete_system", reject)
+    # The project editor imports the operation into its own module.
+    monkeypatch.setattr("mdscope.studio.project_editor.delete_system", reject)
+    at.button(key="edit:system:condition2:remove").click().run()
+    assert not at.exception
+    assert any("injected condition failure" in error.message for error in at.error)
+    assert at.session_state["document"] == before_doc
+    assert at.session_state["choices"] == before_choices
