@@ -292,13 +292,11 @@ def test_app_preserves_legacy_inference_and_plot_switches(tmp_path, monkeypatch)
     assert raw["statistics"]["metric_selection"] is None
     assert raw["analyses"]["alignment"]["enabled"]
     assert raw["analyses"]["rmsf"]["enabled"]
-    at.radio(key="stats:selection_mode").set_value("exact").run()
-    assert not at.exception
-    assert not at.checkbox(key="stats:tree:family:time_series").value
+    at.checkbox(key="stats:tree:family:time_series").uncheck().run()
     assert not at.exception
     raw = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
     assert raw["statistics"]["metric_selection"]["time_series"] == []
-    assert raw["statistics"]["metric_selection"]["profiles"] == []
+    assert "profiles" not in raw["statistics"]["metric_selection"]
 
 
 def test_topology_required_export_invalidates_after_selection_edit(project, monkeypatch):
@@ -769,9 +767,7 @@ def test_app_statistics_tree_preserves_dynamic_all_and_exact_choices(tmp_path, m
     exported = lambda: yaml.safe_load(
         next(item.value for item in at.code if "analyses:" in item.value))
     assert exported()["statistics"]["metric_selection"] is None
-    at.radio(key="stats:selection_mode").set_value("exact").run()
-    assert not at.exception
-    assert not at.checkbox(key="stats:tree:family:time_series").value
+    at.checkbox(key="stats:tree:family:time_series").uncheck().run()
     assert not at.exception
     assert exported()["statistics"]["metric_selection"]["time_series"] == []
     at.checkbox(key="stats:rmsd_A:None").check().run()
@@ -939,7 +935,7 @@ def test_app_legacy_import_preserves_all_metric_selection_on_noop(tmp_path, monk
     at.session_state["document"] = deepcopy(doc)
     at.run()
     assert not at.exception
-    assert at.radio(key="stats:selection_mode").value == "legacy"
+    assert at.checkbox(key="stats:tree:family:time_series").value
     exported = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
     assert exported["statistics"]["metric_selection"] is None
 
@@ -1288,45 +1284,6 @@ def test_explicit_results_root_uses_saved_only_inventory_before_statistics(tmp_p
     assert not (root / "resolved_config.yaml").exists()
     assert not (root / "project_summary").exists()
 
-def test_statistics_mode_switch_preserves_import_and_restores_exact_without_expansion():
-    from mdscope.studio.model import (statistics_selection_mode,
-        switch_statistics_selection_mode)
-    legacy = {'statistics': {'enabled': True, 'metric_selection': None}}
-    assert statistics_selection_mode(legacy) == 'legacy'
-    saved = switch_statistics_selection_mode(legacy, 'exact')
-    assert saved is None
-    assert all(value == [] for value in legacy['statistics']['metric_selection'].values())
-    legacy['statistics']['metric_selection'] = {'profiles': [{'profile': 'rmsf', 'ci': False}]}
-    exact = deepcopy(legacy['statistics']['metric_selection'])
-    previous = switch_statistics_selection_mode(legacy, 'legacy')
-    assert previous == exact
-    assert legacy['statistics']['metric_selection'] is None
-    switch_statistics_selection_mode(legacy, 'exact', saved_exact=previous)
-    assert legacy['statistics']['metric_selection'] == exact
-    before = deepcopy(legacy)
-    with pytest.raises(ValueError, match='mode'):
-        switch_statistics_selection_mode(legacy, 'unknown')
-    assert legacy == before
-
-def test_app_statistics_mode_switch_restores_imported_legacy(tmp_path, monkeypatch):
-    pytest.importorskip('streamlit')
-    from streamlit.testing.v1 import AppTest
-    from mdscope.studio import app
-    monkeypatch.chdir(tmp_path)
-    doc = rmsd_document()
-    doc['statistics']['enabled'] = True
-    doc['statistics']['metric_selection'] = None
-    at = AppTest.from_file(app.__file__)
-    at.session_state['document'] = deepcopy(doc)
-    at.run()
-    assert not at.exception
-    assert at.radio(key='stats:selection_mode').value == 'legacy'
-    at.radio(key='stats:selection_mode').set_value('exact').run()
-    assert not at.exception
-    assert all(value == [] for value in at.session_state['document']['statistics']['metric_selection'].values())
-    at.radio(key='stats:selection_mode').set_value('legacy').run()
-    assert not at.exception
-    assert at.session_state['document']['statistics']['metric_selection'] is None
 
 def test_app_global_selection_key_deletion_preserves_named_groups(tmp_path, monkeypatch):
     pytest.importorskip('streamlit')
@@ -1348,6 +1305,7 @@ def test_app_global_selection_key_deletion_preserves_named_groups(tmp_path, monk
     assert exported['selections']['groups']['patch']['selection'] == 'resid 1:5'
     assert exported['selections']['groups']['patch']['label'] == 'Patch'
 
+
 def test_global_selections_replacement_is_atomic_and_exact():
     from mdscope.studio.model import replace_global_selections
     doc = rmsd_document()
@@ -1366,6 +1324,7 @@ def test_global_selections_replacement_is_atomic_and_exact():
     assert 'alignment' not in raw['selections']
     assert raw['selections']['groups'] == original['selections']['groups']
 
+
 def test_exact_figures_override_legacy_false_in_production_resolver(tmp_path):
     from mdscope.config import figure_enabled
     doc = rmsd_document()
@@ -1381,6 +1340,7 @@ def test_exact_figures_override_legacy_false_in_production_resolver(tmp_path):
     assert cfg['plots']['families']['time_series'] is True
     assert doc['plots']['time_series'] is False
 
+
 def test_rejected_group_and_named_run_mutations_preserve_all_choices():
     from mdscope.studio.model import change_group, add_named_run
     doc = rmsd_document()
@@ -1395,6 +1355,7 @@ def test_rejected_group_and_named_run_mutations_preserve_all_choices():
     with pytest.raises(ValueError):
         add_named_run(doc, 'rmsd', 'run1')
     assert doc == before and choices == chosen
+
 
 def test_app_invalid_global_selections_yaml_does_not_commit_partial_draft(tmp_path, monkeypatch):
     pytest.importorskip('streamlit')
