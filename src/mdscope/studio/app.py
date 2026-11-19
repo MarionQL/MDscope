@@ -7,7 +7,8 @@ import yaml
 
 from mdscope.config import DEFAULTS, analysis_groups, resolve_config
 from mdscope.studio.model import (
-    analysis_options, change_group, import_document, new_document, review,
+    QUICK_FIGURE_FAMILIES, analysis_options, change_group, import_document,
+    new_document, quick_figure_families, review, set_quick_figure_families,
     topology_preflight,
 )
 from mdscope.statistics_selection import ESTIMATOR_FLAGS, studio_metric_selection_defaults
@@ -179,10 +180,18 @@ def main():
     doc = deepcopy(state.document)
     choices_before = deepcopy(state.choices)
     plots = doc.get("plots", {})
-    exact_figures = st.checkbox("Use exact figure choices", value=(plots.get("include") is not None
+    exact_figures = st.checkbox("Select individual figures (advanced)", value=(plots.get("include") is not None
                                or not plots.get("enabled", False)), key="edit:exact_figures")
     if not exact_figures:
-        st.info("Imported legacy figure switches are preserved. Enable exact figure choices to replace them with an explicit allowlist.")
+        st.caption("Quick selection: enable an entire figure category without selecting individual IDs.")
+        selected_families = []
+        current_families = quick_figure_families(doc)
+        for family in QUICK_FIGURE_FAMILIES:
+            if st.checkbox(f"All {family.replace('_', ' ')} figures",
+                           value=family in current_families, key=f"edit:quick:figure:{family}"):
+                selected_families.append(family)
+        set_quick_figure_families(doc, selected_families)
+        st.caption("Category switches use the existing plotting backend; dynamic figures are included when eligible.")
     tabs = st.tabs(["1 · Project & systems", "2 · Selections & alignment",
                     "3 · Analyses", "4 · Statistics", "5 · Review & export"])
     errors = []
@@ -305,7 +314,7 @@ def main():
         if stats["enabled"]:
             try:
                 _, plan = preview_document(yaml.safe_dump(doc, sort_keys=False), base)
-                exact_stats = st.checkbox("Select statistics by exact variable",
+                exact_stats = st.checkbox("Select individual statistics (advanced)",
                                           value=stats.get("metric_selection") is not None,
                                           key="stats:exact")
                 if not exact_stats:
@@ -314,7 +323,7 @@ def main():
                     if stats.get("metric_selection") is not None:
                         state["stats:exact:saved"] = deepcopy(stats["metric_selection"])
                     stats["metric_selection"] = None
-                    st.info("Legacy statistics mode includes all eligible variables. Enable exact variable selection to restore your previous choices or start a new allowlist.")
+                    st.info("Quick selection: include all eligible statistics across enabled analyses. Choose individual statistics to refine the selection.")
                 else:
                     if stats.get("metric_selection") is None:
                         stats["metric_selection"] = deepcopy(
