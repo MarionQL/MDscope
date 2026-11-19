@@ -294,7 +294,7 @@ def test_app_preserves_legacy_inference_and_plot_switches(tmp_path, monkeypatch)
     assert raw["analyses"]["rmsf"]["enabled"]
     at.radio(key="stats:selection_mode").set_value("exact").run()
     assert not at.exception
-    at.checkbox(key="stats:tree:family:time_series").uncheck().run()
+    assert not at.checkbox(key="stats:tree:family:time_series").value
     assert not at.exception
     raw = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
     assert raw["statistics"]["metric_selection"]["time_series"] == []
@@ -1293,7 +1293,7 @@ def test_statistics_mode_switch_preserves_import_and_restores_exact_without_expa
     assert statistics_selection_mode(legacy) == 'legacy'
     saved = switch_statistics_selection_mode(legacy, 'exact')
     assert saved is None
-    assert legacy['statistics']['metric_selection'] == {}
+    assert all(value == [] for value in legacy['statistics']['metric_selection'].values())
     legacy['statistics']['metric_selection'] = {'profiles': [{'profile': 'rmsf', 'ci': False}]}
     exact = deepcopy(legacy['statistics']['metric_selection'])
     previous = switch_statistics_selection_mode(legacy, 'legacy')
@@ -1321,7 +1321,7 @@ def test_app_statistics_mode_switch_restores_imported_legacy(tmp_path, monkeypat
     assert at.radio(key='stats:selection_mode').value == 'legacy'
     at.radio(key='stats:selection_mode').set_value('exact').run()
     assert not at.exception
-    assert at.session_state['document']['statistics']['metric_selection'] == {}
+    assert all(value == [] for value in at.session_state['document']['statistics']['metric_selection'].values())
     at.radio(key='stats:selection_mode').set_value('legacy').run()
     assert not at.exception
     assert at.session_state['document']['statistics']['metric_selection'] is None
