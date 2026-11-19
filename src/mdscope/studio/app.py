@@ -448,25 +448,25 @@ def main():
                         if updated != existing:
                             set_statistics_exact_family(doc, family, updated)
                 validate_metric_selection(stats)
-                    controls = yaml_editor("CI / block / test settings", {key: val for key, val in stats.items()
-                                                                         if key not in {"enabled", "metric_selection"}}, "stats:settings") or {}
-                    if set(controls) & {"enabled", "metric_selection"}:
-                        raise ValueError("Use the statistics selectors above")
-                    stats.update(controls)
-                    st.caption("Dynamic metric identities outside the structural scalar catalog require exact backend IDs. No identity or output schema is invented.")
-                    with st.expander("Expected statistics outputs and eligibility"):
-                        st.caption("ILLUSTRATIVE — NO MD RESULTS. Candidate files are conditional on eligible data; Base schemas below include only verified writer columns; optional provenance remains conditional.")
-                        for family in plan["statistics_families"]:
-                            schema = family.get("output_schema")
-                            if schema:
-                                st.write(f"{family['family']} · {schema['row_grain']}")
-                                st.code(f"{family['output_directory']}{schema['filename']}")
-                                st.table(schema["sample_rows"])
-                                st.caption(schema["limitations"])
-                            st.json({key: family[key] for key in ("family", "files", "metric_contract")
-                                     if key in family})
-                    from mdscope.planning import authoring_catalog
-                    figures = authoring_catalog(resolve_config(doc))["figures"].get("statistics", [])
+                controls = yaml_editor("CI / block / test settings", {key: val for key, val in stats.items()
+                                                                     if key not in {"enabled", "metric_selection"}}, "stats:settings") or {}
+                if set(controls) & {"enabled", "metric_selection"}:
+                    raise ValueError("Use the statistics selectors above")
+                stats.update(controls)
+                st.caption("Dynamic metric identities outside the structural scalar catalog require exact backend IDs. No identity or output schema is invented.")
+                with st.expander("Expected statistics outputs and eligibility"):
+                    st.caption("ILLUSTRATIVE — NO MD RESULTS. Candidate files are conditional on eligible data; Base schemas below include only verified writer columns; optional provenance remains conditional.")
+                    for family in plan["statistics_families"]:
+                        schema = family.get("output_schema")
+                        if schema:
+                            st.write(f"{family['family']} · {schema['row_grain']}")
+                            st.code(f"{family['output_directory']}{schema['filename']}")
+                            st.table(schema["sample_rows"])
+                            st.caption(schema["limitations"])
+                        st.json({key: family[key] for key in ("family", "files", "metric_contract")
+                                 if key in family})
+                from mdscope.planning import authoring_catalog
+                figures = authoring_catalog(resolve_config(doc))["figures"].get("statistics", [])
 
             except (ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
                 errors.append(str(exc)); st.error(str(exc))
