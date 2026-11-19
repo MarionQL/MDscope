@@ -216,6 +216,19 @@ def main():
         def set_figures(ids, checked):
             for identifier in ids:
                 state[f"figure:tree:{identifier}"] = checked
+            for family_name, family_entries in figures_by_family.items():
+                family_ids = {fig["id"] for _, fig in family_entries}
+                state[f"figure:tree:family:{family_name}"] = all(
+                    state.get(f"figure:tree:{i}", i in original_ids) for i in family_ids)
+            state["figure:tree:all"] = all(
+                state.get(f"figure:tree:{i}", i in original_ids) for i in all_ids)
+        def sync_figure_parents():
+            for family_name, family_entries in figures_by_family.items():
+                family_ids = {fig["id"] for _, fig in family_entries}
+                state[f"figure:tree:family:{family_name}"] = all(
+                    state.get(f"figure:tree:{i}", i in original_ids) for i in family_ids)
+            state["figure:tree:all"] = all(
+                state.get(f"figure:tree:{i}", i in original_ids) for i in all_ids)
         all_figures = [fig for figures in figures_by_family.values() for _, fig in figures]
         all_ids = list(dict.fromkeys(fig["id"] for fig in all_figures))
         if all_ids:
@@ -236,7 +249,8 @@ def main():
                     identifier = fig["id"]
                     if st.checkbox(fig.get("label", identifier),
                                    value=identifier in original_ids,
-                                   key=f"figure:tree:{identifier}", help=identifier):
+                                   key=f"figure:tree:{identifier}", help=identifier,
+                                   on_change=sync_figure_parents):
                         selected_ids.append(identifier)
                     st.caption(f"{owner} · {fig['destination']}")
         state.choices = {
