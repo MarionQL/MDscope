@@ -82,6 +82,8 @@ def _change_group(document, old_id, new_id=None, *, duplicate=False, choices=Non
     from ..planning import authoring_catalog
     before = authoring_catalog(merge(DEFAULTS, document), include_inactive=True)
     groups = document.setdefault("selections", {}).setdefault("groups", {})
+    if old_id not in groups:
+        raise ValueError(f"Unknown group {old_id!r}")
     if new_id == old_id:
         return
     if new_id is not None:
@@ -592,7 +594,7 @@ def add_named_run(document, name, run_id):
     candidate["analyses"][name].setdefault("runs", {})[run_id] = {}
     candidate["analyses"][name]["enabled"] = True
     analysis_runs(merge(DEFAULTS, candidate), name)
-    document["analyses"][name].setdefault("runs", {})[run_id] = {}
+    commit_draft(document, candidate)
 
 
 def add_group(document, group_id):
