@@ -8,6 +8,10 @@ from mdscope.studio.model import add_replica, add_system, delete_system, remove_
 
 def path_picker(label, value, key, *, directory=False, optional=False):
     """Browse paths on the HPC host, not the user's browser machine."""
+    pending = st.session_state.pop(f"{key}:pending_path", None)
+    if pending is not None:
+        st.session_state[key] = pending
+        value = pending
     value = st.text_input(label, value, key=key,
                           help="Path on the machine running MDscope Studio. Click Browse to choose an existing file.")
     if value:
@@ -23,21 +27,25 @@ def path_picker(label, value, key, *, directory=False, optional=False):
         location = st.text_input("Directory to browse", str(Path(value).expanduser().parent) if value else str(Path.cwd()),
                                  key=f"{key}:browse_dir")
         folder = Path(location).expanduser()
+        if st.button("Go to parent folder", key=f"{key}:browse_parent"):
+            st.session_state[f"{key}:browse_dir"] = str(folder.parent)
+            st.rerun()
         if not folder.is_dir():
             st.warning("Directory not found or inaccessible.")
         else:
             try:
                 entries = sorted(folder.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))[:200]
                 options = [str(entry) for entry in entries
-                           if entry.is_dir() or directory or entry.is_file()]
+                           if entry.is_dir() or (not directory and entry.is_file())]
                 if options:
                     chosen = st.selectbox("Choose a folder or file", options, key=f"{key}:browse_choice")
-                    if st.button("Use selected path", key=f"{key}:browse_use"):
-                        if directory or Path(chosen).is_file():
-                            st.session_state[key] = chosen
-                            st.rerun()
-                        else:
+                    if Path(chosen).is_dir():
+                        if st.button("Open folder", key=f"{key}:browse_open"):
                             st.session_state[f"{key}:browse_dir"] = chosen
+                            st.rerun()
+                    if directory or Path(chosen).is_file():
+                        if st.button("Use selected path", key=f"{key}:browse_use"):
+                            st.session_state[f"{key}:pending_path"] = chosen
                             st.rerun()
                 else:
                     st.info("No entries in this directory.")
