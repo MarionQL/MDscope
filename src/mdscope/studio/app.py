@@ -176,9 +176,10 @@ def main():
                 state.get("studio:results_inventory_config") !=
                 yaml.safe_dump(state.document, sort_keys=True)):
             st.warning("Results inventory is stale after configuration/path changes; inspect again.")
-        st.caption("Verification requires matching saved configuration, completed "
-                   "analysis stage marker, replica summary and production artifact "
-                   "schema. Unregistered outputs remain unavailable.")
+        st.caption("Verification checks matching saved configuration and input paths, "
+                   "completed stage markers, replica summaries, and production artifact "
+                   "schemas. It does not establish source-file content hashes or authorize "
+                   "saved-only execution until the backend reuse contract is implemented.")
         from mdscope.studio.model import results_coverage
         coverage = results_coverage(inventory)
         if coverage:
