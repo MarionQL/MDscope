@@ -1004,3 +1004,45 @@ def test_app_hierarchical_figures_support_category_and_individual_override(tmp_p
     at.checkbox(key="figure:tree:all").check().run()
     assert not at.exception
     assert at.checkbox(key="figure:tree:time_series:rmsd_A:timeseries").value
+
+
+@pytest.mark.parametrize("family", ["time_series", "profiles", "interactions",
+                                    "solvation_rdfs", "diffusion", "coupling"])
+def test_statistics_family_contract_preserves_unrestricted_dynamic_metrics(family):
+    from mdscope.studio.model import (
+        statistics_family_mode, set_statistics_family_mode,
+        set_statistics_exact_family,
+    )
+    doc = {"statistics": {"enabled": True, "metric_selection": None}}
+    assert statistics_family_mode(doc, family) == "all"
+    set_statistics_family_mode(doc, family, "all")
+    assert doc["statistics"]["metric_selection"] is None
+    before = deepcopy(doc)
+    with pytest.raises(ValueError, match="complete dynamic identity"):
+        set_statistics_exact_family(doc, family, [])
+    assert doc == before
+    set_statistics_family_mode(doc, family, "none")
+    assert statistics_family_mode(doc, family) == "none"
+    assert doc["statistics"]["metric_selection"][family] == []
+    set_statistics_family_mode(doc, family, "all")
+    assert statistics_family_mode(doc, family) == "all"
+    assert family not in doc["statistics"]["metric_selection"]
+
+
+def test_statistics_exact_conversion_validates_atomically_and_preserves_other_families():
+    from mdscope.studio.model import (
+        statistics_family_mode, set_statistics_exact_family,
+    )
+    doc = {"statistics": {"metric_selection": {"profiles": [{"profile": "rmsf"}]}}}
+    before = deepcopy(doc)
+    with pytest.raises(ValueError, match="complete dynamic identity"):
+        set_statistics_exact_family(doc, "time_series", [{"metric": "rmsd_A"}])
+    assert doc == before
+    with pytest.raises(ValueError, match="require"):
+        set_statistics_exact_family(doc, "time_series", [{"unknown": "rmsd_A"}],
+                                    catalog_complete=True)
+    assert doc == before
+    set_statistics_exact_family(doc, "time_series", [{"metric": "rmsd_A"}],
+                                catalog_complete=True)
+    assert statistics_family_mode(doc, "time_series") == "exact"
+    assert doc["statistics"]["metric_selection"]["profiles"] == [{"profile": "rmsf"}]
