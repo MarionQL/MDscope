@@ -1060,7 +1060,7 @@ def test_results_inventory_requires_registered_companions_and_is_read_only(tmp_p
     artifact.write_bytes(b"placeholder")
     inventory = inspect_results_directory(doc, tmp_path, root)
     sasa = [item for item in inventory if item["analysis"] == "sasa"]
-    assert any(item["status"] == "candidate_unverified" for item in sasa)
+    assert any(item["status"] == "incompatible" for item in sasa)
     assert not (root / "project_summary").exists()
 
 
