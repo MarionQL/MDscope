@@ -334,6 +334,31 @@ def add_system(document, system_id):
         {"label": "rep1", "trajectory": "rep1.xtc"}]}
 
 
+
+def add_replica(document, system_id):
+    """Append a uniquely labeled replica without mutating on invalid input."""
+    from ..config import _validate_path_component
+    replicas = document["systems"][system_id]["replicates"]
+    used = {(rep.get("label") or f"rep{i}") if isinstance(rep, dict) else f"rep{i}"
+            for i, rep in enumerate(replicas, 1)}
+    number = 1
+    while f"rep{number}" in used:
+        number += 1
+    label = f"rep{number}"
+    _validate_path_component(label, "replica label")
+    replicas.append({"label": label, "trajectory": f"{label}.xtc"})
+
+
+def remove_replica(document, system_id, index):
+    """Reject invalid/last-replica removal before changing the draft."""
+    replicas = document["systems"][system_id]["replicates"]
+    if len(replicas) <= 1:
+        raise ValueError("Keep at least one replica per condition")
+    if not 0 <= index < len(replicas):
+        raise ValueError(f"Unknown replica index {index}")
+    replicas.pop(index)
+
+
 def _delete_system(document, system_id, *, choices=None):
     """Remove condition-owned figures without changing shared figure choices."""
     from ..config import merge
