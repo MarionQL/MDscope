@@ -1461,8 +1461,7 @@ def test_model_figure_hierarchy_commit_is_atomic_and_catalog_owned(tmp_path):
 
 
 def test_offline_finalization_fails_closed_when_inventory_omits_required_run(tmp_path, monkeypatch):
-    from mdscope.pipeline.runner import finalize_project
-    from mdscope.studio import model
+    from mdscope.pipeline import runner
     from mdscope.config import resolve_config
 
     doc = rmsd_document()
@@ -1474,8 +1473,8 @@ def test_offline_finalization_fails_closed_when_inventory_omits_required_run(tmp
     root.mkdir()
     # A missing row is not a successful verification. The preflight must
     # enumerate expected producer/run/condition/replica keys independently.
-    monkeypatch.setattr(model, "inspect_results_directory",
+    monkeypatch.setattr(runner, "inspect_results_directory",
                         lambda *_args, **_kwargs: [])
     with pytest.raises(RuntimeError, match="sasa/default/condition1/rep1/missing"):
-        finalize_project(config_path, cfg=cfg, phase="statistics", results_dir=root)
+        runner.finalize_project(config_path, cfg=cfg, phase="statistics", results_dir=root)
     assert not (root / "project_summary").exists()
