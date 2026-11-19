@@ -776,3 +776,42 @@ def test_app_statistics_exact_mode_can_return_to_legacy(tmp_path, monkeypatch):
     at.checkbox(key="stats:exact").check().run()
     assert not at.exception
     assert exported()["statistics"]["metric_selection"] is not None
+
+
+@pytest.mark.parametrize("operation", ["group", "run", "condition"])
+def test_lifecycle_failure_preserves_document_and_figure_choices(monkeypatch, operation):
+    """A late catalog failure must not leave partially pruned selectors or IDs."""
+    from mdscope.studio import model
+    from mdscope import planning
+
+    doc = rmsd_document()
+    doc["selections"]["groups"] = {"patch": {"selection": "protein"}}
+    doc["analyses"]["rmsd"]["groups"] = ["patch"]
+    doc["systems"]["condition2"] = deepcopy(doc["systems"]["condition1"])
+    doc["analyses"]["sasa"] = {
+        "enabled": True,
+        "runs": {"first": {}, "second": {}},
+    }
+    choices = {"rmsd": ["time_series:rmsd_A:timeseries"],
+               "sasa": ["profiles:sasa__first:profile"]}
+    before, before_choices = deepcopy(doc), deepcopy(choices)
+    original = planning.authoring_catalog
+    calls = 0
+
+    def fail_after_first(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls >= (2 if operation in {"group", "condition"} else 1):
+            raise RuntimeError("injected catalog failure")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(planning, "authoring_catalog", fail_after_first)
+    with pytest.raises(RuntimeError, match="injected catalog failure"):
+        if operation == "group":
+            model.change_group(doc, "patch", "renamed", choices=choices)
+        elif operation == "run":
+            model.delete_named_run(doc, "sasa", "first", choices=choices)
+        else:
+            model.delete_system(doc, "condition2", choices=choices)
+    assert doc == before
+    assert choices == before_choices
