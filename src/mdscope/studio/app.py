@@ -466,7 +466,7 @@ def main():
                 eligible_families = eligible_statistics_families(source_status, families)
                 if not eligible_families:
                     st.info("No eligible statistics sources. Enable an analysis or inspect verified saved results.")
-                st.caption("Only scheduled analyses and verified saved outputs are eligible. All measurements includes dynamic identities; estimator choices are separate.")
+                st.caption("Measurements come from enabled analyses or fully verified saved outputs. Statistical methods are configured below.")
                 def set_family(family, checked):
                     if family not in eligible_families:
                         return
@@ -479,11 +479,13 @@ def main():
                     for family in eligible_families:
                         set_family(family, checked)
                         state[f"stats:tree:family:{family}"] = checked
-                st.checkbox("Include all eligible measurements (advanced)",
-                            value=all(statistics_family_mode(doc, family) == "all"
-                                      for family in eligible_families) if eligible_families else False,
-                            key="stats:tree:all", on_change=set_all_families,
-                            disabled=not eligible_families)
+                with st.expander("Advanced: select all eligible measurement families"):
+                    st.caption("This includes dynamic measurement identities discovered during execution.")
+                    st.checkbox("Include all eligible measurements",
+                                value=all(statistics_family_mode(doc, family) == "all"
+                                          for family in eligible_families) if eligible_families else False,
+                                key="stats:tree:all", on_change=set_all_families,
+                                disabled=not eligible_families)
                 for family in eligible_families:
                     mode = statistics_family_mode(doc, family)
                     availability = source_status.get(family, {"status": "unavailable", "scheduled_sources": []})
@@ -500,7 +502,7 @@ def main():
                         if not availability["scheduled_sources"] and not availability.get("existing_coverage"):
                             st.warning("No scheduled or verified saved producer for this family. "
                                        "Select a compatible analysis or inspect existing outputs.")
-                        st.checkbox(f"All {family.replace('_', ' ')} statistics",
+                        st.checkbox(f"Include all {family.replace('_', ' ')} measurements",
                                     value=mode == "all",
                                     key=f"stats:tree:family:{family}",
                                     on_change=lambda family=family: set_family(
