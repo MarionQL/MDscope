@@ -176,10 +176,10 @@ def main():
                 state.get("studio:results_inventory_config") !=
                 yaml.safe_dump(state.document, sort_keys=True)):
             st.warning("Results inventory is stale after configuration/path changes; inspect again.")
-        st.caption("Verification checks matching saved configuration and input paths, "
-                   "completed stage markers, replica summaries, and production artifact "
-                   "schemas. It does not establish source-file content hashes or authorize "
-                   "saved-only execution until the backend reuse contract is implemented.")
+        st.caption("Verification checks saved configuration and input paths, "
+                   "completed stage markers, replica summaries, and registered artifact "
+                   "schemas, but not source-file content hashes. Offline CLI "
+                   "finalization revalidates its complete prerequisite set separately.")
         from mdscope.studio.model import results_coverage
         coverage = results_coverage(inventory)
         if coverage:
@@ -468,10 +468,9 @@ def main():
                                 f"{source['condition']}: {source['verified']}/"
                                 f"{source['total']} replicas verified "
                                 f"({source['status']})")
-                        else:
-                            st.warning("No scheduled producer for this family. Existing "
-                                       "files must be verified before reuse; the results "
-                                       "inventory does not establish that verification.")
+                        if not availability["scheduled_sources"] and not availability.get("existing_coverage"):
+                            st.warning("No scheduled or verified saved producer for this family. "
+                                       "Select a compatible analysis or inspect existing outputs.")
                         st.checkbox(f"All {family.replace('_', ' ')} statistics",
                                     value=mode == "all",
                                     key=f"stats:tree:family:{family}",
