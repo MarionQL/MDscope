@@ -279,7 +279,8 @@ def main():
                     label = st.text_input("Group name", spec.get("label") or group_id,
                                           key=f"edit:group:{group_id}:label",
                                           help="Display name shown in Studio. The internal YAML ID stays stable.")
-                    spec["label"] = label or group_id
+                    if label and label != (spec.get("label") or group_id):
+                        spec["label"] = label
                     st.caption("Choose a name that identifies the atoms being measured, such as Protein A or TM helix.")
                     measurement = st.text_input("Atoms to measure · MDAnalysis selection",
                                                 spec.get("selection") or "",
