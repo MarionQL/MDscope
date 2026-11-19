@@ -1,0 +1,34 @@
+# Studio delivery (#173)
+
+Studio authors configuration; it never starts simulation analysis, inference or
+production plotting. New documents explicitly disable every analysis, statistics
+family and figure. Imported documents retain their options.
+
+| Boundary | Owner |
+|---|---|
+| Defaults, supported keys, semantic validation | `config`, `config_schema` |
+| Analysis outputs, scalar variable identity | `registry`, exposed by `planning` |
+| Figure IDs, sources, destination | `reporting.plot_ids` |
+| Metric selection and estimator capabilities | `statistics_selection` |
+| Topology parsing and chemistry checks | `core.validation` |
+| Editable document, active figure plan | `studio.model` |
+| Local optional widgets | `studio.app` |
+
+Delivery order: shared in-memory config resolution → no-data RMSD slice → all
+analysis settings and registered outputs → groups/topology preflight → exact
+statistics selection → review/export and UI integration tests.
+
+Risk checks:
+- Preserve exact selection text, group/run order and imported options.
+- A disabled analysis cannot contribute selected figures; retain choices in the
+  editable session so re-enabling restores them.
+- Never silently enable a statistics family or select all metrics.
+- Mark uncatalogued dynamic schemas/IDs unknown; no fabricated column names.
+- Validation is tied to the current document; edits invalidate prior preflight.
+- Resolve relative paths from an explicit configuration directory. No XTC read,
+  result overwrite or output-folder creation during authoring.
+
+Deferred gaps must remain visible in Studio and the PR. Full #173 closure requires
+all supported producer schemas/variable identities and their figure eligibility,
+plus topology/chemistry coverage beyond structural selections. Advanced YAML
+authoring does not imply that every option has a guided widget.

@@ -28,7 +28,7 @@ jobs:
       - name: Install dependencies for synthetic tests
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[test]" build twine
+          python -m pip install -e ".[test,studio]" build twine
       - name: Install real FreeSASA for analytic geometry references
         if: matrix.python-version == '3.11'
         run: python -m pip install freesasa

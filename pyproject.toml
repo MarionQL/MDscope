@@ -19,11 +19,13 @@ dependencies = [
 
 [project.optional-dependencies]
 sasa = ["freesasa"]
+studio = ["streamlit>=1.40,<2"]
 test = ["pytest"]
 dev = ["pytest", "build", "twine"]
 
 [project.scripts]
 mdscope = "mdscope.cli:main"
+mdscope-studio = "mdscope.studio.launch:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

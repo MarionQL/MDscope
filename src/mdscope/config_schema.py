@@ -16,7 +16,7 @@ def _extend(mapping, **fields):
     return mapping
 
 
-def _schema(defaults):
+def option_schema(defaults):
     schema = deepcopy(defaults)
     schema["systems"] = {
         "*": {
@@ -199,4 +199,4 @@ def validate_known_keys(raw, defaults):
     """Reject misspelled options; existing config validation checks their values."""
     if not isinstance(raw, dict):
         return
-    _check_keys(raw, _schema(defaults), "")
+    _check_keys(raw, option_schema(defaults), "")

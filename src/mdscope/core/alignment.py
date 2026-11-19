@@ -51,6 +51,25 @@ def _apply_transform(
     return (coordinates - mobile_center) @ rotation + reference_center
 
 
+def selection_details(atoms):
+    """Topology-derived identity/preview; never infer counts from YAML text."""
+    identities = [(str(atom.segid), int(atom.resid), str(atom.resname),
+                   str(atom.name)) for atom in atoms]
+    import hashlib
+    import json
+    return {
+        "atoms": len(atoms), "residues": len(atoms.residues),
+        "residue_labels": list(dict.fromkeys(
+            f"{segid}:{resname}{resid}" for segid, resid, resname, _ in identities)),
+        "segments": list(dict.fromkeys(item[0] for item in identities)),
+        "first_atoms": [{"index": int(atom.index), "segid": str(atom.segid),
+                         "resid": int(atom.resid), "resname": str(atom.resname),
+                         "name": str(atom.name)} for atom in atoms[:5]],
+        "ordered_identity_sha256": hashlib.sha256(
+            json.dumps(identities, ensure_ascii=False).encode()).hexdigest(),
+    }
+
+
 def resolved_selection_counts(universe, cfg: dict) -> dict:
     selections = cfg["selections"]
     alignment_spec = cfg["analyses"].get("alignment", {})
@@ -69,7 +88,10 @@ def resolved_selection_counts(universe, cfg: dict) -> dict:
         "protein": len(protein),
         "alignment": len(alignment),
         "features": len(features),
-        "groups": {}
+        "groups": {},
+        "details": {"protein": selection_details(protein),
+                    "features": selection_details(features),
+                    "alignment": selection_details(alignment)},
     }
     for group_id, group in analysis_groups(cfg).items():
         atoms = universe.select_atoms(group["selection"])
@@ -81,6 +103,9 @@ def resolved_selection_counts(universe, cfg: dict) -> dict:
         out["groups"][group_id] = {
             "group_atoms": len(atoms),
             "feature_atoms": len(measured),
-            "alignment_atoms": len(align_atoms)
+            "alignment_atoms": len(align_atoms),
+            "measurement": selection_details(atoms),
+            "features": selection_details(measured),
+            "alignment": selection_details(align_atoms),
         }
     return out

@@ -235,3 +235,56 @@ def required_artifacts(entry: FusedOutput, cfg: dict) -> tuple[Path, ...]:
         if spec.get('grid_frames'):
             paths.append(directory/'water_density_3d.parquet')
     return tuple(paths)
+
+
+STRUCTURAL_SCALAR_METRICS = {"rmsd": "rmsd_A",
+                             "radius_of_gyration": "radius_of_gyration_A"}
+
+
+def structural_scalar_contracts(cfg: dict) -> list[dict]:
+    """Configured scalar identities from the shared streaming summary writer.
+
+    Group RMSD measures the intersection with selections.features. Rg uses
+    its own selection intersection. The global scalar remains written even
+    when a groups list is supplied; lists filter grouped rows only.
+    """
+    from .config import analysis_groups
+    from .reporting.plot_ids import describe_plot, safe_plot_stem
+
+    groups = analysis_groups(cfg)
+    result = []
+    for analysis, metric in STRUCTURAL_SCALAR_METRICS.items():
+        spec = cfg["analyses"].get(analysis, {})
+        if not spec.get("enabled", False):
+            continue
+        selected = spec.get("groups")
+        ids = [None] + [key for key in groups if selected is None or key in selected]
+        for group in ids:
+            stem = safe_plot_stem(metric + (f"__group_{group}" if group else ""))
+            measurement = (cfg["selections"]["features"] if analysis == "rmsd"
+                           else spec.get("selection") or cfg["selections"]["protein"])
+            fit = (groups[group].get("alignment_selection") if group else None)
+            fitted = analysis == "rmsd" and cfg["analyses"]["alignment"].get("enabled", True)
+            fit = ((fit or cfg["analyses"]["alignment"].get("selection")
+                    or cfg["selections"]["alignment"]) if fitted else None)
+            result.append({
+                "analysis": analysis, "metric": metric, "group": group,
+                "label": groups[group]["label"] if group else "Global",
+                "columns": ["time_ps", *(["group"] if group else []), metric],
+                "columns_status": "verified_subset_of_shared_table",
+                "units": {"time_ps": "ps", metric: "angstrom"},
+                "row_grain": "one analyzed frame per replicate" + (" per group" if group else ""),
+                "path_within_replica": "summary/" + (
+                    "group_timeseries.parquet" if group else "timeseries.parquet"),
+                "measurement_selection": measurement,
+                "group_selection": groups[group]["selection"] if group else None,
+                "selection_semantics": "intersection with group_selection" if group else "direct",
+                "alignment_selection": fit,
+                "coordinate_source": "fitted" if fitted else "source",
+                "statistics_selector": {"metric": metric, "group": group},
+                "figures": [dict(describe_plot(f"time_series:{stem}:{variant}"),
+                                 requires_statistics=variant not in {"timeseries", "distribution"})
+                            for variant in ("timeseries", "distribution", "autocorrelation",
+                                            "bootstrap_table", "comparison_table")],
+            })
+    return result

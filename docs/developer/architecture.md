@@ -214,3 +214,13 @@ Approach:
 **No database or rewrite of existing scientific files.** Different observables (RDF shape, occupancy, residence, SASA burial, diffusion, state populations) retain different estimands.
 
 [Workflows](../workflows.md) · [Configuration](../configuration.md) · [Validation gaps](validation-gaps.md)
+
+## Studio authoring boundary
+
+`studio.model` edits YAML documents and calls `config.resolve_config` and
+`planning.build_plan`; it has no execution/output ownership. The optional
+`studio.app` imports Streamlit only when launched via `mdscope-studio` and offers
+read-only topology preflight through `core.validation`. Structural scalar
+schemas/identities live in `registry.structural_scalar_contracts`, exposed by the
+planner; figure descriptions remain in `reporting.plot_ids`. See the concise
+[delivery plan](studio-plan.md) and [user guide](../studio.md) for current gaps.

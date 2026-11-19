@@ -31,3 +31,5 @@ mdscope run analysis.yaml
 | Contact lifetimes | Boundary-censored episodes and sparse sampling cannot establish continuous residence |
 
 [Documentation index](docs/README.md) · [Scientific analyses](docs/analyses.md) · [Validation limits](docs/developer/scientific-audit.md) · [MIT license](LICENSE)
+
+Optional local configuration wizard: [MDscope Studio](docs/studio.md).

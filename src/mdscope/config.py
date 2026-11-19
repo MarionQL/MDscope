@@ -413,6 +413,12 @@ def time_ps(ts, frame_index: int, cfg: dict) -> float:
 def load_config(path: str | Path, *, check_paths: bool = True) -> dict[str, Any]:
     with open(path) as handle:
         raw = yaml.safe_load(handle) or {}
+    return resolve_config(raw, base=Path(path).resolve().parent, check_paths=check_paths)
+
+
+def resolve_config(raw: dict, *, base: Path = Path("."),
+                   check_paths: bool = False) -> dict[str, Any]:
+    """Resolve an in-memory YAML mapping through the same CLI validation path."""
     if not isinstance(raw, dict):
         raise ValueError("Configuration YAML must be a mapping")
     for section in ("project", "trajectory", "time", "selections", "analyses", "statistics", "plots"):
@@ -435,7 +441,7 @@ def load_config(path: str | Path, *, check_paths: bool = True) -> dict[str, Any]
             cfg["analyses"][name] = merge(DEFAULTS["analyses"].get(name, {}), {"enabled": value})
         elif not isinstance(value, dict):
             raise ValueError(f"analyses.{name} must be a mapping or boolean")
-    validate_config(cfg, Path(path).resolve().parent, check_paths=check_paths)
+    validate_config(cfg, Path(base).resolve(), check_paths=check_paths)
     return cfg
 
 
