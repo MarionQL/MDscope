@@ -284,14 +284,9 @@ def main():
             for owner, figures in catalog.items()
         }
     if state.get("figure:tree:edited"):
+        from mdscope.studio.model import set_figure_selection
         chosen = {identifier for identifier in all_ids if selected(identifier)}
-        state.choices = {
-            owner: [fig["id"] for fig in figures if fig["id"] in chosen]
-            for owner, figures in catalog.items()
-        }
-        # Exact IDs take precedence over imported family switches on export.
-        doc.setdefault("plots", {})["include"] = list(chosen)
-        doc["plots"]["enabled"] = bool(chosen)
+        state.choices = set_figure_selection(doc, catalog, chosen)
         if not exact_import:
             st.warning("Editing individual figures converts category switches to exact IDs. "
                        "Figures whose identities depend on unavailable topology/data "
