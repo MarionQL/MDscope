@@ -379,6 +379,39 @@ def main():
                         stats["metric_selection"] = deepcopy(
                             state.get("stats:exact:saved", studio_metric_selection_defaults()))
                     selectors = stats["metric_selection"]
+                    # Category toggles update the exact selector widgets; the
+                    # existing selector assembly remains the single export path.
+                    scalar_vars = plan["observable_contracts"]
+                    profile_vars = plan["profile_variables"]
+                    scalar_keys = [f"stats:{v['metric']}:{v['group']}" for v in scalar_vars]
+                    profile_keys = [f"stats:profile:{v['profile']}" for v in profile_vars]
+                    selected_scalar = {(v["metric"], v.get("group"))
+                                       for v in selectors.get("time_series", [])}
+                    selected_profiles = {v["profile"] for v in selectors.get("profiles", [])}
+                    def toggle_stats(keys, checked):
+                        for key in keys:
+                            state[key] = checked
+                    groups = (
+                        ("Time series", scalar_keys,
+                         [((v["metric"], v["group"]) in selected_scalar) for v in scalar_vars]),
+                        ("Profiles", profile_keys,
+                         [(v["profile"] in selected_profiles) for v in profile_vars]),
+                    )
+                    all_keys = scalar_keys + profile_keys
+                    if all_keys:
+                        st.checkbox("Select all statistics", value=all(
+                            state.get(key, default)
+                            for _, keys, defaults in groups for key, default in zip(keys, defaults)),
+                            key="stats:tree:all",
+                            on_change=lambda: toggle_stats(all_keys, state["stats:tree:all"]))
+                    for title, keys, defaults in groups:
+                        if keys:
+                            st.checkbox(f"Select all {title.lower()} statistics",
+                                        value=all(state.get(key, default)
+                                                  for key, default in zip(keys, defaults)),
+                                        key=f"stats:tree:{title}",
+                                        on_change=lambda keys=keys, title=title: toggle_stats(
+                                            keys, state[f"stats:tree:{title}"]))
                     entries = []
                     for var in plan["observable_contracts"]:
                         selector = var["statistics_selector"]
