@@ -414,7 +414,12 @@ def main():
                 import pandas as pd
                 families = tuple(studio_metric_selection_defaults())
                 from mdscope.studio.model import statistics_source_status
-                source_status = statistics_source_status(plan)
+                inventory_fresh = (
+                    state.get("studio:results_inventory_path") == results_dir
+                    and state.get("studio:results_inventory_config") ==
+                    yaml.safe_dump(state.document, sort_keys=True))
+                source_status = statistics_source_status(
+                    plan, state.get("studio:results_inventory") if inventory_fresh else None)
                 st.caption("Select all statistics, entire families, or individual known variables. "
                            "All includes dynamic identities that cannot be enumerated before execution.")
                 def set_family(family, checked):
@@ -440,6 +445,12 @@ def main():
                         if availability["scheduled_sources"]:
                             st.caption("Scheduled analysis inputs: " +
                                        ", ".join(availability["scheduled_sources"]))
+                        for source in availability.get("existing_coverage", []):
+                            st.caption(
+                                f"Saved {source['analysis']} / {source['run_id']} / "
+                                f"{source['condition']}: {source['verified']}/"
+                                f"{source['total']} replicas verified "
+                                f"({source['status']})")
                         else:
                             st.warning("No scheduled producer for this family. Existing "
                                        "files must be verified before reuse; the results "
