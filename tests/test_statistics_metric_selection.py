@@ -468,3 +468,22 @@ def test_selected_derived_time_series_loads_only_source_columns(
     assert (None, derived_metric) in result
     assert observed == [["time_ps", raw_metric]]
     assert "unrelated_expensive_observable" not in result
+
+
+def test_selected_inference_respects_supplied_system_and_replica_population(tmp_path):
+    paths = _data(tmp_path / "inputs")
+    cfg = deepcopy(DEFAULTS)
+    cfg["statistics"]["bootstrap_draws"] = 30
+    cfg["statistics"]["hypothesis_tests"]["enabled"] = False
+    cfg["statistics"]["metric_selection"] = {
+        "time_series": [{"group": "PROA", "metric": "rmsd_A"}]
+    }
+    analyze_time_series(cfg, tmp_path / "single", {"a": [paths["a"][0]]})
+    folder = tmp_path / "single/project_summary/statistics/time_series"
+    replicas = pd.read_parquet(folder / "replicate_statistics.parquet")
+    assert len(replicas) == 1
+    assert set(replicas.system) == {"a"}
+    assert set(replicas.metric) == {"rmsd_A"}
+    systems = pd.read_parquet(folder / "system_statistics.parquet")
+    assert set(systems.system) == {"a"}
+    assert not (folder / "system_comparisons.parquet").exists()
