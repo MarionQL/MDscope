@@ -1127,3 +1127,18 @@ def test_statistics_source_status_requires_scheduled_producer(tmp_path):
     doc["analyses"]["rmsd"]["enabled"] = False
     _, plan = review(doc, tmp_path)
     assert statistics_source_status(plan)["time_series"]["status"] == "unavailable"
+
+
+def test_exact_statistics_without_producer_blocks_export_but_unrestricted_does_not(tmp_path):
+    from mdscope.studio.model import unavailable_exact_statistics
+    doc = rmsd_document()
+    doc["statistics"]["enabled"] = True
+    doc["statistics"]["metric_selection"] = None
+    _, plan = review(doc, tmp_path)
+    assert unavailable_exact_statistics(doc, plan) == []
+    doc["statistics"]["metric_selection"] = {
+        "interactions": [{"kind": "hydrogen_bonds"}]}
+    assert unavailable_exact_statistics(doc, plan) == ["interactions"]
+    doc["analyses"]["hydrogen_bonds"]["enabled"] = True
+    _, plan = review(doc, tmp_path)
+    assert unavailable_exact_statistics(doc, plan) == []
