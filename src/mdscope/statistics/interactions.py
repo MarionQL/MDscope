@@ -7,8 +7,6 @@ from __future__ import annotations
 
 from time import perf_counter
 import os
-import hashlib
-import json
 from itertools import combinations
 from pathlib import Path
 
@@ -21,17 +19,7 @@ from ..core.persistence import atomic_json, atomic_parquet, ensure_dir
 from ..interactions.interaction_tables import interaction_key_columns, interaction_tables, sample_dt
 
 
-from .common import _temporal, _block_weights, _hierarchical, _hierarchical_difference, _ci, _direction, _permutation, _fdr, _range_meta, _point_difference
-
-
-def _selected_rng(seed, *identity):
-    """Stable independent Monte Carlo stream keyed by an output's full identity.
-
-    The existing legacy global RNG and its shared block weights are unchanged.
-    """
-    payload = json.dumps([int(seed), *identity], separators=(",", ":"), ensure_ascii=True)
-    entropy = int.from_bytes(hashlib.blake2b(payload.encode(), digest_size=8).digest(), "little")
-    return np.random.default_rng(entropy)
+from .common import _temporal, _block_weights, _hierarchical, _hierarchical_difference, _ci, _direction, _permutation, _fdr, _range_meta, _point_difference, selected_rng as _selected_rng
 
 
 def _presence_frame_indices(times, presence_times):
