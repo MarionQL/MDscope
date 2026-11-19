@@ -227,7 +227,8 @@ def _verified_saved_configuration(current, saved, system, replica, analysis):
                 for i, item in enumerate(cfg["systems"][system]["replicates"], 1)}
     if replica not in by_label(saved) or by_label(current)[replica] != by_label(saved)[replica]:
         return False, "replicate input identity differs"
-    if current["analyses"].get(analysis) != saved["analyses"].get(analysis):
+    if (current["analyses"].get(analysis, {}).get("enabled") and
+            current["analyses"].get(analysis) != saved["analyses"].get(analysis)):
         return False, "analysis settings differ"
     return True, ""
 
@@ -260,8 +261,18 @@ def inspect_results_directory(document, base, results_directory):
     inventory = []
     for replica in iter_replicates(cfg, Path(base) / "analysis.yaml"):
         replica_root = root / replica.system / replica.label
-        for entry in analysis_output_plan(cfg, replica_root):
-            required = required_artifacts(entry, cfg)
+        current_entries = list(analysis_output_plan(cfg, replica_root))
+        saved_entries = []
+        if saved is not None:
+            try:
+                saved_entries = list(analysis_output_plan(saved, replica_root))
+            except (KeyError, ValueError, TypeError):
+                pass
+        entries = {entry.checkpoint_key: (entry, cfg) for entry in current_entries}
+        for entry in saved_entries:
+            entries.setdefault(entry.checkpoint_key, (entry, saved))
+        for entry, source_cfg in entries.values():
+            required = required_artifacts(entry, source_cfg)
             present = [path for path in required
                        if path.is_file() and path.stat().st_size > 0]
             verified = False
@@ -286,7 +297,7 @@ def inspect_results_directory(document, base, results_directory):
                         if not completed:
                             reason = "No completed analysis stage marker"
                         else:
-                            _validate_analysis_output(entry, cfg)
+                            _validate_analysis_output(entry, source_cfg)
                             _check_artifact(replica_root / "summary" / "timeseries.parquet")
                             verified = True
                             reason = "Validated stage marker, saved configuration, summary and registered artifacts"
@@ -294,6 +305,7 @@ def inspect_results_directory(document, base, results_directory):
                     reason = str(exc)
             inventory.append({
                 "reason": reason,
+                "scheduled": entry.checkpoint_key in {item.checkpoint_key for item in current_entries},
                 "analysis": entry.name,
                 "run_id": entry.run_id or "default",
                 "condition": replica.system,
