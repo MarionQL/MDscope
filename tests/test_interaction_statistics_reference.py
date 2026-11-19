@@ -90,9 +90,17 @@ def test_factorized_labels_match_legacy_row_format_with_repeats_and_missing_valu
     # implementation detail (which differs for nulls across pandas versions).
     expected = [
         "ASP1 | LYS7", "ASP1 | LYS7", "GLU2 | ARG8",
-        "None | ARG9", "ASP1 | LYS7",
+        "nan | ARG9", "ASP1 | LYS7",
     ]
     assert _interaction_labels(table, ["residue_1", "residue_2"]).tolist() == expected
+    # Different null sentinels must not create different interaction identities.
+    nullable = pd.DataFrame({
+        "first": pd.Series([None, np.nan, pd.NA, "ASP1"], dtype=object),
+        "second": ["ARG9", "ARG9", "ARG9", "LYS7"],
+    })
+    assert _interaction_labels(nullable, ["first", "second"]).tolist() == [
+        "nan | ARG9", "nan | ARG9", "nan | ARG9", "ASP1 | LYS7"
+    ]
     assert _interaction_labels(table, []).tolist() == ["interaction"] * len(table)
 
 
