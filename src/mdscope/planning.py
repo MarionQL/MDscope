@@ -14,7 +14,7 @@ from .config import analysis_runs, iter_replicates, plot_enabled, statistics_fam
 from .registry import analysis_output_plan, required_artifacts, artifact_schema
 from .statistics_families import STATISTICS_FAMILIES
 from .statistics_selection import ESTIMATOR_FLAGS
-from .reporting.plot_ids import STATIC_IDS, describe_plot, safe_plot_stem
+from .reporting.plot_ids import STATIC_IDS, SDC4_CONDITION_STEMS, describe_plot, safe_plot_stem
 
 
 # Interpretation of coordinates, not a claim about PBC or bulk density.
@@ -376,6 +376,13 @@ def build_plan(cfg: dict, config_path: str | Path, *,
                     for run in analysis_runs(cfg, "residue_membrane_distance")
                     for system in cfg["systems"]
                 )
+            if (family == "sdc4" and
+                    cfg["analyses"]["sdc4_mechanisms"].get("enabled", False)):
+                ids.extend(
+                    f"sdc4:{safe_plot_stem(system)}:{stem}"
+                    for system in cfg["systems"]
+                    for stem in sorted(SDC4_CONDITION_STEMS)
+                )
         else:
             ids = [identifier for identifier in include
                    if identifier.startswith(f"{family}:")]
@@ -389,6 +396,16 @@ def build_plan(cfg: dict, config_path: str | Path, *,
             descriptor["availability"] = (
                 "conditional_on_saved_data" if enabled else "disabled_by_configuration"
             )
+            if identifier.startswith("sdc4:"):
+                _, system, _ = identifier.split(":")
+                configured = {
+                    safe_plot_stem(name): name for name in cfg["systems"]
+                }
+                descriptor["analysis"] = "sdc4_mechanisms"
+                descriptor["system"] = configured.get(system)
+                if (descriptor["system"] is None or not
+                        cfg["analyses"]["sdc4_mechanisms"].get("enabled", False)):
+                    descriptor["availability"] = "unavailable_unconfigured_analysis_or_system"
             if identifier.startswith("profiles:") and identifier.endswith(":distance_heatmap"):
                 _, stem, system, _ = identifier.split(":")
                 configured_runs = {
