@@ -14,6 +14,7 @@ from .config import analysis_runs, iter_replicates, plot_enabled, statistics_fam
 from .registry import analysis_output_plan, required_artifacts, artifact_schema
 from .statistics_families import STATISTICS_FAMILIES
 from .statistics_selection import ESTIMATOR_FLAGS
+from .reporting.plot_ids import STATIC_IDS, SDC4_CONDITION_STEMS, describe_plot, safe_plot_stem
 
 
 # Interpretation of coordinates, not a claim about PBC or bulk density.
@@ -358,16 +359,77 @@ def build_plan(cfg: dict, config_path: str | Path, *,
 
     plots = cfg.get("plots", {})
     figure_families = []
+    include = plots.get("include")
     for family in FIGURE_FAMILIES:
-        # Solvation renderer has an additional explicit family opt-in.
+        # Figure descriptions come from the production plot-ID registry.
         enabled = (plot_enabled(cfg, family) and
                    (family != "solvation" or
                     plots.get("families", {}).get("solvation", False)))
+        if include is None:
+            ids = sorted(id for id in STATIC_IDS if id.startswith(f"{family}:"))
+            if family == "profiles":
+                # The renderer creates one distance heatmap per configured run
+                # and system. No topology/trajectory inspection is required.
+                ids.extend(
+                    f"profiles:residue_membrane_distance__{safe_plot_stem(run.run_id)}:"
+                    f"{safe_plot_stem(system)}:distance_heatmap"
+                    for run in analysis_runs(cfg, "residue_membrane_distance")
+                    for system in cfg["systems"]
+                )
+            if (family == "sdc4" and
+                    cfg["analyses"]["sdc4_mechanisms"].get("enabled", False)):
+                ids.extend(
+                    f"sdc4:{safe_plot_stem(system)}:{stem}"
+                    for system in cfg["systems"]
+                    for stem in sorted(SDC4_CONDITION_STEMS)
+                )
+        else:
+            ids = [identifier for identifier in include
+                   if identifier.startswith(f"{family}:")]
+        figures = []
+        for identifier in ids:
+            descriptor = describe_plot(identifier)
+            descriptor["requires_statistics"] = any(
+                path.startswith("project_summary/statistics/")
+                for path in descriptor["source_candidates"]
+            )
+            descriptor["availability"] = (
+                "conditional_on_saved_data" if enabled else "disabled_by_configuration"
+            )
+            if identifier.startswith("sdc4:"):
+                _, system, _ = identifier.split(":")
+                configured = {
+                    safe_plot_stem(name): name for name in cfg["systems"]
+                }
+                descriptor["analysis"] = "sdc4_mechanisms"
+                descriptor["system"] = configured.get(system)
+                if (descriptor["system"] is None or not
+                        cfg["analyses"]["sdc4_mechanisms"].get("enabled", False)):
+                    descriptor["availability"] = "unavailable_unconfigured_analysis_or_system"
+            if identifier.startswith("profiles:") and identifier.endswith(":distance_heatmap"):
+                _, stem, system, _ = identifier.split(":")
+                configured_runs = {
+                    f"residue_membrane_distance__{safe_plot_stem(run.run_id)}": run.run_id
+                    for run in analysis_runs(cfg, "residue_membrane_distance")
+                }
+                matched_systems = {
+                    safe_plot_stem(name): name for name in cfg["systems"]
+                }
+                descriptor["analysis"] = "residue_membrane_distance"
+                descriptor["run_id"] = configured_runs.get(stem)
+                descriptor["system"] = matched_systems.get(system)
+                if descriptor["run_id"] is None or descriptor["system"] is None:
+                    descriptor["availability"] = "unavailable_unconfigured_run_or_system"
+            figures.append(descriptor)
         figure_families.append({
             "family": family,
             "status": "enabled_conditional" if enabled else "disabled",
-            "specific_figures": None,
-            "specific_figures_status": "not_registered",
+            "specific_figures": figures,
+            "specific_figures_status": (
+                "static and configured distance-heatmap candidates; other dynamic IDs require saved data"
+                if include is None else
+                "configured_ids_only; saved metric identity not validated"
+            ),
             "source": "saved_products_only",
         })
 
@@ -537,3 +599,153 @@ def inspect_saved_statistics(root: str | Path, *, max_identities: int = 256) -> 
         }
     return {"status": "complete", "families": result,
             "identity_limit": max_identities}
+
+
+def inspect_saved_plot_ids(cfg: dict, root: str | Path, config_path: str | Path,
+                           *, max_identities: int = 256) -> dict:
+    """Discover actual saved figure stems without trajectory reads or rendering.
+
+    Column names are obtained from Parquet metadata; grouped series and
+    profiles read only their identity column. Figure contracts remain owned
+    by reporting.plot_ids, not by this inspector.
+    """
+    import json
+    import pyarrow.parquet as pq
+    from .reporting.plot_ids import DYNAMIC_VARIANTS
+
+    if max_identities < 1:
+        raise ValueError("max_identities must be positive")
+    root = Path(root)
+    found = set()
+    truncated = False
+
+    def add(family, stem, variants):
+        nonlocal truncated
+        for variant in sorted(variants):
+            identifier = f"{family}:{stem}:{variant}"
+            if identifier in found:
+                continue
+            if len(found) >= max_identities:
+                truncated = True
+                return
+            found.add(identifier)
+
+    replicas = list(iter_replicates(cfg, config_path))
+    for rep in replicas:
+        folder = root / rep.system / rep.label
+        for filename, grouped in (("timeseries.parquet", False),
+                                  ("group_timeseries.parquet", True)):
+            path = folder / "summary" / filename
+            if not path.is_file():
+                continue
+            source = pq.ParquetFile(path)
+            names = source.schema_arrow.names
+            metrics = [name for name in names if name not in {"time_ps", "group"}]
+            if grouped:
+                if "group" not in names:
+                    raise ValueError(f"Saved group time series lacks group column: {path}")
+                groups = set()
+                for batch in source.iter_batches(columns=["group"]):
+                    groups.update(str(name) for name in batch.column(0).to_pylist()
+                                  if name is not None)
+                for group in sorted(groups):
+                    for metric in metrics:
+                        add("time_series", safe_plot_stem(
+                            f"{metric}__group_{group}"), DYNAMIC_VARIANTS["time_series"])
+            else:
+                for metric in metrics:
+                    add("time_series", safe_plot_stem(metric),
+                        DYNAMIC_VARIANTS["time_series"])
+        interactions = folder / "interactions"
+        if interactions.is_dir():
+            for kind in sorted(interactions.iterdir()):
+                if not kind.is_dir():
+                    continue
+                if (kind / "occupancy.parquet").is_file():
+                    add("interactions", safe_plot_stem(kind.name), ("occupancy_heatmap",))
+                if (kind / "lifetimes.parquet").is_file():
+                    add("interactions", safe_plot_stem(kind.name), ("lifetime_distribution",))
+
+    from .config import profile_dir
+    for run in analysis_runs(cfg, "residue_membrane_distance"):
+        for system in cfg["systems"]:
+            if any(
+                all((directory / filename).is_file()
+                    for filename in ("distance_matrix_A.npy", "time_ps.npy",
+                                     "residues.parquet"))
+                for rep in replicas if rep.system == system
+                for directory in [profile_dir(
+                    root / rep.system / rep.label,
+                    "residue_membrane_distance", run.run_id)]
+            ):
+                identifier = (
+                    f"profiles:residue_membrane_distance__{safe_plot_stem(run.run_id)}:"
+                    f"{safe_plot_stem(system)}:distance_heatmap"
+                )
+                if len(found) < max_identities:
+                    found.add(identifier)
+                else:
+                    truncated = True
+
+    stats_root = root / "project_summary" / "statistics"
+    manifest_file = stats_root / "manifest.json"
+    if manifest_file.is_file() and json.loads(manifest_file.read_text()).get("status") == "complete":
+        profile_path = stats_root / "profiles" / "replicate_profiles.parquet"
+        if profile_path.is_file():
+            source = pq.ParquetFile(profile_path)
+            if "profile" not in source.schema_arrow.names:
+                raise ValueError(f"Saved profile table lacks profile column: {profile_path}")
+            profiles = set()
+            for batch in source.iter_batches(columns=["profile"]):
+                profiles.update(str(name) for name in batch.column(0).to_pylist()
+                                if name is not None)
+            for profile in sorted(profiles):
+                add("profiles", safe_plot_stem(profile), DYNAMIC_VARIANTS["profiles"])
+        interactions_dir = stats_root / "interactions"
+        for filename, variant in (
+            ("system_interaction_metrics.parquet", "bootstrap_table"),
+            ("system_interaction_comparisons.parquet", "comparison_table"),
+        ):
+            path = interactions_dir / filename
+            if not path.is_file():
+                continue
+            source = pq.ParquetFile(path)
+            fields = ("interaction_type", "metric")
+            if not set(fields).issubset(source.schema_arrow.names):
+                raise ValueError(f"Saved interaction statistics lack identity columns: {path}")
+            pairs = set()
+            for batch in source.iter_batches(columns=list(fields)):
+                pairs.update(
+                    (str(kind), str(metric))
+                    for kind, metric in zip(batch.column(0).to_pylist(),
+                                            batch.column(1).to_pylist())
+                    if kind is not None and metric is not None
+                )
+            for kind, metric in sorted(pairs):
+                add("interactions", f"{safe_plot_stem(kind)}:{safe_plot_stem(metric)}",
+                    (variant,))
+
+    chosen = cfg.get("plots", {}).get("include")
+    candidates = []
+    for identifier in sorted(found):
+        meta = describe_plot(identifier)
+        meta["requires_statistics"] = any(
+            source.startswith("project_summary/statistics/")
+            for source in meta["source_candidates"]
+        )
+        meta["availability"] = (
+            "conditional_on_saved_data" if plot_enabled(cfg, meta["family"])
+            else "disabled_by_configuration"
+        )
+        candidates.append(meta)
+    missing = [] if chosen is None else sorted(
+        set(chosen) - found - set(STATIC_IDS)
+    )
+    return {
+        "status": "saved_identity_discovery",
+        "figures": candidates,
+        "unconfirmed_requested_ids": missing,
+        "unconfirmed_status": "not_observed_in_inspected_saved_products",
+        "truncated": truncated,
+        "max_identities": max_identities,
+    }

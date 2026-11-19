@@ -1,10 +1,10 @@
 # Contributing
 
-**Rule:** one implementation per operation; preserve scientifically different contracts even when code looks similar. Prefer net simplification.
+**Rule:** reuse one authoritative implementation per scientific operation where possible; keep distinct estimators separate even when their code looks similar.
 
 ## Branches and pull requests
 
-Use **GitHub Flow**: `main` is the integration branch; each issue or focused change uses a short-lived branch from `main` (for example, `feat/statistics-metric-selection-179` or `fix/resume-cache-123`). Open a PR, run relevant checks, review the diff, then squash-merge. Do not commit incomplete work directly to `main`, create long-lived `develop` branches, or merge failing changes. Update a PR branch against `main` when needed; resolve conflicts by verifying both behaviors and rerunning affected tests. Delete merged branches.
+Use **GitHub Flow**: `main` is the integration branch; each issue or focused change normally uses a short-lived branch from `main` (for example, `feat/statistics-metric-selection-179` or `fix/resume-cache-123`). Open a PR, run relevant checks, review the diff, then squash-merge. Do not commit unfinished features directly to `main`, create long-lived `develop` branches, or merge failing changes. Update a PR branch against `main` when needed; resolve conflicts by verifying both behaviors and rerunning affected tests. Delete merged branches.
 
 ## Issue tracking
 
@@ -15,10 +15,10 @@ Use **GitHub Flow**: `main` is the integration branch; each issue or focused cha
 
 ## Avoid codebase bloat
 
-- **Dead paths:** remove superseded functions, unused exports, stale branches and their tests when changing behavior.
-- **Defensive noise:** validate at boundaries; do not add redundant guards or broad `except` blocks that suppress real errors.
-- **Duplication:** reuse existing utilities rather than copying similar implementations; preserve genuinely different scientific estimators.
-- **Dependencies:** prefer the standard library and installed packages; justify new packages and avoid overlapping functionality.
+- **Dead paths:** remove demonstrably unused code within scope after checking callers and public compatibility; do not expand a bug fix into unrelated cleanup.
+- **Error handling:** validate at boundaries and propagate scientific failures; catch expected exceptions when adding actionable context or preserving recoverable state. Avoid silent fallbacks.
+- **Duplication:** reuse existing utilities where semantics agree; allow small adapters and independent test oracles when they verify different contracts.
+- **Dependencies:** prefer existing capabilities when suitable; add a maintained dependency if it materially improves correctness or maintainability.
 - **Scope and docs:** do not add unrequested features, configuration options, wrappers, or lengthy commentary. Update the authoritative short guide and delete obsolete wording.
 
 ## Where code belongs
@@ -48,12 +48,12 @@ Previews call the **production** figure renderers using deterministic fake saved
 ## Change checklist
 
 - **Scope:** inspect callers, relevant contracts, tests and docs. Change one coherent responsibility at a time; avoid speculative abstractions.
-- **Compatibility:** migrate consumers and remove superseded *internal* modules in the same PR; preserve public CLI/YAML/output contracts unless explicitly changed.
+- **Compatibility:** migrate known callers before removing an internal module; retain a tested adapter when external use or staged migration requires it. Preserve public CLI/YAML/output contracts unless explicitly migrated.
 - **Scientific invariants:** retain units, populations, coordinate frame, PBC, mass weighting, selection chemistry, time sampling, missing-vs-zero semantics and results.
 - **Performance:** minimize trajectory traversals, memory, I/O and dense atom-pair materialization. Preserve fused and sparse processing.
 - **Testing:** use independent numerical oracles for mathematical claims; check integration through the actual entry point. A successful run or two agreeing implementations may share the same bug.
 - **Failure safety:** test invalid inputs and checkpoint corruption without destroying valid existing outputs. Verify artifact identity, integrity, completeness and provenance—not just existence.
-- **Validation:** run relevant targeted tests, Python 3.11/3.13 CI, and real GROMACS checks when affected. Document what ran and what remains unverified.
+- **Validation:** run relevant targeted tests and applicable Python 3.11/3.13 CI; run real GROMACS checks for affected behavior. Distinguish passed, failed, skipped and unavailable checks.
 - **Documentation:** one authoritative location per concept. Prefer short tables and bullets; remove stale guides and avoid mass formatting.
 
 See [Scientific contracts](scientific-contracts.md), [Scientific audit](scientific-audit.md) and [Validation gaps](validation-gaps.md) for the detailed acceptance criteria.

@@ -324,3 +324,232 @@ def test_saved_statistics_catalog_reads_real_parquet_schema_and_bounds_identitie
     (folder / "manifest.json").write_text(json.dumps({"status": "running"}))
     with pytest.raises(ValueError, match="incomplete"):
         inspect_saved_statistics(tmp_path)
+
+
+def test_plan_uses_production_registry_for_configured_plot_ids(tmp_path, project):
+    from mdscope.reporting.plot_ids import describe_plot
+    path, root = project("plan_figure_ids")
+    cfg = yaml.safe_load(path.read_text())
+    cfg["plots"]["enabled"] = True
+    cfg["plots"]["include"] = [
+        "time_series:rmsd_A:timeseries",
+        "time_series:rmsd_A:comparison_table",
+        "solvation:shell_rdf",
+    ]
+    cfg["plots"].setdefault("families", {})["solvation"] = False
+    path.write_text(yaml.safe_dump(cfg))
+    plan = build_plan(load_config(path, check_paths=False), path)
+    families = {row["family"]: row for row in plan["figure_families"]}
+    by_id = {row["id"]: row for row in families["time_series"]["specific_figures"]}
+    assert set(by_id) == {
+        "time_series:rmsd_A:timeseries",
+        "time_series:rmsd_A:comparison_table",
+    }
+    for identifier, row in by_id.items():
+        assert row["destination"] == describe_plot(identifier)["destination"]
+        assert row["source_candidates"] == describe_plot(identifier)["source_candidates"]
+        assert row["availability"] == "conditional_on_saved_data"
+    assert by_id["time_series:rmsd_A:timeseries"]["requires_statistics"] is False
+    assert by_id["time_series:rmsd_A:comparison_table"]["requires_statistics"] is True
+    assert families["solvation"]["specific_figures"][0]["availability"] == (
+        "disabled_by_configuration"
+    )
+    assert families["time_series"]["specific_figures_status"].startswith(
+        "configured_ids_only"
+    )
+    assert not root.exists()
+
+
+def test_plan_lists_only_known_static_candidates_without_an_include_list(tmp_path, project):
+    from mdscope.reporting.plot_ids import STATIC_IDS
+    path, root = project("plan_static_plot_ids")
+    cfg = load_config(path, check_paths=False)
+    plan = build_plan(cfg, path)
+    families = {row["family"]: row for row in plan["figure_families"]}
+    ids = {
+        item["id"]
+        for family in families.values()
+        for item in family["specific_figures"]
+    }
+    assert ids == STATIC_IDS
+    assert families["time_series"]["specific_figures"] == []
+    assert "dynamic" in families["time_series"]["specific_figures_status"]
+    assert not root.exists()
+
+
+def test_plan_discovers_named_run_distance_figures_without_topology(tmp_path, project):
+    path, root = project("plan_named_distance_figures")
+    cfg = yaml.safe_load(path.read_text())
+    cfg["analyses"]["residue_membrane_distance"] = {
+        "enabled": True,
+        "runs": {
+            "phosphate": {"membrane_selection": "name P"},
+            "all_membrane": {"membrane_selection": "resname POPC"},
+        },
+    }
+    path.write_text(yaml.safe_dump(cfg))
+    plan = build_plan(load_config(path, check_paths=False), path)
+    profiles = next(item for item in plan["figure_families"]
+                    if item["family"] == "profiles")
+    figures = {item["id"]: item for item in profiles["specific_figures"]
+               if item["id"].endswith(":distance_heatmap")}
+    assert set(figures) == {
+        "profiles:residue_membrane_distance__phosphate:tiny:distance_heatmap",
+        "profiles:residue_membrane_distance__all_membrane:tiny:distance_heatmap",
+    }
+    assert {item["run_id"] for item in figures.values()} == {
+        "phosphate", "all_membrane"
+    }
+    assert all(item["system"] == "tiny" for item in figures.values())
+    assert all(item["requires_statistics"] is False for item in figures.values())
+    assert not root.exists()
+
+
+def test_plot_plan_flags_unknown_named_run_without_claiming_data(tmp_path, project):
+    path, root = project("plan_missing_distance_run")
+    cfg = yaml.safe_load(path.read_text())
+    cfg["plots"]["include"] = [
+        "profiles:residue_membrane_distance__missing:tiny:distance_heatmap"
+    ]
+    path.write_text(yaml.safe_dump(cfg))
+    plan = build_plan(load_config(path, check_paths=False), path)
+    profiles = next(item for item in plan["figure_families"]
+                    if item["family"] == "profiles")
+    figure = profiles["specific_figures"][0]
+    assert figure["run_id"] is None
+    assert figure["availability"] == "unavailable_unconfigured_run_or_system"
+    assert not root.exists()
+
+
+def test_saved_figure_discovery_uses_only_persisted_metric_identities(tmp_path, project):
+    import pandas as pd
+    from mdscope.planning import inspect_saved_plot_ids
+    path, root = project("discover_saved_plot_ids")
+    cfg = load_config(path, check_paths=False)
+    saved = root / "tiny" / "rep1" / "summary"
+    saved.mkdir(parents=True)
+    pd.DataFrame({
+        "time_ps": [0., 1.], "rmsd_A": [1., 2.],
+        "membrane_thickness_A": [29., 30.]
+    }).to_parquet(saved / "timeseries.parquet")
+    pd.DataFrame({
+        "time_ps": [0., 1.], "group": ["PROA", "PROA"],
+        "rmsd_A": [1., 2.],
+    }).to_parquet(saved / "group_timeseries.parquet")
+    cfg["plots"]["include"] = [
+        "time_series:rmsd_A:timeseries",
+        "time_series:missing_metric:timeseries",
+    ]
+    result = inspect_saved_plot_ids(cfg, root, path)
+    by_id = {row["id"]: row for row in result["figures"]}
+    assert "time_series:rmsd_A:timeseries" in by_id
+    assert "time_series:rmsd_A__group_PROA:timeseries" in by_id
+    assert "time_series:membrane_thickness_A:distribution" in by_id
+    assert by_id["time_series:rmsd_A:timeseries"]["requires_statistics"] is False
+    assert by_id["time_series:rmsd_A:comparison_table"]["requires_statistics"] is True
+    assert result["unconfirmed_requested_ids"] == [
+        "time_series:missing_metric:timeseries"
+    ]
+    assert result["unconfirmed_status"] == "not_observed_in_inspected_saved_products"
+    assert not (root / "project_summary").exists()
+
+
+def test_saved_figure_discovery_limit_and_profile_manifest_gate(tmp_path, project):
+    import json
+    import pandas as pd
+    from mdscope.planning import inspect_saved_plot_ids
+    path, root = project("discover_profiles")
+    cfg = load_config(path, check_paths=False)
+    profiles = root / "project_summary" / "statistics" / "profiles"
+    profiles.mkdir(parents=True)
+    pd.DataFrame({"profile": ["sasa__isolated", "sasa__environment"],
+                  "position": [1, 2], "value": [1., 2.]}).to_parquet(
+                      profiles / "replicate_profiles.parquet")
+    result = inspect_saved_plot_ids(cfg, root, path)
+    assert not any(item["family"] == "profiles" for item in result["figures"])
+    (profiles.parent / "manifest.json").write_text(
+        json.dumps({"status": "complete"}))
+    result = inspect_saved_plot_ids(cfg, root, path)
+    assert any(item["id"] == "profiles:sasa__isolated:profile"
+               for item in result["figures"])
+    bounded = inspect_saved_plot_ids(cfg, root, path, max_identities=1)
+    assert len(bounded["figures"]) == 1
+    assert bounded["truncated"]
+    with pytest.raises(ValueError, match="max_identities"):
+        inspect_saved_plot_ids(cfg, root, path, max_identities=0)
+
+
+def test_saved_named_run_heatmap_requires_complete_companions(tmp_path, project):
+    from mdscope.config import profile_dir
+    from mdscope.planning import inspect_saved_plot_ids
+    path, root = project("saved_named_distance")
+    cfg = yaml.safe_load(path.read_text())
+    cfg["analyses"]["residue_membrane_distance"] = {
+        "enabled": True,
+        "runs": {"phosphate": {"membrane_selection": "name P"}},
+    }
+    path.write_text(yaml.safe_dump(cfg))
+    resolved = load_config(path, check_paths=False)
+    destination = profile_dir(root / "tiny" / "rep1",
+                              "residue_membrane_distance", "phosphate")
+    destination.mkdir(parents=True)
+    identifier = "profiles:residue_membrane_distance__phosphate:tiny:distance_heatmap"
+    (destination / "distance_matrix_A.npy").touch()
+    incomplete = inspect_saved_plot_ids(resolved, root, path)
+    assert identifier not in {row["id"] for row in incomplete["figures"]}
+    (destination / "time_ps.npy").touch()
+    (destination / "residues.parquet").touch()
+    complete = inspect_saved_plot_ids(resolved, root, path)
+    assert identifier in {row["id"] for row in complete["figures"]}
+
+
+def test_saved_interaction_statistics_expose_exact_metric_figure_ids(tmp_path, project):
+    import json
+    import pandas as pd
+    from mdscope.planning import inspect_saved_plot_ids
+    path, root = project("saved_interaction_figures")
+    cfg = load_config(path, check_paths=False)
+    stats = root / "project_summary" / "statistics"
+    directory = stats / "interactions"
+    directory.mkdir(parents=True)
+    (stats / "manifest.json").write_text(json.dumps({"status": "complete"}))
+    pd.DataFrame({
+        "interaction_type": ["salt_bridges"],
+        "metric": ["occupancy"],
+        "value": [0.5],
+    }).to_parquet(directory / "system_interaction_metrics.parquet")
+    pd.DataFrame({
+        "interaction_type": ["salt_bridges"],
+        "metric": ["occupancy"],
+        "difference": [0.1],
+    }).to_parquet(directory / "system_interaction_comparisons.parquet")
+    result = inspect_saved_plot_ids(cfg, root, path)
+    ids = {item["id"] for item in result["figures"]}
+    assert "interactions:salt_bridges:occupancy:bootstrap_table" in ids
+    assert "interactions:salt_bridges:occupancy:comparison_table" in ids
+
+
+def test_plan_discovers_condition_specific_sdc4_figures(tmp_path, project):
+    from mdscope.reporting.plot_ids import SDC4_CONDITION_STEMS
+    path, root = project("plan_sdc4_figure_catalog")
+    raw = yaml.safe_load(path.read_text())
+    mechanisms = raw["analyses"]["sdc4_mechanisms"]
+    mechanisms.update({
+        "enabled": True,
+        "tm_chains": {"A": "segid A and name CA", "B": "segid B and name CA"},
+        "ectodomains": {"A": "segid A", "B": "segid B"},
+        "lipid_anchors": {"POPC": "resname POPC and name P"},
+        "lipid_contact_selection": "resname POPC",
+    })
+    raw["plots"]["enabled"] = True
+    path.write_text(yaml.safe_dump(raw))
+    plan = build_plan(load_config(path, check_paths=False), path)
+    family = next(item for item in plan["figure_families"]
+                  if item["family"] == "sdc4")
+    assert {row["id"] for row in family["specific_figures"]} == {
+        f"sdc4:tiny:{stem}" for stem in SDC4_CONDITION_STEMS
+    }
+    assert all(row["system"] == "tiny" for row in family["specific_figures"])
+    assert all(row["availability"] == "conditional_on_saved_data"
+               for row in family["specific_figures"])
+    assert not root.exists()
