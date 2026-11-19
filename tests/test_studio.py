@@ -1466,3 +1466,19 @@ def test_offline_finalization_fails_closed_when_inventory_omits_required_run(tmp
     with pytest.raises(RuntimeError, match="sasa/default/condition1/rep1/missing"):
         runner.finalize_project(config_path, cfg=cfg, phase="statistics", results_dir=root)
     assert not (root / "project_summary").exists()
+
+def test_scientific_analysis_grouping_preserves_every_backend_option():
+    from mdscope.studio.app import analysis_category, grouped_analyses
+    from mdscope.studio.model import analysis_options
+
+    options = analysis_options()
+    grouped = grouped_analyses(options)
+    assert [name for names in grouped.values() for name in names] == [
+        name for category in grouped for name in options if analysis_category(name) == category
+    ]
+    assert set(name for names in grouped.values() for name in names) == set(options)
+    assert len([name for names in grouped.values() for name in names]) == len(options)
+    assert analysis_category("rmsd") == "Protein structure & dynamics"
+    assert analysis_category("membrane") == "Membrane structure & dynamics"
+
+
