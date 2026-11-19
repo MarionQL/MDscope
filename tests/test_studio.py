@@ -1112,3 +1112,18 @@ def test_app_interaction_occupancy_cutoff_round_trip(tmp_path, monkeypatch):
     assert not at.exception
     exported = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
     assert exported["statistics"]["interaction_min_occupancy"] == pytest.approx(0.35)
+
+
+def test_statistics_source_status_requires_scheduled_producer(tmp_path):
+    from mdscope.studio.model import statistics_source_status
+    doc = rmsd_document()
+    doc["statistics"]["enabled"] = True
+    _, plan = review(doc, tmp_path)
+    status = statistics_source_status(plan)
+    assert status["time_series"]["status"] == "scheduled"
+    assert "rmsd:default" in status["time_series"]["scheduled_sources"]
+    assert status["interactions"]["status"] == "unavailable"
+    assert status["coupling"]["status"] == "unavailable"
+    doc["analyses"]["rmsd"]["enabled"] = False
+    _, plan = review(doc, tmp_path)
+    assert statistics_source_status(plan)["time_series"]["status"] == "unavailable"
