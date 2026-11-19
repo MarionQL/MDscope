@@ -1411,3 +1411,27 @@ def test_app_statistics_preview_uses_current_hierarchy_selection(tmp_path, monke
     at.checkbox(key="stats:rmsd_A:None").uncheck().run()
     assert not at.exception
     assert "rmsd_A" not in selected_metrics()
+
+
+
+def test_planning_snapshot_resolves_one_consistent_draft(tmp_path, monkeypatch):
+    from mdscope.studio import model
+
+    doc = rmsd_document()
+    original = model.resolve_config
+    calls = []
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(model, "resolve_config", counted)
+    plan, figures = model.planning_snapshot(doc, tmp_path)
+    assert len(calls) == 1
+    assert any(item["analysis"] == "rmsd" for item in plan["analyses"])
+    assert any(item["id"] == "time_series:rmsd_A:timeseries"
+               for item in figures["rmsd"])
+
+    doc["analyses"]["rmsd"]["enabled"] = False
+    plan, figures = model.planning_snapshot(doc, tmp_path)
+    assert len(calls) == 2
+    assert not any(item["analysis"] == "rmsd" for item in plan["analyses"])
+    assert not figures["rmsd"]
