@@ -578,22 +578,27 @@ def main():
                             key=f"figure:tree:family:{family}",
                             on_change=lambda ids=ids, family=family: set_figures(
                                 ids, state[f"figure:tree:family:{family}"]))
+                by_analysis = {}
                 for owner, fig in entries:
-                    identifier = fig["id"]
-                        st.checkbox(fig.get("label", identifier).replace("_A", " (Å)").replace("_ps", " (ps)").replace("_deg", " (°)"),
-                                    value=identifier in initial, key=f"figure:tree:{identifier}",
-                                    help=identifier, on_change=changed_figure)
-                        st.caption(f"{owner} · {fig['destination']}")
-                        if "studio:results_inventory" in state and owner != "statistics":
-                            matches = [item for item in state["studio:results_inventory"]
-                                       if item["analysis"] == owner]
-                            if matches:
-                                from mdscope.studio.model import results_coverage
-                                for item in results_coverage(matches):
-                                    st.caption(
-                                        f"Saved {item['run_id']} / {item['condition']}: "
-                                        f"{item['verified']}/{item['total']} replicas verified "
-                                        f"({item['status']}). Unverified inputs require scheduling.")
+                    by_analysis.setdefault(owner, []).append(fig)
+                for owner, owned_figures in by_analysis.items():
+                    with st.expander(owner.replace("_", " ").title()):
+                        for fig in owned_figures:
+                            identifier = fig["id"]
+                            st.checkbox(fig.get("label", identifier).replace("_A", " (Å)").replace("_ps", " (ps)").replace("_deg", " (°)"),
+                                        value=identifier in initial, key=f"figure:tree:{identifier}",
+                                        help=identifier, on_change=changed_figure)
+                            st.caption(f"{owner} · {fig['destination']}")
+                            if "studio:results_inventory" in state and owner != "statistics":
+                                matches = [item for item in state["studio:results_inventory"]
+                                           if item["analysis"] == owner]
+                                if matches:
+                                    from mdscope.studio.model import results_coverage
+                                    for item in results_coverage(matches):
+                                        st.caption(
+                                            f"Saved {item['run_id']} / {item['condition']}: "
+                                            f"{item['verified']}/{item['total']} replicas verified "
+                                            f"({item['status']}). Unverified inputs require scheduling.")
         exact_figures = exact_import or bool(state.get("figure:tree:edited"))
         if exact_import and not state.get("figure:tree:edited") and not state.choices:
             state.choices = {
