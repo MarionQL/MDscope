@@ -1395,3 +1395,23 @@ def test_rejected_group_and_named_run_mutations_preserve_all_choices():
     with pytest.raises(ValueError):
         add_named_run(doc, 'rmsd', 'run1')
     assert doc == before and choices == chosen
+
+def test_app_invalid_global_selections_yaml_does_not_commit_partial_draft(tmp_path, monkeypatch):
+    pytest.importorskip('streamlit')
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+    monkeypatch.chdir(tmp_path)
+    doc = rmsd_document()
+    doc['selections']['groups'] = {'patch': {'selection': 'resid 1:10'}}
+    doc['statistics']['metric_selection'] = {'time_series': [{'metric': 'rmsd_A'}]}
+    at = AppTest.from_file(app.__file__)
+    at.session_state['document'] = deepcopy(doc)
+    at.run()
+    assert not at.exception
+    before = deepcopy(at.session_state['document'])
+    at.text_area(key='edit:selections').set_value('groups:\n  patch: invalid\n').run()
+    assert not at.exception
+    assert at.session_state['document'] == before
+    at.text_area(key='edit:selections').set_value('protein: protein\n').run()
+    assert not at.exception
+    assert at.session_state['document']['selections']['groups'] == before['selections']['groups']
