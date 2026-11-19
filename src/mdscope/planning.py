@@ -582,3 +582,109 @@ def inspect_saved_statistics(root: str | Path, *, max_identities: int = 256) -> 
         }
     return {"status": "complete", "families": result,
             "identity_limit": max_identities}
+
+
+def inspect_saved_plot_ids(cfg: dict, root: str | Path, config_path: str | Path,
+                           *, max_identities: int = 256) -> dict:
+    """Discover actual saved figure stems without trajectory reads or rendering.
+
+    Column names are obtained from Parquet metadata; grouped series and
+    profiles read only their identity column. Figure contracts remain owned
+    by reporting.plot_ids, not by this inspector.
+    """
+    import json
+    import pyarrow.parquet as pq
+    from .reporting.plot_ids import DYNAMIC_VARIANTS
+
+    if max_identities < 1:
+        raise ValueError("max_identities must be positive")
+    root = Path(root)
+    found = set()
+    truncated = False
+
+    def add(family, stem, variants):
+        nonlocal truncated
+        for variant in sorted(variants):
+            identifier = f"{family}:{stem}:{variant}"
+            if identifier in found:
+                continue
+            if len(found) >= max_identities:
+                truncated = True
+                return
+            found.add(identifier)
+
+    replicas = list(iter_replicates(cfg, config_path))
+    for rep in replicas:
+        folder = root / rep.system / rep.label
+        for filename, grouped in (("timeseries.parquet", False),
+                                  ("group_timeseries.parquet", True)):
+            path = folder / "summary" / filename
+            if not path.is_file():
+                continue
+            source = pq.ParquetFile(path)
+            names = source.schema_arrow.names
+            metrics = [name for name in names if name not in {"time_ps", "group"}]
+            if grouped:
+                if "group" not in names:
+                    raise ValueError(f"Saved group time series lacks group column: {path}")
+                groups = set()
+                for batch in source.iter_batches(columns=["group"]):
+                    groups.update(str(name) for name in batch.column(0).to_pylist()
+                                  if name is not None)
+                for group in sorted(groups):
+                    for metric in metrics:
+                        add("time_series", safe_plot_stem(
+                            f"{metric}__group_{group}"), DYNAMIC_VARIANTS["time_series"])
+            else:
+                for metric in metrics:
+                    add("time_series", safe_plot_stem(metric),
+                        DYNAMIC_VARIANTS["time_series"])
+        interactions = folder / "interactions"
+        if interactions.is_dir():
+            for kind in sorted(interactions.iterdir()):
+                if not kind.is_dir():
+                    continue
+                if (kind / "occupancy.parquet").is_file():
+                    add("interactions", safe_plot_stem(kind.name), ("occupancy_heatmap",))
+                if (kind / "lifetimes.parquet").is_file():
+                    add("interactions", safe_plot_stem(kind.name), ("lifetime_distribution",))
+
+    stats_root = root / "project_summary" / "statistics"
+    manifest_file = stats_root / "manifest.json"
+    if manifest_file.is_file() and json.loads(manifest_file.read_text()).get("status") == "complete":
+        profile_path = stats_root / "profiles" / "replicate_profiles.parquet"
+        if profile_path.is_file():
+            source = pq.ParquetFile(profile_path)
+            if "profile" not in source.schema_arrow.names:
+                raise ValueError(f"Saved profile table lacks profile column: {profile_path}")
+            profiles = set()
+            for batch in source.iter_batches(columns=["profile"]):
+                profiles.update(str(name) for name in batch.column(0).to_pylist()
+                                if name is not None)
+            for profile in sorted(profiles):
+                add("profiles", safe_plot_stem(profile), DYNAMIC_VARIANTS["profiles"])
+
+    chosen = cfg.get("plots", {}).get("include")
+    candidates = []
+    for identifier in sorted(found):
+        meta = describe_plot(identifier)
+        meta["requires_statistics"] = any(
+            source.startswith("project_summary/statistics/")
+            for source in meta["source_candidates"]
+        )
+        meta["availability"] = (
+            "conditional_on_saved_data" if plot_enabled(cfg, meta["family"])
+            else "disabled_by_configuration"
+        )
+        candidates.append(meta)
+    missing = [] if chosen is None else sorted(
+        set(chosen) - found - set(STATIC_IDS)
+    )
+    return {
+        "status": "saved_identity_discovery",
+        "figures": candidates,
+        "unconfirmed_requested_ids": missing,
+        "unconfirmed_status": "not_observed_in_inspected_saved_products",
+        "truncated": truncated,
+        "max_identities": max_identities,
+    }
