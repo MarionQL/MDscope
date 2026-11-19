@@ -374,6 +374,7 @@ def main():
             errors.append(str(exc)); st.error(str(exc))
     with tabs[2]:
         card_previews = []
+        card_plan = None
         for name, schema in analysis_options().items():
             spec = doc.setdefault("analyses", {}).setdefault(name, {"enabled": DEFAULTS["analyses"].get(name, {}).get("enabled", False)})
             if isinstance(spec, bool):
@@ -417,7 +418,11 @@ def main():
         st.caption("Independent units: simulation replicates. Eligibility requires compatible sampling/identities; CI availability is determined by the backend, never by frame count alone.")
         if stats["enabled"]:
             try:
-                _, plan = preview_document(yaml.safe_dump(doc, sort_keys=False), base)
+                # Reuse the current draft plan built for the analysis cards.
+                # Rebuild below only after statistic selector edits.
+                plan = card_plan
+                if plan is None:
+                    _, plan = preview_document(yaml.safe_dump(doc, sort_keys=False), base)
                 from mdscope.studio.model import (
                     statistics_family_mode, set_statistics_family_mode,
                     set_statistics_exact_family, statistics_selector_fields,
@@ -542,6 +547,9 @@ def main():
                 if set(controls) & {"enabled", "metric_selection", "interaction_min_occupancy"}:
                     raise ValueError("Use the statistics selectors above")
                 stats.update(controls)
+                # Statistics-stage previews must reflect the current rerun's
+                # edited metric selection, not the earlier analysis-card plan.
+                _, plan = preview_document(yaml.safe_dump(doc, sort_keys=False), base)
                 st.caption("Dynamic metric identities outside the structural scalar catalog require exact backend IDs. No identity or output schema is invented.")
                 with st.expander("Expected statistics outputs and eligibility"):
                     st.caption("ILLUSTRATIVE — NO MD RESULTS. Candidate files are conditional on eligible data; Base schemas below include only verified writer columns; optional provenance remains conditional.")
