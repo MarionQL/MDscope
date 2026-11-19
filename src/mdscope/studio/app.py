@@ -447,10 +447,6 @@ def main():
                                        for row in edited.to_dict("records")]
                         if updated != existing:
                             set_statistics_exact_family(doc, family, updated)
-                        # An imported exact selector may have been represented
-                        # by a missing checkbox state on the first render.
-                        # Keep the family parent false unless it is truly All.
-                        state[f"stats:tree:family:{family}"] = False
                 validate_metric_selection(stats)
                     controls = yaml_editor("CI / block / test settings", {key: val for key, val in stats.items()
                                                                          if key not in {"enabled", "metric_selection"}}, "stats:settings") or {}
