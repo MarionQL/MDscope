@@ -121,16 +121,31 @@ def _change_group(document, old_id, new_id=None, *, duplicate=False, choices=Non
         after = authoring_catalog(merge(DEFAULTS, document), include_inactive=True)
         # Use the catalog's ownership to map changed figures, rather than
         # rewriting plot-ID fragments with a second identity registry.
-        old_profiles = {item["profile"]: item
-                        for item in before["profiles"]
-                        if item.get("group") == old_id}
-        new_profiles = {(item["analysis"], item["run_id"]): item["profile"]
-                        for item in after["profiles"] if item.get("group") == new_id}
-        profile_mapping = {
-            profile: (new_profiles.get((item["analysis"], item["run_id"]))
-                      if new_id is not None else None)
-            for profile, item in old_profiles.items()
-        }
+        # Compare the registered profile identities before and after the
+        # group edit. Registry ordering identifies corresponding variants
+        # without encoding analysis-specific name patterns in Studio.
+        before_profiles = {(item["analysis"], item["run_id"]): []
+                           for item in before["profiles"]}
+        after_profiles = {(item["analysis"], item["run_id"]): []
+                          for item in after["profiles"]}
+        for item in before["profiles"]:
+            before_profiles[(item["analysis"], item["run_id"])].append(item["profile"])
+        for item in after["profiles"]:
+            after_profiles[(item["analysis"], item["run_id"])].append(item["profile"])
+        profile_mapping = {}
+        for identity, original_profiles in before_profiles.items():
+            updated_profiles = after_profiles.get(identity, [])
+            removed_profiles = [profile for profile in original_profiles
+                                if profile not in updated_profiles]
+            added_profiles = [profile for profile in updated_profiles
+                              if profile not in original_profiles]
+            if new_id is not None and len(removed_profiles) != len(added_profiles):
+                raise ValueError("Cannot reconcile group-owned profile identities for "
+                                 + repr(identity))
+            profile_mapping.update(zip(
+                removed_profiles,
+                added_profiles if new_id is not None else [None] * len(removed_profiles),
+            ))
         if "profiles" in selection:
             selection["profiles"] = [
                 dict(item, profile=profile_mapping[item["profile"]])
