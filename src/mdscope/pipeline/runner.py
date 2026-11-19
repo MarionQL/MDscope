@@ -555,10 +555,9 @@ def _validate_replica_products(cfg, root, replicates):
             times = pd.read_parquet(timeseries, columns=["time_ps"])["time_ps"]
             if (times.empty or not np.isfinite(times.to_numpy(dtype=float)).all()
                     or not times.is_monotonic_increasing or not times.is_unique):
-                missing.append(
-                    f"{rep.system}/{rep.label}: invalid time_ps in {timeseries} "
-                    "(empty, nonfinite, duplicated or nonmonotonic); "
-                    "inspect or regenerate the affected replica summary"
+                raise ValueError(
+                    f"invalid time_ps in {timeseries} "
+                    "(empty, nonfinite, duplicated or nonmonotonic)"
                 )
             for entry in analysis_output_plan(cfg, repout):
                 _validate_analysis_output(entry, cfg)
