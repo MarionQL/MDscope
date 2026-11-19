@@ -1466,6 +1466,7 @@ def test_offline_finalization_fails_closed_when_inventory_omits_required_run(tmp
     from mdscope.config import resolve_config
 
     doc = rmsd_document()
+    doc["analyses"]["sasa"] = {"enabled": True}
     cfg = resolve_config(doc, base=tmp_path)
     config_path = tmp_path / "analysis.yaml"
     config_path.write_text(yaml.safe_dump(doc))
@@ -1475,6 +1476,6 @@ def test_offline_finalization_fails_closed_when_inventory_omits_required_run(tmp
     # enumerate expected producer/run/condition/replica keys independently.
     monkeypatch.setattr(model, "inspect_results_directory",
                         lambda *_args, **_kwargs: [])
-    with pytest.raises(RuntimeError, match="rmsd/default/condition1/rep1/missing"):
+    with pytest.raises(RuntimeError, match="sasa/default/condition1/rep1/missing"):
         finalize_project(config_path, cfg=cfg, phase="statistics", results_dir=root)
     assert not (root / "project_summary").exists()
