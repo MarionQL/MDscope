@@ -151,27 +151,24 @@ def test_stale_group_figures_and_unrelated_statistics_are_removed(tmp_path):
     assert raw["plots"]["include"] == []
 
 
-def test_app_group_editor_migrates_selected_group_ids(tmp_path, monkeypatch):
+def test_app_group_editor_auto_ids_and_duplicate(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
     from mdscope.studio import app
     monkeypatch.chdir(tmp_path)
     at = AppTest.from_file(app.__file__).run()
-    at.text_input(key="edit:new_group").set_value("patch").run()
-    next(button for button in at.button if button.label == "Add group").click().run()
-    at.text_input(key="edit:group:patch:selection").set_value("resid 10:60 and backbone").run()
-    at.text_input(key="edit:group:patch:alignment_selection").set_value("name CA").run()
+    at.button(key="edit:new_group:add").click().run()
+    at.text_input(key="edit:group:group_1:selection").set_value("resid 10:60 and backbone").run()
+    at.text_input(key="edit:group:group_1:alignment_selection").set_value("name CA").run()
     at.checkbox(key="enable:rmsd").check().run()
-    at.multiselect(key="edit:groups:rmsd").set_value(["patch"]).run()
-    at.text_input(key="edit:group:patch:id").set_value("renamed").run()
-    at.button(key="edit:group:patch:Rename").click().run()
+    at.multiselect(key="edit:groups:rmsd").set_value(["group_1"]).run()
+    at.button(key="edit:group:group_1:Duplicate").click().run()
     assert not at.exception
     raw = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
-    assert list(raw["selections"]["groups"]) == ["renamed"]
-    assert raw["selections"]["groups"]["renamed"]["selection"] == "resid 10:60 and backbone"
-    assert raw["selections"]["groups"]["renamed"]["alignment_selection"] == "name CA"
-    assert raw["analyses"]["rmsd"]["groups"] == ["renamed"]
-    assert not raw["plots"]["include"]
+    assert list(raw["selections"]["groups"]) == ["group_1", "group_2"]
+    assert raw["selections"]["groups"]["group_2"]["selection"] == "resid 10:60 and backbone"
+    assert raw["selections"]["groups"]["group_2"]["alignment_selection"] == "name CA"
+    assert raw["analyses"]["rmsd"]["groups"] == ["group_1"]
 
 
 def test_disabled_imported_figures_do_not_get_enabled_by_authoring(tmp_path):
@@ -718,7 +715,7 @@ def test_selections_tab_topology_preview_uses_real_parser(project, monkeypatch):
     assert not at.exception
     at.button(key="edit:groups:preflight").click().run()
     assert not at.exception
-    assert any("Topology selections parsed" in item.value for item in at.success)
+    assert any("Topology selection preflight completed" in item.value for item in at.success)
     assert any("ca:" in item.value and "atoms" in item.value for item in at.caption)
     assert not root.exists()
 
@@ -838,7 +835,7 @@ def test_replica_lifecycle_rejects_invalid_removal_without_mutation():
     assert [rep["label"] for rep in doc["systems"]["condition1"]["replicates"]] == ["rep1", "rep3"]
 
 
-def test_app_rejected_group_rename_preserves_committed_draft_and_choices(tmp_path, monkeypatch):
+def test_app_group_duplicate_preserves_existing_group_and_choices(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
     from mdscope.studio import app
@@ -854,20 +851,11 @@ def test_app_rejected_group_rename_preserves_committed_draft_and_choices(tmp_pat
     at.session_state["choices"] = {"rmsd": ["time_series:rmsd_A:timeseries"]}
     at.run()
     assert not at.exception
-    before_doc = deepcopy(at.session_state["document"])
-    before_choices = deepcopy(at.session_state["choices"])
-    at.text_input(key="edit:group:patch:id").set_value("existing").run()
-    at.button(key="edit:group:patch:Rename").click().run()
+    at.button(key="edit:group:patch:Duplicate").click().run()
     assert not at.exception
-    assert any("already exists" in error.value for error in at.error)
-    assert at.session_state["document"] == before_doc
-    assert at.session_state["choices"] == before_choices
-    assert at.text_input(key="edit:group:patch:id").value == "existing"
-    at.text_input(key="edit:group:patch:id").set_value("renamed").run()
-    at.button(key="edit:group:patch:Rename").click().run()
-    assert not at.exception
-    assert "renamed" in at.session_state["document"]["selections"]["groups"]
-    assert "patch" not in at.session_state["document"]["selections"]["groups"]
+    groups = at.session_state["document"]["selections"]["groups"]
+    assert "patch" in groups and "existing" in groups and "group_1" in groups
+    assert groups["group_1"]["selection"] == "protein"
 
 
 def test_app_rejected_condition_removal_preserves_committed_state(tmp_path, monkeypatch):
