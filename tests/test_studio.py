@@ -1435,3 +1435,26 @@ def test_planning_snapshot_resolves_one_consistent_draft(tmp_path, monkeypatch):
     assert len(calls) == 2
     assert not any(item["analysis"] == "rmsd" for item in plan["analyses"])
     assert not figures["rmsd"]
+
+
+
+def test_model_figure_hierarchy_commit_is_atomic_and_catalog_owned(tmp_path):
+    from mdscope.studio.model import set_figure_selection
+    from mdscope.planning import authoring_catalog
+
+    doc = rmsd_document()
+    doc["plots"] = {"enabled": True, "include": None, "time_series": False}
+    catalog = authoring_catalog(resolve_config(doc), include_inactive=True)["figures"]
+    before = deepcopy(doc)
+    with pytest.raises(ValueError, match="Unknown figure IDs"):
+        set_figure_selection(doc, catalog, ["time_series:unowned:timeseries"])
+    assert doc == before
+
+    chosen = "time_series:rmsd_A:timeseries"
+    choices = set_figure_selection(doc, catalog, [chosen, chosen])
+    assert doc["plots"]["include"] == [chosen]
+    assert doc["plots"]["time_series"] is False
+    assert choices["rmsd"] == [chosen]
+    exported, _ = review(doc, tmp_path, choices)
+    from mdscope.config import figure_enabled
+    assert figure_enabled(resolve_config(yaml.safe_load(exported)), chosen)
