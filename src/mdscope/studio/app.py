@@ -95,8 +95,9 @@ def restart_editor(document):
 
 @st.cache_data(show_spinner=False, max_entries=32)
 def preview_document(text, base):
-    """Cache pure schema-only planning by draft contents; edits invalidate it."""
-    return review(yaml.safe_load(text), base)
+    """Cache one resolved snapshot of plan and figures for the current draft."""
+    from mdscope.studio.model import planning_snapshot
+    return planning_snapshot(yaml.safe_load(text), base)
 
 
 def show_outputs(plan, name, document, base):
@@ -402,9 +403,8 @@ def main():
         # one coherent plan/catalog snapshot for this Streamlit rerun.
         if card_previews:
             try:
-                _, card_plan = preview_document(
+                card_plan, card_figures = preview_document(
                     yaml.safe_dump(doc, sort_keys=False), base)
-                card_figures = authoring_catalog(resolve_config(doc))["figures"]
                 for name, placeholder in card_previews:
                     with placeholder.container():
                         show_outputs(card_plan, name, doc, base)
@@ -563,8 +563,6 @@ def main():
                                  ("family", "metric_selection", "files", "metric_contract")
                                  if key in family})
                 from mdscope.planning import authoring_catalog
-                figures = authoring_catalog(resolve_config(doc))["figures"].get("statistics", [])
-
             except (ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
                 errors.append(str(exc)); st.error(str(exc))
     with tabs[4]:
