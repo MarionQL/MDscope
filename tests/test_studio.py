@@ -815,3 +815,24 @@ def test_lifecycle_failure_preserves_document_and_figure_choices(monkeypatch, op
             model.delete_system(doc, "condition2", choices=choices)
     assert doc == before
     assert choices == before_choices
+
+
+def test_replica_lifecycle_rejects_invalid_removal_without_mutation():
+    from mdscope.studio.model import add_replica, remove_replica
+
+    doc = new_document()
+    before = deepcopy(doc)
+    with pytest.raises(ValueError, match="at least one replica"):
+        remove_replica(doc, "condition1", 0)
+    assert doc == before
+    with pytest.raises(ValueError, match="Unknown replica index"):
+        doc["systems"]["condition1"]["replicates"].append(
+            {"label": "rep2", "trajectory": "rep2.xtc"})
+        before = deepcopy(doc)
+        remove_replica(doc, "condition1", 9)
+    assert doc == before
+    add_replica(doc, "condition1")
+    labels = [rep["label"] for rep in doc["systems"]["condition1"]["replicates"]]
+    assert labels == ["rep1", "rep2", "rep3"]
+    remove_replica(doc, "condition1", 1)
+    assert [rep["label"] for rep in doc["systems"]["condition1"]["replicates"]] == ["rep1", "rep3"]
