@@ -251,34 +251,55 @@ def main():
             from mdscope.studio.model import replace_global_selections
             replace_global_selections(doc, common)
             groups = doc["selections"]["groups"]
+            st.caption("Group names are display labels. Studio assigns a stable internal ID automatically; existing IDs are preserved when editing imported YAML.")
+            def next_group_id(existing, prefix="group"):
+                number = 1
+                while f"{prefix}_{number}" in existing:
+                    number += 1
+                return f"{prefix}_{number}"
+
             for group_id in list(groups):
                 if isinstance(groups[group_id], str):
                     groups[group_id] = {"selection": groups[group_id]}
-                with st.expander(group_id):
-                    st.caption("Measurement selection: MDAnalysis expression for atoms to measure (e.g. `protein and segid PROA`). Alignment selection: optional independent fitting atoms for supported structural measurements (e.g. `backbone and segid PROA`). Leave blank to inherit backend defaults. Rename/duplicate ID is only needed when pressing those buttons.")
-                    spec = groups[group_id]
-                    for field, label in (("label", "Display label"), ("selection", "Measurement group selection"),
-                                         ("alignment_selection", "Independent alignment selection (optional)")):
-                        value = st.text_input(label, spec.get(field) or "", key=f"edit:group:{group_id}:{field}",
-                                              help={"label": "Human-readable name; does not determine atoms.",
-                                                    "selection": "MDAnalysis expression, e.g. protein and segid PROA. `all` selects every atom.",
-                                                    "alignment_selection": "Optional MDAnalysis selection for fitting; only supported structural analyses use it."}[field])
-                        if value:
-                            spec[field] = value
-                        else:
-                            spec.pop(field, None)
-                    target = st.text_input("New group ID for rename/duplicate", key=f"edit:group:{group_id}:id")
-                    for action in ("Rename", "Duplicate", "Delete"):
-                        if st.button(action, key=f"edit:group:{group_id}:{action}"):
-                            if action != "Delete" and not target:
-                                raise ValueError("Enter a new group ID")
-                            change_group(doc, group_id, None if action == "Delete" else target,
-                                         duplicate=action == "Duplicate", choices=state.choices)
-                            restart_editor(doc)
-            new_id = st.text_input("Group ID", key="edit:new_group")
-            if st.button("Add group"):
+                spec = groups[group_id]
+                with st.expander(spec.get("label") or group_id):
+                    label = st.text_input("Group name", spec.get("label") or group_id,
+                                          key=f"edit:group:{group_id}:label",
+                                          help="Display name shown in Studio. The internal YAML ID stays stable.")
+                    spec["label"] = label or group_id
+                    st.caption("Choose a name that identifies the atoms being measured, such as Protein A or TM helix.")
+                    measurement = st.text_input("Atoms to measure · MDAnalysis selection",
+                                                spec.get("selection") or "",
+                                                key=f"edit:group:{group_id}:selection",
+                                                help="MDAnalysis selection syntax, e.g. protein and segid PROA.")
+                    if measurement:
+                        spec["selection"] = measurement
+                    else:
+                        spec.pop("selection", None)
+                    st.caption("Example: `protein and segid PROA`. The expression `all` selects every atom, regardless of the group name. Verify atom counts with topology preflight.")
+                    alignment = st.text_input("Atoms for structural alignment (optional)",
+                                              spec.get("alignment_selection") or "",
+                                              key=f"edit:group:{group_id}:alignment_selection",
+                                              help="Independent MDAnalysis selection for fitting where the analysis supports alignment.")
+                    if alignment:
+                        spec["alignment_selection"] = alignment
+                    else:
+                        spec.pop("alignment_selection", None)
+                    st.caption("Example: `backbone and segid PROA`. Leave empty to use the analysis default; alignment does not change which atoms are measured.")
+                    left, right = st.columns(2)
+                    if left.button("Duplicate group", key=f"edit:group:{group_id}:Duplicate"):
+                        target = next_group_id(groups)
+                        change_group(doc, group_id, target, duplicate=True, choices=state.choices)
+                        doc["selections"]["groups"][target]["label"] = f"{spec['label']} copy"
+                        restart_editor(doc)
+                    if right.button("Delete group", key=f"edit:group:{group_id}:Delete"):
+                        change_group(doc, group_id, None, choices=state.choices)
+                        restart_editor(doc)
+            if st.button("Add group", key="edit:new_group:add"):
                 from mdscope.studio.model import add_group
-                add_group(doc, new_id)
+                target = next_group_id(groups)
+                add_group(doc, target)
+                doc["selections"]["groups"][target]["label"] = "New group"
                 restart_editor(doc)
             if st.button("Preview selections from topology (no trajectories)", key="edit:groups:preflight"):
                 # An explicit topology-only read, using the same validator as export.
