@@ -684,6 +684,29 @@ def inspect_saved_plot_ids(cfg: dict, root: str | Path, config_path: str | Path,
                                 if name is not None)
             for profile in sorted(profiles):
                 add("profiles", safe_plot_stem(profile), DYNAMIC_VARIANTS["profiles"])
+        interactions_dir = stats_root / "interactions"
+        for filename, variant in (
+            ("system_interaction_metrics.parquet", "bootstrap_table"),
+            ("system_interaction_comparisons.parquet", "comparison_table"),
+        ):
+            path = interactions_dir / filename
+            if not path.is_file():
+                continue
+            source = pq.ParquetFile(path)
+            fields = ("interaction_type", "metric")
+            if not set(fields).issubset(source.schema_arrow.names):
+                raise ValueError(f"Saved interaction statistics lack identity columns: {path}")
+            pairs = set()
+            for batch in source.iter_batches(columns=list(fields)):
+                pairs.update(
+                    (str(kind), str(metric))
+                    for kind, metric in zip(batch.column(0).to_pylist(),
+                                            batch.column(1).to_pylist())
+                    if kind is not None and metric is not None
+                )
+            for kind, metric in sorted(pairs):
+                add("interactions", f"{safe_plot_stem(kind)}:{safe_plot_stem(metric)}",
+                    (variant,))
 
     chosen = cfg.get("plots", {}).get("include")
     candidates = []
