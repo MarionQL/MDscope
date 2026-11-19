@@ -13,6 +13,19 @@ from mdscope.studio.model import (
 from mdscope.statistics_selection import ESTIMATOR_FLAGS, studio_metric_selection_defaults
 
 
+def display_metric(name):
+    """Human-facing name; keep the original backend identifier in YAML."""
+    known = {"rmsd": "RMSD", "rmsf": "RMSF", "rdf": "RDF", "sasa": "SASA",
+             "msd": "MSD", "rg": "Radius of gyration"}
+    units = {"A": "Å", "ps": "ps", "ns": "ns", "deg": "°", "nm": "nm"}
+    parts = name.split("_")
+    suffix = units.get(parts[-1])
+    core = parts[:-1] if suffix else parts
+    readable = " ".join(known.get(part.lower(), part.replace("-", " ").capitalize())
+                        for part in core)
+    return f"{readable} ({suffix})" if suffix else readable
+
+
 def yaml_editor(label, value, key, *, height=140, help=None):
     text = st.text_area(label, yaml.safe_dump(value, sort_keys=False), key=key, height=height, help=help)
     return yaml.safe_load(text)
@@ -110,7 +123,7 @@ def show_outputs(plan, name, document, base):
     for variable in plan["observable_contracts"]:
         if variable["analysis"] != name:
             continue
-        st.write(f"{variable['metric']} · {variable['label']}")
+        st.write(f"{display_metric(variable['metric'])} · {variable['label']}")
         st.caption(variable["row_grain"] + "; columns are a subset of a shared table.")
         rows = [{column: (f"t{i} (ps)" if column == "time_ps" else
                           variable["group"] if column == "group" else f"example ({variable['units'].get(column, 'unknown')})")
@@ -449,7 +462,8 @@ def main():
                                         key = (f"stats:{var['metric']}:{var['group']}"
                                                if family == "time_series" else
                                                f"stats:profile:{var['profile']}")
-                                        if st.checkbox(var.get("label", str(identity)),
+                                        if st.checkbox(display_metric(var["metric"]) + " · " + str(var.get("group", ""))
+                                                       if family == "time_series" else var.get("label", str(identity)),
                                                        value=selected is not None, key=key):
                                             entry = {**(selected or {}), **selector}
                                             for flag in sorted(ESTIMATOR_FLAGS[family]):
@@ -566,7 +580,7 @@ def main():
                                 ids, state[f"figure:tree:family:{family}"]))
                 for owner, fig in entries:
                     identifier = fig["id"]
-                    st.checkbox(fig.get("label", identifier),
+                    st.checkbox(fig.get("label", identifier).replace("_A", " (Å)").replace("_ps", " (ps)").replace("_deg", " (°)"),
                                 value=identifier in initial, key=f"figure:tree:{identifier}",
                                 help=identifier, on_change=changed_figure)
                     st.caption(f"{owner} · {fig['destination']}")
