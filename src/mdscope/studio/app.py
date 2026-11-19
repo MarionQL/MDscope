@@ -75,10 +75,12 @@ def show_outputs(plan, name, document, base):
                 label = rep.get("label", f"rep{i}") if isinstance(rep, dict) else f"rep{i}"
                 st.code(str(Path(base) / plan["project"]["output"] / system / label /
                             variable["path_within_replica"]))
-    outputs = [item for item in plan["registered_replica_outputs"] if item["analysis"] == name]
+    outputs = [item for item in (plan["registered_replica_outputs"] + plan["structural_profile_outputs"]) if item["analysis"] == name]
     if outputs:
         for output in outputs:
             st.write(f"{output['run_id']} · {output['role']} · {output['format']}")
+            if output.get("statistics_requirement"):
+                st.info(output["statistics_requirement"])
             st.caption(output.get("row_grain") or "Row grain / array dimensions depend on the producer contract; unresolved fields remain unknown.")
             if output.get("columns"):
                 st.table([{column: "illustrative placeholder" for column in output["columns"]}

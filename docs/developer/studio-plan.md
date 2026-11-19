@@ -51,3 +51,6 @@ new changes require their own CI results.
 - [x] Exact profile/interaction selectors offer separate statistical figure choices.
   Saved-data availability remains conditional; unspecified interaction metrics do
   not create guessed statistical plot IDs.
+- [x] RMSF global/group atom-profile schemas and source/fitted provenance;
+  temporal-inference cache prerequisite visible. Global schema checked against
+  actual synthetic pipeline output (not inferred from RMSD tables).

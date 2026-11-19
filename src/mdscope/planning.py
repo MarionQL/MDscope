@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import analysis_runs, iter_replicates, plot_enabled, statistics_family_config
-from .registry import analysis_output_plan, required_artifacts, artifact_schema, structural_scalar_contracts
+from .registry import analysis_output_plan, required_artifacts, artifact_schema, structural_scalar_contracts, structural_profile_contracts
 from .statistics_families import STATISTICS_FAMILIES
 from .statistics_selection import ESTIMATOR_FLAGS
 from .reporting.plot_ids import STATIC_IDS, SDC4_CONDITION_STEMS, describe_plot, safe_plot_stem
@@ -469,6 +469,7 @@ def build_plan(cfg: dict, config_path: str | Path, *,
         "analyses": selected,
         "registered_replica_outputs": outputs,
         "observable_contracts": structural_scalar_contracts(cfg),
+        "structural_profile_outputs": structural_profile_contracts(cfg),
         "conditional_replica_outputs": [
             {"path_within_replica": "summary/timeseries.parquet",
              "format": "Parquet", "status": "written_if_nonempty",

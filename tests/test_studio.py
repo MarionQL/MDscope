@@ -127,11 +127,17 @@ def test_exported_distribution_runs_through_production(project):
     doc["project"] = fixture["project"]
     doc["time"] = fixture.get("time", {})
     doc["cache"] = {"aligned_coordinates": False}
-    text, _ = review(doc, path.parent, {"rmsd": ["time_series:rmsd_A:distribution"]})
+    doc["analyses"]["rmsf"]["enabled"] = True
+    text, plan = review(doc, path.parent, {"rmsd": ["time_series:rmsd_A:distribution"]})
     path.write_text(text)
     cfg = load_config(path)
     assert cfg["plots"]["distributions"]
     run_one(path, 0)
+    import pandas as pd
+    for item in plan["structural_profile_outputs"]:
+        for replica in plan["replicates"]:
+            saved = root / replica["system"] / replica["id"] / item["path_within_replica"]
+            assert list(pd.read_parquet(saved).columns) == item["columns"]
     finalize_project(path, phase="plotting")
     assert [file.name for file in root.rglob("*.png")] == ["rmsd_A__distribution.png"]
 
@@ -272,3 +278,17 @@ def test_nonstructural_statistical_figures_survive_export(tmp_path):
     chosen = "interactions:hydrogen_bonds:occupancy:comparison_table"
     raw = yaml.safe_load(review(doc, tmp_path, {"statistics": [chosen]})[0])
     assert raw["plots"]["include"] == [chosen]
+
+
+def test_rmsf_profile_contracts_are_not_frame_series(tmp_path):
+    from mdscope.registry import structural_profile_contracts
+    doc = new_document()
+    doc["analyses"]["rmsf"]["enabled"] = True
+    doc["selections"]["groups"] = {"patch": {"selection": "name CA"}}
+    contracts = structural_profile_contracts(resolve_config(doc))
+    assert [item["path_within_replica"] for item in contracts] == ["raw/rmsf.parquet", "raw/group_rmsf.parquet"]
+    assert "equivalent_bfactor_A2" in contracts[0]["columns"]
+    assert "equivalent_bfactor_A2" not in contracts[1]["columns"]
+    assert "time_ps" not in contracts[0]["columns"]
+    assert all(item["coordinate_source"] == "source" for item in contracts)
+    assert all("cache" in item["statistics_requirement"] for item in contracts)

@@ -303,3 +303,24 @@ def structural_scalar_contracts(cfg: dict) -> list[dict]:
                                             "bootstrap_table", "comparison_table")],
             })
     return result
+
+
+def structural_profile_contracts(cfg):
+    """Streaming RMSF products; separate from frame-wise scalar tables."""
+    from .config import analysis_groups
+    if not cfg["analyses"]["rmsf"].get("enabled", True):
+        return []
+    base = ["atom_index", "topology_residue_index", "residue", "atom_name", "rmsf_A"]
+    result = []
+    for grouped in ([False, True] if analysis_groups(cfg) else [False]):
+        result.append({
+            "analysis": "rmsf", "run_id": "default", "role": "conditional_summary",
+            "format": "Parquet", "columns_status": "verified_fixed",
+            "columns": ["group", *base] if grouped else [*base, "equivalent_bfactor_A2"],
+            "path_within_replica": "raw/group_rmsf.parquet" if grouped else "raw/rmsf.parquet",
+            "row_grain": "one selected feature atom per replicate" + (" per group" if grouped else ""),
+            "units": {"rmsf_A": "angstrom", **({} if grouped else {"equivalent_bfactor_A2": "angstrom^2"})},
+            "coordinate_source": "fitted" if cfg["analyses"]["alignment"].get("enabled", True) else "source",
+            "statistics_requirement": "Temporal RMSF inference additionally requires saved aligned-coordinate cache; a static RMSF table alone is insufficient.",
+        })
+    return result
