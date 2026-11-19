@@ -770,12 +770,18 @@ def test_app_statistics_exact_mode_can_return_to_legacy(tmp_path, monkeypatch):
     at.checkbox(key="stats:exact").check().run()
     assert not at.exception
     assert exported()["statistics"]["metric_selection"] is not None
+    at.checkbox(key="stats:rmsd_A:None").check().run()
+    assert not at.exception
+    chosen = deepcopy(exported()["statistics"]["metric_selection"])
+    assert chosen["time_series"]
     at.checkbox(key="stats:exact").uncheck().run()
     assert not at.exception
     assert exported()["statistics"]["metric_selection"] is None
     at.checkbox(key="stats:exact").check().run()
     assert not at.exception
-    assert exported()["statistics"]["metric_selection"] is not None
+    assert exported()["statistics"]["metric_selection"] == chosen
+    at.checkbox(key="stats:exact").uncheck().run()
+    assert exported()["statistics"]["metric_selection"] is None
 
 
 @pytest.mark.parametrize("operation", ["group", "run", "condition"])
@@ -896,3 +902,45 @@ def test_app_rejected_condition_removal_preserves_committed_state(tmp_path, monk
     assert any("injected condition failure" in error.message for error in at.error)
     assert at.session_state["document"] == before_doc
     assert at.session_state["choices"] == before_choices
+
+
+def test_app_rejected_global_selection_yaml_preserves_export(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+
+    monkeypatch.chdir(tmp_path)
+    doc = rmsd_document()
+    doc["selections"]["groups"] = {"patch": {"selection": "resid 10:20"}}
+    at = AppTest.from_file(app.__file__)
+    at.session_state["document"] = deepcopy(doc)
+    at.run()
+    before = deepcopy(at.session_state["document"])
+    at.text_area(key="edit:selections").set_value("groups:\\n  patch: anything").run()
+    assert not at.exception
+    assert any("named group editor" in item.message for item in at.error)
+    assert at.session_state["document"] == before
+    assert at.session_state["document"]["selections"]["groups"] == before["selections"]["groups"]
+    at.text_area(key="edit:selections").set_value(
+        yaml.safe_dump({key: value for key, value in before["selections"].items() if key != "groups"})
+    ).run()
+    assert not at.exception
+    assert at.session_state["document"]["selections"] == before["selections"]
+
+
+def test_app_legacy_import_preserves_all_metric_selection_on_noop(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+
+    monkeypatch.chdir(tmp_path)
+    doc = rmsd_document()
+    doc["statistics"]["enabled"] = True
+    doc["statistics"]["metric_selection"] = None
+    at = AppTest.from_file(app.__file__)
+    at.session_state["document"] = deepcopy(doc)
+    at.run()
+    assert not at.exception
+    assert not at.checkbox(key="stats:exact").value
+    exported = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
+    assert exported["statistics"]["metric_selection"] is None
