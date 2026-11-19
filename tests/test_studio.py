@@ -465,9 +465,9 @@ def test_group_rename_and_delete_migrate_inference_identity():
     selectors["profiles"] = [{"profile": "rmsf__group_patch"}]
     change_group(doc, "patch", "renamed")
     assert doc["statistics"]["metric_selection"]["time_series"][0]["group"] == "renamed"
-    assert selectors["profiles"][0]["profile"] == "rmsf__group_renamed"
+    assert doc["statistics"]["metric_selection"]["profiles"][0]["profile"] == "rmsf__group_renamed"
     change_group(doc, "renamed")
-    assert selectors["time_series"] == selectors["profiles"] == []
+    assert doc["statistics"]["metric_selection"]["time_series"] == doc["statistics"]["metric_selection"]["profiles"] == []
 
 
 def test_app_named_sasa_runs_update_output_and_statistic_identity(tmp_path, monkeypatch):
