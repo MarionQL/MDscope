@@ -7,8 +7,7 @@ import yaml
 
 from mdscope.config import DEFAULTS, analysis_groups, resolve_config
 from mdscope.studio.model import (
-    QUICK_FIGURE_FAMILIES, analysis_options, change_group, import_document,
-    new_document, quick_figure_families, review, set_quick_figure_families,
+    analysis_options, change_group, import_document, new_document, review,
     topology_preflight,
 )
 from mdscope.statistics_selection import ESTIMATOR_FLAGS, studio_metric_selection_defaults
@@ -98,15 +97,6 @@ def restart_editor(document):
 def preview_document(text, base):
     """Cache pure schema-only planning by draft contents; edits invalidate it."""
     return review(yaml.safe_load(text), base)
-
-
-def figure_picker(figures, key, existing):
-    selected = []
-    for fig in figures:
-        if st.checkbox(fig.get("label", fig["id"]), value=fig["id"] in existing, key=f"{key}:{fig['id']}", help=fig["id"]):
-            selected.append(fig["id"])
-        st.caption(f"{fig['destination']} · {'Statistics required' if fig['requires_statistics'] else 'Descriptive'}")
-    return selected
 
 
 def show_outputs(plan, name, document, base):
