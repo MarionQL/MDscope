@@ -533,7 +533,14 @@ def test_plan_discovers_condition_specific_sdc4_figures(tmp_path, project):
     from mdscope.reporting.plot_ids import SDC4_CONDITION_STEMS
     path, root = project("plan_sdc4_figure_catalog")
     raw = yaml.safe_load(path.read_text())
-    raw["analyses"]["sdc4_mechanisms"]["enabled"] = True
+    mechanisms = raw["analyses"]["sdc4_mechanisms"]
+    mechanisms.update({
+        "enabled": True,
+        "tm_chains": {"A": "segid A and name CA", "B": "segid B and name CA"},
+        "ectodomains": {"A": "segid A", "B": "segid B"},
+        "lipid_anchors": {"POPC": "resname POPC and name P"},
+        "lipid_contact_selection": "resname POPC",
+    })
     raw["plots"]["enabled"] = True
     path.write_text(yaml.safe_dump(raw))
     plan = build_plan(load_config(path, check_paths=False), path)
