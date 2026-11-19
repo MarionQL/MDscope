@@ -306,13 +306,16 @@ def main():
                                           value=stats.get("metric_selection") is not None,
                                           key="stats:exact")
                 if not exact_stats:
-                    # The legacy mode intentionally selects all eligible variables.
-                    # Switching back must clear the exact allowlist, not merely hide it.
+                    # Null is the backend's legacy-all selection. Restore the
+                    # prior exact allowlist if the user opts back in this session.
+                    if stats.get("metric_selection") is not None:
+                        state["stats:exact:saved"] = deepcopy(stats["metric_selection"])
                     stats["metric_selection"] = None
-                    st.info("Legacy statistics mode includes all eligible variables. Enable exact variable selection to use an explicit allowlist.")
+                    st.info("Legacy statistics mode includes all eligible variables. Enable exact variable selection to restore your previous choices or start a new allowlist.")
                 else:
                     if stats.get("metric_selection") is None:
-                        stats["metric_selection"] = studio_metric_selection_defaults()
+                        stats["metric_selection"] = deepcopy(
+                            state.get("stats:exact:saved", studio_metric_selection_defaults()))
                     selectors = stats["metric_selection"]
                     entries = []
                     for var in plan["observable_contracts"]:
