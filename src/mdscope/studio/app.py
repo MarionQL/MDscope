@@ -166,11 +166,16 @@ def main():
             state["studio:results_inventory"] = inspect_results_directory(
                 state.document, base, results_dir)
             state["studio:results_inventory_path"] = results_dir
+            state["studio:results_inventory_config"] = yaml.safe_dump(state.document, sort_keys=True)
         except (OSError, ValueError, KeyError, TypeError) as exc:
             state.pop("studio:results_inventory", None)
             st.error(str(exc))
     if "studio:results_inventory" in state:
         inventory = state["studio:results_inventory"]
+        if (state.get("studio:results_inventory_path") != results_dir or
+                state.get("studio:results_inventory_config") !=
+                yaml.safe_dump(state.document, sort_keys=True)):
+            st.warning("Results inventory is stale after configuration/path changes; inspect again.")
         st.caption("Registered products only; candidate files are NOT verified "
                    "for provenance, schema or restart completeness.")
         if inventory:
