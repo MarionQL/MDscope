@@ -995,3 +995,28 @@ def test_app_quick_figure_categories_round_trip(tmp_path, monkeypatch):
     exported = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
     assert exported["plots"]["time_series"] is False
     assert exported["plots"]["profiles"] is True
+
+
+def test_app_hierarchical_figures_support_category_and_individual_override(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+
+    monkeypatch.chdir(tmp_path)
+    doc = rmsd_document()
+    doc["plots"] = {"enabled": False, "include": []}
+    at = AppTest.from_file(app.__file__)
+    at.session_state["document"] = deepcopy(doc)
+    at.run()
+    assert not at.exception
+    category = at.checkbox(key="figure:tree:family:time_series")
+    category.check().run()
+    assert not at.exception
+    leaf = at.checkbox(key="figure:tree:time_series:rmsd_A:timeseries")
+    assert leaf.value
+    leaf.uncheck().run()
+    assert not at.exception
+    assert not at.checkbox(key="figure:tree:family:time_series").value
+    at.checkbox(key="figure:tree:all").check().run()
+    assert not at.exception
+    assert at.checkbox(key="figure:tree:time_series:rmsd_A:timeseries").value
