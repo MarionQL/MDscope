@@ -357,3 +357,26 @@ def scalar_contracts(cfg):
                         for variant in ("timeseries", "distribution", "autocorrelation", "bootstrap_table", "comparison_table")],
         })
     return result
+
+
+def configured_profile_variables(cfg):
+    """Pre-run identities consumed by temporal_rmsf/structure_profiles readers."""
+    from .config import analysis_groups
+    variables = []
+    def add(analysis, profile, unit, prerequisite, run_id="default"):
+        variables.append(dict(analysis=analysis, profile=profile, run_id=run_id,
+                              units=unit, prerequisite=prerequisite,
+                              statistics_selector={"profile": profile}))
+    if cfg["analyses"]["rmsf"].get("enabled", True):
+        add("rmsf", "rmsf", "angstrom", "Saved aligned-coordinate cache and compatible atom identities required")
+        for group in analysis_groups(cfg):
+            add("rmsf", f"rmsf__group_{group}", "angstrom", "Group feature intersection and saved coordinate cache required")
+    for run in analysis_runs(cfg, "sasa"):
+        suffix = "" if run.run_id == "default" else f"__{run.run_id}"
+        add("sasa", "sasa_mean" + suffix, "nm^2", "Per-frame residue SASA with compatible residue identities", run.run_id)
+        if run.run_id != "default" and run.spec.get("reference_run"):
+            add("sasa", "sasa_buried_nm2" + suffix, "nm^2", "Compatible isolated/reference-run burial tables required", run.run_id)
+    if cfg["analyses"]["dssp"].get("enabled", False):
+        for kind in ("helix", "sheet", "coil"):
+            add("dssp", f"dssp_{kind}_occupancy", "fraction", "Per-frame residue assignments required")
+    return variables

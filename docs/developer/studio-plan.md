@@ -59,3 +59,7 @@ new changes require their own CI results.
   exact-variable statistics/figure selection. Suboption disabling removes the
   corresponding planned metric. Scientific producers remain unchanged.
 - [x] Check policy incorporated from merged PR #201; Studio test dependency retained.
+- [x] Guided opt-in profile selectors for RMSF/groups, named SASA/burial runs and
+  DSSP occupancies, with producer-matching identities, units and prerequisites.
+  Exact selectors feed the existing statistical figure picker. Imported
+  inference:false remains disabled when editing guided estimator switches.

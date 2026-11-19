@@ -242,14 +242,26 @@ def main():
                         selected = next((item for item in selectors.get("time_series", [])
                                          if item.get("group") == selector["group"] and item["metric"] == selector["metric"]), None)
                         if st.checkbox(f"Compute {var['metric']} statistics · {var['label']}", value=selected is not None, key=key):
-                            entry = dict(selector)
+                            entry = {**(selected or {}), **selector}
                             for flag in sorted(ESTIMATOR_FLAGS["time_series"]):
-                                entry[flag] = st.checkbox(flag, value=(selected or {}).get(flag, True), key=f"{key}:{flag}")
+                                entry[flag] = st.checkbox(flag, value=(selected or {}).get(flag, (selected or {}).get("inference", True)), key=f"{key}:{flag}")
                             entries.append(entry)
                             figures.extend(fig for fig in var["figures"] if fig["requires_statistics"])
                     known = {(var["metric"], var["group"]) for var in plan["observable_contracts"]}
                     selectors["time_series"] = entries + [item for item in selectors.get("time_series", [])
                                                              if (item["metric"], item.get("group")) not in known]
+                    guided_profiles = []
+                    known_profiles = {var["profile"] for var in plan["profile_variables"]}
+                    for var in plan["profile_variables"]:
+                        key = f"stats:profile:{var['profile']}"
+                        selected = next((item for item in selectors.get("profiles", [])
+                                         if item["profile"] == var["profile"]), None)
+                        st.caption(f"{var['analysis']} · {var['run_id']} · {var['units']} · {var['prerequisite']}")
+                        if st.checkbox(f"Compute {var['profile']} statistics", value=selected is not None, key=key):
+                            entry = {**(selected or {}), **var["statistics_selector"]}
+                            for flag in sorted(ESTIMATOR_FLAGS["profiles"]):
+                                entry[flag] = st.checkbox(flag, value=(selected or {}).get(flag, (selected or {}).get("inference", True)), key=f"{key}:{flag}")
+                            guided_profiles.append(entry)
                     from mdscope.studio.model import statistics_selector_fields
                     import pandas as pd
                     advanced = {}
@@ -259,7 +271,10 @@ def main():
                         with st.expander(f"{family} · exact variable selectors"):
                             st.caption("Add one row per exact backend variable identity. Empty table selects none. Dynamic identities remain unverified until supported data/topology inspection.")
                             fields = statistics_selector_fields(family)
-                            source = pd.DataFrame(selectors.get(family, []), columns=fields)
+                            source_entries = selectors.get(family, [])
+                            if family == "profiles":
+                                source_entries = [item for item in source_entries if item["profile"] not in known_profiles]
+                            source = pd.DataFrame(source_entries, columns=fields)
                             columns = {field: st.column_config.CheckboxColumn(field, default=True)
                                        for field in fields if field in {"inference", "ci", "hypothesis_tests"}}
                             edited = st.data_editor(source, num_rows="dynamic", hide_index=True,
@@ -269,6 +284,8 @@ def main():
                                 {key: value for key, value in row.items() if pd.notna(value)}
                                 for row in edited.to_dict("records")
                             ]
+                    advanced["profiles"] = guided_profiles + [item for item in advanced["profiles"]
+                                                               if item["profile"] not in known_profiles]
                     stats["metric_selection"] = {"time_series": selectors["time_series"], **advanced}
                     controls = yaml_editor("CI / block / test settings", {key: val for key, val in stats.items()
                                                                          if key not in {"enabled", "metric_selection"}}, "stats:settings") or {}

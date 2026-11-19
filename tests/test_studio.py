@@ -312,3 +312,33 @@ def test_membrane_and_dssp_scalar_controls_share_exact_contracts(tmp_path):
     doc["analyses"]["membrane"]["thickness"] = {"enabled": False}
     _, plan = review(doc, tmp_path)
     assert "membrane_thickness_A" not in {item["metric"] for item in plan["observable_contracts"]}
+
+
+def test_named_sasa_and_dssp_profile_identity_catalog():
+    from mdscope.registry import configured_profile_variables
+    doc = new_document()
+    doc["analyses"]["sasa"] = {"enabled": True, "runs": {
+        "isolated": {"target_selection": "protein", "occluder_selection": "protein"},
+        "environment": {"target_selection": "protein", "occluder_selection": "all", "reference_run": "isolated"}}}
+    doc["analyses"]["dssp"]["enabled"] = True
+    items = configured_profile_variables(resolve_config(doc))
+    assert [item["profile"] for item in items] == ["sasa_mean__isolated", "sasa_mean__environment",
+        "sasa_buried_nm2__environment", "dssp_helix_occupancy", "dssp_sheet_occupancy", "dssp_coil_occupancy"]
+    assert all(item["statistics_selector"] == {"profile": item["profile"]} for item in items)
+
+
+def test_app_guided_rmsf_statistics_are_opt_in(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+    monkeypatch.chdir(tmp_path)
+    at = AppTest.from_file(app.__file__).run()
+    at.checkbox(key="enable:rmsf").check().run()
+    at.checkbox(key="stats:master").check().run()
+    assert not at.checkbox(key="stats:profile:rmsf").value
+    at.checkbox(key="stats:profile:rmsf").check().run()
+    assert not at.exception
+    raw = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
+    assert raw["statistics"]["metric_selection"]["profiles"] == [{"profile": "rmsf", "ci": True, "hypothesis_tests": True}]
+    assert not raw["plots"]["include"]
+    assert raw["statistics"]["metric_selection"]["time_series"] == []
