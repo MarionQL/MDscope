@@ -180,83 +180,73 @@ def main():
     doc = deepcopy(state.document)
     choices_before = deepcopy(state.choices)
     plots = doc.get("plots", {})
-    # Imported category switches remain unchanged until the user edits them.
-    # New projects and exact imports use the hierarchical selector.
-    exact_figures = st.checkbox("Customize individual figures",
-                                value=(plots.get("include") is not None
-                                       or not plots.get("enabled", False)),
-                                key="edit:exact_figures")
-    if not exact_figures:
-        st.caption("Quick selection: category switches apply to every eligible figure in that family.")
-        selected_families = []
-        current_families = quick_figure_families(doc)
-        for family in QUICK_FIGURE_FAMILIES:
-            if st.checkbox(f"All {family.replace('_', ' ')} figures",
-                           value=family in current_families,
-                           key=f"edit:quick:figure:{family}"):
-                selected_families.append(family)
-        # Do not rewrite imported shorthand/defaults on a no-op rerun.
-        if any(state.get(f"edit:quick:figure:{family}") != (family in current_families)
-               for family in QUICK_FIGURE_FAMILIES):
-            set_quick_figure_families(doc, selected_families)
-    else:
-        st.caption("Select all, select a category, or expand it to select individual figures.")
-        from mdscope.planning import authoring_catalog
-        from mdscope.config import merge
-        catalog = authoring_catalog(merge(DEFAULTS, doc), include_inactive=True)["figures"]
-        figures_by_family = {}
-        for owner, figures in catalog.items():
-            for fig in figures:
-                family = fig["id"].split(":", 1)[0]
-                figures_by_family.setdefault(family, []).append((owner, fig))
-        known_ids = {fig["id"] for figures in catalog.values() for fig in figures}
-        original_ids = set(plots.get("include") or [])
-        original_ids.update(identifier for values in state.choices.values() for identifier in values)
-        # Widget keys are stable exact IDs, even if the display label changes.
-        def set_figures(ids, checked):
-            for identifier in ids:
-                state[f"figure:tree:{identifier}"] = checked
-            for family_name, family_entries in figures_by_family.items():
-                family_ids = {fig["id"] for _, fig in family_entries}
-                state[f"figure:tree:family:{family_name}"] = all(
-                    state.get(f"figure:tree:{i}", i in original_ids) for i in family_ids)
-            state["figure:tree:all"] = all(
-                state.get(f"figure:tree:{i}", i in original_ids) for i in all_ids)
-        def sync_figure_parents():
-            for family_name, family_entries in figures_by_family.items():
-                family_ids = {fig["id"] for _, fig in family_entries}
-                state[f"figure:tree:family:{family_name}"] = all(
-                    state.get(f"figure:tree:{i}", i in original_ids) for i in family_ids)
-            state["figure:tree:all"] = all(
-                state.get(f"figure:tree:{i}", i in original_ids) for i in all_ids)
-        all_figures = [fig for figures in figures_by_family.values() for _, fig in figures]
-        all_ids = list(dict.fromkeys(fig["id"] for fig in all_figures))
-        if all_ids:
-            st.checkbox("Select All", value=all(state.get(f"figure:tree:{i}", i in original_ids)
-                                                 for i in all_ids),
-                        key="figure:tree:all",
-                        on_change=lambda: set_figures(all_ids, state["figure:tree:all"]))
-        selected_ids = []
+    # One hierarchy for imported family switches and exact selections.
+    # Imported configurations are not converted until a checkbox is changed.
+    st.caption("Figures · select all, whole categories, or individual outputs.")
+    from mdscope.planning import authoring_catalog
+    from mdscope.config import merge, figure_enabled
+    catalog = authoring_catalog(merge(DEFAULTS, doc), include_inactive=True)["figures"]
+    figures_by_family = {}
+    for owner, figures in catalog.items():
+        for fig in figures:
+            family = fig["id"].split(":", 1)[0]
+            figures_by_family.setdefault(family, []).append((owner, fig))
+    all_ids = list(dict.fromkeys(
+        fig["id"] for entries in figures_by_family.values() for _, fig in entries))
+    exact_import = plots.get("include") is not None
+    initial = set(plots.get("include") or []) if exact_import else {
+        identifier for identifier in all_ids
+        if figure_enabled(resolve_config(doc), identifier)
+    }
+    initial.update(identifier for values in state.choices.values() for identifier in values
+                   if exact_import)
+    def selected(identifier):
+        return state.get(f"figure:tree:{identifier}", identifier in initial)
+    def sync_parents():
         for family, entries in figures_by_family.items():
-            ids = list(dict.fromkeys(fig["id"] for _, fig in entries))
-            with st.expander(f"{family.replace('_', ' ').title()} ({len(ids)} figures)"):
-                st.checkbox(f"Select all {family.replace('_', ' ')}",
-                            value=all(state.get(f"figure:tree:{i}", i in original_ids) for i in ids),
-                            key=f"figure:tree:family:{family}",
-                            on_change=lambda ids=ids, family=family: set_figures(
-                                ids, state[f"figure:tree:family:{family}"]))
-                for owner, fig in entries:
-                    identifier = fig["id"]
-                    if st.checkbox(fig.get("label", identifier),
-                                   value=identifier in original_ids,
-                                   key=f"figure:tree:{identifier}", help=identifier,
-                                   on_change=sync_figure_parents):
-                        selected_ids.append(identifier)
-                    st.caption(f"{owner} · {fig['destination']}")
+            ids = {fig["id"] for _, fig in entries}
+            state[f"figure:tree:family:{family}"] = all(selected(i) for i in ids)
+        state["figure:tree:all"] = bool(all_ids) and all(selected(i) for i in all_ids)
+    def set_figures(ids, checked):
+        for identifier in ids:
+            state[f"figure:tree:{identifier}"] = checked
+        state["figure:tree:edited"] = True
+        sync_parents()
+    def changed_figure():
+        state["figure:tree:edited"] = True
+        sync_parents()
+    if all_ids:
+        st.checkbox("Select All", value=all(selected(i) for i in all_ids),
+                    key="figure:tree:all",
+                    on_change=lambda: set_figures(all_ids, state["figure:tree:all"]))
+    for family, entries in figures_by_family.items():
+        ids = list(dict.fromkeys(fig["id"] for _, fig in entries))
+        with st.expander(f"{family.replace('_', ' ').title()} ({len(ids)} figures)"):
+            st.checkbox(f"Select all {family.replace('_', ' ')}",
+                        value=all(selected(i) for i in ids),
+                        key=f"figure:tree:family:{family}",
+                        on_change=lambda ids=ids, family=family: set_figures(
+                            ids, state[f"figure:tree:family:{family}"]))
+            for owner, fig in entries:
+                identifier = fig["id"]
+                st.checkbox(fig.get("label", identifier),
+                            value=identifier in initial, key=f"figure:tree:{identifier}",
+                            help=identifier, on_change=changed_figure)
+                st.caption(f"{owner} · {fig['destination']}")
+    exact_figures = exact_import or bool(state.get("figure:tree:edited"))
+    if state.get("figure:tree:edited"):
+        chosen = {identifier for identifier in all_ids if selected(identifier)}
         state.choices = {
-            owner: [fig["id"] for fig in figures if fig["id"] in selected_ids]
+            owner: [fig["id"] for fig in figures if fig["id"] in chosen]
             for owner, figures in catalog.items()
         }
+        # Exact IDs take precedence over imported family switches on export.
+        doc.setdefault("plots", {})["include"] = list(chosen)
+        doc["plots"]["enabled"] = bool(chosen)
+        if not exact_import:
+            st.warning("Editing individual figures converts category switches to exact IDs. "
+                       "Figures whose identities depend on unavailable topology/data "
+                       "may not be listed; review the exported figure list.")
     tabs = st.tabs(["1 · Project & systems", "2 · Selections & alignment",
                     "3 · Analyses", "4 · Statistics", "5 · Review & export"])
     errors = []
