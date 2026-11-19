@@ -726,3 +726,53 @@ def test_selections_tab_topology_preview_uses_real_parser(project, monkeypatch):
     at.button(key="edit:groups:preflight").click().run()
     assert any("zero" in item.value for item in at.error)
     assert not root.exists()
+
+
+def test_app_global_selection_yaml_deletion_preserves_named_groups(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+
+    monkeypatch.chdir(tmp_path)
+    doc = rmsd_document()
+    doc["selections"]["features"] = "protein"
+    doc["selections"]["groups"] = {"patch": {"selection": "resid 10:20"}}
+    at = AppTest.from_file(app.__file__)
+    at.session_state["document"] = deepcopy(doc)
+    at.run()
+    assert not at.exception
+    editor = at.text_area(key="edit:selections")
+    edited = yaml.safe_load(editor.value)
+    edited.pop("features")
+    editor.set_value(yaml.safe_dump(edited, sort_keys=False)).run()
+    assert not at.exception
+    exported = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
+    assert "features" not in exported["selections"]
+    assert exported["selections"]["groups"] == doc["selections"]["groups"]
+
+
+def test_app_statistics_exact_mode_can_return_to_legacy(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+
+    monkeypatch.chdir(tmp_path)
+    doc = rmsd_document()
+    doc["statistics"]["enabled"] = True
+    doc["statistics"]["metric_selection"] = None
+    at = AppTest.from_file(app.__file__)
+    at.session_state["document"] = deepcopy(doc)
+    at.run()
+    assert not at.exception
+    exported = lambda: yaml.safe_load(
+        next(item.value for item in at.code if "analyses:" in item.value))
+    assert exported()["statistics"]["metric_selection"] is None
+    at.checkbox(key="stats:exact").check().run()
+    assert not at.exception
+    assert exported()["statistics"]["metric_selection"] is not None
+    at.checkbox(key="stats:exact").uncheck().run()
+    assert not at.exception
+    assert exported()["statistics"]["metric_selection"] is None
+    at.checkbox(key="stats:exact").check().run()
+    assert not at.exception
+    assert exported()["statistics"]["metric_selection"] is not None
