@@ -1225,7 +1225,7 @@ def test_statistics_source_status_reports_verified_coverage_without_inventing_in
          "replica": "rep2", "status": "missing"},
     ]
     status = statistics_source_status(plan, rows)
-    assert status["profiles"]["status"] == "unavailable"
+    assert status["profiles"]["status"] == "partial_existing"
     coverage = status["profiles"]["existing_coverage"]
     assert len(coverage) == 1
     assert coverage[0]["run_id"] == "A"
