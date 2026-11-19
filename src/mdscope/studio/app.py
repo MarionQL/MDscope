@@ -329,16 +329,9 @@ def main():
             common = {key: value for key, value in selections.items() if key != "groups"}
             common = yaml_editor("Global selections (measurement features and fitting atoms are independent)",
                                  common, "edit:selections")
-            if not isinstance(common, dict):
-                raise ValueError("Selections must be a mapping")
-            if "groups" in common:
-                raise ValueError("Use the named group editor for groups")
-            # Replace global keys so YAML deletions survive export. Named groups
-            # are edited independently and retain their existing identity.
-            groups = selections.get("groups", {})
-            selections.clear()
-            selections.update(common)
-            selections["groups"] = groups
+            from mdscope.studio.model import replace_global_selections
+            replace_global_selections(doc, common)
+            groups = doc["selections"]["groups"]
             for group_id in list(groups):
                 if isinstance(groups[group_id], str):
                     groups[group_id] = {"selection": groups[group_id]}
