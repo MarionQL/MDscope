@@ -1,6 +1,7 @@
 """Reusable topology/selection preflight; no trajectory processing or outputs."""
 from pathlib import Path
 import MDAnalysis as mda
+from MDAnalysis.exceptions import SelectionError
 from ..config import analysis_runs
 from ..observables.residue_membrane_distance import _without_hydrogens
 from ..mechanisms.hs_topology import discover_covalent_hs
@@ -27,7 +28,7 @@ def validate_selections(cfg, base=Path("."), *, systems=None, emit=None):
             ) from exc
         try:
             counts = resolved_selection_counts(universe, cfg)
-        except (ValueError, TypeError, AttributeError) as exc:
+        except (SelectionError, ValueError, AttributeError) as exc:
             raise ValueError(
                 f"System {system!r}: cannot resolve protein, feature, alignment "
                 f"or named group selections in {topology}: {exc}. "
