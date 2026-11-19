@@ -944,3 +944,54 @@ def test_app_legacy_import_preserves_all_metric_selection_on_noop(tmp_path, monk
     assert not at.checkbox(key="stats:exact").value
     exported = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
     assert exported["statistics"]["metric_selection"] is None
+
+
+def test_quick_figure_categories_use_backend_switches_without_exact_allowlist():
+    from mdscope.studio.model import (
+        quick_figure_families, set_quick_figure_families, review,
+    )
+    doc = rmsd_document()
+    doc["plots"]["include"] = ["time_series:rmsd_A:timeseries"]
+    set_quick_figure_families(doc, {"profiles", "time_series"})
+    assert doc["plots"]["include"] is None
+    assert doc["plots"]["enabled"] is True
+    assert quick_figure_families(doc) == {"profiles", "time_series"}
+    assert not doc["plots"]["interactions"]
+    exported, _ = review(doc, ".")
+    plots = yaml.safe_load(exported)["plots"]
+    assert plots["include"] is None
+    assert plots["profiles"] and plots["time_series"]
+    assert not plots["interactions"]
+    set_quick_figure_families(doc, set())
+    assert doc["plots"]["enabled"] is False
+    before = deepcopy(doc)
+    with pytest.raises(ValueError, match="Unknown figure categories"):
+        set_quick_figure_families(doc, {"not_a_family"})
+    assert doc == before
+
+
+def test_app_quick_figure_categories_round_trip(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+
+    monkeypatch.chdir(tmp_path)
+    doc = rmsd_document()
+    doc["plots"] = {"enabled": True, "include": None, "time_series": True,
+                    "profiles": False, "interactions": False}
+    at = AppTest.from_file(app.__file__)
+    at.session_state["document"] = deepcopy(doc)
+    at.run()
+    assert not at.exception
+    assert not at.checkbox(key="edit:exact_figures").value
+    at.checkbox(key="edit:quick:figure:profiles").check().run()
+    assert not at.exception
+    exported = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
+    assert exported["plots"]["include"] is None
+    assert exported["plots"]["profiles"] is True
+    assert exported["plots"]["time_series"] is True
+    at.checkbox(key="edit:quick:figure:time_series").uncheck().run()
+    assert not at.exception
+    exported = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
+    assert exported["plots"]["time_series"] is False
+    assert exported["plots"]["profiles"] is True
