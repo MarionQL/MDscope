@@ -52,21 +52,39 @@ def _apply_transform(
 
 
 def selection_details(atoms):
-    """Topology-derived identity/preview; never infer counts from YAML text."""
-    identities = [(str(atom.segid), int(atom.resid), str(atom.resname),
-                   str(atom.name)) for atom in atoms]
+    """Topology-derived preview with a bounded atom-identity working set.
+
+    Hash bytes match json.dumps(full_identity_list, ensure_ascii=False) so
+    saved preflight identity digests retain their existing meaning.
+    """
     import hashlib
     import json
+
+    digest = hashlib.sha256()
+    digest.update(b"[")
+    residue_labels = {}
+    segments = {}
+    for index, atom in enumerate(atoms):
+        segid = str(atom.segid)
+        resid = int(atom.resid)
+        resname = str(atom.resname)
+        name = str(atom.name)
+        if index:
+            digest.update(b", ")
+        digest.update(json.dumps(
+            (segid, resid, resname, name), ensure_ascii=False
+        ).encode("utf-8"))
+        residue_labels.setdefault(f"{segid}:{resname}{resid}", None)
+        segments.setdefault(segid, None)
+    digest.update(b"]")
     return {
         "atoms": len(atoms), "residues": len(atoms.residues),
-        "residue_labels": list(dict.fromkeys(
-            f"{segid}:{resname}{resid}" for segid, resid, resname, _ in identities)),
-        "segments": list(dict.fromkeys(item[0] for item in identities)),
+        "residue_labels": list(residue_labels),
+        "segments": list(segments),
         "first_atoms": [{"index": int(atom.index), "segid": str(atom.segid),
                          "resid": int(atom.resid), "resname": str(atom.resname),
                          "name": str(atom.name)} for atom in atoms[:5]],
-        "ordered_identity_sha256": hashlib.sha256(
-            json.dumps(identities, ensure_ascii=False).encode()).hexdigest(),
+        "ordered_identity_sha256": digest.hexdigest(),
     }
 
 
