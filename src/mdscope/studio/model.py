@@ -215,6 +215,23 @@ def topology_preflight(document, base):
     return validate_selections(cfg, Path(base))
 
 
+def _verified_saved_configuration(current, saved, system, replica, analysis):
+    """Compare source identity and analysis settings, not reporting options."""
+    for key in ("sampling", "selections", "alignment", "cache"):
+        if current.get(key) != saved.get(key):
+            return False, key + " configuration differs"
+    if current["systems"][system].get("topology") != saved["systems"][system].get("topology"):
+        return False, "topology source differs"
+    def by_label(cfg):
+        return {str(item.get("label", f"rep{i}")): item
+                for i, item in enumerate(cfg["systems"][system]["replicates"], 1)}
+    if replica not in by_label(saved) or by_label(current)[replica] != by_label(saved)[replica]:
+        return False, "replicate input identity differs"
+    if current["analyses"].get(analysis) != saved["analyses"].get(analysis):
+        return False, "analysis settings differ"
+    return True, ""
+
+
 def inspect_results_directory(document, base, results_directory):
     """Read-only inventory of registered per-replica analysis artifacts.
 
@@ -232,6 +249,14 @@ def inspect_results_directory(document, base, results_directory):
     if not root.is_dir():
         raise ValueError(f"Results directory does not exist: {root}")
     cfg = resolve_config(document, base=Path(base))
+    saved = None
+    saved_config = root / "resolved_config.yaml"
+    if saved_config.is_file():
+        import yaml
+        try:
+            saved = resolve_config(yaml.safe_load(saved_config.read_text()), base=Path(base))
+        except (OSError, ValueError, TypeError, KeyError, yaml.YAMLError):
+            saved = None
     inventory = []
     for replica in iter_replicates(cfg, Path(base) / "analysis.yaml"):
         replica_root = root / replica.system / replica.label
@@ -239,15 +264,30 @@ def inspect_results_directory(document, base, results_directory):
             required = required_artifacts(entry, cfg)
             present = [path for path in required
                        if path.is_file() and path.stat().st_size > 0]
+            verified = False
+            reason = "Missing or unreadable saved resolved configuration"
+            if saved is not None:
+                try:
+                    compatible, reason = _verified_saved_configuration(
+                        cfg, saved, replica.system, replica.label, entry.name)
+                    if compatible and len(present) == len(required):
+                        from ..pipeline.runner import _validate_analysis_output
+                        _validate_analysis_output(entry, cfg)
+                        verified = True
+                        reason = "Validated registered artifacts and matching saved configuration"
+                except (RuntimeError, OSError, ValueError, KeyError, TypeError) as exc:
+                    reason = str(exc)
             inventory.append({
+                "reason": reason,
                 "analysis": entry.name,
                 "run_id": entry.run_id or "default",
                 "condition": replica.system,
                 "replica": replica.label,
                 "present": len(present),
                 "required": len(required),
-                "status": ("candidate_unverified" if len(present) == len(required)
-                           else "partial" if present else "missing"),
+                "status": ("verified_existing" if verified else
+                           "incompatible" if len(present) == len(required) else
+                           "partial" if present else "missing"),
                 "missing": [str(path.relative_to(root)) for path in required
                             if path not in present],
             })
