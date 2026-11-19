@@ -187,11 +187,22 @@ def main():
     errors = []
     with tabs[0]:
         try:
-            for section in ("project", "systems", "trajectory", "time"):
-                edited = yaml_editor(section, doc.get(section, DEFAULTS.get(section, {})), f"edit:{section}")
-                if not isinstance(edited, dict):
-                    raise ValueError(f"{section} must be a mapping")
-                doc[section] = edited
+            advanced_project = st.checkbox("Edit project setup as advanced YAML", key="edit:project:advanced")
+            if state.get("project_editor_mode") != advanced_project:
+                for key in list(state):
+                    if key != "edit:project:advanced" and (key in {"edit:project", "edit:systems", "edit:trajectory", "edit:time"}
+                            or key.startswith(("edit:project:", "edit:system:", "edit:rep:", "edit:trajectory:", "edit:time:"))):
+                        del state[key]
+                state.project_editor_mode = advanced_project
+            if advanced_project:
+                for section in ("project", "systems", "trajectory", "time"):
+                    edited = yaml_editor(section, doc.get(section, DEFAULTS.get(section, {})), f"edit:{section}")
+                    if not isinstance(edited, dict):
+                        raise ValueError(f"{section} must be a mapping")
+                    doc[section] = edited
+            else:
+                from mdscope.studio.project_editor import project_settings
+                project_settings(doc, restart_editor)
             st.caption("Use conditions as system IDs; replicate entries accept label, trajectory and optional msd_trajectory. Time units: ps.")
             if st.button("Check input paths (read-only)"):
                 resolve_config(doc, base=Path(base), check_paths=True)

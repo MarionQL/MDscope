@@ -12,6 +12,7 @@ production rendering. New documents opt out of analyses, statistics and figures.
 | Authoring figure catalog, active/inactive metadata | `planning.authoring_catalog` |
 | Group/run operations, draft commits, exact export reconciliation | `studio.model` |
 | Draft input widgets and cached read-only previews | `studio.app` |
+| Guided project/system/replica/sampling inputs | `studio.project_editor`; system mutations in `studio.model` |
 | Topology preflight | `core.validation` |
 
 ## Accepted authoring behavior
@@ -53,3 +54,12 @@ not a growing chronological list in this document.
 - Automated Streamlit interaction checks cover behavior; they do not establish
   visual layout quality on every browser/display. Short real-data smoke/parity
   checks establish integration, not statistical convergence.
+
+## Remaining release work
+
+- Review the local UI on representative browser/display sizes. AppTest covers
+  behavior, not visual layout.
+- Recheck latest-head automatic CI after follow-ups; retain prior real-data
+  evidence when numerical and preflight paths are unchanged.
+- Review/merge PR #200 and assess #173 closure. Post-run figure editing stays
+  outside this release.

@@ -11,7 +11,9 @@ Open the localhost URL printed by Streamlit (also usable through VS Code port
 forwarding). Save downloaded YAML in the configuration directory set in Studio.
 Relative topology, trajectory and output paths resolve from that directory.
 
-1. Set project, condition/system IDs, replica labels/paths and sampling settings.
+1. Set project, condition/system IDs, replica labels/paths and sampling settings
+   with guided controls. Add/remove conditions and replicas; the last of each is
+   protected. Advanced YAML remains available and preserves supported options.
 2. Enter global selections and any reusable MDAnalysis groups. Fitting atoms can
    differ from measurement atoms. Group RMSD measures the intersection with
    `selections.features`; group Rg intersects its own selection. Group filters

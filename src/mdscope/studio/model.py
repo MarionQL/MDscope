@@ -284,3 +284,38 @@ def add_group(document, group_id):
     candidate["selections"]["groups"][group_id] = {"selection": "all"}
     analysis_groups(candidate)
     groups[group_id] = {"label": group_id, "selection": "all"}
+
+
+def add_system(document, system_id):
+    """Add a condition using the backend's identifier contract."""
+    from ..config import _validate_path_component
+    _validate_path_component(system_id, "system name")
+    systems = document.setdefault("systems", {})
+    if not system_id or system_id in systems:
+        raise ValueError("Enter a unique filesystem-safe condition ID")
+    systems[system_id] = {"topology": "topology.tpr", "replicates": [
+        {"label": "rep1", "trajectory": "rep1.xtc"}]}
+
+
+def delete_system(document, system_id, *, choices=None):
+    """Remove condition-owned figures without changing shared figure choices."""
+    from ..config import merge
+    from ..planning import authoring_catalog
+    systems = document["systems"]
+    if system_id not in systems:
+        raise ValueError(f"Unknown condition {system_id!r}")
+    if len(systems) == 1:
+        raise ValueError("Keep at least one condition")
+    def identifiers(doc):
+        catalog = authoring_catalog(merge(DEFAULTS, doc), include_inactive=True)
+        return {fig["id"] for figures in catalog["figures"].values() for fig in figures}
+    candidate = deepcopy(document)
+    del candidate["systems"][system_id]
+    removed = identifiers(document) - identifiers(candidate)
+    del systems[system_id]
+    plots = document.get("plots", {})
+    if plots.get("include") is not None:
+        plots["include"] = [key for key in plots["include"] if key not in removed]
+    if choices is not None:
+        for owner in choices:
+            choices[owner] = [key for key in choices[owner] if key not in removed]
