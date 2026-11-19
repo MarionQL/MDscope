@@ -215,6 +215,70 @@ def topology_preflight(document, base):
     return validate_selections(cfg, Path(base))
 
 
+def statistics_family_mode(document, family):
+    """Return 'all', 'none', or 'exact' without enumerating dynamic identities.
+
+    None and an omitted family both mean all eligible backend identities.
+    Explicit empty lists mean none; nonempty lists are exact allowlists.
+    """
+    from ..statistics_selection import studio_metric_selection_defaults
+    if family not in studio_metric_selection_defaults():
+        raise ValueError(f"Unknown statistics family: {family}")
+    selectors = document.get("statistics", {}).get("metric_selection")
+    if selectors is None or family not in selectors:
+        return "all"
+    return "none" if not selectors[family] else "exact"
+
+
+def set_statistics_family_mode(document, family, mode):
+    """Update a whole family without expanding unverified dynamic variables.
+
+    A family-wide 'all' is represented by an omitted family key, preserving
+    backend semantics for present and future dynamic identities.
+    """
+    if mode not in {"all", "none"}:
+        raise ValueError("Statistics family mode must be 'all' or 'none'")
+    statistics_family_mode(document, family)
+    stats = document.setdefault("statistics", {})
+    selectors = stats.get("metric_selection")
+    if selectors is None:
+        if mode == "all":
+            return
+        selectors = {}
+        stats["metric_selection"] = selectors
+    if mode == "all":
+        selectors.pop(family, None)
+    else:
+        selectors[family] = []
+
+
+def set_statistics_exact_family(document, family, entries, *, catalog_complete=False):
+    """Require proven complete identity coverage when narrowing legacy-all.
+
+    Explicit exact selections may be authored directly from an already exact
+    family, but converting an unrestricted family would otherwise silently
+    exclude dynamic identities absent from the Studio planning catalog.
+    """
+    from ..statistics_selection import validate_metric_selection
+    before = statistics_family_mode(document, family)
+    if before == "all" and not catalog_complete:
+        raise ValueError(
+            f"Cannot convert unrestricted {family} statistics to exact IDs: "
+            "the planning catalog does not establish complete dynamic identity "
+            "coverage. Keep Select All or supply a verified complete catalog."
+        )
+    candidate = deepcopy(document.get("statistics", {}))
+    selectors = candidate.get("metric_selection")
+    if selectors is None:
+        selectors = {}
+    else:
+        selectors = deepcopy(selectors)
+    selectors[family] = deepcopy(entries)
+    candidate["metric_selection"] = selectors
+    validate_metric_selection(candidate)
+    document.setdefault("statistics", {})["metric_selection"] = selectors
+
+
 def statistics_selector_fields(family):
     """Guided table columns from backend identity and estimator contracts."""
     from ..statistics_selection import SIMPLE_FAMILY_KEYS, ESTIMATOR_FLAGS
