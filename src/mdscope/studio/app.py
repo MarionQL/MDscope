@@ -301,10 +301,14 @@ def main():
         if stats["enabled"]:
             try:
                 _, plan = preview_document(yaml.safe_dump(doc, sort_keys=False), base)
-                exact_stats = (stats.get("metric_selection") is not None or
-                               st.checkbox("Select statistics by exact variable", key="stats:exact"))
+                exact_stats = st.checkbox("Select statistics by exact variable",
+                                          value=stats.get("metric_selection") is not None,
+                                          key="stats:exact")
                 if not exact_stats:
-                    st.info("Imported legacy statistics are preserved (all eligible variables). Enable exact variable selection to replace this behavior.")
+                    # The legacy mode intentionally selects all eligible variables.
+                    # Switching back must clear the exact allowlist, not merely hide it.
+                    stats["metric_selection"] = None
+                    st.info("Legacy statistics mode includes all eligible variables. Enable exact variable selection to use an explicit allowlist.")
                 else:
                     if stats.get("metric_selection") is None:
                         stats["metric_selection"] = studio_metric_selection_defaults()
