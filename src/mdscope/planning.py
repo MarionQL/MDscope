@@ -479,10 +479,22 @@ def inspect_saved_statistics(root: str | Path, *, max_identities: int = 256) -> 
         files = {}
         for path in sorted(folder.glob("*.parquet")):
             info = pq.ParquetFile(path)
+            schema = info.schema_arrow
             files[path.name] = {
-                "columns": info.schema_arrow.names,
+                "columns": schema.names,
+                "column_types": {
+                    field.name: str(field.type) for field in schema
+                },
                 "rows": info.metadata.num_rows,
                 "path": str(path.relative_to(Path(root))),
+                "row_grain": (
+                    STATISTICS_METRIC_CONTRACTS[family][1]
+                    if path.name == identity_file else None
+                ),
+                "row_grain_status": (
+                    "family_identity_source"
+                    if path.name == identity_file else "not_verified_per_file"
+                ),
             }
         source = folder / identity_file
         if not source.is_file():
