@@ -14,7 +14,7 @@ from .config import analysis_runs, iter_replicates, plot_enabled, statistics_fam
 from .registry import analysis_output_plan, required_artifacts, artifact_schema
 from .statistics_families import STATISTICS_FAMILIES
 from .statistics_selection import ESTIMATOR_FLAGS
-from .reporting.plot_ids import STATIC_IDS, describe_plot
+from .reporting.plot_ids import STATIC_IDS, describe_plot, safe_plot_stem
 
 
 # Interpretation of coordinates, not a claim about PBC or bulk density.
@@ -365,10 +365,20 @@ def build_plan(cfg: dict, config_path: str | Path, *,
         enabled = (plot_enabled(cfg, family) and
                    (family != "solvation" or
                     plots.get("families", {}).get("solvation", False)))
-        ids = (sorted(id for id in STATIC_IDS if id.startswith(f"{family}:"))
-               if include is None else
-               [identifier for identifier in include
-                if identifier.startswith(f"{family}:")])
+        if include is None:
+            ids = sorted(id for id in STATIC_IDS if id.startswith(f"{family}:"))
+            if family == "profiles":
+                # The renderer creates one distance heatmap per configured run
+                # and system. No topology/trajectory inspection is required.
+                ids.extend(
+                    f"profiles:residue_membrane_distance__{safe_plot_stem(run.run_id)}:"
+                    f"{safe_plot_stem(system)}:distance_heatmap"
+                    for run in analysis_runs(cfg, "residue_membrane_distance")
+                    for system in cfg["systems"]
+                )
+        else:
+            ids = [identifier for identifier in include
+                   if identifier.startswith(f"{family}:")]
         figures = []
         for identifier in ids:
             descriptor = describe_plot(identifier)
@@ -379,13 +389,27 @@ def build_plan(cfg: dict, config_path: str | Path, *,
             descriptor["availability"] = (
                 "conditional_on_saved_data" if enabled else "disabled_by_configuration"
             )
+            if identifier.startswith("profiles:") and identifier.endswith(":distance_heatmap"):
+                _, stem, system, _ = identifier.split(":")
+                configured_runs = {
+                    f"residue_membrane_distance__{safe_plot_stem(run.run_id)}": run.run_id
+                    for run in analysis_runs(cfg, "residue_membrane_distance")
+                }
+                matched_systems = {
+                    safe_plot_stem(name): name for name in cfg["systems"]
+                }
+                descriptor["analysis"] = "residue_membrane_distance"
+                descriptor["run_id"] = configured_runs.get(stem)
+                descriptor["system"] = matched_systems.get(system)
+                if descriptor["run_id"] is None or descriptor["system"] is None:
+                    descriptor["availability"] = "unavailable_unconfigured_run_or_system"
             figures.append(descriptor)
         figure_families.append({
             "family": family,
             "status": "enabled_conditional" if enabled else "disabled",
             "specific_figures": figures,
             "specific_figures_status": (
-                "static_candidates_only; dynamic metric/run IDs require saved data"
+                "static and configured distance-heatmap candidates; other dynamic IDs require saved data"
                 if include is None else
                 "configured_ids_only; saved metric identity not validated"
             ),
