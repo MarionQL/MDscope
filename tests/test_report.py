@@ -62,3 +62,24 @@ def test_findings_from_saved_coverage_and_shared_states_are_deterministic(tmp_pa
     with pytest.raises(ValueError, match="completed statistics"):
         generate_report(stats)
     assert result.read_bytes() == first
+
+
+@pytest.mark.parametrize("failure", ["missing_manifest", "invalid_manifest", "missing_coverage"])
+def test_findings_prerequisite_errors_are_actionable_and_non_destructive(
+    tmp_path, failure
+):
+    stats = tmp_path / "project_summary" / "statistics"
+    stats.mkdir(parents=True)
+    sentinel = stats / "findings.md"
+    sentinel.write_bytes(b"existing findings")
+    manifest = stats / "manifest.json"
+    if failure == "invalid_manifest":
+        manifest.write_text("{not json")
+    elif failure == "missing_coverage":
+        manifest.write_text(json.dumps({"status": "complete"}))
+    with pytest.raises((FileNotFoundError, ValueError)) as caught:
+        generate_report(stats)
+    assert str(manifest if failure != "missing_coverage"
+               else stats / "coverage/contrast_coverage.parquet") in str(caught.value)
+    assert sentinel.read_bytes() == b"existing findings"
+    assert not (stats / "findings.parquet").exists()
