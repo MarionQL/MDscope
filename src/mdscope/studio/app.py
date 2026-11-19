@@ -263,9 +263,12 @@ def main():
                     matches = [item for item in state["studio:results_inventory"]
                                if item["analysis"] == owner]
                     if matches:
-                        ready = sum(item["status"] == "verified_existing" for item in matches)
-                        st.caption(f"Saved inputs verified: {ready}/{len(matches)} "
-                                   "analysis/replica products. Other inputs must be scheduled.")
+                        from mdscope.studio.model import results_coverage
+                        for item in results_coverage(matches):
+                            st.caption(
+                                f"Saved {item['run_id']} / {item['condition']}: "
+                                f"{item['verified']}/{item['total']} replicas verified "
+                                f"({item['status']}). Unverified inputs require scheduling.")
     exact_figures = exact_import or bool(state.get("figure:tree:edited"))
     if exact_import and not state.get("figure:tree:edited") and not state.choices:
         state.choices = {
