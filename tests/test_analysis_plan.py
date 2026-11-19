@@ -374,3 +374,47 @@ def test_plan_lists_only_known_static_candidates_without_an_include_list(tmp_pat
     assert families["time_series"]["specific_figures"] == []
     assert "dynamic" in families["time_series"]["specific_figures_status"]
     assert not root.exists()
+
+
+def test_plan_discovers_named_run_distance_figures_without_topology(tmp_path, project):
+    path, root = project("plan_named_distance_figures")
+    cfg = yaml.safe_load(path.read_text())
+    cfg["analyses"]["residue_membrane_distance"] = {
+        "enabled": True,
+        "runs": {
+            "phosphate": {"membrane_selection": "name P"},
+            "all_membrane": {"membrane_selection": "resname POPC"},
+        },
+    }
+    path.write_text(yaml.safe_dump(cfg))
+    plan = build_plan(load_config(path, check_paths=False), path)
+    profiles = next(item for item in plan["figure_families"]
+                    if item["family"] == "profiles")
+    figures = {item["id"]: item for item in profiles["specific_figures"]
+               if item["id"].endswith(":distance_heatmap")}
+    assert set(figures) == {
+        "profiles:residue_membrane_distance__phosphate:tiny:distance_heatmap",
+        "profiles:residue_membrane_distance__all_membrane:tiny:distance_heatmap",
+    }
+    assert {item["run_id"] for item in figures.values()} == {
+        "phosphate", "all_membrane"
+    }
+    assert all(item["system"] == "tiny" for item in figures.values())
+    assert all(item["requires_statistics"] is False for item in figures.values())
+    assert not root.exists()
+
+
+def test_plot_plan_flags_unknown_named_run_without_claiming_data(tmp_path, project):
+    path, root = project("plan_missing_distance_run")
+    cfg = yaml.safe_load(path.read_text())
+    cfg["plots"]["include"] = [
+        "profiles:residue_membrane_distance__missing:tiny:distance_heatmap"
+    ]
+    path.write_text(yaml.safe_dump(cfg))
+    plan = build_plan(load_config(path, check_paths=False), path)
+    profiles = next(item for item in plan["figure_families"]
+                    if item["family"] == "profiles")
+    figure = profiles["specific_figures"][0]
+    assert figure["run_id"] is None
+    assert figure["availability"] == "unavailable_unconfigured_run_or_system"
+    assert not root.exists()
