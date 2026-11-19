@@ -630,8 +630,25 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
             requires_statistics = True
         if requires_statistics:
             manifest = root / "project_summary/statistics/manifest.json"
-            if not manifest.is_file() or json.loads(manifest.read_text()).get("status") != "complete":
-                raise RuntimeError("Plotting requires completed statistics for selected statistical figures")
+            if not manifest.is_file():
+                raise RuntimeError(
+                    f"Plotting requires completed statistics for selected statistical figures: "
+                    f"missing {manifest}. Run 'mdscope statistics' first; existing plots were preserved."
+                )
+            try:
+                status = json.loads(manifest.read_text()).get("status")
+            except (OSError, ValueError, AttributeError) as exc:
+                raise RuntimeError(
+                    f"Plotting requires completed statistics for selected statistical figures: "
+                    f"invalid {manifest} ({exc}). Inspect the saved statistics manifest "
+                    "before retrying; existing plots were preserved."
+                ) from exc
+            if status != "complete":
+                raise RuntimeError(
+                    f"Plotting requires completed statistics for selected statistical figures: "
+                    f"{manifest} has status {status!r}. Finish statistics first; "
+                    "existing plots were preserved."
+                )
         else:
             # Even descriptive figures must not read incomplete, stale or
             # corrupted per-replica products.
