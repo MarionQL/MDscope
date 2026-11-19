@@ -193,3 +193,28 @@ def test_app_preserves_legacy_inference_and_plot_switches(tmp_path, monkeypatch)
     assert "metric_selection" not in raw["statistics"]
     assert raw["analyses"]["alignment"]["enabled"]
     assert raw["analyses"]["rmsf"]["enabled"]
+
+
+def test_topology_required_export_invalidates_after_selection_edit(project, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+    path, root = project("studio_guard")
+    monkeypatch.chdir(path.parent)
+    doc = rmsd_document()
+    doc["systems"] = yaml.safe_load(path.read_text())["systems"]
+    doc["selections"]["groups"] = {"ca": {"selection": "name CA"}}
+    at = AppTest.from_file(app.__file__)
+    at.session_state["document"] = doc
+    at.run()
+    next(item for item in at.checkbox if item.label == "Require topology preflight before export").check().run()
+    assert at.get("download_button")[0].proto.disabled
+    next(item for item in at.button if item.label == "Validate topology selections (no XTC)").click().run()
+    assert not at.exception
+    assert not at.get("download_button")[0].proto.disabled
+    at.text_input(key="edit:group:ca:selection").set_value("resname NOTHING").run()
+    assert at.get("download_button")[0].proto.disabled
+    next(item for item in at.button if item.label == "Validate topology selections (no XTC)").click().run()
+    assert any("zero" in item.value for item in at.error)
+    assert not at.get("download_button")
+    assert not root.exists()
