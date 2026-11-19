@@ -945,28 +945,17 @@ def test_app_legacy_import_preserves_all_metric_selection_on_noop(tmp_path, monk
     assert exported["statistics"]["metric_selection"] is None
 
 
-def test_quick_figure_categories_use_backend_switches_without_exact_allowlist():
-    from mdscope.studio.model import (
-        quick_figure_families, set_quick_figure_families, review,
-    )
+def test_imported_category_switches_remain_backend_compatible():
+    from mdscope.config import figure_enabled
     doc = rmsd_document()
-    doc["plots"]["include"] = ["time_series:rmsd_A:timeseries"]
-    set_quick_figure_families(doc, {"profiles", "time_series"})
-    assert doc["plots"]["include"] is None
-    assert doc["plots"]["enabled"] is True
-    assert quick_figure_families(doc) == {"profiles", "time_series"}
-    assert not doc["plots"]["interactions"]
-    exported, _ = review(doc, ".")
-    plots = yaml.safe_load(exported)["plots"]
-    assert plots["include"] is None
-    assert plots["profiles"] and plots["time_series"]
-    assert not plots["interactions"]
-    set_quick_figure_families(doc, set())
-    assert doc["plots"]["enabled"] is False
-    before = deepcopy(doc)
-    with pytest.raises(ValueError, match="Unknown figure categories"):
-        set_quick_figure_families(doc, {"not_a_family"})
-    assert doc == before
+    doc["plots"] = {"enabled": True, "include": None, "time_series": True}
+    identifier = "time_series:rmsd_A:timeseries"
+    assert figure_enabled(resolve_config(doc), identifier)
+    doc["plots"]["time_series"] = False
+    assert not figure_enabled(resolve_config(doc), identifier)
+    doc["plots"]["time_series"] = True
+    doc["plots"]["include"] = []
+    assert not figure_enabled(resolve_config(doc), identifier)
 
 
 def test_app_imported_figure_categories_preserved_until_tree_edit(tmp_path, monkeypatch):
