@@ -1197,6 +1197,12 @@ def test_results_inventory_requires_marker_matching_config_and_valid_schema(tmp_
     marker.parent.mkdir()
     marker.write_text(json.dumps({"status": "complete"}))
     assert status() == "verified_existing"
+    unscheduled = deepcopy(doc)
+    unscheduled["analyses"]["sasa"]["enabled"] = False
+    saved_only = next(item for item in inspect_results_directory(
+        unscheduled, tmp_path, root) if item["analysis"] == "sasa")
+    assert saved_only["status"] == "verified_existing"
+    assert saved_only["scheduled"] is False
     entry.path.write_bytes(b"not a parquet file")
     assert status() == "incompatible"
     pd.DataFrame({"time_ps": [0.], "topology_residue_index": [0],
