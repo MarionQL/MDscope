@@ -597,11 +597,40 @@ def _validate_replica_products(cfg, root, replicates):
         )
 
 
-def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, phase="statistics"):
+def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, phase="statistics", *, results_dir=None):
     if phase not in {"statistics", "plotting"}:
         raise ValueError(f"Unknown finalization phase: {phase}")
     cfg = cfg or load_config(config_path)
     verbose = cfg.get("progress", {}).get("enabled", True)
+    if results_dir is not None:
+        if root is not None:
+            raise ValueError("Specify either root or results_dir, not both")
+        root = Path(results_dir).expanduser().resolve()
+        if not root.is_dir():
+            raise FileNotFoundError(f"Existing results directory not found: {root}")
+        # Never call initialize() here: it overwrites the saved resolved config
+        # that is required to establish the provenance of existing products.
+        from ..studio.model import inspect_results_directory
+        inventory = inspect_results_directory(cfg, Path(config_path).resolve().parent, root)
+        expected = {
+            (entry.name, entry.run_id or "default", rep.system, rep.label)
+            for rep in iter_replicates(cfg, config_path)
+            for entry in analysis_output_plan(cfg, root / rep.system / rep.label)
+        }
+        by_key = {
+            (row["analysis"], row["run_id"], row["condition"], row["replica"]): row
+            for row in inventory
+        }
+        invalid = [
+            (*key, by_key[key]["status"] if key in by_key else "missing")
+            for key in sorted(expected)
+            if key not in by_key or by_key[key]["status"] != "verified_existing"
+        ]
+        if invalid:
+            raise RuntimeError(
+                "Existing results are not verified for every scheduled analysis/run/"
+                "condition/replica; refusing downstream finalization: " +
+                "; ".join("/".join(map(str, row)) for row in invalid[:20]))
     if root is None:
         if phase == "plotting":
             root = project_root(cfg, config_path)
