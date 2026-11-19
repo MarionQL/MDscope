@@ -55,7 +55,8 @@ def analysis_settings(name, spec):
                         raise ValueError("Run options must be a mapping")
                     runs[run_id] = run_options
                     if st.button("Delete run", key=f"edit:run:{name}:{run_id}:delete"):
-                        del runs[run_id]
+                        from mdscope.studio.model import delete_named_run
+                        delete_named_run(st.session_state.document, name, run_id)
                         st.rerun()
             new_id = st.text_input("New run ID", key=f"edit:runs:{name}:new")
             if st.button("Add run", key=f"edit:runs:{name}:add"):

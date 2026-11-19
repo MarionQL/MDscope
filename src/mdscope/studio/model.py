@@ -96,6 +96,9 @@ def review(document, base, choices=None):
         catalog_cfg = deepcopy(cfg)
         for name in ("rmsd", "radius_of_gyration", "rmsf", "membrane", "dssp", "sasa"):
             catalog_cfg["analyses"][name]["enabled"] = True
+        for spec in catalog_cfg["analyses"].values():
+            for run_id, run in (spec.get("runs") or {}).items():
+                spec["runs"][run_id] = {**run, "enabled": True} if isinstance(run, dict) else {"enabled": True}
         catalog_variables = scalar_contracts(catalog_cfg)
         catalog_profiles = configured_profile_variables(catalog_cfg)
         variables = scalar_contracts(cfg)
@@ -172,3 +175,41 @@ def statistics_selector_fields(family):
     keys = (("kind", "interaction", "metric") if family == "interactions"
             else SIMPLE_FAMILY_KEYS[family])
     return [*keys, "inference", *sorted(ESTIMATOR_FLAGS[family])]
+
+
+def delete_named_run(document, name, run_id):
+    """Delete a run and its catalogued selectors; reject dangling references."""
+    from ..config import MULTI_RUN_ANALYSES, merge
+    from ..registry import configured_profile_variables
+    from ..reporting.plot_ids import safe_plot_stem
+    if name not in MULTI_RUN_ANALYSES:
+        raise ValueError(f"{name} does not support named runs")
+    spec = document["analyses"][name]
+    runs = spec["runs"]
+    if run_id not in runs:
+        raise ValueError(f"Unknown run {run_id!r}")
+    if len(runs) == 1:
+        raise ValueError("Last run: turn off Configure named runs to return to the default analysis")
+    references = [key for key, value in runs.items() if key != run_id
+                  and isinstance(value, dict) and value.get("reference_run") == run_id]
+    mechanism = document["analyses"].get("sdc4_mechanisms", {})
+    if name == "sasa":
+        references += [f"sdc4_mechanisms.{key}" for key in ("sasa_run", "environment_sasa_run")
+                       if mechanism.get(key) == run_id]
+    if references:
+        raise ValueError(f"Run {run_id!r} is referenced by {', '.join(references)}; change those references before deletion")
+    catalog = merge(DEFAULTS, document)
+    catalog["analyses"][name]["enabled"] = True
+    run = catalog["analyses"][name]["runs"][run_id]
+    catalog["analyses"][name]["runs"][run_id] = {**run, "enabled": True} if isinstance(run, dict) else {"enabled": True}
+    profiles = {item["profile"] for item in configured_profile_variables(catalog)
+                if item["analysis"] == name and item["run_id"] == run_id}
+    del runs[run_id]
+    selectors = document.get("statistics", {}).get("metric_selection") or {}
+    if "profiles" in selectors:
+        selectors["profiles"] = [item for item in selectors["profiles"] if item["profile"] not in profiles]
+    plots = document.get("plots", {})
+    if plots.get("include") is not None:
+        stems = {safe_plot_stem(profile) for profile in profiles}
+        plots["include"] = [identifier for identifier in plots["include"]
+                            if not (identifier.startswith("profiles:") and identifier.split(":")[1] in stems)]

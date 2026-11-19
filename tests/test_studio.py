@@ -396,3 +396,31 @@ def test_app_named_sasa_runs_update_output_and_statistic_identity(tmp_path, monk
     raw = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
     assert raw["statistics"]["metric_selection"]["profiles"][0]["profile"] == "sasa_mean__isolated"
     assert not raw["plots"]["include"]
+
+
+def test_run_deletion_migrates_selectors_and_preserves_referenced_runs():
+    from mdscope.studio.model import delete_named_run
+    doc = new_document()
+    doc["analyses"]["sasa"] = {"enabled": True, "runs": {
+        "isolated": {}, "environment": {"reference_run": "isolated"}}}
+    selectors = doc["statistics"]["metric_selection"]
+    selectors["profiles"] = [{"profile": "sasa_mean__environment"}, {"profile": "sasa_buried_nm2__environment"}]
+    doc["plots"] = {"enabled": True, "include": ["profiles:sasa_mean__environment:profile"]}
+    before = deepcopy(doc)
+    with pytest.raises(ValueError, match="referenced"):
+        delete_named_run(doc, "sasa", "isolated")
+    assert doc == before
+    delete_named_run(doc, "sasa", "environment")
+    assert selectors["profiles"] == []
+    assert doc["plots"]["include"] == []
+    with pytest.raises(ValueError, match="Last run"):
+        delete_named_run(doc, "sasa", "isolated")
+
+
+def test_disabled_run_statistics_are_filtered_without_losing_editable_choice(tmp_path):
+    doc = new_document()
+    doc["analyses"]["sasa"] = {"enabled": True, "runs": {"active": {}, "paused": {"enabled": False}}}
+    doc["statistics"]["metric_selection"]["profiles"] = [{"profile": "sasa_mean__paused"}]
+    raw = yaml.safe_load(review(doc, tmp_path, {})[0])
+    assert raw["statistics"]["metric_selection"]["profiles"] == []
+    assert doc["statistics"]["metric_selection"]["profiles"] == [{"profile": "sasa_mean__paused"}]

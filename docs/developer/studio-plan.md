@@ -67,3 +67,7 @@ new changes require their own CI results.
   add/delete controls and per-run option panels; backend validates IDs, inherited
   settings and references. SASA UI test covers run creation → saved path → exact
   profile selector → opt-in inference with no automatic plots.
+- [x] Named-run lifecycle: disabled run selectors excluded from exact export but
+  retained in editable state; deletion removes catalogued SASA profile selectors
+  and imported figure IDs. Referenced runs are protected from deletion, including
+  SDC4 SASA references. Last-run deletion requires explicitly leaving named mode.
