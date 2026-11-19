@@ -119,43 +119,69 @@ def _change_group(document, old_id, new_id=None, *, duplicate=False, choices=Non
 
     if not duplicate:
         after = authoring_catalog(merge(DEFAULTS, document), include_inactive=True)
-        old_profiles = [item["profile"] for item in before["profiles"]]
-        new_profiles = [item["profile"] for item in after["profiles"]]
-        removed = [item for item in old_profiles if item not in new_profiles]
-        added = [item for item in new_profiles if item not in old_profiles]
-        mapping = dict(zip(removed, added)) if new_id else dict.fromkeys(removed)
+        # Use the catalog's ownership to map changed figures, rather than
+        # rewriting plot-ID fragments with a second identity registry.
+        old_profiles = {item["profile"]: item
+                        for item in before["profiles"]
+                        if item.get("group") == old_id}
+        new_profiles = {(item["analysis"], item["run_id"]): item["profile"]
+                        for item in after["profiles"] if item.get("group") == new_id}
+        profile_mapping = {
+            profile: (new_profiles.get((item["analysis"], item["run_id"]))
+                      if new_id is not None else None)
+            for profile, item in old_profiles.items()
+        }
         if "profiles" in selection:
-            selection["profiles"] = [dict(item, profile=mapping.get(item["profile"], item["profile"]))
-                                     for item in selection["profiles"]
-                                     if item["profile"] not in mapping or mapping[item["profile"]] is not None]
+            selection["profiles"] = [
+                dict(item, profile=profile_mapping[item["profile"]])
+                if item["profile"] in profile_mapping else item
+                for item in selection["profiles"]
+                if item["profile"] not in profile_mapping
+                or profile_mapping[item["profile"]] is not None
+            ]
         from ..reporting.plot_ids import safe_plot_stem
-        stems = {safe_plot_stem(old): safe_plot_stem(new) if new else None for old, new in mapping.items()}
-        for variable in before["scalars"]:
-            if variable["group"] == old_id:
-                for figure in variable["figures"]:
-                    stem = figure["id"].split(":")[1]
-                    replacement = next((item for item in after["scalars"]
-                                        if item["analysis"] == variable["analysis"] and item["group"] == new_id), None) if new_id else None
-                    stems[stem] = replacement["figures"][0]["id"].split(":")[1] if replacement else None
+        old_scalars = {
+            figure["id"]: (item["analysis"], figure["id"].rsplit(":", 1)[-1])
+            for item in before["scalars"] if item["group"] == old_id
+            for figure in item["figures"]
+        }
+        new_scalars = {
+            (item["analysis"], figure["id"].rsplit(":", 1)[-1]): figure["id"]
+            for item in after["scalars"] if item["group"] == new_id
+            for figure in item["figures"]
+        }
+        known = {
+            figure["id"] for figures in before["figures"].values()
+            for figure in figures
+        }
+        after_ids = {
+            figure["id"] for figures in after["figures"].values()
+            for figure in figures
+        }
+        mapping = {
+            identifier: (new_scalars.get(identity) if new_id is not None else None)
+            for identifier, identity in old_scalars.items()
+        }
+        for old_profile, new_profile in profile_mapping.items():
+            old_stem = safe_plot_stem(old_profile)
+            new_stem = safe_plot_stem(new_profile) if new_profile else None
+            for identifier in known:
+                prefix = "profiles:" + old_stem + ":"
+                if not identifier.startswith(prefix):
+                    continue
+                replacement = (("profiles:" + new_stem + identifier[len(prefix)-1:])
+                               if new_stem else None)
+                mapping[identifier] = replacement if replacement in after_ids else None
+
         def migrate(ids):
-            result = []
-            for identifier in ids:
-                parts = identifier.split(":")
-                if len(parts) > 2 and parts[0] in {"profiles", "time_series"} and parts[1] in stems:
-                    replacement = stems[parts[1]]
-                    if replacement is None:
-                        continue
-                    parts[1] = replacement
-                    identifier = ":".join(parts)
-                result.append(identifier)
-            return result
+            return [mapping.get(identifier, identifier) for identifier in ids
+                    if identifier not in mapping or mapping[identifier] is not None]
         plots = document.get("plots", {})
         if plots.get("include") is not None:
             plots["include"] = migrate(plots["include"])
         if choices is not None:
             for owner in choices:
                 choices[owner] = migrate(choices[owner])
-
 
 def review(document, base, choices=None):
     """Return validated YAML + production plan, filtering inactive figure choices.
