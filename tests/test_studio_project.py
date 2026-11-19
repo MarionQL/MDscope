@@ -140,10 +140,11 @@ def test_guided_editor_rejected_condition_add_keeps_hierarchy_and_recovers(tmp_p
 
 
 
-def test_topology_identity_hash_streams_large_selection_without_changing_digest():
+def test_topology_identity_hash_streams_large_selection_without_changing_digest(record_property):
     import hashlib
     import json
     import tracemalloc
+    from time import perf_counter
     from types import SimpleNamespace
     from mdscope.core.alignment import selection_details
 
@@ -162,11 +163,15 @@ def test_topology_identity_hash_streams_large_selection_without_changing_digest(
     ], ensure_ascii=False).encode()).hexdigest()
 
     tracemalloc.start()
+    started = perf_counter()
     try:
         details = selection_details(atoms)
+        elapsed_seconds = perf_counter() - started
         _, peak_bytes = tracemalloc.get_traced_memory()
     finally:
         tracemalloc.stop()
+    record_property("selection_details_30k_seconds", elapsed_seconds)
+    record_property("selection_details_30k_peak_bytes", peak_bytes)
     assert details["ordered_identity_sha256"] == expected
     assert details["atoms"] == 30000
     assert details["residues"] == 100
