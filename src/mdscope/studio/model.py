@@ -215,6 +215,45 @@ def topology_preflight(document, base):
     return validate_selections(cfg, Path(base))
 
 
+def inspect_results_directory(document, base, results_directory):
+    """Read-only inventory of registered per-replica analysis artifacts.
+
+    Complete registered file sets are *candidates*, not validated scientific
+    results: provenance, schemas, checkpoint state and unregistered products
+    require further verification before reuse.
+    """
+    from ..config import iter_replicates
+    from ..registry import analysis_output_plan, required_artifacts
+
+    root = Path(results_directory).expanduser()
+    if not root.is_absolute():
+        root = Path(base) / root
+    root = root.resolve()
+    if not root.is_dir():
+        raise ValueError(f"Results directory does not exist: {root}")
+    cfg = resolve_config(document, base=Path(base))
+    inventory = []
+    for replica in iter_replicates(cfg, Path(base) / "analysis.yaml"):
+        replica_root = root / replica.system / replica.label
+        for entry in analysis_output_plan(cfg, replica_root):
+            required = required_artifacts(entry, cfg)
+            present = [path for path in required
+                       if path.is_file() and path.stat().st_size > 0]
+            inventory.append({
+                "analysis": entry.name,
+                "run_id": entry.run_id or "default",
+                "condition": replica.system,
+                "replica": replica.label,
+                "present": len(present),
+                "required": len(required),
+                "status": ("candidate_unverified" if len(present) == len(required)
+                           else "partial" if present else "missing"),
+                "missing": [str(path.relative_to(root)) for path in required
+                            if path not in present],
+            })
+    return inventory
+
+
 def statistics_family_mode(document, family):
     """Return 'all', 'none', or 'exact' without enumerating dynamic identities.
 
