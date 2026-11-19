@@ -176,8 +176,14 @@ def main():
                 state.get("studio:results_inventory_config") !=
                 yaml.safe_dump(state.document, sort_keys=True)):
             st.warning("Results inventory is stale after configuration/path changes; inspect again.")
-        st.caption("Registered products only; candidate files are NOT verified "
-                   "for provenance, schema or restart completeness.")
+        st.caption("Verification requires matching saved configuration, completed "
+                   "analysis stage marker, replica summary and production artifact "
+                   "schema. Unregistered outputs remain unavailable.")
+        from mdscope.studio.model import results_coverage
+        coverage = results_coverage(inventory)
+        if coverage:
+            st.write("**Verified coverage by analysis, run and condition**")
+            st.dataframe(coverage, hide_index=True)
         if inventory:
             st.dataframe(inventory, hide_index=True)
         else:
@@ -253,6 +259,13 @@ def main():
                             value=identifier in initial, key=f"figure:tree:{identifier}",
                             help=identifier, on_change=changed_figure)
                 st.caption(f"{owner} · {fig['destination']}")
+                if "studio:results_inventory" in state and owner != "statistics":
+                    matches = [item for item in state["studio:results_inventory"]
+                               if item["analysis"] == owner]
+                    if matches:
+                        ready = sum(item["status"] == "verified_existing" for item in matches)
+                        st.caption(f"Saved inputs verified: {ready}/{len(matches)} "
+                                   "analysis/replica products. Other inputs must be scheduled.")
     exact_figures = exact_import or bool(state.get("figure:tree:edited"))
     if exact_import and not state.get("figure:tree:edited") and not state.choices:
         state.choices = {
