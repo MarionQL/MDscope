@@ -330,6 +330,7 @@ def test_plan_uses_production_registry_for_configured_plot_ids(tmp_path, project
     from mdscope.reporting.plot_ids import describe_plot
     path, root = project("plan_figure_ids")
     cfg = yaml.safe_load(path.read_text())
+    cfg["plots"]["enabled"] = True
     cfg["plots"]["include"] = [
         "time_series:rmsd_A:timeseries",
         "time_series:rmsd_A:comparison_table",
@@ -533,6 +534,7 @@ def test_plan_discovers_condition_specific_sdc4_figures(tmp_path, project):
     path, root = project("plan_sdc4_figure_catalog")
     raw = yaml.safe_load(path.read_text())
     raw["analyses"]["sdc4_mechanisms"]["enabled"] = True
+    raw["plots"]["enabled"] = True
     path.write_text(yaml.safe_dump(raw))
     plan = build_plan(load_config(path, check_paths=False), path)
     family = next(item for item in plan["figure_families"]
