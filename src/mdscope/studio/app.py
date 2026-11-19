@@ -372,6 +372,7 @@ def main():
         except (ValueError, TypeError, OSError, yaml.YAMLError) as exc:
             errors.append(str(exc)); st.error(str(exc))
     with tabs[2]:
+        card_previews = []
         for name, schema in analysis_options().items():
             spec = doc.setdefault("analyses", {}).setdefault(name, {"enabled": DEFAULTS["analyses"].get(name, {}).get("enabled", False)})
             if isinstance(spec, bool):
@@ -392,15 +393,23 @@ def main():
                                               **({"groups": spec["groups"]} if name in {"rmsd", "radius_of_gyration"} and "groups" in spec else {})}
                     st.caption("Supported keys: " + ", ".join(key for key in schema if key != "enabled"))
                     st.caption("Units: _A = Å; _ps = ps; _deg = degrees. Named runs are supported only where runs is listed.")
-                    _, plan = preview_document(yaml.safe_dump(doc, sort_keys=False), base)
-                    show_outputs(plan, name, doc, base)
-                    from mdscope.planning import authoring_catalog
-                    figures = authoring_catalog(resolve_config(doc))["figures"].get(name, [])
-
-                    if not figures:
-                        st.caption("No analysis-only figure IDs verified for this card yet; no figures selected automatically.")
+                    card_previews.append((name, st.empty()))
                 except (ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
                     errors.append(str(exc)); st.error(str(exc))
+        # Fill card placeholders after all settings have been edited, using
+        # one coherent plan/catalog snapshot for this Streamlit rerun.
+        if card_previews:
+            try:
+                _, card_plan = preview_document(
+                    yaml.safe_dump(doc, sort_keys=False), base)
+                card_figures = authoring_catalog(resolve_config(doc))["figures"]
+                for name, placeholder in card_previews:
+                    with placeholder.container():
+                        show_outputs(card_plan, name, doc, base)
+                        if not card_figures.get(name):
+                            st.caption("No analysis-only figure IDs verified for this card yet; no figures selected automatically.")
+            except (ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
+                errors.append(str(exc)); st.error(str(exc))
     with tabs[3]:
         stats = doc.setdefault("statistics", {})
         stats["enabled"] = st.checkbox("Enable statistics", value=stats.get("enabled", DEFAULTS["statistics"]["enabled"]), key="stats:master")
