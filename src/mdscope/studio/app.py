@@ -177,6 +177,7 @@ def main():
         except (ValueError, yaml.YAMLError, UnicodeError) as exc:
             st.error(str(exc))
     doc = deepcopy(state.document)
+    choices_before = deepcopy(state.choices)
     plots = doc.get("plots", {})
     exact_figures = st.checkbox("Use exact figure choices", value=(plots.get("include") is not None
                                or not plots.get("enabled", False)), key="edit:exact_figures")
@@ -415,8 +416,13 @@ def main():
         except (ValueError, TypeError, KeyError, OSError, yaml.YAMLError) as exc:
             st.error(str(exc))
 
-    from mdscope.studio.model import commit_draft
-    commit_draft(state.document, doc)
+    # A rejected action must not commit unrelated partial edits or figure
+    # selections from the same rerun. Keep widget input available for repair.
+    if errors:
+        state.choices = choices_before
+    else:
+        from mdscope.studio.model import commit_draft
+        commit_draft(state.document, doc)
 
 
 if __name__ == "__main__":
