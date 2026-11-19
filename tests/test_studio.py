@@ -1376,3 +1376,38 @@ def test_app_invalid_global_selections_yaml_does_not_commit_partial_draft(tmp_pa
     at.text_area(key='edit:selections').set_value('protein: protein\n').run()
     assert not at.exception
     assert at.session_state['document']['selections']['groups'] == before['selections']['groups']
+
+
+
+def test_app_statistics_preview_uses_current_hierarchy_selection(tmp_path, monkeypatch):
+    import json
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+
+    monkeypatch.chdir(tmp_path)
+    doc = rmsd_document()
+    doc["statistics"]["enabled"] = True
+    at = AppTest.from_file(app.__file__)
+    at.session_state["document"] = deepcopy(doc)
+    at.run()
+    assert not at.exception
+
+    def selected_metrics():
+        payloads = [
+            json.loads(item.value) if isinstance(item.value, str) else item.value
+            for item in at.json
+        ]
+        return [
+            item["metric"] for obj in payloads
+            if isinstance(obj, dict) and obj.get("family") == "time_series"
+            for item in obj.get("metric_selection") or []
+        ]
+
+    assert "rmsd_A" not in selected_metrics()
+    at.checkbox(key="stats:rmsd_A:None").check().run()
+    assert not at.exception
+    assert "rmsd_A" in selected_metrics()
+    at.checkbox(key="stats:rmsd_A:None").uncheck().run()
+    assert not at.exception
+    assert "rmsd_A" not in selected_metrics()
