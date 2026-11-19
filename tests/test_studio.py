@@ -1283,3 +1283,63 @@ def test_explicit_results_root_uses_saved_only_inventory_before_statistics(tmp_p
     assert seen["root"] == root
     assert not (root / "resolved_config.yaml").exists()
     assert not (root / "project_summary").exists()
+
+def test_statistics_mode_switch_preserves_import_and_restores_exact_without_expansion():
+    from mdscope.studio.model import (statistics_selection_mode,
+        switch_statistics_selection_mode)
+    legacy = {'statistics': {'enabled': True, 'metric_selection': None}}
+    assert statistics_selection_mode(legacy) == 'legacy'
+    saved = switch_statistics_selection_mode(legacy, 'exact')
+    assert saved is None
+    assert legacy['statistics']['metric_selection'] == {}
+    legacy['statistics']['metric_selection'] = {'profiles': [{'profile': 'rmsf', 'ci': False}]}
+    exact = deepcopy(legacy['statistics']['metric_selection'])
+    previous = switch_statistics_selection_mode(legacy, 'legacy')
+    assert previous == exact
+    assert legacy['statistics']['metric_selection'] is None
+    switch_statistics_selection_mode(legacy, 'exact', saved_exact=previous)
+    assert legacy['statistics']['metric_selection'] == exact
+    before = deepcopy(legacy)
+    with pytest.raises(ValueError, match='mode'):
+        switch_statistics_selection_mode(legacy, 'unknown')
+    assert legacy == before
+
+def test_app_statistics_mode_switch_restores_imported_legacy(tmp_path, monkeypatch):
+    pytest.importorskip('streamlit')
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+    monkeypatch.chdir(tmp_path)
+    doc = rmsd_document()
+    doc['statistics']['enabled'] = True
+    doc['statistics']['metric_selection'] = None
+    at = AppTest.from_file(app.__file__)
+    at.session_state['document'] = deepcopy(doc)
+    at.run()
+    assert not at.exception
+    assert at.radio(key='stats:selection_mode').value == 'legacy'
+    at.radio(key='stats:selection_mode').set_value('exact').run()
+    assert not at.exception
+    assert at.session_state['document']['statistics']['metric_selection'] == {}
+    at.radio(key='stats:selection_mode').set_value('legacy').run()
+    assert not at.exception
+    assert at.session_state['document']['statistics']['metric_selection'] is None
+
+def test_app_global_selection_key_deletion_preserves_named_groups(tmp_path, monkeypatch):
+    pytest.importorskip('streamlit')
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+    monkeypatch.chdir(tmp_path)
+    doc = rmsd_document()
+    doc['selections']['protein'] = 'protein'
+    doc['selections']['alignment'] = 'backbone'
+    doc['selections']['groups'] = {'patch': {'label': 'Patch', 'selection': 'resid 1:5'}}
+    at = AppTest.from_file(app.__file__)
+    at.session_state['document'] = deepcopy(doc)
+    at.run()
+    assert not at.exception
+    at.text_area(key='edit:selections').set_value('protein: protein\n').run()
+    assert not at.exception
+    exported = yaml.safe_load(next(item.value for item in at.code if 'analyses:' in item.value))
+    assert 'alignment' not in exported['selections']
+    assert exported['selections']['groups']['patch']['selection'] == 'resid 1:5'
+    assert exported['selections']['groups']['patch']['label'] == 'Patch'
