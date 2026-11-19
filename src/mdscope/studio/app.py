@@ -188,7 +188,7 @@ def main():
         # Entering Quick from an exact allowlist starts with no broad
         # categories; never silently expand a narrow selection.
         current_families = (quick_figure_families(doc)
-                            if plots.get("include") is None else set())
+                            if plots.get("include") is None and plots.get("enabled", False) else set())
         for family in QUICK_FIGURE_FAMILIES:
             if st.checkbox(f"All {family.replace('_', ' ')} figures",
                            value=family in current_families, key=f"edit:quick:figure:{family}"):
