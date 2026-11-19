@@ -553,28 +553,42 @@ def _clear_named_runs(document, name, *, choices=None):
 
 
 def _discard_run_outputs(document, name, run_ids, choices):
+    """Remove saved run-owned selectors and catalogued figure IDs."""
     from ..config import merge
     from ..planning import authoring_catalog
     from ..reporting.plot_ids import safe_plot_stem
+
     catalog = authoring_catalog(merge(DEFAULTS, document), include_inactive=True)
     profiles = {item["profile"] for item in catalog["profiles"]
                 if item["analysis"] == name and item["run_id"] in run_ids}
     selectors = document.get("statistics", {}).get("metric_selection") or {}
     if "profiles" in selectors:
-        selectors["profiles"] = [item for item in selectors["profiles"] if item["profile"] not in profiles]
-    plots = document.get("plots", {})
+        selectors["profiles"] = [item for item in selectors["profiles"]
+                                 if item["profile"] not in profiles]
     stems = {safe_plot_stem(profile) for profile in profiles}
+    # Profile IDs include the canonical registered profile stem. Retain other
+    # families, even when text happens to contain a removed run's label.
+    removed = {
+        figure["id"] for figures in catalog["figures"].values()
+        for figure in figures
+        if any(figure["id"].startswith("profiles:" + stem + ":")
+               for stem in stems)
+    }
     if name == "residue_membrane_distance":
-        stems.update(f"residue_membrane_distance__{safe_plot_stem(run_id)}" for run_id in run_ids)
-    def retain(identifiers):
-        return [identifier for identifier in identifiers
-                if not (identifier.startswith("profiles:") and identifier.split(":")[1] in stems)]
+        removed.update(
+            figure["id"] for figure in catalog["figures"].get(name, [])
+            if any(figure["id"].startswith(
+                "profiles:residue_membrane_distance__" +
+                safe_plot_stem(run_id) + ":") for run_id in run_ids)
+        )
+    plots = document.get("plots", {})
     if plots.get("include") is not None:
-        plots["include"] = retain(plots["include"])
+        plots["include"] = [identifier for identifier in plots["include"]
+                            if identifier not in removed]
     if choices is not None:
         for owner in choices:
-            choices[owner] = retain(choices[owner])
-
+            choices[owner] = [identifier for identifier in choices[owner]
+                              if identifier not in removed]
 
 def commit_draft(document, draft):
     """Commit editable input atomically; incomplete drafts remain editable."""
