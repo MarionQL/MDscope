@@ -59,6 +59,31 @@ def replace_global_selections(document, edited):
     candidate["selections"] = {**deepcopy(edited), "groups": deepcopy(previous)}
     commit_draft(document, candidate)
 
+def set_figure_selection(document, catalog, identifiers):
+    """Commit exact hierarchy choices using the existing catalog's ownership."""
+    selected = set(identifiers)
+    known = {
+        figure["id"] for figures in catalog.values()
+        for figure in figures
+    }
+    unknown = sorted(selected - known)
+    if unknown:
+        raise ValueError("Unknown figure IDs in hierarchy: " + ", ".join(unknown))
+    choices = {
+        owner: [figure["id"] for figure in figures
+                if figure["id"] in selected]
+        for owner, figures in catalog.items()
+    }
+    ordered = list(dict.fromkeys(
+        identifier for owned in choices.values() for identifier in owned
+    ))
+    candidate = deepcopy(document)
+    candidate.setdefault("plots", {})["include"] = ordered
+    candidate["plots"]["enabled"] = bool(ordered)
+    commit_draft(document, candidate)
+    return choices
+
+
 def change_group(document, old_id, new_id=None, *, duplicate=False, choices=None):
     return _atomic_edit(document, choices, _change_group, old_id, new_id,
                         duplicate=duplicate)
