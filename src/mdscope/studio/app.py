@@ -402,9 +402,21 @@ def main():
                     selected_scalar = {(v["metric"], v.get("group"))
                                        for v in selectors.get("time_series", [])}
                     selected_profiles = {v["profile"] for v in selectors.get("profiles", [])}
+                    def sync_stats_parents():
+                        for title, keys, defaults in groups:
+                            if keys:
+                                state[f"stats:tree:{title}"] = all(
+                                    state.get(key, default)
+                                    for key, default in zip(keys, defaults))
+                        if all_keys:
+                            state["stats:tree:all"] = all(
+                                state.get(key, default)
+                                for _, keys, defaults in groups
+                                for key, default in zip(keys, defaults))
                     def toggle_stats(keys, checked):
                         for key in keys:
                             state[key] = checked
+                        sync_stats_parents()
                     groups = (
                         ("Time series", scalar_keys,
                          [((v["metric"], v["group"]) in selected_scalar) for v in scalar_vars]),
@@ -432,7 +444,8 @@ def main():
                         key = f"stats:{var['metric']}:{var['group']}"
                         selected = next((item for item in selectors.get("time_series", [])
                                          if item.get("group") == selector["group"] and item["metric"] == selector["metric"]), None)
-                        if st.checkbox(f"Compute {var['metric']} statistics · {var['label']}", value=selected is not None, key=key):
+                        if st.checkbox(f"Compute {var['metric']} statistics · {var['label']}", value=selected is not None, key=key,
+                                       on_change=sync_stats_parents):
                             entry = {**(selected or {}), **selector}
                             for flag in sorted(ESTIMATOR_FLAGS["time_series"]):
                                 entry[flag] = st.checkbox(flag, value=(selected or {}).get(flag, (selected or {}).get("inference", True)), key=f"{key}:{flag}")
