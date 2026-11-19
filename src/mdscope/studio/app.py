@@ -246,8 +246,19 @@ def main():
                 from mdscope.studio.model import add_group
                 add_group(doc, new_id)
                 restart_editor(doc)
-            st.info("Not validated (topology unavailable or unchecked). Fitted coordinates apply only to supported structural measurements. Membrane/diffusion use source coordinates.")
-        except (ValueError, TypeError, yaml.YAMLError) as exc:
+            if st.button("Preview selections from topology (no trajectories)", key="edit:groups:preflight"):
+                # An explicit topology-only read, using the same validator as export.
+                counts = topology_preflight(doc, base)
+                st.success("Topology selections parsed. Trajectories, coordinates and chemistry beyond selection checks remain unverified.")
+                for system_id, result in counts.items():
+                    st.write(f"Condition · {system_id}")
+                    for group_id, info in result.get("groups", {}).items():
+                        matched = info["measurement"]
+                        st.caption(f"{group_id}: {matched['atoms']} atoms; {matched['residues']} residues")
+                    st.json(result)
+            else:
+                st.info("Selections not checked against topology. Fitted coordinates apply only to supported structural measurements; membrane/diffusion use source coordinates.")
+        except (ValueError, TypeError, OSError, yaml.YAMLError) as exc:
             errors.append(str(exc)); st.error(str(exc))
     with tabs[2]:
         for name, schema in analysis_options().items():
