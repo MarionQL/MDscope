@@ -412,26 +412,31 @@ def main():
                                          else plan["profile_variables"])
                             known = []
                             updated = []
+                            by_analysis = {}
                             for var in variables:
-                                selector = var["statistics_selector"]
-                                identity = ((selector["metric"], selector.get("group"))
-                                            if family == "time_series" else selector["profile"])
-                                known.append(identity)
-                                selected = next((item for item in existing if
-                                    ((item["metric"], item.get("group"))
-                                     if family == "time_series" else item["profile"]) == identity), None)
-                                key = (f"stats:{var['metric']}:{var['group']}"
-                                       if family == "time_series" else
-                                       f"stats:profile:{var['profile']}")
-                                if st.checkbox(var.get("label", str(identity)),
-                                               value=selected is not None, key=key):
-                                    entry = {**(selected or {}), **selector}
-                                    for flag in sorted(ESTIMATOR_FLAGS[family]):
-                                        entry[flag] = st.checkbox(
-                                            flag, value=(selected or {}).get(
-                                                flag, (selected or {}).get("inference", True)),
-                                            key=f"{key}:{flag}")
-                                    updated.append(entry)
+                                by_analysis.setdefault(var.get("analysis", "Other"), []).append(var)
+                            for analysis_name, analysis_variables in by_analysis.items():
+                                with st.expander(analysis_name.replace("_", " ").title(), expanded=False):
+                                    for var in analysis_variables:
+                                        selector = var["statistics_selector"]
+                                        identity = ((selector["metric"], selector.get("group"))
+                                                    if family == "time_series" else selector["profile"])
+                                        known.append(identity)
+                                        selected = next((item for item in existing if
+                                            ((item["metric"], item.get("group"))
+                                             if family == "time_series" else item["profile"]) == identity), None)
+                                        key = (f"stats:{var['metric']}:{var['group']}"
+                                               if family == "time_series" else
+                                               f"stats:profile:{var['profile']}")
+                                        if st.checkbox(var.get("label", str(identity)),
+                                                       value=selected is not None, key=key):
+                                            entry = {**(selected or {}), **selector}
+                                            for flag in sorted(ESTIMATOR_FLAGS[family]):
+                                                entry[flag] = st.checkbox(
+                                                    flag, value=(selected or {}).get(
+                                                        flag, (selected or {}).get("inference", True)),
+                                                    key=f"{key}:{flag}")
+                                            updated.append(entry)
                             updated.extend(item for item in existing if
                                 ((item["metric"], item.get("group"))
                                  if family == "time_series" else item["profile"]) not in known)
