@@ -125,3 +125,71 @@ def test_batched_event_frame_mapping_preserves_censoring_and_event_multiplicity(
     assert point["event_rate_per_ns"] == pytest.approx(4 / 0.06)
     assert point["occupancy"] == pytest.approx(0.5)
     assert all(not len(values) for values in boot.values())
+
+
+def test_bounded_frame_batch_matches_individual_bootstrap_exactly():
+    from mdscope.statistics.interactions import (
+        _batch_frame_inputs, _interaction_bootstrap
+    )
+    times = np.arange(8, dtype=float) * 10.
+    presence = {
+        "A": np.array([10., 10., 20., 70.]),
+        "B": np.array([30., 50.]),
+    }
+    lifetimes = {
+        "A": pd.DataFrame({
+            "start_ps": [10., 10., 20., 21., 70.],
+            "lifetime_ps": [10., 20., 30., 40., 50.],
+            "left_censored": [False, False, True, False, False],
+            "completed": [True, True, True, True, False],
+        }),
+        "B": pd.DataFrame({
+            "start_ps": [30., 50.],
+            "lifetime_ps": [15., 25.],
+            "left_censored": [False, False],
+            "completed": [True, True],
+        }),
+    }
+    batch = _batch_frame_inputs(times, ["A", "B", "absent"], presence, lifetimes)
+    cfg = deepcopy(DEFAULTS)
+    for index, identity in enumerate(["A", "B", "absent"]):
+        input_times = presence.get(identity, np.empty(0))
+        events = lifetimes.get(identity, pd.DataFrame())
+        args = (times, input_times, events, cfg, 32)
+        baseline = _interaction_bootstrap(
+            *args, np.random.default_rng(91), {}, ("a", "rep1")
+        )
+        grouped = _interaction_bootstrap(
+            *args, np.random.default_rng(91), {}, ("a", "rep1"),
+            frame_inputs=batch[index],
+        )
+        for metric in baseline[0]:
+            np.testing.assert_array_equal(baseline[0][metric], grouped[0][metric])
+        assert baseline[1].keys() == grouped[1].keys()
+        for key in baseline[1]:
+            left, right = baseline[1][key], grouped[1][key]
+            if isinstance(left, float) and np.isnan(left):
+                assert np.isnan(right)
+            else:
+                assert left == right
+
+
+def test_batch_frame_input_size_is_limited_to_requested_identities():
+    from mdscope.statistics.interactions import _batch_frame_inputs
+    times = np.arange(1000, dtype=float)
+    inputs = _batch_frame_inputs(
+        times, ["one", "other"],
+        {"one": np.array([1., 1., 999.])},
+        {"one": pd.DataFrame({"start_ps": [1., 1.],
+                              "lifetime_ps": [2., 3.],
+                              "completed": [True, True]})},
+    )
+    assert len(inputs) == 2
+    occupied, starts, frames, durations = inputs[0]
+    assert occupied.sum() == 2
+    assert starts.sum() == 2
+    assert starts[1] == 2
+    assert frames == [1, 1]
+    assert durations == [2., 3.]
+    assert not inputs[1][0].any()
+    assert not inputs[1][1].any()
