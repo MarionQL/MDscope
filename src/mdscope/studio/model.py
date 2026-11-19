@@ -254,6 +254,29 @@ def inspect_results_directory(document, base, results_directory):
     return inventory
 
 
+def planned_statistics_sources(plan):
+    """Known analysis-to-family dependencies; never imply saved-data success."""
+    from ..planning import ANALYSIS_METADATA
+    sources = {family["family"]: [] for family in plan["statistics_families"]}
+    for analysis in plan["analyses"]:
+        for family in ANALYSIS_METADATA.get(analysis["analysis"], ("", (), ()))[1]:
+            sources.setdefault(family, []).append(
+                f"{analysis['analysis']}:{analysis['run_id']}")
+    return sources
+
+
+def statistics_source_status(plan):
+    """Scheduled producers per family, distinct from verified existing data."""
+    scheduled = planned_statistics_sources(plan)
+    return {
+        family["family"]: {
+            "status": "scheduled" if scheduled.get(family["family"]) else "unavailable",
+            "scheduled_sources": scheduled.get(family["family"], []),
+        }
+        for family in plan["statistics_families"]
+    }
+
+
 def statistics_family_mode(document, family):
     """Return 'all', 'none', or 'exact' without enumerating dynamic identities.
 
