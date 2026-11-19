@@ -335,7 +335,7 @@ def test_plan_uses_production_registry_for_configured_plot_ids(tmp_path, project
         "time_series:rmsd_A:comparison_table",
         "solvation:shell_rdf",
     ]
-    cfg["plots"]["families"]["solvation"] = False
+    cfg["plots"].setdefault("families", {})["solvation"] = False
     path.write_text(yaml.safe_dump(cfg))
     plan = build_plan(load_config(path, check_paths=False), path)
     families = {row["family"]: row for row in plan["figure_families"]}
