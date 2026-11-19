@@ -309,6 +309,25 @@ def inspect_results_directory(document, base, results_directory):
     return inventory
 
 
+def results_coverage(inventory):
+    """Group exact analysis/run/condition/replica identities without collapsing runs."""
+    grouped = {}
+    for entry in inventory:
+        key = (entry["analysis"], entry["run_id"], entry["condition"])
+        grouped.setdefault(key, {})[entry["replica"]] = entry["status"]
+    return [
+        {"analysis": analysis, "run_id": run_id, "condition": condition,
+         "replicas": dict(sorted(replicas.items())),
+         "verified": sum(v == "verified_existing" for v in replicas.values()),
+         "total": len(replicas),
+         "status": ("verified_existing" if all(
+             v == "verified_existing" for v in replicas.values()) else
+             "partial" if any(v == "verified_existing" for v in replicas.values())
+             else "unavailable")}
+        for (analysis, run_id, condition), replicas in sorted(grouped.items())
+    ]
+
+
 def planned_statistics_sources(plan):
     """Known analysis-to-family dependencies; never imply saved-data success."""
     from ..planning import ANALYSIS_METADATA
