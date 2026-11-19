@@ -324,3 +324,53 @@ def test_saved_statistics_catalog_reads_real_parquet_schema_and_bounds_identitie
     (folder / "manifest.json").write_text(json.dumps({"status": "running"}))
     with pytest.raises(ValueError, match="incomplete"):
         inspect_saved_statistics(tmp_path)
+
+
+def test_plan_uses_production_registry_for_configured_plot_ids(tmp_path, project):
+    from mdscope.reporting.plot_ids import describe_plot
+    path, root = project("plan_figure_ids")
+    cfg = yaml.safe_load(path.read_text())
+    cfg["plots"]["include"] = [
+        "time_series:rmsd_A:timeseries",
+        "time_series:rmsd_A:comparison_table",
+        "solvation:shell_rdf",
+    ]
+    cfg["plots"]["families"]["solvation"] = False
+    path.write_text(yaml.safe_dump(cfg))
+    plan = build_plan(load_config(path, check_paths=False), path)
+    families = {row["family"]: row for row in plan["figure_families"]}
+    by_id = {row["id"]: row for row in families["time_series"]["specific_figures"]}
+    assert set(by_id) == {
+        "time_series:rmsd_A:timeseries",
+        "time_series:rmsd_A:comparison_table",
+    }
+    for identifier, row in by_id.items():
+        assert row["destination"] == describe_plot(identifier)["destination"]
+        assert row["source_candidates"] == describe_plot(identifier)["source_candidates"]
+        assert row["availability"] == "conditional_on_saved_data"
+    assert by_id["time_series:rmsd_A:timeseries"]["requires_statistics"] is False
+    assert by_id["time_series:rmsd_A:comparison_table"]["requires_statistics"] is True
+    assert families["solvation"]["specific_figures"][0]["availability"] == (
+        "disabled_by_configuration"
+    )
+    assert families["time_series"]["specific_figures_status"].startswith(
+        "configured_ids_only"
+    )
+    assert not root.exists()
+
+
+def test_plan_lists_only_known_static_candidates_without_an_include_list(tmp_path, project):
+    from mdscope.reporting.plot_ids import STATIC_IDS
+    path, root = project("plan_static_plot_ids")
+    cfg = load_config(path, check_paths=False)
+    plan = build_plan(cfg, path)
+    families = {row["family"]: row for row in plan["figure_families"]}
+    ids = {
+        item["id"]
+        for family in families.values()
+        for item in family["specific_figures"]
+    }
+    assert ids == STATIC_IDS
+    assert families["time_series"]["specific_figures"] == []
+    assert "dynamic" in families["time_series"]["specific_figures_status"]
+    assert not root.exists()
