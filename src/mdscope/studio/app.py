@@ -400,6 +400,8 @@ def main():
                 from mdscope.statistics_selection import validate_metric_selection
                 import pandas as pd
                 families = tuple(studio_metric_selection_defaults())
+                from mdscope.studio.model import statistics_source_status
+                source_status = statistics_source_status(plan)
                 st.caption("Select all statistics, entire families, or individual known variables. "
                            "All includes dynamic identities that cannot be enumerated before execution.")
                 def set_family(family, checked):
@@ -420,7 +422,15 @@ def main():
                             key="stats:tree:all", on_change=set_all_families)
                 for family in families:
                     mode = statistics_family_mode(doc, family)
-                    with st.expander(f"{family.replace('_', ' ').title()} · {mode.title()}"):
+                    availability = source_status.get(family, {"status": "unavailable", "scheduled_sources": []})
+                    with st.expander(f"{family.replace('_', ' ').title()} · {mode.title()} · {availability['status']}"):
+                        if availability["scheduled_sources"]:
+                            st.caption("Scheduled analysis inputs: " +
+                                       ", ".join(availability["scheduled_sources"]))
+                        else:
+                            st.warning("No scheduled producer for this family. Existing "
+                                       "files must be verified before reuse; the results "
+                                       "inventory does not establish that verification.")
                         st.checkbox(f"All {family.replace('_', ' ')} statistics",
                                     value=mode == "all",
                                     key=f"stats:tree:family:{family}",
