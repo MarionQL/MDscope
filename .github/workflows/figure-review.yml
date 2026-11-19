@@ -1,17 +1,8 @@
 name: MDscope figure review
 
+# Dispatch when required by docs/developer/check-policy.md.
 on:
-  pull_request:
-    paths:
-      - "src/mdscope/reporting/**"
-      - "src/mdscope/config.py"
-      - "src/mdscope/pipeline/runner.py"
-      - "src/mdscope/cli.py"
-      - "scripts/plot_preview.py"
-      - "scripts/figure_gallery.py"
-      - "scripts/preview_gallery.py"
-      - "scripts/preview_tables.py"
-      - ".github/workflows/figure-review.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
