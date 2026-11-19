@@ -18,7 +18,7 @@ from ..config import plot_enabled, figure_enabled, ensure_dir, replicate_label, 
 from ..interactions import interaction_tables
 from ..statistics import collect_time_series, finite
 from .figure_inventory import current_statistics
-from .plot_ids import id_from_figure_path, figure_dpi
+from .plot_ids import id_from_figure_path, figure_dpi, safe_plot_stem as _safe
 
 
 from .labels import METRIC_LABELS, _metric_meta
@@ -34,10 +34,6 @@ def configure_plot_style(cfg: dict):
         "xtick.labelsize": fonts.get("ticks", 11),
         "ytick.labelsize": fonts.get("ticks", 11),
     })
-
-
-def _safe(text) -> str:
-    return "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in str(text)).strip("_")
 
 
 def _save(fig, path: Path, cfg: dict):
