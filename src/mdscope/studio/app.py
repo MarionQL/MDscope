@@ -317,13 +317,23 @@ def main():
             if st.button("Preview selections from topology (no trajectories)", key="edit:groups:preflight"):
                 # An explicit topology-only read, using the same validator as export.
                 counts = topology_preflight(doc, base)
-                st.success("Topology selections parsed. Trajectories, coordinates and chemistry beyond selection checks remain unverified.")
+                st.success("Topology selection preflight completed. This does not validate trajectories or chemical identities.")
                 for system_id, result in counts.items():
-                    st.write(f"Condition · {system_id}")
+                    st.markdown(f"**Condition: {system_id}**")
                     for group_id, info in result.get("groups", {}).items():
                         matched = info["measurement"]
-                        st.caption(f"{group_id}: {matched['atoms']} atoms; {matched['residues']} residues")
-                    st.json(result)
+                        st.write(f"✓ {group_id}: {matched['atoms']} atoms, {matched['residues']} residues")
+                    details = result.get("details", {})
+                    for field in ("protein", "alignment", "features"):
+                        status = details.get(field, {}).get("status", "unknown")
+                        if status == "not_required":
+                            st.caption(f"— {field.title()}: not required by enabled analyses")
+                        elif result.get(field) is not None:
+                            st.caption(f"✓ {field.title()}: selection checked")
+                        else:
+                            st.caption(f"— {field.title()}: {status.replace('_', ' ')}")
+                    with st.expander("Technical preflight details"):
+                        st.json(result)
             else:
                 st.info("Selections not checked against topology. Fitted coordinates apply only to supported structural measurements; membrane/diffusion use source coordinates.")
         except (ValueError, TypeError, OSError, yaml.YAMLError) as exc:
