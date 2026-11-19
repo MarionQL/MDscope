@@ -144,33 +144,6 @@ def _change_group(document, old_id, new_id=None, *, duplicate=False, choices=Non
                 choices[owner] = migrate(choices[owner])
 
 
-QUICK_FIGURE_FAMILIES = (
-    "time_series", "profiles", "interactions", "distributions",
-    "autocorrelation", "bootstrap_tables",
-)
-
-
-def quick_figure_families(document):
-    """Read category switches without expanding dynamic figure identities."""
-    plots = document.get("plots", {})
-    defaults = DEFAULTS["plots"]
-    return {family for family in QUICK_FIGURE_FAMILIES
-            if plots.get(family, defaults[family])}
-
-
-def set_quick_figure_families(document, selected):
-    """Select whole renderer families using the existing backend switches."""
-    unknown = set(selected) - set(QUICK_FIGURE_FAMILIES)
-    if unknown:
-        raise ValueError(f"Unknown figure categories: {', '.join(sorted(unknown))}")
-    plots = document.setdefault("plots", {})
-    # An exact allowlist takes precedence over category switches in production.
-    plots["include"] = None
-    plots["enabled"] = bool(selected)
-    for family in QUICK_FIGURE_FAMILIES:
-        plots[family] = family in selected
-
-
 def review(document, base, choices=None):
     """Return validated YAML + production plan, filtering inactive figure choices.
 
