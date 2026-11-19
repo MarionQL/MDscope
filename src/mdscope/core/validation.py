@@ -39,7 +39,11 @@ def validate_selections(cfg, base=Path("."), *, systems=None, emit=None):
             f"  {system}: protein={counts['protein']}, "
             f"alignment={counts['alignment']}, features={counts['features']}"
         )
-        if counts["protein"] == 0 or counts["features"] == 0:
+        for role, consumers in counts["required_by"].items():
+            emit(f"    {role}: required by {', '.join(consumers)}" if consumers
+                 else f"    {role}: not required by enabled analyses")
+        if ((counts["required_by"]["protein"] and counts["protein"] == 0)
+                or (counts["required_by"]["features"] and counts["features"] == 0)):
             raise ValueError(
                 f"System {system!r} has a zero-atom protein/feature selection "
                 f"(protein={counts['protein']}, features={counts['features']}) "
@@ -60,7 +64,7 @@ def validate_selections(cfg, base=Path("."), *, systems=None, emit=None):
                 f"features={group['feature_atoms']}, "
                 f"alignment={group['alignment_atoms']}"
             )
-            if not group["group_atoms"] or not group["feature_atoms"]:
+            if not group["group_atoms"] or (counts["required_by"]["features"] and not group["feature_atoms"]):
                 raise ValueError(
                     f"System {system!r}, group {group_id!r} resolves to zero atoms "
                     f"(group={group['group_atoms']}, features={group['feature_atoms']}) "

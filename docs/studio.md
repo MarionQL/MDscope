@@ -43,12 +43,22 @@ show the production plot ID and destination; they do not compute example plots.
 | All registered artifact schemas | Displayed; uncatalogued shapes explicitly unknown |
 | RMSD/Rg statistics variables and separate figure selector | Guided |
 | Other statistics families | Advanced exact selectors; no fabricated IDs |
-| All-analysis guided figure eligibility and complete schema glossary | Remaining #173 work |
+| Figure eligibility | Shared catalog; descriptive vs statistics-dependent, explicit dynamic identities |
+| Statistics schema previews | Writer-verified base columns, row grain and placeholder rows for six families |
+| Option help | Backend field help, selection/reference semantics and unit suffixes |
 | Post-run figure editor | Deferred |
 
 Imported options and legacy all-variable/all-figure switches are retained until
 explicitly replaced by exact selectors. YAML comments/formatting are not retained. Review export
-before replacing a configuration. The existing backend still requires nonempty
-protein/features even for some protein-free configurations (#164); Studio reports
-that preflight error rather than claiming validation. Topology success does not
+before replacing a configuration. Protein/features/alignment defaults are parsed
+only when enabled analyses consume them. Lipid-only membrane/density and explicit
+nonprotein solvation targets can pass preflight and execute without a protein.
+Enabling structural analyses restores their selection requirements; this does
+not extend protein-specific algorithms to unsupported chemistry. Topology success does not
 verify trajectory atom ordering, chemistry for every observer, or convergence.
+
+For wide tables, only guaranteed columns are shown; species/target metric columns
+depend on topology and configuration. Array previews give axes and keys, without
+inventing dimensions. JSON audit objects retain explicitly variable metadata keys.
+Dynamic statistics identities can be entered in the exact-selector tables;
+unavailable saved identities are rejected by the statistics backend at execution.

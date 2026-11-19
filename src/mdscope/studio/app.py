@@ -13,14 +13,15 @@ from mdscope.studio.model import (
 from mdscope.statistics_selection import ESTIMATOR_FLAGS, studio_metric_selection_defaults
 
 
-def yaml_editor(label, value, key, *, height=140):
-    text = st.text_area(label, yaml.safe_dump(value, sort_keys=False), key=key, height=height)
+def yaml_editor(label, value, key, *, height=140, help=None):
+    text = st.text_area(label, yaml.safe_dump(value, sort_keys=False), key=key, height=height, help=help)
     return yaml.safe_load(text)
 
 
 def analysis_settings(name, spec, document):
     """Edit backend defaults with typed widgets; optional fields stay YAML."""
     defaults = DEFAULTS["analyses"].get(name, {})
+    from mdscope.config_schema import option_help
     result = {}
     for key, default in defaults.items():
         if key == "enabled" or (key == "groups" and name in {"rmsd", "radius_of_gyration"}):
@@ -28,19 +29,23 @@ def analysis_settings(name, spec, document):
         value = spec.get(key, default)
         label = key.replace("_", " ")
         widget_key = f"edit:setting:{name}:{key}"
+        help_text = option_help(name, key)
         if type(default) is bool and type(value) is bool:
-            edited = st.checkbox(label, value=value, key=widget_key)
+            edited = st.checkbox(label, value=value, key=widget_key, help=help_text)
         elif type(default) in {int, float} and type(value) in {int, float}:
-            edited = st.number_input(label, value=value, key=widget_key)
+            edited = st.number_input(label, value=value, key=widget_key, help=help_text)
         elif isinstance(default, str) and isinstance(value, str):
-            edited = st.text_input(label, value=value, key=widget_key)
+            edited = st.text_input(label, value=value, key=widget_key, help=help_text)
         else:
-            edited = yaml_editor(label + " (YAML; null = backend default)", value, widget_key, height=80)
+            edited = yaml_editor(label + " (YAML; null = backend default)", value, widget_key, height=80, help=help_text)
         if key in spec or edited != default:
             result[key] = edited
     from mdscope.config import MULTI_RUN_ANALYSES
     excluded = {"enabled"} | ({"groups"} if name in {"rmsd", "radius_of_gyration"} else set())
     if name in MULTI_RUN_ANALYSES:
+        # A run action reruns immediately, before this editor returns. Preserve
+        # preceding widget edits in the detached draft before that commit.
+        spec.update(result)
         excluded.add("runs")
         use_runs = st.checkbox("Configure named runs", value="runs" in spec, key=f"edit:runs:{name}:enabled")
         if use_runs:
@@ -90,7 +95,7 @@ def preview_document(text, base):
 def figure_picker(figures, key, existing):
     selected = []
     for fig in figures:
-        if st.checkbox(fig["id"], value=fig["id"] in existing, key=f"{key}:{fig['id']}"):
+        if st.checkbox(fig.get("label", fig["id"]), value=fig["id"] in existing, key=f"{key}:{fig['id']}", help=fig["id"]):
             selected.append(fig["id"])
         st.caption(f"{fig['destination']} · {'Statistics required' if fig['requires_statistics'] else 'Descriptive'}")
     return selected
@@ -98,6 +103,11 @@ def figure_picker(figures, key, existing):
 
 def show_outputs(plan, name, document, base):
     st.caption("ILLUSTRATIVE — NO MD RESULTS. Placeholders describe future saved data.")
+    for analysis in plan["analyses"]:
+        if analysis["analysis"] == name:
+            st.caption(analysis["purpose"] + " · coordinate source: " + analysis["coordinate_source"])
+            if analysis.get("required_topology"):
+                st.caption("Prerequisites: " + "; ".join(analysis["required_topology"]))
     for variable in plan["observable_contracts"]:
         if variable["analysis"] != name:
             continue
@@ -126,8 +136,10 @@ def show_outputs(plan, name, document, base):
                 st.table([{column: "illustrative placeholder" for column in output["columns"]}
                           for _ in range(2)])
                 st.json({"units": output.get("units"), "columns_status": output["columns_status"]})
+            elif output.get("array_keys") or output.get("shape_axes"):
+                st.json({key: output.get(key) for key in ("array_keys", "shape_axes", "dtype", "units")})
             else:
-                st.caption("Column schema not registered; depends on selections/topology.")
+                st.caption(output.get("unresolved_reason") or "Metadata schema depends on selections/topology.")
             for replica in plan["replicates"]:
                 st.code(str(Path(base) / plan["project"]["output"] / replica["system"] /
                             replica["id"] / output["path_within_replica"]))
@@ -326,8 +338,14 @@ def main():
                     stats.update(controls)
                     st.caption("Dynamic metric identities outside the structural scalar catalog require exact backend IDs. No identity or output schema is invented.")
                     with st.expander("Expected statistics outputs and eligibility"):
-                        st.caption("ILLUSTRATIVE — NO MD RESULTS. Candidate files are conditional on eligible data; complete writer schemas are not yet catalogued.")
+                        st.caption("ILLUSTRATIVE — NO MD RESULTS. Candidate files are conditional on eligible data; Base schemas below include only verified writer columns; optional provenance remains conditional.")
                         for family in plan["statistics_families"]:
+                            schema = family.get("output_schema")
+                            if schema:
+                                st.write(f"{family['family']} · {schema['row_grain']}")
+                                st.code(f"{family['output_directory']}{schema['filename']}")
+                                st.table(schema["sample_rows"])
+                                st.caption(schema["limitations"])
                             st.json({key: family[key] for key in ("family", "files", "metric_contract")
                                      if key in family})
                     from mdscope.planning import authoring_catalog
@@ -348,10 +366,10 @@ def main():
                 state.preflight = (signature, counts)
             preflight = state.get("preflight")
             if preflight and preflight[0] == signature:
-                st.success("Topology preflight passed for the current document; trajectory contents remain unchecked.")
+                st.success("Configured topology preflight passed for the current document; trajectory contents and unsupported chemistry checks remain unverified.")
                 st.json(preflight[1])
                 for group in analysis_groups(resolve_config(doc)):
-                    identities = {info["groups"][group]["features"]["ordered_identity_sha256"]
+                    identities = {info["groups"][group]["features" if info["groups"][group].get("feature_status") == "required" else "measurement"]["ordered_identity_sha256"]
                                   for info in preflight[1].values()}
                     if len(identities) > 1:
                         st.warning(f"{group}: selected atom identity/order differs across systems. Check comparability before inference.")

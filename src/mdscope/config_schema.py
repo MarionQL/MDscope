@@ -11,6 +11,35 @@ from copy import deepcopy
 from difflib import get_close_matches
 
 
+def option_help(analysis, key):
+    """Authoring help for supported backend fields, independent of the GUI."""
+    definitions = {
+        "selection": "MDAnalysis atom expression for this measurement; topology-dependent and preserved verbatim.",
+        "target_selection": "Atoms whose measurement is saved; independent of surrounding occluders or fitting atoms.",
+        "alignment_selection": "Independent fitting atoms; only supported structural measurements use fitted coordinates.",
+        "occluder_selection": "SASA environment atoms; must include every target atom.",
+        "reference_run": "Named isolated SASA run used for burial; its target identities and sampling must match.",
+        "groups": "Reusable named group inputs only where this backend supports them; no effect on default figure choices.",
+        "selections": "Named target expressions and supported per-target options. Names become saved variable identities.",
+        "headgroup_selection": "Membrane anchors in source coordinates; atom naming must match the topology.",
+        "membrane_selection": "Source-frame membrane reference atoms for the distance measurement.",
+        "membrane_center_selection": "Single-atom lipid anchors for the membrane-normal density reference.",
+        "water_selection": "Water molecules in the supplied topology; names and chemistry are not guessed from this text.",
+        "protein_selection": "Explicit protein/target expression for this observer; global defaults apply when omitted where supported.",
+        "species_selections": "Named species expressions; identities and populations depend on the topology.",
+        "targets": "Named chemical target definitions supported by this observer; edit the mapping as YAML.",
+        "mode": "Backend measurement mode. See this analysis in the analysis guide for allowed values and physical reference.",
+        "axis": "Cartesian source-frame axis (x, y or z); structural fitting never rotates membrane measurements.",
+        "contact_cutoff_A": "Contact distance threshold in angstroms; null disables the optional cutoff-fraction output.",
+        "bins": "Histogram resolution; bin populations and normalization depend on the configured reference.",
+        "batch_atoms": "Memory/work batching only; this does not add independent scientific samples.",
+    }
+    if key in definitions:
+        return definitions[key]
+    unit = next((label for suffix, label in (("_A", "angstroms"), ("_ps", "picoseconds"), ("_deg", "degrees"), ("_nm2", "square nanometers")) if key.endswith(suffix)), None)
+    return f"analyses.{analysis}.{key}. " + (f"Units: {unit}. " if unit else "") + "Uses the shared backend validation; nested values use YAML. See the analysis guide for scientific scope."
+
+
 def _extend(mapping, **fields):
     mapping.update(fields)
     return mapping

@@ -178,7 +178,18 @@ def describe_plot(identifier: str) -> dict:
         )
         source = [f"{parts[1]}/{{replicate}}/extensions/sdc4_mechanisms/{filename}"]
         destination = f"project_summary/figures/sdc4/{parts[1]}/{stem}.png"
+    variant_labels = {
+        "timeseries": "Value over time", "distribution": "Replica distributions",
+        "autocorrelation": "Autocorrelation", "bootstrap_table": "Replicate and condition statistics",
+        "comparison_table": "Between-condition comparisons", "profile": "Condition profile",
+        "system_difference": "Between-condition profile difference", "distance_heatmap": "Residue distance heatmap",
+        "occupancy_heatmap": "Interaction occupancy", "lifetime_distribution": "Contact duration distribution",
+    }
+    label = variant_labels.get(parts[-1], parts[-1].replace("_", " ").capitalize())
+    if len(parts) >= 3:
+        label += " · " + parts[1].replace("__group_", " / group ").replace("_", " ")
     return {
+        "label": label,
         "id": identifier, "family": family,
         "renderer": {
             "time_series": "reporting.plotting.plot_time_series",

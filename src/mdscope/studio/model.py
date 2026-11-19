@@ -189,7 +189,7 @@ def statistics_selector_fields(family):
 def delete_named_run(document, name, run_id):
     """Delete a run and its catalogued selectors; reject dangling references."""
     from ..config import MULTI_RUN_ANALYSES, merge
-    from ..registry import configured_profile_variables
+    from ..planning import authoring_catalog
     from ..reporting.plot_ids import safe_plot_stem
     if name not in MULTI_RUN_ANALYSES:
         raise ValueError(f"{name} does not support named runs")
@@ -202,16 +202,15 @@ def delete_named_run(document, name, run_id):
     references = [key for key, value in runs.items() if key != run_id
                   and isinstance(value, dict) and value.get("reference_run") == run_id]
     mechanism = document["analyses"].get("sdc4_mechanisms", {})
+    if not isinstance(mechanism, dict):
+        mechanism = {}
     if name == "sasa":
         references += [f"sdc4_mechanisms.{key}" for key in ("sasa_run", "environment_sasa_run")
                        if mechanism.get(key) == run_id]
     if references:
         raise ValueError(f"Run {run_id!r} is referenced by {', '.join(references)}; change those references before deletion")
-    catalog = merge(DEFAULTS, document)
-    catalog["analyses"][name]["enabled"] = True
-    run = catalog["analyses"][name]["runs"][run_id]
-    catalog["analyses"][name]["runs"][run_id] = {**run, "enabled": True} if isinstance(run, dict) else {"enabled": True}
-    profiles = {item["profile"] for item in configured_profile_variables(catalog)
+    catalog = authoring_catalog(merge(DEFAULTS, document), include_inactive=True)
+    profiles = {item["profile"] for item in catalog["profiles"]
                 if item["analysis"] == name and item["run_id"] == run_id}
     del runs[run_id]
     selectors = document.get("statistics", {}).get("metric_selection") or {}

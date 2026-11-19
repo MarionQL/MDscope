@@ -436,14 +436,18 @@ def resolve_config(raw: dict, *, base: Path = Path("."),
     for name, raw_spec in (raw.get("analyses", {}) or {}).items():
         if isinstance(raw_spec, dict) and "runs" in raw_spec and "enabled" not in raw_spec:
             cfg.setdefault("analyses", {}).setdefault(name, {})["enabled"] = True
+    normalize_analysis_booleans(cfg)
+    validate_config(cfg, Path(base).resolve(), check_paths=check_paths)
+    return cfg
+
+
+def normalize_analysis_booleans(cfg):
+    """Normalize supported boolean shorthand for configuration and draft catalogs."""
     for name, value in list(cfg.get("analyses", {}).items()):
         if isinstance(value, bool):
             cfg["analyses"][name] = merge(DEFAULTS["analyses"].get(name, {}), {"enabled": value})
         elif not isinstance(value, dict):
             raise ValueError(f"analyses.{name} must be a mapping or boolean")
-    validate_config(cfg, Path(base).resolve(), check_paths=check_paths)
-    return cfg
-
 
 def _validate_time_window(window, label):
     if window is not None and (

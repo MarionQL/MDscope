@@ -7,6 +7,7 @@ production rendering. New documents opt out of analyses, statistics and figures.
 |---|---|
 | Configuration schema/defaults/validation | `config`, `config_schema` |
 | Numerical output schemas and variable identities | `registry`, existing producers |
+| Statistics preview base schemas | `statistics_contracts`, verified against actual writers |
 | Figure IDs, variants, renderer destinations | `reporting.plot_ids` |
 | Authoring figure catalog, active/inactive metadata | `planning.authoring_catalog` |
 | Group/run operations, draft commits, exact export reconciliation | `studio.model` |
@@ -27,17 +28,28 @@ production rendering. New documents opt out of analyses, statistics and figures.
   Legacy mode preserves their configuration; unknown ownership is not fabricated.
 - Preflight belongs to the current exported document. No XTC reads or result writes.
 
-## Remaining acceptance work
+## Acceptance coverage
 
 | Item | Status |
 |---|---|
 | RMSD/Rg, RMSF, SASA, DSSP, density and residue-distance guided authoring | Implemented; topology/data eligibility conditional |
 | Interaction/solvation descriptive figures and exact family selector tables | Implemented; dynamic identities explicitly unverified |
-| Complete other producer contracts and statistical schema previews | Remaining |
-| Comprehensive chemistry/protein-free preconditions (#164) | Remaining |
-| Option glossary and full representative UI acceptance review | Remaining |
-| Final current-head validation and #173 closure assessment | Remaining |
+| Registered producer contracts | Fixed/base/dynamic columns, array axes/keys, row semantics; JSON keys explicitly variable |
+| Statistical schema previews | Six families verified against nonempty writer products; conditional provenance explicit |
+| Protein-free prerequisites (#164) | Shared role resolver; real lipid-only membrane/density and ligand/water execution tests; structural negatives |
+| Option help and representative UI review | Shared field help; AppTest covers opt-in figures/statistics, groups, imports and named runs |
+| Final acceptance evidence / merge gates | See PR #200; CI matrix and applicable real-data checks must pass before merge |
 | Post-run figure editor | Explicitly deferred |
 
 Use the check policy for validation; record current executed evidence in the PR,
 not a growing chronological list in this document.
+
+## Review limits
+
+- Schema previews do not estimate results. Wide chemistry-dependent columns and
+  saved interaction identities remain explicit dynamic contracts.
+- Topology preflight is not a universal chemistry audit or trajectory-order check.
+  Protein-specific analyses retain their own validated scope.
+- Automated Streamlit interaction checks cover behavior; they do not establish
+  visual layout quality on every browser/display. Short real-data smoke/parity
+  checks establish integration, not statistical convergence.

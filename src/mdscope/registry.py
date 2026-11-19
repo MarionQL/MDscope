@@ -21,6 +21,7 @@ def artifact_schema(entry: "FusedOutput", path: Path) -> dict:
     units = None
     dtype = None
     row_grain = None
+    array_keys = None
     if analysis == "sasa":
         if name == "residue_sasa.parquet":
             fields = ["time_ps", "topology_residue_index", "residue", "sasa_nm2"]
@@ -101,15 +102,106 @@ def artifact_schema(entry: "FusedOutput", path: Path) -> dict:
             fields = list(HydrationObserver.SUGAR_COLUMNS)
             units = {"time_ps": "ps", "water_cutoff_A": "angstrom",
                      "water_count": "unique water entities"}
-    dynamic_columns = (analysis == "solvation" and name == "rdf.parquet") or (
+    # Wide observer tables have topology/configuration-dependent metric columns.
+    # Their sampled-time column and row population are still exact contracts.
+    wide_series = {"bilayer_normal", "membrane_order", "lipid_enrichment", "lipid_contacts", "local_environment", "sdc4_mechanisms"}
+    dynamic_columns = False
+    if name == "timeseries.parquet" and analysis in wide_series:
+        fields = ["time_ps"]
+        units = {"time_ps": "ps"}
+        row_grain = "one analyzed frame per replicate; metric columns depend on configured targets/topology"
+        dynamic_columns = True
+        if analysis == "bilayer_normal":
+            fields += ["bilayer_normal_valid_fraction", "bilayer_normal_leaflet_changes",
+                       "bilayer_normal_upper_mean_deg", "bilayer_normal_upper_sd_deg",
+                       "bilayer_normal_lower_mean_deg", "bilayer_normal_lower_sd_deg"]
+        elif analysis == "lipid_contacts":
+            fields += ["lipid_contact_pair_count", "lipid_contact_cross_leaflet_pair_count", "lipid_contact_leaflet_changes"]
+            dynamic_columns = False
+    if analysis == "lipid_enrichment" and name == "selection_audit.parquet":
+        fields = ["species", "resindex", "leaflet"]
+        row_grain = "one selected lipid anchor with initial leaflet per replicate"
+    if analysis == "lipid_contacts" and name == "matrix.parquet":
+        fields = ["time_ps", "leaflet", "species_a", "species_b", "molecules_a", "molecules_b",
+                  "pair_count_undirected", "possible_pairs", "total_contact_pairs", "neighbors_per_molecule", "enrichment"]
+        row_grain = "one species pair per leaflet per sampled frame per replicate"
+        units = {"time_ps": "ps", "enrichment": "finite-population reference ratio", "neighbors_per_molecule": "neighbors/molecule"}
+    if analysis == "lipid_enrichment" and name == "counts.parquet":
+        fields = ["time_ps", "leaflet", "species", "lower_A", "upper_A", "count_local", "n_local", "count_bulk", "n_bulk", "count_contact", "mean_min_distance_A", "bulk_fraction", "enrichment_fold", "area_density_ratio", "shell_accessible_area_A2", "leaflet_accessible_area_A2"]
+        row_grain = "one species per leaflet per spatial shell per frame per replicate"
+    if analysis == "solvation":
+        if name == "species_timeseries.parquet":
+            fields = ["solvent", "target_class", "site_class", "time_ps", "target_count", "mean_n_solvent", "total_target_counts", "hydrated_fraction"]
+            row_grain = "one solvent/target/site class per analyzed frame per replicate"
+        elif name == "target_summary.parquet":
+            fields = ["solvent", "target_id", "target_class", "site_class", "n_frames", "mean_n_solvent", "sd_n_solvent", "hydrated_fraction"]
+            row_grain = "one solvent/target identity per replicate"
+        elif name == "episodes.parquet":
+            from .observables.solvation_common import EPISODE_COLUMNS
+            fields = list(EPISODE_COLUMNS)
+            row_grain = "one sampled solvent/target contact episode; censor flags retained"
+        elif name == "survival.parquet":
+            fields = ["solvent", "target_id", "duration_ps", "at_risk", "dissociations", "right_censored", "survival_probability"]
+            row_grain = "one target/solvent per observed episode duration; not independent replicas"
+        elif name == "shell_candidates.parquet":
+            fields = ["solvent", "target_class", "site_class", "suggested_cutoff_A", "peak_r_A", "minimum_g_bulk", "status"]
+            row_grain = "one chemical target/site class per solvent; diagnostic candidate, not binding inference"
+        elif name == "rdf.parquet":
+            row_grain = "one chemical target/site class per solvent per radial shell per replicate"
+    if analysis == "sdc4_mechanisms" and name == "lipid_density_maps.npz":
+        array_keys = {key: ["species_leaflet", "x_bin", "y_bin"] for key in ("counts", "density_per_nm2", "enrichment_fold")}
+        array_keys.update(bulk_density_per_nm2=["species_leaflet"], species=["species_leaflet"],
+                          leaflet=["species_leaflet"], x_edges_A=["x_edge"], y_edges_A=["y_edge"], nframes=[])
+        row_grain = "species/leaflet resolved spatial histogram; array dimensions depend on configured map grid"
+        units = {"density_per_nm2": "lipids/nm^2", "enrichment_fold": "ratio", "x_edges_A": "angstrom", "y_edges_A": "angstrom"}
+    if analysis == "sasa" and name == "atom_sasa.parquet":
+        row_grain = "one selected atom per analyzed frame per replicate"
+    if analysis in {"hydrogen_bonds", "lipid_hydrogen_bonds"} and name == "count_timeseries.parquet":
+        prefix = "hydrogen_bond" if analysis == "hydrogen_bonds" else "lipid_hydrogen_bond"
+        fields = ["time_ps", prefix + "_total_count"]
+        units = {"time_ps": "ps", prefix + "_total_count": "unique events/frame"}
+        row_grain = "one analyzed frame per replicate; additional interaction-class count columns depend on detected chemistry"
+        dynamic_columns = True
+    if analysis == "lipid_hydrogen_bonds" and name == "molecule_audit.parquet":
+        fields = ["raw_hbond_events", "same_residue_events", "same_molecule_events", "cross_residue_same_molecule_events", "intermolecular_events", "selected_atoms", "selected_molecules"]
+        row_grain = "one molecule-filtering audit per replicate"
+    if analysis == "residue_membrane_distance" and name == "selection_audit.parquet":
+        fields = ["analysis_instance", "analysis_label", "protein_selection", "membrane_selection", "protein_atom_count", "protein_residue_count", "membrane_atom_count", "membrane_residue_count", "protein_atom_index_hash", "membrane_atom_index_hash", "membrane_resnames"]
+        row_grain = "one selection audit per configured run per replicate"
+    if analysis == "sdc4_mechanisms" and name == "hs_conditioned_solvation.parquet":
+        fields = ["hs_chain", "membrane_contact_state", "frames", "hydration_water_per_heavy_atom_mean"]
+        row_grain = "one HS chain per observed membrane-contact state per replicate; optional ion-count columns depend on configured species"
+        dynamic_columns = True
+    if analysis == "potassium_bridge_audit":
+        fields = {
+            "chemical_sites.parquet": ["owner", "kind", "resindex", "resid", "resname", "center_name", "atom_index", "atom_name", "charge_e"],
+            "bridge_frames.parquet": ["frame", "time_ps", "acid_patch", "hs_chain", "hs_kind", "shift_x", "shift_y", "contact_cutoff_A", "steric_cutoff_A", "min_target_separation_A", "eligible_ions", "bridging_ions"],
+            "bridge_summary.parquet": ["acid_patch", "hs_chain", "hs_kind", "contact_cutoff_A", "steric_cutoff_A", "reference", "occupancy", "eligible_ions", "bridging_ions", "bridge_fraction_of_eligible_ion_samples"],
+            "rdf.parquet": ["kind", "r_inner_A", "r_outer_A", "pair_count", "g_box", "shared_water_pair_count"],
+            "rdf_peak_candidates.parquet": ["kind", "frames", "smoothing_A", "first_peak_A", "intervening_minimum_A", "second_peak_A"],
+        }.get(name)
+        row_grain = {"chemical_sites.parquet": "one anionic oxygen site", "bridge_frames.parquet": "one target pair/cutoff/reference shift per frame", "bridge_summary.parquet": "one target pair/cutoff/reference aggregated over frames", "rdf.parquet": "one chemical site kind per radial bin", "rdf_peak_candidates.parquet": "one chemical site kind; diagnostic peaks"}.get(name)
+    if name.endswith(".json"):
+        row_grain = "one metadata/audit object per analysis run per replicate; keys may depend on topology"
+    if row_grain is None and fields is not None:
+        if "time_ps" in fields and "topology_residue_index" in fields:
+            row_grain = "one selected target residue per analyzed frame per replicate"
+        elif name.endswith("summary.parquet"):
+            row_grain = "one configured target identity per replicate; summary over sampled frames"
+        else:
+            row_grain = "identity/coordinate fields shown; exact population depends on configured target and artifact role"
+    dynamic_columns = dynamic_columns or (analysis == "solvation" and name == "rdf.parquet") or (
         analysis == "residue_membrane_distance" and name == "median_profile.parquet"
     )
     return {
         "row_grain": row_grain,
+        "contract_status": ("tabular_base_plus_dynamic" if dynamic_columns else "tabular_fixed" if fields is not None else "array_axes" if shape is not None or array_keys is not None else "metadata_or_dynamic_unresolved"),
+        "unresolved_reason": (None if fields is not None or shape is not None or array_keys is not None else "Metadata keys or topology-dependent fields are not fixed; no numerical values or dimensions inferred"),
         "columns": fields,
         "columns_status": ("verified_base_plus_optional" if dynamic_columns
                            else "verified_fixed" if fields is not None
                            else "not_registered"),
+        "array_keys": array_keys,
         "shape_axes": shape,
         "dtype": dtype,
         "units": units,
@@ -341,14 +433,24 @@ def scalar_contracts(cfg):
     if cfg["analyses"]["dssp"].get("enabled"):
         specs.extend(("dssp", f"{kind}_fraction", "fraction")
                      for kind in ("helix", "sheet", "coil"))
+    if cfg["analyses"].get("bilayer_normal", {}).get("enabled"):
+        specs += [("bilayer_normal", "bilayer_normal_valid_fraction", "fraction"),
+                  ("bilayer_normal", "bilayer_normal_leaflet_changes", "lipids")]
+        for leaflet in ("upper", "lower"):
+            specs.extend(("bilayer_normal", f"bilayer_normal_{leaflet}_{stat}_deg", "degrees")
+                         for stat in ("mean", "sd"))
+    if cfg["analyses"].get("lipid_contacts", {}).get("enabled"):
+        specs.extend(("lipid_contacts", metric, "pairs" if "pair" in metric else "lipids") for metric in (
+            "lipid_contact_pair_count", "lipid_contact_cross_leaflet_pair_count", "lipid_contact_leaflet_changes"))
     for analysis, metric, unit in specs:
         result.append({
             "analysis": analysis, "metric": metric, "group": None, "label": metric,
             "columns": ["time_ps", metric], "columns_status": "verified_subset_of_shared_table",
             "units": {"time_ps": "ps", metric: unit},
-            "row_grain": "one analyzed frame per replicate", "path_within_replica": "summary/timeseries.parquet",
+            "row_grain": "one analyzed frame per replicate", "path_within_replica": (FUSED_OUTPUTS[analysis] if analysis in {"lipid_contacts", "bilayer_normal"} else "summary/timeseries.parquet"),
             "measurement_selection": (membrane.get("headgroup_selection") if analysis == "membrane"
-                                      else cfg["selections"]["protein"]),
+                                      else cfg["selections"]["protein"] if analysis == "dssp"
+                                      else cfg["analyses"][analysis].get("selection") or cfg["analyses"][analysis].get("species_selections")),
             "group_selection": None, "selection_semantics": "producer-defined population; see scientific contracts",
             "alignment_selection": None, "coordinate_source": "source",
             "statistics_selector": {"metric": metric, "group": None},
@@ -359,7 +461,7 @@ def scalar_contracts(cfg):
     return result
 
 
-def configured_profile_variables(cfg):
+def configured_profile_variables(cfg, *, include_optional=False):
     """Pre-run identities consumed by temporal_rmsf/structure_profiles readers."""
     from .config import analysis_groups
     variables = []
@@ -391,7 +493,7 @@ def configured_profile_variables(cfg):
                         "Conditional: target/group intersection must be nonempty; compatible grids required", run.run_id)
     for run in analysis_runs(cfg, "residue_membrane_distance"):
         names = [("mean_min_distance_A", "angstrom"), ("median_min_distance_A", "angstrom")]
-        if run.spec.get("contact_cutoff_A") is not None:
+        if include_optional or run.spec.get("contact_cutoff_A") is not None:
             names.append(("fraction_frames_within_cutoff", "fraction"))
         prefixes = [f"residue_membrane_distance__{run.run_id}"]
         if run.spec.get("groups"):

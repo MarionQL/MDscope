@@ -547,3 +547,40 @@ def test_invalid_run_creation_does_not_mutate_draft():
     with pytest.raises(ValueError, match="reserved"):
         add_named_run(doc, "sasa", "default")
     assert doc == before
+
+
+def test_inactive_catalog_normalizes_boolean_imports_without_mutation():
+    from mdscope.config import DEFAULTS, merge
+    from mdscope.planning import authoring_catalog
+    doc = new_document()
+    doc["analyses"]["sdc4_mechanisms"] = False
+    doc["analyses"]["rmsd"] = True
+    before = deepcopy(doc)
+    catalog = authoring_catalog(merge(DEFAULTS, doc), include_inactive=True)
+    assert any(item["metric"] == "rmsd_A" for item in catalog["scalars"])
+    assert doc == before
+
+
+def test_delete_disabled_run_removes_optional_contract_choices():
+    from mdscope.studio.model import delete_named_run
+    doc = new_document()
+    doc["analyses"]["sdc4_mechanisms"] = False
+    doc["analyses"]["residue_membrane_distance"] = {"enabled": False, "runs": {
+        "old": {"enabled": False}, "keep": {"enabled": False}}}
+    profile = "residue_membrane_distance__old__fraction_frames_within_cutoff"
+    doc["statistics"]["metric_selection"]["profiles"] = [{"profile": profile}]
+    doc["plots"] = {"enabled": True, "include": [f"profiles:{profile}:profile"]}
+    delete_named_run(doc, "residue_membrane_distance", "old")
+    assert doc["statistics"]["metric_selection"]["profiles"] == []
+    assert doc["plots"]["include"] == []
+    assert list(doc["analyses"]["residue_membrane_distance"]["runs"]) == ["keep"]
+
+
+def test_disabled_membrane_suboption_filters_export_and_preserves_draft(tmp_path):
+    doc = new_document()
+    doc["analyses"]["membrane"] = {"enabled": True, "headgroup_selection": "name P", "area_per_lipid": {"enabled": False}}
+    doc["statistics"]["metric_selection"]["time_series"] = [{"metric": "area_per_lipid_A2", "group": None}]
+    before = deepcopy(doc)
+    raw = yaml.safe_load(review(doc, tmp_path, {})[0])
+    assert raw["statistics"]["metric_selection"]["time_series"] == []
+    assert doc == before
