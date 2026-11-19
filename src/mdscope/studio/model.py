@@ -339,13 +339,25 @@ def planned_statistics_sources(plan):
     return sources
 
 
-def statistics_source_status(plan):
-    """Scheduled producers per family, distinct from verified existing data."""
+def statistics_source_status(plan, inventory=None):
+    """Expose planned producers and verified saved coverage without conflation."""
+    from ..planning import ANALYSIS_METADATA
     scheduled = planned_statistics_sources(plan)
+    coverage = results_coverage(inventory or [])
     return {
         family["family"]: {
-            "status": "scheduled" if scheduled.get(family["family"]) else "unavailable",
+            "status": "scheduled" if scheduled.get(family["family"]) else
+                      "verified_existing" if any(
+                          row["status"] == "verified_existing"
+                          and family["family"] in ANALYSIS_METADATA.get(
+                              row["analysis"], ("", (), ()))[1]
+                          for row in coverage) else "unavailable",
             "scheduled_sources": scheduled.get(family["family"], []),
+            "existing_coverage": [
+                row for row in coverage
+                if family["family"] in ANALYSIS_METADATA.get(
+                    row["analysis"], ("", (), ()))[1]
+            ],
         }
         for family in plan["statistics_families"]
     }
