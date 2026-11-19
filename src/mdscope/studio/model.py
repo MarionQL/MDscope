@@ -580,8 +580,9 @@ def _delete_named_run(document, name, run_id, *, choices=None):
                        if mechanism.get(key) == run_id]
     if references:
         raise ValueError(f"Run {run_id!r} is referenced by {', '.join(references)}; change those references before deletion")
-    _discard_run_outputs(document, name, {run_id}, choices)
+    previous = deepcopy(document)
     del runs[run_id]
+    _prune_removed_catalog_outputs(previous, document, choices)
 
 
 def _clear_named_runs(document, name, *, choices=None):
@@ -596,47 +597,46 @@ def _clear_named_runs(document, name, *, choices=None):
         references = [key for key in ("sasa_run", "environment_sasa_run") if mechanism.get(key) in run_ids]
         if references:
             raise ValueError("Named SASA runs are referenced by sdc4_mechanisms: " + ", ".join(references))
-    _discard_run_outputs(document, name, run_ids, choices)
+    previous = deepcopy(document)
     spec.pop("runs", None)
+    _prune_removed_catalog_outputs(previous, document, choices)
 
 
-def _discard_run_outputs(document, name, run_ids, choices):
-    """Remove saved run-owned selectors and catalogued figure IDs."""
+def _prune_removed_catalog_outputs(previous, document, choices):
+    """Discard only identities actually removed from the shared catalog."""
     from ..config import merge
     from ..planning import authoring_catalog
-    from ..reporting.plot_ids import safe_plot_stem
 
-    catalog = authoring_catalog(merge(DEFAULTS, document), include_inactive=True)
-    profiles = {item["profile"] for item in catalog["profiles"]
-                if item["analysis"] == name and item["run_id"] in run_ids}
-    selectors = document.get("statistics", {}).get("metric_selection") or {}
-    if "profiles" in selectors:
-        selectors["profiles"] = [item for item in selectors["profiles"]
-                                 if item["profile"] not in profiles]
-    stems = {safe_plot_stem(profile) for profile in profiles}
-    # Profile IDs include the canonical registered profile stem. Retain other
-    # families, even when text happens to contain a removed run's label.
-    removed = {
-        figure["id"] for figures in catalog["figures"].values()
-        for figure in figures
-        if any(figure["id"].startswith("profiles:" + stem + ":")
-               for stem in stems)
+    old = authoring_catalog(merge(DEFAULTS, previous), include_inactive=True)
+    new = authoring_catalog(merge(DEFAULTS, document), include_inactive=True)
+    valid_profiles = {item["profile"] for item in new["profiles"]}
+    removed_profiles = {
+        item["profile"] for item in old["profiles"]
+        if item["profile"] not in valid_profiles
     }
-    if name == "residue_membrane_distance":
-        removed.update(
-            figure["id"] for figure in catalog["figures"].get(name, [])
-            if any(figure["id"].startswith(
-                "profiles:residue_membrane_distance__" +
-                safe_plot_stem(run_id) + ":") for run_id in run_ids)
-        )
+    selectors = document.get("statistics", {}).get("metric_selection")
+    if isinstance(selectors, dict) and "profiles" in selectors:
+        selectors["profiles"] = [
+            item for item in selectors["profiles"]
+            if item["profile"] not in removed_profiles
+        ]
+    old_ids = {fig["id"] for figures in old["figures"].values()
+               for fig in figures}
+    new_ids = {fig["id"] for figures in new["figures"].values()
+               for fig in figures}
+    removed_figures = old_ids - new_ids
     plots = document.get("plots", {})
     if plots.get("include") is not None:
-        plots["include"] = [identifier for identifier in plots["include"]
-                            if identifier not in removed]
+        plots["include"] = [
+            item for item in plots["include"] if item not in removed_figures
+        ]
     if choices is not None:
         for owner in choices:
-            choices[owner] = [identifier for identifier in choices[owner]
-                              if identifier not in removed]
+            choices[owner] = [
+                item for item in choices[owner]
+                if item not in removed_figures
+            ]
+
 
 def commit_draft(document, draft):
     """Commit editable input atomically; incomplete drafts remain editable."""
@@ -722,23 +722,11 @@ def remove_replica(document, system_id, index):
 
 def _delete_system(document, system_id, *, choices=None):
     """Remove condition-owned figures without changing shared figure choices."""
-    from ..config import merge
-    from ..planning import authoring_catalog
     systems = document["systems"]
     if system_id not in systems:
         raise ValueError(f"Unknown condition {system_id!r}")
     if len(systems) == 1:
         raise ValueError("Keep at least one condition")
-    def identifiers(doc):
-        catalog = authoring_catalog(merge(DEFAULTS, doc), include_inactive=True)
-        return {fig["id"] for figures in catalog["figures"].values() for fig in figures}
-    candidate = deepcopy(document)
-    del candidate["systems"][system_id]
-    removed = identifiers(document) - identifiers(candidate)
+    previous = deepcopy(document)
     del systems[system_id]
-    plots = document.get("plots", {})
-    if plots.get("include") is not None:
-        plots["include"] = [key for key in plots["include"] if key not in removed]
-    if choices is not None:
-        for owner in choices:
-            choices[owner] = [key for key in choices[owner] if key not in removed]
+    _prune_removed_catalog_outputs(previous, document, choices)
