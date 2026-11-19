@@ -421,105 +421,134 @@ def main():
                 )
                 from mdscope.statistics_selection import validate_metric_selection
                 import pandas as pd
-                families = tuple(studio_metric_selection_defaults())
-                from mdscope.studio.model import statistics_source_status
-                inventory_fresh = (
-                    state.get("studio:results_inventory_path") == results_dir
-                    and state.get("studio:results_inventory_config") ==
-                    yaml.safe_dump(state.document, sort_keys=True))
-                source_status = statistics_source_status(
-                    plan, state.get("studio:results_inventory") if inventory_fresh else None)
-                st.caption("Select all statistics, entire families, or individual known variables. "
-                           "All includes dynamic identities that cannot be enumerated before execution.")
-                def set_family(family, checked):
-                    set_statistics_family_mode(state.document, family, "all" if checked else "none")
-                    # The widget values are reset when the family changes mode.
-                    state.pop(f"stats:table:{family}", None)
-                    state.pop(f"stats:tree:convert:{family}", None)
-                    state["stats:tree:all"] = all(
-                        statistics_family_mode(state.document, item) == "all" for item in families)
-                def set_all_families():
-                    checked = state["stats:tree:all"]
+                from mdscope.studio.model import (
+                    statistics_selection_mode, switch_statistics_selection_mode,
+                )
+                def switch_stats_mode():
+                    requested = state["stats:selection_mode"]
+                    if requested == "legacy":
+                        previous = switch_statistics_selection_mode(state.document, "legacy")
+                        if previous is not None:
+                            state["stats:exact:saved"] = previous
+                    else:
+                        switch_statistics_selection_mode(
+                            state.document, "exact",
+                            saved_exact=state.get("stats:exact:saved"))
+                    for key in list(state):
+                        if key.startswith(("stats:tree:", "stats:table:", "stats:profile:")):
+                            del state[key]
+                st.radio("Statistics selection mode",
+                         options=("legacy", "exact"),
+                         format_func=lambda value: ("Legacy · all eligible statistics"
+                                                    if value == "legacy" else
+                                                    "Exact · select families and variables"),
+                         index=0 if statistics_selection_mode(doc) == "legacy" else 1,
+                         key="stats:selection_mode", on_change=switch_stats_mode,
+                         horizontal=True)
+                if statistics_selection_mode(doc) == "legacy":
+                    st.caption("Unrestricted legacy selection: all eligible statistics, "
+                               "including data-dependent identities. Switching to exact "
+                               "mode does not automatically enumerate variables.")
+                else:
+                    families = tuple(studio_metric_selection_defaults())
+                    from mdscope.studio.model import statistics_source_status
+                    inventory_fresh = (
+                        state.get("studio:results_inventory_path") == results_dir
+                        and state.get("studio:results_inventory_config") ==
+                        yaml.safe_dump(state.document, sort_keys=True))
+                    source_status = statistics_source_status(
+                        plan, state.get("studio:results_inventory") if inventory_fresh else None)
+                    st.caption("Select all statistics, entire families, or individual known variables. "
+                               "All includes dynamic identities that cannot be enumerated before execution.")
+                    def set_family(family, checked):
+                        set_statistics_family_mode(state.document, family, "all" if checked else "none")
+                        # The widget values are reset when the family changes mode.
+                        state.pop(f"stats:table:{family}", None)
+                        state.pop(f"stats:tree:convert:{family}", None)
+                        state["stats:tree:all"] = all(
+                            statistics_family_mode(state.document, item) == "all" for item in families)
+                    def set_all_families():
+                        checked = state["stats:tree:all"]
+                        for family in families:
+                            set_family(family, checked)
+                            state[f"stats:tree:family:{family}"] = checked
+                    st.checkbox("Select All Statistics",
+                                value=all(statistics_family_mode(doc, family) == "all"
+                                          for family in families),
+                                key="stats:tree:all", on_change=set_all_families)
                     for family in families:
-                        set_family(family, checked)
-                        state[f"stats:tree:family:{family}"] = checked
-                st.checkbox("Select All Statistics",
-                            value=all(statistics_family_mode(doc, family) == "all"
-                                      for family in families),
-                            key="stats:tree:all", on_change=set_all_families)
-                for family in families:
-                    mode = statistics_family_mode(doc, family)
-                    availability = source_status.get(family, {"status": "unavailable", "scheduled_sources": []})
-                    with st.expander(f"{family.replace('_', ' ').title()} · {mode.title()} · {availability['status']}"):
-                        if availability["scheduled_sources"]:
-                            st.caption("Scheduled analysis inputs: " +
-                                       ", ".join(availability["scheduled_sources"]))
-                        for source in availability.get("existing_coverage", []):
-                            st.caption(
-                                f"Saved {source['analysis']} / {source['run_id']} / "
-                                f"{source['condition']}: {source['verified']}/"
-                                f"{source['total']} replicas verified "
-                                f"({source['status']})")
-                        else:
-                            st.warning("No scheduled producer for this family. Existing "
-                                       "files must be verified before reuse; the results "
-                                       "inventory does not establish that verification.")
-                        st.checkbox(f"All {family.replace('_', ' ')} statistics",
-                                    value=mode == "all",
-                                    key=f"stats:tree:family:{family}",
-                                    on_change=lambda family=family: set_family(
-                                        family, state[f"stats:tree:family:{family}"]))
-                        st.caption("All includes future and data-dependent identities."
-                                   if mode == "all" else
-                                   "Explicit allowlist; unchecked variables are excluded.")
-                        if mode == "all":
-                            st.info("This family is unrestricted. To customize individual "
-                                    "identities, first deselect the family; the resulting "
-                                    "empty allowlist can then be populated explicitly.")
-                            continue
-                        selectors = stats.get("metric_selection") or {}
-                        existing = selectors.get(family, [])
-                        if family in {"time_series", "profiles"}:
-                            variables = (plan["observable_contracts"] if family == "time_series"
-                                         else plan["profile_variables"])
-                            known = []
-                            updated = []
-                            for var in variables:
-                                selector = var["statistics_selector"]
-                                identity = ((selector["metric"], selector.get("group"))
-                                            if family == "time_series" else selector["profile"])
-                                known.append(identity)
-                                selected = next((item for item in existing if
+                        mode = statistics_family_mode(doc, family)
+                        availability = source_status.get(family, {"status": "unavailable", "scheduled_sources": []})
+                        with st.expander(f"{family.replace('_', ' ').title()} · {mode.title()} · {availability['status']}"):
+                            if availability["scheduled_sources"]:
+                                st.caption("Scheduled analysis inputs: " +
+                                           ", ".join(availability["scheduled_sources"]))
+                            for source in availability.get("existing_coverage", []):
+                                st.caption(
+                                    f"Saved {source['analysis']} / {source['run_id']} / "
+                                    f"{source['condition']}: {source['verified']}/"
+                                    f"{source['total']} replicas verified "
+                                    f"({source['status']})")
+                            else:
+                                st.warning("No scheduled producer for this family. Existing "
+                                           "files must be verified before reuse; the results "
+                                           "inventory does not establish that verification.")
+                            st.checkbox(f"All {family.replace('_', ' ')} statistics",
+                                        value=mode == "all",
+                                        key=f"stats:tree:family:{family}",
+                                        on_change=lambda family=family: set_family(
+                                            family, state[f"stats:tree:family:{family}"]))
+                            st.caption("All includes future and data-dependent identities."
+                                       if mode == "all" else
+                                       "Explicit allowlist; unchecked variables are excluded.")
+                            if mode == "all":
+                                st.info("This family is unrestricted. To customize individual "
+                                        "identities, first deselect the family; the resulting "
+                                        "empty allowlist can then be populated explicitly.")
+                                continue
+                            selectors = stats.get("metric_selection") or {}
+                            existing = selectors.get(family, [])
+                            if family in {"time_series", "profiles"}:
+                                variables = (plan["observable_contracts"] if family == "time_series"
+                                             else plan["profile_variables"])
+                                known = []
+                                updated = []
+                                for var in variables:
+                                    selector = var["statistics_selector"]
+                                    identity = ((selector["metric"], selector.get("group"))
+                                                if family == "time_series" else selector["profile"])
+                                    known.append(identity)
+                                    selected = next((item for item in existing if
+                                        ((item["metric"], item.get("group"))
+                                         if family == "time_series" else item["profile"]) == identity), None)
+                                    key = (f"stats:{var['metric']}:{var['group']}"
+                                           if family == "time_series" else
+                                           f"stats:profile:{var['profile']}")
+                                    if st.checkbox(var.get("label", str(identity)),
+                                                   value=selected is not None, key=key):
+                                        entry = {**(selected or {}), **selector}
+                                        for flag in sorted(ESTIMATOR_FLAGS[family]):
+                                            entry[flag] = st.checkbox(
+                                                flag, value=(selected or {}).get(
+                                                    flag, (selected or {}).get("inference", True)),
+                                                key=f"{key}:{flag}")
+                                        updated.append(entry)
+                                updated.extend(item for item in existing if
                                     ((item["metric"], item.get("group"))
-                                     if family == "time_series" else item["profile"]) == identity), None)
-                                key = (f"stats:{var['metric']}:{var['group']}"
-                                       if family == "time_series" else
-                                       f"stats:profile:{var['profile']}")
-                                if st.checkbox(var.get("label", str(identity)),
-                                               value=selected is not None, key=key):
-                                    entry = {**(selected or {}), **selector}
-                                    for flag in sorted(ESTIMATOR_FLAGS[family]):
-                                        entry[flag] = st.checkbox(
-                                            flag, value=(selected or {}).get(
-                                                flag, (selected or {}).get("inference", True)),
-                                            key=f"{key}:{flag}")
-                                    updated.append(entry)
-                            updated.extend(item for item in existing if
-                                ((item["metric"], item.get("group"))
-                                 if family == "time_series" else item["profile"]) not in known)
-                        else:
-                            fields = statistics_selector_fields(family)
-                            source = pd.DataFrame(existing, columns=fields)
-                            columns = {field: st.column_config.CheckboxColumn(field, default=True)
-                                       for field in fields
-                                       if field in {"inference", "ci", "hypothesis_tests"}}
-                            edited = st.data_editor(source, num_rows="dynamic", hide_index=True,
-                                                    column_config=columns,
-                                                    key=f"stats:table:{family}")
-                            updated = [{key: value for key, value in row.items() if pd.notna(value)}
-                                       for row in edited.to_dict("records")]
-                        if updated != existing:
-                            set_statistics_exact_family(doc, family, updated)
+                                     if family == "time_series" else item["profile"]) not in known)
+                            else:
+                                fields = statistics_selector_fields(family)
+                                source = pd.DataFrame(existing, columns=fields)
+                                columns = {field: st.column_config.CheckboxColumn(field, default=True)
+                                           for field in fields
+                                           if field in {"inference", "ci", "hypothesis_tests"}}
+                                edited = st.data_editor(source, num_rows="dynamic", hide_index=True,
+                                                        column_config=columns,
+                                                        key=f"stats:table:{family}")
+                                updated = [{key: value for key, value in row.items() if pd.notna(value)}
+                                           for row in edited.to_dict("records")]
+                            if updated != existing:
+                                set_statistics_exact_family(doc, family, updated)
                 validate_metric_selection(stats)
                 st.markdown("**Interaction statistics · minimum occupancy**")
                 cutoff = float(stats.get("interaction_min_occupancy", 0.0))
