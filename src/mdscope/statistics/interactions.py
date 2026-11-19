@@ -47,6 +47,66 @@ def _presence_frame_indices(times, presence_times):
     return indices, valid
 
 
+def _batch_frame_inputs(times, identities, presence_groups, life_groups):
+    """Map a bounded batch of interactions onto one replica time grid.
+
+    Event multiplicity is retained; binary occupancy collapses repeated rows
+    at a frame. Completed durations retain source-row order.
+    """
+    n, count = len(times), len(identities)
+    presence = np.zeros((count, n), dtype=np.float32)
+    starts = np.zeros_like(presence)
+    completed_frames = [[] for _ in identities]
+    durations = [[] for _ in identities]
+    if not n or not count:
+        return list(zip(presence, starts, completed_frames, durations))
+
+    def map_rows(lengths, all_times):
+        if not len(all_times):
+            return np.empty(0, dtype=int), np.empty(0, dtype=bool), np.empty(0, dtype=int)
+        owner = np.repeat(np.arange(count), lengths)
+        index, valid = _presence_frame_indices(times, all_times)
+        return owner, valid, index
+
+    per_identity = [presence_groups.get(identity, np.empty(0)) for identity in identities]
+    lengths = [len(values) for values in per_identity]
+    if any(lengths):
+        all_times = np.concatenate(per_identity)
+        owner, valid, index = map_rows(lengths, all_times)
+        presence[owner[valid], index[valid]] = 1
+
+    tables = [life_groups.get(identity) for identity in identities]
+    lengths = [0 if table is None else len(table) for table in tables]
+    if any(lengths):
+        all_times = np.concatenate([
+            table["start_ps"].to_numpy(float)
+            for table in tables if table is not None and len(table)
+        ])
+        owner, valid, index = map_rows(lengths, all_times)
+        uncensored = np.concatenate([
+            (~table["left_censored"].to_numpy(dtype=bool)
+             if "left_censored" in table else np.ones(len(table), dtype=bool))
+            for table in tables if table is not None and len(table)
+        ])
+        valid &= uncensored
+        np.add.at(starts, (owner[valid], index[valid]), 1)
+        completed = np.concatenate([
+            (table["completed"].to_numpy(dtype=bool)
+             if "completed" in table else np.zeros(len(table), dtype=bool))
+            for table in tables if table is not None and len(table)
+        ])
+        values = np.concatenate([
+            table["lifetime_ps"].to_numpy(float)
+            for table in tables if table is not None and len(table)
+        ])
+        for group, frame, duration in zip(owner[valid & completed],
+                                          index[valid & completed],
+                                          values[valid & completed]):
+            completed_frames[group].append(int(frame))
+            durations[group].append(float(duration))
+    return list(zip(presence, starts, completed_frames, durations))
+
+
 def _interaction_bootstrap(
     times,
     presence_times,
@@ -58,6 +118,7 @@ def _interaction_bootstrap(
     rep_key,
     zero_meta_cache: dict | None = None,
     selected_seed: int | None = None,
+    frame_inputs=None,
 ) -> tuple[dict, dict]:
     # Bootstrap the binary presence trajectory. Event starts/lifetimes
     # are weighted at their original frames so independently sampled
@@ -65,8 +126,8 @@ def _interaction_bootstrap(
     times = np.asarray(times, float)
     n = len(times)
     dt = sample_dt(times)
-    presence = np.zeros(n, np.float32)
-    if n and len(presence_times):
+    presence = np.zeros(n, np.float32) if frame_inputs is None else frame_inputs[0]
+    if frame_inputs is None and n and len(presence_times):
         idx, valid = _presence_frame_indices(times, presence_times)
         presence[idx[valid]] = 1
     # Interactions absent from a replicate produce the same zero-occupancy
@@ -93,9 +154,11 @@ def _interaction_bootstrap(
     weights = cache[key]
     duration_ns = n * dt / 1000 if dt else np.nan
     occupancy = weights.dot(presence) / max(1, n)
-    starts = np.zeros(n, np.float32)
-    complete_frames, durations = [], []
-    if lifetimes is not None and not lifetimes.empty:
+    starts = np.zeros(n, np.float32) if frame_inputs is None else frame_inputs[1]
+    complete_frames, durations = ([], []) if frame_inputs is None else (
+        frame_inputs[2], frame_inputs[3]
+    )
+    if frame_inputs is None and lifetimes is not None and not lifetimes.empty:
         event_times = lifetimes["start_ps"].to_numpy(float)
         indices, valid = _presence_frame_indices(times, event_times) if n else (
             np.empty(len(event_times), dtype=int), np.zeros(len(event_times), dtype=bool)
@@ -290,7 +353,16 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
             grouped_seconds = perf_counter() - grouping_started
         kind_started = perf_counter()
         log_every = int(stats.get("interaction_progress_every", 1000))
-        for completed, interaction in enumerate(sorted(interactions), 1):
+        sorted_interactions = sorted(interactions)
+        batch_size = 64
+        frame_batches = {}
+        for completed, interaction in enumerate(sorted_interactions, 1):
+            if (completed - 1) % batch_size == 0:
+                current = sorted_interactions[completed - 1:completed - 1 + batch_size]
+                frame_batches = {
+                    rep_key: _batch_frame_inputs(times, current, pg, lg)
+                    for rep_key, (times, pg, lg) in prepared.items() if len(times)
+                }
             selected_metrics = selected_interaction_metrics(selectors, kind, interaction)
             if not selected_metrics:
                 continue
@@ -334,6 +406,9 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                         (system, repout.name),
                         zero_meta_cache,
                         seed if selectors is not None else None,
+                        frame_inputs=frame_batches[(system, repout.name)][
+                            (completed - 1) % batch_size
+                        ],
                     )
                     repdata[(system, repout.name)] = (boot, meta)
                     for metric, values in boot.items():
