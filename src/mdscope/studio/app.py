@@ -527,6 +527,14 @@ def main():
         try:
             text, plan = review(doc, base, state.choices if exact_figures else None)
             st.warning("Schema-only validation: topology, chemistry, trajectory alignment and sampling eligibility remain unverified.")
+            from mdscope.studio.model import unavailable_exact_statistics
+            missing_stats = unavailable_exact_statistics(yaml.safe_load(text), plan)
+            if missing_stats:
+                st.error("Exact statistics requested without scheduled source analyses: " +
+                         ", ".join(missing_stats) +
+                         ". Enable a compatible analysis; existing files are not "
+                         "yet verified as reusable.")
+
             require_topology = st.checkbox("Require topology preflight before export")
             signature = text + str(Path(base).resolve())
             if st.button("Validate topology selections (no XTC)"):
@@ -545,7 +553,7 @@ def main():
             st.json({"analyses": plan["analyses"], "figures": yaml.safe_load(text).get("plots"),
                      "statistics": yaml.safe_load(text).get("statistics")})
             st.code(text, language="yaml")
-            valid = not errors and (not require_topology or bool(preflight and preflight[0] == signature))
+            valid = not errors and not missing_stats and (not require_topology or bool(preflight and preflight[0] == signature))
             st.download_button("Download analysis.yaml", text, file_name="analysis.yaml", mime="text/yaml", disabled=not valid)
             st.caption("No output files are overwritten. Save YAML in the configuration directory shown above.")
         except (ValueError, TypeError, KeyError, OSError, yaml.YAMLError) as exc:
