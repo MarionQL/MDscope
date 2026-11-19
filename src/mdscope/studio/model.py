@@ -64,6 +64,23 @@ def change_group(document, old_id, new_id=None, *, duplicate=False):
                                   for key in spec["groups"]
                                   if key != old_id or new_id is not None]
 
+    if not duplicate:
+        selection = document.get("statistics", {}).get("metric_selection") or {}
+        for family, field, old_value, new_value in (
+            ("time_series", "group", old_id, new_id),
+            ("profiles", "profile", f"rmsf__group_{old_id}",
+             f"rmsf__group_{new_id}" if new_id else None),
+        ):
+            if family in selection:
+                updated = []
+                for entry in selection[family]:
+                    if entry.get(field) == old_value:
+                        if new_value is None:
+                            continue
+                        entry = {**entry, field: new_value}
+                    updated.append(entry)
+                selection[family] = updated
+
 
 def review(document, base, choices=None):
     """Return validated YAML + production plan, filtering inactive figure choices.
@@ -75,7 +92,27 @@ def review(document, base, choices=None):
     cfg = resolve_config(raw, base=Path(base))
     if choices is not None:
         from ..registry import STRUCTURAL_SCALAR_METRICS, scalar_contracts
+        from ..registry import configured_profile_variables
+        catalog_cfg = deepcopy(cfg)
+        for name in ("rmsd", "radius_of_gyration", "rmsf", "membrane", "dssp", "sasa"):
+            catalog_cfg["analyses"][name]["enabled"] = True
+        catalog_variables = scalar_contracts(catalog_cfg)
+        catalog_profiles = configured_profile_variables(catalog_cfg)
         variables = scalar_contracts(cfg)
+        active_scalars = {(var["metric"], var["group"]) for var in variables}
+        known_scalars = {(var["metric"], var["group"]) for var in catalog_variables}
+        active_profiles = {var["profile"] for var in configured_profile_variables(cfg)}
+        known_profiles = {var["profile"] for var in catalog_profiles}
+        selectors = raw.get("statistics", {}).get("metric_selection")
+        if selectors is not None:
+            for family, known, active, identity in (
+                ("time_series", known_scalars, active_scalars, lambda item: (item["metric"], item.get("group"))),
+                ("profiles", known_profiles, active_profiles, lambda item: item["profile"]),
+            ):
+                if family in selectors:
+                    selectors[family] = [item for item in selectors[family]
+                                         if identity(item) not in known or identity(item) in active]
+            cfg = resolve_config(raw, base=Path(base))
         eligible = {
             name: {fig["id"] for var in variables if var["analysis"] == name
                    for fig in var["figures"] if not fig["requires_statistics"]}
@@ -102,11 +139,13 @@ def review(document, base, choices=None):
         # explicit configuration, with prerequisites visible in the review plan.
         original = ((raw.get("plots", {}).get("include") or [])
                     if raw.get("plots", {}).get("enabled", False) else [])
+        managed_ids = {fig["id"] for var in catalog_variables for fig in var["figures"]}
+        from ..reporting.plot_ids import safe_plot_stem
+        managed_ids.update(f"profiles:{safe_plot_stem(var['profile'])}:{variant}"
+                           for var in catalog_profiles for variant in
+                           ("profile", "distribution", "system_difference", "comparison_table", "bootstrap_table"))
         def managed(identifier):
-            parts = identifier.split(":")
-            return len(parts) == 3 and parts[0] == "time_series" and any(
-                parts[1] == metric or parts[1].startswith(metric + "__group_")
-                for metric in STRUCTURAL_SCALAR_METRICS.values())
+            return identifier in managed_ids
         ids.extend(identifier for identifier in original if not managed(identifier))
         plots = raw.setdefault("plots", {})
         plots.update(enabled=bool(ids), include=list(dict.fromkeys(ids)))

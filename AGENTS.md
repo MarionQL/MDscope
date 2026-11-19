@@ -26,7 +26,14 @@ Use **GitHub Flow** and the issue title/acceptance conventions in [Contributing]
 
 1. Identify intended behavior, inputs/outputs, units, populations, provenance and failure outcomes. Separate **numerical correctness** from **physical interpretation**.
 2. Review six risks: assumptions, mathematical errors, state/data flow, integration, insufficient verification, and failure/recovery.
-3. Prefer the smallest fix. Remove superseded internal paths within scope and after migrating callers; use adapters or separate tests when they protect a real contract.
+3. Complete the smallest coherent solution that satisfies the authorized milestone, across modules when needed. Do not interpret minimal changes as a reason to stop after a small patch. Remove superseded internal paths within scope and after migrating callers; use adapters or separate tests when they protect a real contract.
 4. For substantive bugs, reproduce failure and test the affected entry point. Prefer independent analytical references; never weaken assertions to pass CI.
 5. Validate identity, frame/time alignment, PBC, missing-vs-zero and persisted-product completeness. Existing output files are not automatically valid.
 6. Follow the [check policy](docs/developer/check-policy.md): targeted local tests, automatic Python 3.11/3.13 CI, and explicitly dispatched visual/real-data/performance checks for affected behavior. Report **executed** evidence, failures, skipped checks and production limits. Short fixtures do not prove convergence.
+
+## Delivery scope
+
+Work through an authorized milestone to completion in one sustained effort when feasible.
+Small commits aid review; they are not stopping points. Continue through related
+implementation, integration, tests and issue tracking. Stop for a real blocker or
+user decision, not an arbitrary file count, patch size or number of passing tests.

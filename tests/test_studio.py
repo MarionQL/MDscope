@@ -342,3 +342,35 @@ def test_app_guided_rmsf_statistics_are_opt_in(tmp_path, monkeypatch):
     assert raw["statistics"]["metric_selection"]["profiles"] == [{"profile": "rmsf", "ci": True, "hypothesis_tests": True}]
     assert not raw["plots"]["include"]
     assert raw["statistics"]["metric_selection"]["time_series"] == []
+
+
+def test_disabled_analysis_prunes_export_but_preserves_editable_choices(tmp_path):
+    doc = new_document()
+    doc["statistics"].update(enabled=True)
+    doc["statistics"]["metric_selection"]["time_series"] = [{"metric": "membrane_thickness_A"}]
+    doc["statistics"]["metric_selection"]["profiles"] = [{"profile": "rmsf"}]
+    doc["plots"] = {"enabled": True, "include": ["time_series:membrane_thickness_A:timeseries", "profiles:rmsf:profile"]}
+    original = deepcopy(doc)
+    exported = yaml.safe_load(review(doc, tmp_path, {})[0])
+    assert exported["statistics"]["metric_selection"]["time_series"] == []
+    assert exported["statistics"]["metric_selection"]["profiles"] == []
+    assert exported["plots"]["include"] == []
+    assert doc == original
+    doc["analyses"]["membrane"].update(enabled=True, headgroup_selection="name P")
+    doc["analyses"]["rmsf"]["enabled"] = True
+    exported = yaml.safe_load(review(doc, tmp_path, {})[0])
+    assert exported["statistics"]["metric_selection"]["profiles"] == [{"profile": "rmsf"}]
+    assert exported["statistics"]["metric_selection"]["time_series"] == [{"metric": "membrane_thickness_A"}]
+
+
+def test_group_rename_and_delete_migrate_inference_identity():
+    doc = new_document()
+    doc["selections"]["groups"] = {"patch": {"selection": "name CA"}}
+    selectors = doc["statistics"]["metric_selection"]
+    selectors["time_series"] = [{"metric": "rmsd_A", "group": "patch"}]
+    selectors["profiles"] = [{"profile": "rmsf__group_patch"}]
+    change_group(doc, "patch", "renamed")
+    assert selectors["time_series"][0]["group"] == "renamed"
+    assert selectors["profiles"][0]["profile"] == "rmsf__group_renamed"
+    change_group(doc, "renamed")
+    assert selectors["time_series"] == selectors["profiles"] == []
