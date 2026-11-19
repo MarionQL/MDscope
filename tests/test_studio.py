@@ -298,7 +298,7 @@ def test_app_preserves_legacy_inference_and_plot_switches(tmp_path, monkeypatch)
     assert not at.exception
     raw = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
     assert raw["statistics"]["metric_selection"]["time_series"] == []
-    assert "profiles" not in raw["statistics"]["metric_selection"]
+    assert raw["statistics"]["metric_selection"]["profiles"] == []
 
 
 def test_topology_required_export_invalidates_after_selection_edit(project, monkeypatch):
