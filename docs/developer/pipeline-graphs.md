@@ -195,10 +195,12 @@ outputs unchanged.
 | `replicate` resume | Corrupt checkpoint or committed chunk inventory | Inspect the reported replica checkpoint and committed artifacts; archive the affected replica before any clean restart rather than deleting chunks to bypass validation |
 | `statistics` / `finalize` | Missing, invalid or nonmonotonic saved replica summary/required companion | Finish or inspect the named replica and file; never interpret missing data as zero or silently overwrite earlier results |
 | `plotting` | Selected statistical figure lacks completed statistics | Complete statistics first, or select a descriptive-only figure supported by the saved replicas; plotting does not infer missing CIs |
+| `report STATISTICS_DIR` | Missing/invalid manifest or contrast-coverage file | Inspect the named statistics directory; complete the statistical export before regenerating findings; preserve existing findings |
 
 The production checks live in `core/validation.py`,
 `pipeline/streaming.py::validate_stream_inventory` and
-`pipeline/runner.py::_validate_replica_products`. The **recovery graph**
+`pipeline/runner.py::_validate_replica_products` and
+`reporting/report.py::generate_report`. The **recovery graph**
 above describes their ordering; topology-only preflight does not read an XTC,
 and statistics/plotting reuse saved products. Keep this table as the single
 developer reference for failure categories; Studio should use these existing
