@@ -185,6 +185,11 @@ def main():
         if coverage:
             st.write("**Verified coverage by analysis, run and condition**")
             st.dataframe(coverage, hide_index=True)
+            if all(row["status"] == "verified_existing" for row in coverage):
+                st.caption("For saved-data-only execution, use "
+                           "mdscope statistics analysis.yaml --results-dir PATH "
+                           "or mdscope plotting analysis.yaml --results-dir PATH. "
+                           "The CLI revalidates the files before finalization.")
         if inventory:
             st.dataframe(inventory, hide_index=True)
         else:
