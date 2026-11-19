@@ -636,13 +636,19 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
                     f"missing {manifest}. Run 'mdscope statistics' first; existing plots were preserved."
                 )
             try:
-                status = json.loads(manifest.read_text()).get("status")
-            except (OSError, ValueError, AttributeError) as exc:
+                payload = json.loads(manifest.read_text())
+            except (OSError, json.JSONDecodeError) as exc:
                 raise RuntimeError(
                     f"Plotting requires completed statistics for selected statistical figures: "
                     f"invalid {manifest} ({exc}). Inspect the saved statistics manifest "
                     "before retrying; existing plots were preserved."
                 ) from exc
+            if not isinstance(payload, dict):
+                raise RuntimeError(
+                    f"Plotting requires completed statistics for selected statistical figures: "
+                    f"invalid {manifest}: expected a JSON object. Existing plots were preserved."
+                )
+            status = payload.get("status")
             if status != "complete":
                 raise RuntimeError(
                     f"Plotting requires completed statistics for selected statistical figures: "
