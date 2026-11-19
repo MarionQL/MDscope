@@ -277,6 +277,22 @@ def statistics_source_status(plan):
     }
 
 
+def unavailable_exact_statistics(document, plan):
+    """Reject explicit requested identities with no scheduled input producer.
+
+    Unrestricted families are not errors: the backend may skip unsupported
+    metrics, and existing results require separate verified reuse contracts.
+    """
+    if not document.get("statistics", {}).get("enabled", False):
+        return []
+    status = statistics_source_status(plan)
+    return [
+        family for family, info in status.items()
+        if info["status"] == "unavailable"
+        and statistics_family_mode(document, family) == "exact"
+    ]
+
+
 def statistics_family_mode(document, family):
     """Return 'all', 'none', or 'exact' without enumerating dynamic identities.
 
