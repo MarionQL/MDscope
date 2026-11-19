@@ -1380,3 +1380,18 @@ def test_exact_figures_override_legacy_false_in_production_resolver(tmp_path):
     assert cfg['plots']['time_series'] is True
     assert cfg['plots']['families']['time_series'] is True
     assert doc['plots']['time_series'] is False
+
+def test_rejected_group_and_named_run_mutations_preserve_all_choices():
+    from mdscope.studio.model import change_group, add_named_run
+    doc = rmsd_document()
+    doc['selections']['groups'] = {'patch': {'selection': 'resid 1:10'}}
+    doc['statistics']['metric_selection'] = {'time_series': [{'metric': 'rmsd_A', 'group': 'patch'}]}
+    choices = {'rmsd': ['time_series:rmsd_A:timeseries']}
+    before = deepcopy(doc)
+    chosen = deepcopy(choices)
+    with pytest.raises(ValueError, match='Unknown group'):
+        change_group(doc, 'missing', 'renamed', choices=choices)
+    assert doc == before and choices == chosen
+    with pytest.raises(ValueError):
+        add_named_run(doc, 'rmsd', 'run1')
+    assert doc == before and choices == chosen
