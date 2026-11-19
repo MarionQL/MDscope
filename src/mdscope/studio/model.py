@@ -165,13 +165,17 @@ def _change_group(document, old_id, new_id=None, *, duplicate=False, choices=Non
         for old_profile, new_profile in profile_mapping.items():
             old_stem = safe_plot_stem(old_profile)
             new_stem = safe_plot_stem(new_profile) if new_profile else None
+            prefix = "profiles:" + old_stem + ":"
             for identifier in known:
-                prefix = "profiles:" + old_stem + ":"
                 if not identifier.startswith(prefix):
                     continue
-                replacement = (("profiles:" + new_stem + identifier[len(prefix)-1:])
-                               if new_stem else None)
-                mapping[identifier] = replacement if replacement in after_ids else None
+                replacement = (
+                    "profiles:" + new_stem + identifier[len(prefix) - 1:]
+                    if new_stem else None
+                )
+                mapping[identifier] = (
+                    replacement if replacement in after_ids else None
+                )
 
         def migrate(ids):
             return [mapping.get(identifier, identifier) for identifier in ids
