@@ -2,15 +2,9 @@ name: MDscope pipeline and statistics performance benchmark
 
 # On-demand in general; run on PRs changing this instrumentation.
 # Real test-data-v1 files are large (~1.6 GB). This is not a fast PR check.
+# Dispatch when required by docs/developer/check-policy.md.
 on:
   workflow_dispatch:
-  pull_request:
-    branches: [main, perf/benchmark-pipeline-statistics]
-    paths:
-      - "tests/performance_pipeline_benchmark.py"
-      - "src/mdscope/statistics/**"
-      - "src/mdscope/core/profiling.py"
-      - ".github/workflows/performance-benchmarks.yml"
 
 concurrency:
   group: mdscope-benchmark-${{ github.ref }}

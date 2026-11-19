@@ -292,3 +292,23 @@ def test_rmsf_profile_contracts_are_not_frame_series(tmp_path):
     assert "time_ps" not in contracts[0]["columns"]
     assert all(item["coordinate_source"] == "source" for item in contracts)
     assert all("cache" in item["statistics_requirement"] for item in contracts)
+
+
+def test_membrane_and_dssp_scalar_controls_share_exact_contracts(tmp_path):
+    doc = new_document()
+    doc["analyses"]["membrane"].update(enabled=True, headgroup_selection="name P")
+    doc["analyses"]["dssp"]["enabled"] = True
+    doc["statistics"]["enabled"] = True
+    doc["statistics"]["metric_selection"]["time_series"] = [
+        {"metric": "membrane_thickness_A", "group": None}]
+    choices = {"membrane": ["time_series:area_per_lipid_A2:timeseries"],
+               "statistics": ["time_series:membrane_thickness_A:comparison_table"]}
+    text, plan = review(doc, tmp_path, choices)
+    metrics = {item["metric"]: item for item in plan["observable_contracts"]}
+    assert len(metrics) == 7
+    assert metrics["area_per_lipid_A2"]["units"]["area_per_lipid_A2"] == "angstrom^2"
+    assert metrics["helix_fraction"]["units"]["helix_fraction"] == "fraction"
+    assert yaml.safe_load(text)["plots"]["include"] == [*choices["membrane"], *choices["statistics"]]
+    doc["analyses"]["membrane"]["thickness"] = {"enabled": False}
+    _, plan = review(doc, tmp_path)
+    assert "membrane_thickness_A" not in {item["metric"] for item in plan["observable_contracts"]}

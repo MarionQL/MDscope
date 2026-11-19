@@ -324,3 +324,36 @@ def structural_profile_contracts(cfg):
             "statistics_requirement": "Temporal RMSF inference additionally requires saved aligned-coordinate cache; a static RMSF table alone is insufficient.",
         })
     return result
+
+
+def scalar_contracts(cfg):
+    """Deterministic pre-run scalar identities, including membrane and DSSP."""
+    from .reporting.plot_ids import describe_plot
+    result = structural_scalar_contracts(cfg)
+    specs = []
+    membrane = cfg["analyses"]["membrane"]
+    if membrane.get("enabled"):
+        if membrane.get("area_per_lipid", {}).get("enabled", True):
+            specs.extend(("membrane", f"area_per_lipid{suffix}_A2", "angstrom^2")
+                         for suffix in ("_upper", "_lower", ""))
+        if membrane.get("thickness", {}).get("enabled", True):
+            specs.append(("membrane", "membrane_thickness_A", "angstrom"))
+    if cfg["analyses"]["dssp"].get("enabled"):
+        specs.extend(("dssp", f"{kind}_fraction", "fraction")
+                     for kind in ("helix", "sheet", "coil"))
+    for analysis, metric, unit in specs:
+        result.append({
+            "analysis": analysis, "metric": metric, "group": None, "label": metric,
+            "columns": ["time_ps", metric], "columns_status": "verified_subset_of_shared_table",
+            "units": {"time_ps": "ps", metric: unit},
+            "row_grain": "one analyzed frame per replicate", "path_within_replica": "summary/timeseries.parquet",
+            "measurement_selection": (membrane.get("headgroup_selection") if analysis == "membrane"
+                                      else cfg["selections"]["protein"]),
+            "group_selection": None, "selection_semantics": "producer-defined population; see scientific contracts",
+            "alignment_selection": None, "coordinate_source": "source",
+            "statistics_selector": {"metric": metric, "group": None},
+            "figures": [dict(describe_plot(f"time_series:{metric}:{variant}"),
+                             requires_statistics=variant not in {"timeseries", "distribution"})
+                        for variant in ("timeseries", "distribution", "autocorrelation", "bootstrap_table", "comparison_table")],
+        })
+    return result

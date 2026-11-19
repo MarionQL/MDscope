@@ -64,7 +64,7 @@ def show_outputs(plan, name, document, base):
         st.write(f"{variable['metric']} · {variable['label']}")
         st.caption(variable["row_grain"] + "; columns are a subset of a shared table.")
         rows = [{column: (f"t{i} (ps)" if column == "time_ps" else
-                          variable["group"] if column == "group" else "example (Å)")
+                          variable["group"] if column == "group" else f"example ({variable['units'].get(column, 'unknown')})")
                  for column in variable["columns"]} for i in range(2)]
         st.table(rows)
         st.json({key: variable[key] for key in (

@@ -54,3 +54,8 @@ new changes require their own CI results.
 - [x] RMSF global/group atom-profile schemas and source/fitted provenance;
   temporal-inference cache prerequisite visible. Global schema checked against
   actual synthetic pipeline output (not inferred from RMSD tables).
+- [x] Membrane APL/thickness and DSSP helix/sheet/coil fractions now share the
+  scalar authoring flow: units, schema/path, exact descriptive figures and
+  exact-variable statistics/figure selection. Suboption disabling removes the
+  corresponding planned metric. Scientific producers remain unchanged.
+- [x] Check policy incorporated from merged PR #201; Studio test dependency retained.

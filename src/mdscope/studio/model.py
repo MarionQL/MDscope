@@ -74,12 +74,12 @@ def review(document, base, choices=None):
     raw = deepcopy(document)
     cfg = resolve_config(raw, base=Path(base))
     if choices is not None:
-        from ..registry import STRUCTURAL_SCALAR_METRICS, structural_scalar_contracts
-        variables = structural_scalar_contracts(cfg)
+        from ..registry import STRUCTURAL_SCALAR_METRICS, scalar_contracts
+        variables = scalar_contracts(cfg)
         eligible = {
             name: {fig["id"] for var in variables if var["analysis"] == name
                    for fig in var["figures"] if not fig["requires_statistics"]}
-            for name in ("rmsd", "radius_of_gyration")
+            for name in {var["analysis"] for var in variables}
         }
         selected_stats = cfg["statistics"].get("metric_selection", {}).get("time_series")
         eligible["statistics"] = {
