@@ -234,6 +234,11 @@ def main():
                             help=identifier, on_change=changed_figure)
                 st.caption(f"{owner} · {fig['destination']}")
     exact_figures = exact_import or bool(state.get("figure:tree:edited"))
+    if exact_import and not state.get("figure:tree:edited") and not state.choices:
+        state.choices = {
+            owner: [fig["id"] for fig in figures if fig["id"] in initial]
+            for owner, figures in catalog.items()
+        }
     if state.get("figure:tree:edited"):
         chosen = {identifier for identifier in all_ids if selected(identifier)}
         state.choices = {
