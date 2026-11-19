@@ -500,3 +500,29 @@ def test_saved_named_run_heatmap_requires_complete_companions(tmp_path, project)
     (destination / "residues.parquet").touch()
     complete = inspect_saved_plot_ids(resolved, root, path)
     assert identifier in {row["id"] for row in complete["figures"]}
+
+
+def test_saved_interaction_statistics_expose_exact_metric_figure_ids(tmp_path, project):
+    import json
+    import pandas as pd
+    from mdscope.planning import inspect_saved_plot_ids
+    path, root = project("saved_interaction_figures")
+    cfg = load_config(path, check_paths=False)
+    stats = root / "project_summary" / "statistics"
+    directory = stats / "interactions"
+    directory.mkdir(parents=True)
+    (stats / "manifest.json").write_text(json.dumps({"status": "complete"}))
+    pd.DataFrame({
+        "interaction_type": ["salt_bridges"],
+        "metric": ["occupancy"],
+        "value": [0.5],
+    }).to_parquet(directory / "system_interaction_metrics.parquet")
+    pd.DataFrame({
+        "interaction_type": ["salt_bridges"],
+        "metric": ["occupancy"],
+        "difference": [0.1],
+    }).to_parquet(directory / "system_interaction_comparisons.parquet")
+    result = inspect_saved_plot_ids(cfg, root, path)
+    ids = {item["id"] for item in result["figures"]}
+    assert "interactions:salt_bridges:occupancy:bootstrap_table" in ids
+    assert "interactions:salt_bridges:occupancy:comparison_table" in ids
