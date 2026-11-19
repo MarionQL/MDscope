@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import atomic_parquet, statistics_family_config
+from ..statistics_selection import simple_family_selection, metric_estimator_enabled
 from ..observables.multi_origin_msd import fit_multi_origin_curve
 from .replicate_contrasts import replicate_mean_contrasts
 
@@ -13,10 +14,19 @@ def analyze_multi_origin_diffusion(cfg, root, system_repouts):
     cfg = statistics_family_config(cfg, "diffusion")
     if cfg is None:
         return
+    selected = simple_family_selection(cfg, "diffusion")
+    if selected is not None and not selected:
+        return
     settings = cfg.get("analyses", {}).get("membrane", {}).get("msd", {})
     if not settings.get("enabled") or not settings.get("multi_origin"):
+        if selected:
+            raise ValueError(
+                "Selected diffusion statistics require analyses.membrane.msd "
+                "enabled with multi_origin: true"
+            )
         return
     curves = {}
+    discovered = set()
     requested = settings.get("multi_origin_window_ps")
     time_columns = ["time_window_start_ps", "time_window_end_ps"]
     for system, reps in system_repouts.items():
@@ -27,6 +37,10 @@ def analyze_multi_origin_diffusion(cfg, root, system_repouts):
                 if requested is not None and not set(time_columns) <= set(data):
                     raise ValueError(f"{path} lacks trajectory-window provenance. Regenerate its multi-origin MSD.")
                 for metric, curve in data.groupby("metric", sort=True):
+                    if selected is not None:
+                        discovered.add((str(metric),))
+                        if (str(metric),) not in selected:
+                            continue
                     curve = curve.set_index("lag_ps").sort_index()
                     lag = curve.index.to_numpy(float)
                     origins = curve.n_time_origins.to_numpy(float)
@@ -43,6 +57,10 @@ def analyze_multi_origin_diffusion(cfg, root, system_repouts):
                                 or np.any(np.abs(observed[0] - requested) >= step)):
                             raise ValueError(f"{path} does not match the requested trajectory window. Regenerate its multi-origin MSD.")
                     curves.setdefault(metric, {})[system, rep.name] = curve
+    if selected is not None:
+        missing = selected - discovered
+        if missing:
+            raise ValueError(f"Unknown saved diffusion metric identities: {sorted(missing)}")
     start = float(settings.get("slope_start_fraction", .2))
     end = float(settings.get("slope_end_fraction", .8))
     if not 0 <= start < end <= 1:
@@ -81,7 +99,13 @@ def analyze_multi_origin_diffusion(cfg, root, system_repouts):
     if not rows:
         return
     replicas = pd.DataFrame(rows)
-    comparisons = replicate_mean_contrasts(replicas, ["metric"], system_repouts, cfg["statistics"])
+    infer = replicas.loc[
+        replicas.metric.map(lambda metric: metric_estimator_enabled(cfg, "diffusion", (str(metric),), "ci"))
+    ]
+    comparisons = (
+        replicate_mean_contrasts(infer, ["metric"], system_repouts, cfg["statistics"])
+        if not infer.empty else pd.DataFrame()
+    )
     dest = Path(root) / "project_summary" / "statistics" / "diffusion"
     atomic_parquet(dest / "replicate_common_lag_slopes.parquet", replicas)
     if not comparisons.empty:

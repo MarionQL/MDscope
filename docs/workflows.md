@@ -21,6 +21,63 @@ Use `run_mdscope.sh`, `statistics_mdscope.sh`, `plotting_mdscope.sh` and `finali
 
 The statistics job reports its current stage and elapsed time in `slurm-out/mdscope/mdscope_statistics-<jobid>.out`. Long stages print a heartbeat every minute. Set `progress.enabled: false` to suppress progress messages.
 
+## Selective statistics (issue #179)
+
+Use exact **saved** metric identities. Omitting `statistics.metric_selection`
+preserves legacy inference; a family set to `[]` skips its statistics without
+disabling raw analyses.
+
+```yaml
+statistics:
+  metric_selection:
+    time_series:
+      - {group: PROA, metric: rmsd_A, ci: true, hypothesis_tests: false}
+      - {metric: membrane_thickness_A, inference: false}
+    interactions:
+      - {kind: salt_bridges, metric: occupancy}
+    profiles:
+      - {profile: rmsf}
+    solvation_rdfs:
+      - {solvent: water, target_class: protein, site_class: acidic}
+    diffusion:
+      - {metric: DOPC}
+    coupling:
+      - {mechanism: membrane_coupling}
+plots:
+  include: ["time_series:rmsd_A:bootstrap_table"]
+```
+
+| Family | Identity | Selectable inference |
+|---|---|---|
+| `time_series` | `group`, `metric` | CI, hypothesis tests |
+| `interactions` | `kind`, optional `interaction`, optional `metric` | CI, hypothesis tests |
+| `profiles` | `profile` | CI, hypothesis tests |
+| `solvation_rdfs` | `solvent`, `target_class`, `site_class` | Shell contrast |
+| `diffusion` | `metric` | Replicate contrast |
+| `coupling` | `mechanism` | Replicate contrast |
+
+Selectors default to `inference: true`. Use `inference: false` for
+descriptive-only statistics; for the first three families, `ci` and
+`hypothesis_tests` can be toggled separately. Unsupported estimator
+combinations fail validation. All requested identities must exist in saved
+data; example IDs above are illustrative. An omitted interaction identity
+selects every identity of that kind, and an omitted interaction metric
+selects all five supported interaction statistics. The existing occupancy
+threshold still applies.
+
+`mdscope plan` exposes analysis/run candidates, identity fields, estimator
+eligibility, conditional files, and figure-ID patterns without reading XTCs.
+For completed outputs, `mdscope.planning.inspect_saved_statistics(root)`
+reads actual Parquet schemas and saved IDs with a bounded identity limit.
+Dynamic IDs are never invented.
+
+Raw analyses, metric inference, and `plots.include` are independently
+controlled. CIs and p/q-values are null when inference is disabled; paired
+design and replica-level uncertainty rules are unchanged. Selective
+Monte Carlo streams are identity-stable; BH q-values may change when the
+hypothesis family changes. Statistics reruns archive previous products.
+See #156 for deeper per-metric bootstrap-kernel factorization.
+
 ## Data flow
 
 ```mermaid

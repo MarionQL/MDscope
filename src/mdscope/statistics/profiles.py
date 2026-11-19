@@ -12,6 +12,8 @@ import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config
+from ..statistics_selection import simple_family_selection, metric_estimator_enabled
+from .common import selected_rng
 from ..core.persistence import atomic_parquet, ensure_dir
 from ..observables.membrane_order import temporal_membrane_order_profiles
 from ..observables.density_1d import align_density_profiles, temporal_density_profiles
@@ -231,12 +233,16 @@ def analyze_profiles(
     if not cfg.get("statistics", {}).get("enabled", True):
         return
     stats = cfg["statistics"]
+    selected = simple_family_selection(cfg, "profiles")
+    if selected is not None and not selected:
+        return
     draws = int(stats.get("bootstrap_draws", 2000))
     system_draws = draws if stats.get("hierarchy", {}).get("enabled", True) else 0
     level = float(stats.get("ci", 0.95))
-    rng = np.random.default_rng(int(stats.get("seed", 2026)) + 1)
+    seed = int(stats.get("seed", 2026)) + 1
+    rng = np.random.default_rng(seed)
     resample = stats.get("hierarchy", {}).get("resample_replicates", True)
-    outdir = ensure_dir(root / "project_summary" / "statistics" / "profiles")
+    outdir = root / "project_summary" / "statistics" / "profiles"
     verbose = cfg.get("progress", {}).get("enabled", True)
     sources = {}
     for system, reps in system_repouts.items():
@@ -249,6 +255,13 @@ def analyze_profiles(
         if sources
         else []
     )
+    if selected is not None:
+        discovered = {(profile,) for profile in profiles}
+        unknown = selected - discovered
+        if unknown:
+            raise ValueError(f"Unknown saved profile identities: {sorted(unknown)}")
+        profiles = [profile for profile in profiles if (profile,) in selected]
+    ensure_dir(outdir)
     rep_points = []
     rep_summary = []
     sys_points = []
@@ -258,6 +271,13 @@ def analyze_profiles(
     if verbose:
         print(f"Statistics profiles: processing {len(profiles)} profiles", flush=True)
     for index, profile in enumerate(profiles, 1):
+        infer = metric_estimator_enabled(cfg, "profiles", (profile,), "ci")
+        test_enabled = metric_estimator_enabled(
+            cfg, "profiles", (profile,), "hypothesis_tests"
+        )
+        local_draws = draws if infer else 0
+        local_system_draws = system_draws if infer else 0
+        profile_rng = (rng if selected is None else selected_rng(seed, "profiles", profile))
         if verbose and (index == 1 or index % 25 == 0):
             print(f"Statistics profiles: {index}/{len(profiles)} {profile}", flush=True)
         profile_sources = {
@@ -271,7 +291,7 @@ def analyze_profiles(
                 key = (system, repout.name)
                 if key not in profile_sources:
                     continue
-                item = _prepare_profile(profile_sources[key], cfg, draws, rng)
+                item = _prepare_profile(profile_sources[key], cfg, local_draws, profile_rng)
                 prepared[key] = item
                 rep_points.extend(
                     {
@@ -301,7 +321,7 @@ def analyze_profiles(
                         for key, value in item["temporal"].items()
                         if key != "acf"
                     },
-                    "bootstrap_draws": draws,
+                    "bootstrap_draws": local_draws,
                     "ci_level": level,
                 })
 
@@ -328,8 +348,8 @@ def analyze_profiles(
             ]
             boot = _hierarchical(
                 aligned_draws,
-                system_draws,
-                rng,
+                local_system_draws,
+                profile_rng,
                 "mean",
                 resample,
             )
@@ -340,7 +360,7 @@ def analyze_profiles(
             boot[:, ~complete] = np.nan
             alpha = (1 - level) / 2
             low, high = (np.nanquantile(boot, [alpha, 1 - alpha], axis=0)
-                         if system_draws else np.full((2, len(labels)), np.nan))
+                         if local_system_draws else np.full((2, len(labels)), np.nan))
             for index, (position, label) in enumerate(zip(positions, labels)):
                 sys_points.append({
                     "system": system,
@@ -354,7 +374,7 @@ def analyze_profiles(
                     ),
                     "mean_ci_low": float(low[index]),
                     "mean_ci_high": float(high[index]),
-                    "bootstrap_draws": system_draws,
+                    "bootstrap_draws": local_system_draws,
                     "ci_level": level,
                 })
             glo, ghi = _ci(np.mean(boot, axis=1), level)
@@ -367,7 +387,7 @@ def analyze_profiles(
                 "mean_profile_ci_low": glo,
                 "mean_profile_ci_high": ghi,
                 **_range_meta(temporal_rows),
-                "bootstrap_draws": system_draws,
+                "bootstrap_draws": local_system_draws,
                 "ci_level": level,
             })
             system_profiles[system] = {
@@ -415,8 +435,8 @@ def analyze_profiles(
                 delta = _hierarchical_difference(
                     rep_draws_1,
                     rep_draws_2,
-                    system_draws,
-                    rng,
+                    local_system_draws,
+                    profile_rng,
                     "mean",
                     resample,
                 )
@@ -464,8 +484,8 @@ def analyze_profiles(
                     "difference_ci_high": float(high[index]),
                     "probability_difference_gt_0": pgt,
                     "probability_difference_lt_0": plt,
-                    "p_value": _permutation(amap, bmap, cfg, rng),
-                    "bootstrap_draws": system_draws,
+                    "p_value": _permutation(amap, bmap, cfg, profile_rng) if test_enabled else np.nan,
+                    "bootstrap_draws": local_system_draws,
                     "ci_level": level,
                 })
 

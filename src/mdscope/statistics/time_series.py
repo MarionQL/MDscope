@@ -12,6 +12,8 @@ import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config
+from ..statistics_selection import time_series_selection, metric_estimator_enabled
+from .common import selected_rng
 from ..core.persistence import atomic_parquet, ensure_dir
 from ..interactions.interaction_tables import event_lifetimes
 from ..interactions.interaction_tables import interaction_tables
@@ -77,25 +79,59 @@ def _conditional_geometry_bootstrap(values, times, cfg, draws, rng):
     return means, medians, block, True
 
 
-def collect_time_series(repout: Path, *, sources: set[str] | None = None) -> dict[tuple[str | None, str], pd.DataFrame]:
+def collect_time_series(repout: Path, *, sources: set[str] | None = None,
+                        selected: set[tuple[str | None, str]] | None = None) -> dict[tuple[str | None, str], pd.DataFrame]:
     out = {}
+    if selected is not None and not selected:
+        return out
     for path, group_col in(
         (Path(repout) / "summary" / "timeseries.parquet", None),
         (Path(repout) / "summary" / "group_timeseries.parquet", "group")
     ):
         if not path.exists() or (sources is not None and "summary" not in sources):
             continue
-        data = pd.read_parquet(path)
+        if selected is not None:
+            from pyarrow.parquet import read_schema
+            available = set(read_schema(path).names)
+            relevant = {(group, metric) for group, metric in selected
+                        if (group is None if group_col is None else group is not None)}
+            if not relevant:
+                continue
+            requested = {metric for _, metric in relevant if metric in available}
+            # Derived metrics depend on a single persisted source column.
+            # Avoid reading unrelated time-series columns for one selector.
+            for _, metric in relevant:
+                source = None
+                if metric.endswith("_available_fraction"):
+                    source = metric.removesuffix("_available_fraction")
+                elif metric.endswith(("_hs_contacts_during_contact", "_hs_any_contact_state")):
+                    source = metric.removesuffix("_hs_contacts_during_contact").removesuffix(
+                        "_hs_any_contact_state") + "_glycan_contacts"
+                if source in available:
+                    requested.add(source)
+            if not requested:
+                continue
+            columns = ["time_ps", *sorted(requested - {"time_ps"})]
+            if group_col:
+                columns.insert(0, group_col)
+            data = pd.read_parquet(path, columns=columns)
+        else:
+            data = pd.read_parquet(path)
         groups = [(None, data)] if group_col is None else data.groupby(group_col, sort=False)
         for group_id, subset in groups:
             out.update(_hs_contact_observables(subset, group_id))
             for metric in subset.columns:
+                identity = (None if group_id is None else str(group_id), metric)
+                availability_key = (None, metric + "_available_fraction")
                 if (group_id is None and _has_conditional_support(metric)
-                        and not metric.endswith("_hs_contacts_during_contact")):
+                        and not metric.endswith("_hs_contacts_during_contact")
+                        and (selected is None or availability_key in selected)):
                     available = pd.to_numeric(subset[metric], errors="coerce").map(np.isfinite)
-                    out[(None, metric + "_available_fraction")] = pd.DataFrame({
+                    out[availability_key] = pd.DataFrame({
                         "time_ps": subset.time_ps, "value": available.astype(float),
                     })
+                if selected is not None and identity not in selected:
+                    continue
                 if metric not in {"time_ps", "group"} and len(finite(subset[metric])):
                     out[(
                         None if group_id is None else str(group_id),
@@ -105,7 +141,9 @@ def collect_time_series(repout: Path, *, sources: set[str] | None = None) -> dic
     # every other MDscope time series. Never resample individual lipid molecules
     # or water contacts as if they were independent simulation replicates.
     solvation = Path(repout) / "extensions" / "solvation" / "species_timeseries.parquet"
-    if solvation.exists() and (sources is None or "solvation" in sources):
+    if (solvation.exists() and (sources is None or "solvation" in sources)
+            and (selected is None or any(group is not None and group.startswith("solvation/")
+                                        for group, _ in selected))):
         data = pd.read_parquet(solvation)
         required = {"solvent", "target_class", "site_class", "time_ps",
                     "mean_n_solvent"}
@@ -124,7 +162,9 @@ def collect_time_series(repout: Path, *, sources: set[str] | None = None) -> dic
                     out[(group_id, metric)] = group[["time_ps", metric]].rename(
                         columns={metric: "value"})
     hydration = Path(repout) / "extensions" / "hydration" / "aggregate_counts.parquet"
-    if hydration.exists() and (sources is None or "hydration" in sources):
+    if (hydration.exists() and (sources is None or "hydration" in sources)
+            and (selected is None or any(group is not None and group.startswith("hydration/")
+                                        for group, _ in selected))):
         data = pd.read_parquet(hydration)
         required = {"time_ps", "compartment", "level", "group_id",
                     "water_count", "water_per_site"}
@@ -150,7 +190,9 @@ def collect_time_series(repout: Path, *, sources: set[str] | None = None) -> dic
                 out[(identity, metric)] = group[["time_ps", column]].rename(
                     columns={column: "value"})
     bridges = Path(repout)/"extensions/solvation/bridge_pair_timeseries.parquet"
-    if bridges.exists() and (sources is None or "solvation_bridges" in sources):
+    if (bridges.exists() and (sources is None or "solvation_bridges" in sources)
+            and (selected is None or any(group is not None and group.startswith("solvation_bridges/")
+                                        for group, _ in selected))):
         import json
         data = pd.read_parquet(bridges)
         required = {"time_ps", "solvent", "target_a", "target_b", "bridge_entity_count", "bridge_present_fraction"}
@@ -166,11 +208,15 @@ def collect_time_series(repout: Path, *, sources: set[str] | None = None) -> dic
                     continue
                 out[(identity, metric)] = group.sort_values("time_ps")[["time_ps", metric]].rename(columns={metric: "value"})
     matrix = Path(repout)/'extensions/lipid_contacts/matrix.parquet'
-    if matrix.exists() and (sources is None or "lipid_contacts" in sources):
+    if (matrix.exists() and (sources is None or "lipid_contacts" in sources)
+            and (selected is None or any(group is not None and group.startswith("lipid_contacts/")
+                                        for group, _ in selected))):
         data = pd.read_parquet(matrix)
         for (leaf, a, b), group in data.groupby(['leaflet','species_a','species_b'], sort=False):
             for metric in ('neighbors_per_molecule','enrichment'):
                 out[(f'lipid_contacts/{leaf}/{a}/{b}', metric)] = group[['time_ps',metric]].rename(columns={metric:'value'})
+    if selected is not None:
+        return {key: value for key, value in out.items() if key in selected}
     return out
 
 
@@ -183,6 +229,22 @@ def analyze_time_series(
     if not cfg.get("statistics", {}).get("enabled", True):
         return
     stats = cfg["statistics"]
+    selected = time_series_selection(cfg)
+    if selected is not None and not selected:
+        return
+    # Selected identities are discovered from actual saved products before
+    # allocating bootstrap draws or writing statistics. Reject typos rather
+    # than silently publishing an incomplete selection.
+    selected_series = None
+    if selected is not None:
+        selected_series = {
+            (system, repout): collect_time_series(repout, selected=selected)
+            for system, reps in system_repouts.items() for repout in reps
+        }
+        discovered = set().union(*(series.keys() for series in selected_series.values()))
+        unknown = selected - discovered
+        if unknown:
+            raise ValueError(f"Unknown saved time-series metric identities: {sorted(unknown, key=str)}")
     scalar_window = stats.get("scalar_window_ps")
     draws, level = int(stats.get("bootstrap_draws", 2000)), float(stats.get("ci", 0.95))
     system_draws = draws if stats.get("hierarchy", {}).get("enabled", True) else 0
@@ -204,11 +266,17 @@ def analyze_time_series(
             local_rows, local_acf = [], []
             if verbose:
                 print(f"Statistics {output_name}: loading {system}/{repout.name}", flush=True)
-            series = collect_time_series(repout)
+            series = (selected_series[(system, repout)] if selected_series is not None
+                      else collect_time_series(repout))
             if verbose:
                 print(f"Statistics {output_name}: processing {len(series)} observables "
                       f"for {system}/{repout.name}", flush=True)
             for (group, metric), table in series.items():
+                infer = metric_estimator_enabled(cfg, "time_series", (group, metric), "ci")
+                local_draws = draws if infer else 0
+                metric_rng = (rng if selected is None else
+                              selected_rng(seed, "time_series", "replicate", system,
+                                           repout.name, group, metric))
                 window_covered = True
                 if scalar_window is not None:
                     lower, upper = scalar_window
@@ -229,7 +297,7 @@ def analyze_time_series(
                 conditional = window_covered and group is None and _has_conditional_support(metric) and not temporal_valid
                 if conditional:
                     conditional_boot = _conditional_geometry_bootstrap(
-                        np.where(np.isfinite(values), values, np.nan), times, cfg, draws, rng
+                        np.where(np.isfinite(values), values, np.nan), times, cfg, local_draws, metric_rng
                     )
                 values = values[valid]
                 times = times[valid]
@@ -239,17 +307,17 @@ def analyze_time_series(
                 mean_boot = _block_bootstrap(
                     values,
                     meta["block_length_frames"],
-                    draws,
-                    rng,
+                    local_draws,
+                    metric_rng,
                     "mean"
-                ) if temporal_valid and draws else np.full(draws, np.nan)
+                ) if temporal_valid and local_draws else np.full(local_draws, np.nan)
                 med_boot = _block_bootstrap(
                     values,
                     meta["block_length_frames"],
-                    draws,
-                    rng,
+                    local_draws,
+                    metric_rng,
                     "median"
-                ) if temporal_valid and draws else np.full(draws, np.nan)
+                ) if temporal_valid and local_draws else np.full(local_draws, np.nan)
                 sampling_status = "regular_complete" if temporal_valid else "unavailable_gapped_or_irregular"
                 if not window_covered:
                     sampling_status = "unavailable_window_coverage"
@@ -277,7 +345,7 @@ def analyze_time_series(
                        **{
                            k: v for k,
                            v in meta.items() if k != "acf"
-                       }, "bootstrap_draws": draws, "ci_level": level,
+                       }, "bootstrap_draws": local_draws, "ci_level": level,
                     "mean_ci_low": mlo,
                     "mean_ci_high": mhi,
                     "median_ci_low": dlo,
@@ -327,27 +395,33 @@ def analyze_time_series(
         gid = None if pd.isna(group) else str(group)
         rows = sub.to_dict("records")
         keys = [(system, r["replicate"], gid, metric) for r in rows]
+        infer = metric_estimator_enabled(cfg, "time_series", (gid, metric), "ci")
+        local_system_draws = system_draws if infer else 0
+        system_rng = (rng if selected is None else
+                      selected_rng(seed, "time_series", "hierarchy", system, gid, metric))
+        adaptive_metric_rng = (adaptive_rng if selected is None else
+                               selected_rng(seed, "time_series", "adaptive", system, gid, metric))
         require_complete = scalar_window is not None or _has_conditional_support(metric)
         complete_replica_coverage = not require_complete or len(keys) == len(system_repouts[system])
         temporal_valid = complete_replica_coverage and all(cache[k]["temporal_valid"] for k in keys)
-        if adaptive:
+        if adaptive and infer:
             def sample(n):
                 return np.column_stack([
-                    _hierarchical([cache[k][stat] for k in keys], n, adaptive_rng, stat, resample)
+                    _hierarchical([cache[k][stat] for k in keys], n, adaptive_metric_rng, stat, resample)
                     for stat in ("mean", "median")
                 ]) if temporal_valid else np.empty((0, 2))
 
             (mean_boot, med_boot), precision = _adaptive_intervals(sample, level, adaptive)
         else:
             mean_boot, med_boot = (
-                _hierarchical([cache[k][stat] for k in keys], system_draws, rng, stat, resample)
-                if temporal_valid else np.full(system_draws, np.nan)
+                _hierarchical([cache[k][stat] for k in keys], local_system_draws, system_rng, stat, resample)
+                if temporal_valid else np.full(local_system_draws, np.nan)
                 for stat in ("mean", "median")
             )
             precision = {}
         sys_boot[(system, gid, metric)] = {
             "temporal_valid": temporal_valid,
-            **({"keys": keys} if adaptive else {"mean": mean_boot, "median": med_boot}),
+            **({"keys": keys} if adaptive and infer else {"mean": mean_boot, "median": med_boot}),
         }
         mlo, mhi = _ci(mean_boot, level)
         dlo, dhi = _ci(med_boot, level)
@@ -383,8 +457,18 @@ def analyze_time_series(
         name=None
     ):
         gid = None if pd.isna(group) else str(group)
+        infer = metric_estimator_enabled(cfg, "time_series", (gid, metric), "ci")
+        test_enabled = metric_estimator_enabled(
+            cfg, "time_series", (gid, metric), "hypothesis_tests"
+        )
+        local_system_draws = system_draws if infer else 0
         available = [s for s in system_repouts if (s, gid, metric) in sys_boot]
         for s1, s2 in combinations(available, 2):
+            comparison_rng = (rng if selected is None else
+                              selected_rng(seed, "time_series", "comparison", group, metric, s1, s2))
+            adaptive_comparison_rng = (adaptive_rng if selected is None else
+                                       selected_rng(seed, "time_series", "adaptive_comparison",
+                                                    group, metric, s1, s2))
             amap, amed = point_maps[(s1, gid or "", metric)]
             bmap, bmed = point_maps[(s2, gid or "", metric)]
             paired = (
@@ -395,7 +479,7 @@ def analyze_time_series(
                        and sys_boot[(s2, gid, metric)]["temporal_valid"])
             left = sys_boot[(s1, gid, metric)]
             right = sys_boot[(s2, gid, metric)]
-            if adaptive:
+            if adaptive and infer:
                 def sample(n):
                     if not regular or (paired and not amap.keys() & bmap.keys()):
                         return np.empty((0, 2))
@@ -404,24 +488,24 @@ def analyze_time_series(
                         a = {k[1]: cache[k][stat] for k in left["keys"]}
                         b = {k[1]: cache[k][stat] for k in right["keys"]}
                         if paired:
-                            values = _hierarchical_difference(a, b, n, adaptive_rng, stat, resample)
+                            values = _hierarchical_difference(a, b, n, adaptive_comparison_rng, stat, resample)
                         else:
-                            values = (_hierarchical(b.values(), n, adaptive_rng, stat, resample)
-                                      - _hierarchical(a.values(), n, adaptive_rng, stat, resample))
+                            values = (_hierarchical(b.values(), n, adaptive_comparison_rng, stat, resample)
+                                      - _hierarchical(a.values(), n, adaptive_comparison_rng, stat, resample))
                         columns.append(values)
                     return np.column_stack(columns)
 
                 (dmean, dmed), precision = _adaptive_intervals(sample, level, adaptive)
             elif not regular:
                 # A paired nan-reducer would silently omit invalid replicas.
-                dmean = np.full(system_draws, np.nan)
-                dmed = np.full(system_draws, np.nan)
+                dmean = np.full(local_system_draws, np.nan)
+                dmed = np.full(local_system_draws, np.nan)
             elif paired:
                 dmean, dmed = (
                     _hierarchical_difference(
                         {rep_id: cache[(s1, rep_id, gid, metric)][stat] for rep_id in amap},
                         {rep_id: cache[(s2, rep_id, gid, metric)][stat] for rep_id in bmap},
-                        system_draws, rng, stat, resample)
+                        local_system_draws, comparison_rng, stat, resample)
                     for stat in ("mean", "median")
                 )
             else:
@@ -431,7 +515,7 @@ def analyze_time_series(
             dlo, dhi = _ci(dmed, level)
             pgt, plt = _direction(dmean)
             dpgt, dplt = _direction(dmed)
-            if regular and system_draws and len(dmean):
+            if regular and local_system_draws and len(dmean):
                 mean_difference, median_difference = float(np.mean(dmean)), float(np.median(dmed))
             else:
                 mean_difference = _point_difference(amap,bmap,paired)
@@ -441,14 +525,14 @@ def analyze_time_series(
                           "mean_difference_ci_low": mlo, "mean_difference_ci_high": mhi,
                           "mean_probability_difference_gt_0": pgt,
                           "mean_probability_difference_lt_0": plt,
-                          "mean_p_value": _permutation(amap, bmap, cfg, rng),
+                          "mean_p_value": _permutation(amap, bmap, cfg, comparison_rng) if test_enabled else np.nan,
                           "median_difference_system2_minus_system1": median_difference,
                           "median_difference_ci_low": dlo, "median_difference_ci_high": dhi,
                           "median_probability_difference_gt_0": dpgt,
                           "median_probability_difference_lt_0": dplt,
-                          "median_p_value": _permutation(amed, bmed, cfg, rng),
+                          "median_p_value": _permutation(amed, bmed, cfg, comparison_rng) if test_enabled else np.nan,
                           "ci_status": "unavailable_temporal_support" if not regular else None,
-                          "bootstrap_draws": len(dmean) if adaptive else system_draws,
+                          "bootstrap_draws": len(dmean) if adaptive and infer else local_system_draws,
                           "ci_level": level, **adaptive_provenance, **precision})
     comp = pd.DataFrame(comps)
     if not comp.empty:

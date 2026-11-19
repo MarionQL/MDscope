@@ -14,11 +14,13 @@ import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config
+from ..statistics_selection import interaction_selection, selected_interaction_metrics, metric_estimator_enabled
 from ..core.persistence import atomic_json, atomic_parquet, ensure_dir
 from ..interactions.interaction_tables import interaction_key_columns, interaction_tables, sample_dt
 
 
-from .common import _temporal, _block_weights, _hierarchical, _hierarchical_difference, _ci, _direction, _permutation, _fdr, _range_meta, _point_difference
+from .common import _temporal, _block_weights, _hierarchical, _hierarchical_difference, _ci, _direction, _permutation, _fdr, _range_meta, _point_difference, selected_rng as _selected_rng
+
 
 def _presence_frame_indices(times, presence_times):
     indices = np.searchsorted(times, np.asarray(presence_times, float))
@@ -38,6 +40,7 @@ def _interaction_bootstrap(
     cache: dict,
     rep_key,
     zero_meta_cache: dict | None = None,
+    selected_seed: int | None = None,
 ) -> tuple[dict, dict]:
     # Bootstrap the binary presence trajectory. Event starts/lifetimes
     # are weighted at their original frames so independently sampled
@@ -60,14 +63,16 @@ def _interaction_bootstrap(
         meta = _temporal(presence, times, cfg)
         if absent and zero_meta_cache is not None:
             zero_meta_cache[rep_key] = meta
-    key = (rep_key, n, meta["block_length_frames"])
+    key = (rep_key, n, meta["block_length_frames"], draws)
     # Reuse the same block weights for all interactions from one
     # replicate/block length; this is a major speed/memory win when
     # thousands of pairs are present.
     if key not in cache:
         if len(cache) >= 8:
             cache.pop(next(iter(cache)))
-        cache[key] = _block_weights(n, key[2], draws, rng) if draws else np.empty((0, n), np.uint16)
+        weight_rng = (rng if selected_seed is None else
+                      _selected_rng(selected_seed, "block", *rep_key, n, key[2]))
+        cache[key] = _block_weights(n, key[2], draws, weight_rng) if draws else np.empty((0, n), np.uint16)
     weights = cache[key]
     duration_ns = n * dt / 1000 if dt else np.nan
     occupancy = weights.dot(presence) / max(1, n)
@@ -132,14 +137,19 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
     if not cfg.get("statistics", {}).get("enabled", True):
         return
     stats = cfg["statistics"]
+    selectors = interaction_selection(cfg)
+    if selectors is not None and not selectors:
+        return
     min_occupancy = float(stats.get("interaction_min_occupancy", 0.0))
     if not 0 <= min_occupancy <= 1:
         raise ValueError("statistics.interaction_min_occupancy must be between 0 and 1")
     draws, level = int(stats.get("bootstrap_draws", 2000)), float(stats.get("ci", 0.95))
     system_draws = draws if stats.get("hierarchy", {}).get("enabled", True) else 0
-    rng = np.random.default_rng(int(stats.get("seed", 2026)) + 2)
+    seed = int(stats.get("seed", 2026)) + 2
+    rng = np.random.default_rng(seed)
     resample = stats.get("hierarchy", {}).get("resample_replicates", True)
-    outdir = ensure_dir(root / "project_summary" / "statistics" / "interactions")
+    # No output directory is created until saved identities are validated.
+    outdir = root / "project_summary" / "statistics" / "interactions"
     sources, kinds = {}, set()
     detail_enabled = os.environ.get("MDSCOPE_PROFILE", "0").strip().lower() not in {
         "", "0", "false", "off", "no",
@@ -147,6 +157,11 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
     detail = {"kinds": []}
     loading_started = perf_counter()
     excluded_kinds = set(stats.get('interaction_exclude_kinds', []))
+    included = (set(stats["interaction_include_kinds"])
+                if stats.get("interaction_include_kinds") is not None else None)
+    if selectors is not None:
+        wanted_kinds = {kind for kind, _, _ in selectors} - excluded_kinds
+        included = wanted_kinds if included is None else included & wanted_kinds
     verbose = cfg.get("progress", {}).get("enabled", True)
     for system, reps in system_repouts.items():
         for repout in reps:
@@ -156,8 +171,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                 repout,
                 exclude_kinds=excluded_kinds,
                 table_names=("presence", "lifetimes"),
-                include_kinds=(set(stats["interaction_include_kinds"])
-                               if stats.get("interaction_include_kinds") is not None else None),
+                include_kinds=included,
             )
             path = repout / "summary" / "timeseries.parquet"
             times = (
@@ -166,6 +180,38 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
             )
             sources[(system, repout.name)] = (times, tables)
             kinds.update(tables)
+    if selectors is not None:
+        requested = {(kind, identity) for kind, identity, _ in selectors}
+        existing = {(kind, None) for kind in kinds - excluded_kinds}
+        # Kind-wide selections need only directory discovery, not another
+        # 10k-identity string materialization. Exact labels are checked
+        # against the saved canonical key columns before any output write.
+        explicit = {(kind, identity) for kind, identity in requested
+                    if identity is not None}
+        for kind in {kind for kind, _ in explicit} & (kinds - excluded_kinds):
+            wanted = {identity for group, identity in explicit if group == kind}
+            for _, tables in sources.values():
+                tab = tables.get(kind, {})
+                for name in ("presence", "lifetimes"):
+                    data = tab.get(name)
+                    if data is None or data.empty:
+                        continue
+                    keys = interaction_key_columns(kind, data)
+                    missing_columns = [key for key in keys if key not in data.columns]
+                    if missing_columns:
+                        raise ValueError(
+                            f"Interaction {kind} missing identity columns: {missing_columns}")
+                    labels = (data[keys].astype(str).agg(" | ".join, axis=1)
+                              if keys else pd.Series(["interaction"]))
+                    existing.update((kind, identity) for identity in wanted
+                                    if identity in set(labels))
+        missing = requested - existing
+        if missing:
+            raise ValueError(
+                "Unknown saved interaction identities or excluded kinds: "
+                + ", ".join(map(str, sorted(missing, key=str)))
+            )
+    ensure_dir(outdir)
     if detail_enabled:
         detail["input_loading_seconds"] = perf_counter() - loading_started
     rep_rows, sys_rows, comps = [], [], []
@@ -176,6 +222,9 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
             print(f"Interaction statistics {kind}: grouping input records", flush=True)
         grouping_started = perf_counter()
         interactions, retained, prepared = set(), set(), {}
+        requested_ids = (None if selectors is None or any(
+            group == kind and identity is None for group, identity, _ in selectors
+        ) else {identity for group, identity, _ in selectors if group == kind})
         for key, (times, tables) in sources.items():
             tab = tables.get(kind, {})
             presence = tab.get("presence", pd.DataFrame()).copy()
@@ -195,6 +244,9 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                         if keys
                         else "interaction"
                     )
+                    if requested_ids is not None:
+                        table.drop(table.index[~table["interaction"].isin(requested_ids)],
+                                   inplace=True)
                     interactions.update(table["interaction"])
             if min_occupancy and len(times) and not presence.empty:
                 indices, valid = _presence_frame_indices(times, presence["time_ps"])
@@ -225,6 +277,22 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
         kind_started = perf_counter()
         log_every = int(stats.get("interaction_progress_every", 1000))
         for completed, interaction in enumerate(sorted(interactions), 1):
+            selected_metrics = selected_interaction_metrics(selectors, kind, interaction)
+            if not selected_metrics:
+                continue
+            metric_infer = {
+                metric: metric_estimator_enabled(
+                    cfg, "interactions", (kind, interaction, metric), "ci"
+                ) for metric in selected_metrics
+            }
+            metric_tests = {
+                metric: metric_estimator_enabled(
+                    cfg, "interactions", (kind, interaction, metric), "hypothesis_tests"
+                ) for metric in selected_metrics
+            }
+            infer_any = any(metric_infer.values())
+            local_draws = draws if infer_any else 0
+            local_system_draws = system_draws if infer_any else 0
             if verbose and (completed == 1 or completed % log_every == 0):
                 print(f"Interaction statistics {kind}: processing identity "
                       f"{completed}/{len(interactions)} | elapsed {perf_counter()-kind_started:.1f} s",
@@ -246,15 +314,18 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                         pt,
                         ls,
                         cfg,
-                        draws,
+                        local_draws,
                         rng,
                         weight_cache,
                         (system, repout.name),
                         zero_meta_cache,
+                        seed if selectors is not None else None,
                     )
                     repdata[(system, repout.name)] = (boot, meta)
                     for metric, values in boot.items():
-                        lo, hi = _ci(values, level)
+                        if metric not in selected_metrics:
+                            continue
+                        lo, hi = _ci(values, level) if metric_infer[metric] else (np.nan, np.nan)
                         rep_rows.append({
                             "system": system,
                             "replicate": repout.name,
@@ -272,7 +343,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                                              "n_event_starts",
                                              "n_completed_events"
                                          )},
-                                         "bootstrap_draws": draws, "ci_level": level})
+                                         "bootstrap_draws": local_draws if metric_infer[metric] else 0, "ci_level": level})
             sys_boot = {}
             for system, reps in system_repouts.items():
                 items = [(
@@ -290,13 +361,15 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                     "total_lifetime_ps"
                 ):
                     valid = [(rep, data) for rep, data in items if np.isfinite(data[1][metric])]
-                    if not valid:
+                    if not valid or metric not in selected_metrics:
                         continue
+                    infer_metric = metric_infer[metric]
                     combine = "median" if metric == "median_lifetime_ps" else "mean"
                     boot = _hierarchical(
                         [x[1][0][metric] for x in valid],
-                        system_draws,
-                        rng,
+                        local_system_draws if infer_metric else 0,
+                        (rng if selectors is None else
+                         _selected_rng(seed, "hierarchy", kind, interaction, system, metric)),
                         combine,
                         resample
                     )
@@ -314,7 +387,7 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                                      "median": float(np.median(points)),
                                      "mean_ci_low": lo, "mean_ci_high": hi, **_range_meta(
                                          [x[1][1] for x in valid]
-                                     ), "bootstrap_draws": system_draws, "ci_level": level})
+                                     ), "bootstrap_draws": local_system_draws if infer_metric else 0, "ci_level": level})
             available = [s for s in system_repouts if s in sys_boot]
             for s1, s2 in combinations(available, 2):
                 for metric in sorted(set(sys_boot[s1]) & set(sys_boot[s2])):
@@ -344,8 +417,9 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                         delta = _hierarchical_difference(
                             rep_draws_1,
                             rep_draws_2,
-                            system_draws,
-                            rng,
+                            local_system_draws if metric_infer[metric] else 0,
+                            (rng if selectors is None else
+                             _selected_rng(seed, "paired", kind, interaction, s1, s2, metric)),
                             reducer,
                             resample,
                         )
@@ -367,14 +441,20 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
                         "interaction_type": kind,
                         "interaction": interaction,
                         "metric": metric,
-                                  "difference_system2_minus_system1": (float(np.nanmean(delta)) if system_draws
+                                  "difference_system2_minus_system1": (float(np.nanmean(delta)) if local_system_draws and metric_infer[metric] and len(delta)
                                       else _point_difference(amap, bmap, paired,
                                             "median" if metric == "median_lifetime_ps" else "mean")),
                                   "difference_ci_low": lo, "difference_ci_high": hi,
                                   "probability_difference_gt_0": pgt,
                                   "probability_difference_lt_0": plt,
-                                  "p_value": _permutation(amap, bmap, cfg, rng),
-                                  "bootstrap_draws": system_draws, "ci_level": level})
+                                  "p_value": (_permutation(
+                                      amap, bmap, cfg,
+                                      rng if selectors is None else
+                                      _selected_rng(seed, "permutation", kind, interaction,
+                                                    s1, s2, metric))
+                                      if metric_tests[metric] else np.nan),
+
+                                  "bootstrap_draws": local_system_draws if metric_infer[metric] else 0, "ci_level": level})
         if detail_enabled:
             detail["kinds"].append({
                 "kind": kind, "unique_identities": len(interactions),

@@ -860,6 +860,8 @@ def validate_config(cfg: dict, base: Path = Path("."), *, check_paths: bool = Tr
     if not isinstance(excluded, list) or any(not isinstance(value, str) for value in excluded):
         raise ValueError("plots.interaction_exclude_kinds must be a list")
     stats = cfg.get("statistics", {})
+    from .statistics_selection import validate_metric_selection
+    validate_metric_selection(stats)
     for field in ("block", "hypothesis_tests"):
         if stats.get(field) is not None and not isinstance(stats[field], dict):
             raise ValueError(f"statistics.{field} must be a mapping")
@@ -1009,6 +1011,10 @@ def statistics_family_config(cfg, family):
     option = {"enabled": option} if isinstance(option, bool) else option
     if not stats.get("enabled", True) or not option.get("enabled", True):
         return None
+    if family in {"time_series", "interactions", "profiles", "solvation_rdfs", "diffusion", "coupling"}:
+        selection = stats.get("metric_selection")
+        if selection is not None and selection.get(family) == []:
+            return None
     if not option and stats.get("bootstrap", True):
         return cfg
     result = deepcopy(cfg)

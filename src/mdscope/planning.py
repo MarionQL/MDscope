@@ -13,6 +13,7 @@ from typing import Any
 from .config import analysis_runs, iter_replicates, plot_enabled, statistics_family_config
 from .registry import analysis_output_plan, required_artifacts, artifact_schema
 from .statistics_families import STATISTICS_FAMILIES
+from .statistics_selection import ESTIMATOR_FLAGS
 
 
 # Interpretation of coordinates, not a claim about PBC or bulk density.
@@ -82,6 +83,32 @@ REQUIRED_TOPOLOGY = {
 
 # File names below come from the current statistics writers. They are possible
 # products, not completeness requirements: some are only written with data.
+# Minimal writer-verified statistical identity and supported estimator catalog.
+# Figure patterns are conditional, never guaranteed concrete figure IDs.
+STATISTICS_METRIC_CONTRACTS = {
+    "time_series": (["group", "metric"], "per-replica observable",
+                    ["temporal_summary", "block_bootstrap", "hierarchical_ci",
+                     "replicate_permutation", "bh_fdr"], ["time_series:{metric}:{variant}"]),
+    "profiles": (["profile"], "per-replica position within profile",
+                 ["position_summary", "temporal_block_bootstrap",
+                  "hierarchical_ci", "replicate_permutation", "bh_fdr"],
+                 ["profiles:{profile}:{variant}"]),
+    "interactions": (["kind", "interaction", "metric"], "per-replica interaction metric",
+                     ["occupancy_and_event_summary", "block_bootstrap",
+                      "hierarchical_ci", "replicate_permutation", "bh_fdr"],
+                     ["interactions:{kind}:{variant}",
+                      "interactions:{kind}:{metric}:{variant}"]),
+    "solvation_rdfs": (["solvent", "target_class", "site_class"],
+                       "per-replica radial bin",
+                       ["descriptive_mean_sd", "shell_replicate_contrast"],
+                       ["solvation:shell_rdf"]),
+    "diffusion": (["metric"], "per-replica shared-lag slope",
+                  ["shared_lag_fit", "replicate_contrast"],
+                  ["diffusion:diffusion_coefficients"]),
+    "coupling": (["mechanism"], "per-replica mechanism pair",
+                 ["block_correlation", "replicate_contrast"], []),
+}
+
 STATISTICS_CANDIDATES = {
     "time_series": ("replicate_statistics.parquet", "autocorrelation.parquet",
                     "system_statistics.parquet", "system_comparisons.parquet",
@@ -253,6 +280,70 @@ def build_plan(cfg: dict, config_path: str | Path, *,
                       for file in STATISTICS_CANDIDATES[family]],
             "files_status": "conditional_candidates_from_statistics_writers",
             "independent_condition_units": "simulation_replicates",
+            "candidate_source_runs": [
+                {
+                    "analysis": item["analysis"],
+                    "run_id": item["run_id"],
+                    "selection_inputs": item["selection_inputs"],
+                    "status": "candidate; exact metric identity requires saved data",
+                }
+                for item in selected
+                if family in (ANALYSIS_METADATA.get(item["analysis"], ("", (), ()))[1])
+            ],
+            "metric_contract": {
+                "identity_fields": STATISTICS_METRIC_CONTRACTS[family][0],
+                "row_grain": STATISTICS_METRIC_CONTRACTS[family][1],
+                "supported_estimators": STATISTICS_METRIC_CONTRACTS[family][2],
+                "figure_id_patterns": STATISTICS_METRIC_CONTRACTS[family][3],
+                "figure_ids_status": "conditional; exact dynamic IDs require saved data",
+                "output_columns_status": "identity fields only; complete writer schema not catalogued",
+                "raw_analysis_independent": True,
+                "figure_selection_independent": True,
+                "descriptive_selection": "included_identity",
+                "inferential_selection": "per_entry_inference_boolean_default_true",
+                "independent_estimator_toggles": sorted(ESTIMATOR_FLAGS[family]),
+                "estimator_flag_default": "inference:true (legacy); specific flags override",
+                "unsupported_estimator_policy": "reject_before_execution",
+                "unavailable_estimate_policy": "nullable_ci_p_and_q_not_fabricated",
+                "eligibility_requirements": {
+                    "replicate_independence": "simulation_replicates",
+                    "temporal": ("correlated_frames; full_grid_and_valid_blocks_required"
+                                 if family in {"time_series", "profiles", "interactions"}
+                                 else "not_a_framewise_bootstrap"),
+                    "between_condition_ci": (
+                        "complete_eligible_replicates; paired/unpaired design honored"
+                    ),
+                    "dynamic_ids": "requires_saved_data; schema_only_candidates",
+                },
+                "configured_statistical_figure_ids": [
+                    identifier for identifier in (cfg.get("plots", {}).get("include") or [])
+                    if identifier.split(":", 1)[0] == (
+                        "solvation" if family == "solvation_rdfs" else family
+                    )
+                ],
+            },
+            "metric_selection": (
+                cfg.get("statistics", {}).get("metric_selection", {}).get(family)
+                if family in {"time_series", "interactions", "profiles",
+                               "solvation_rdfs", "diffusion", "coupling"} and
+                cfg.get("statistics", {}).get("metric_selection") is not None
+                else None
+            ),
+            "metric_identity": (
+                ["group", "metric"] if family == "time_series"
+                else ["kind", "interaction", "metric"] if family == "interactions"
+                else ["profile"] if family == "profiles"
+                else ["solvent", "target_class", "site_class"] if family == "solvation_rdfs"
+                else ["metric"] if family == "diffusion"
+                else ["mechanism"] if family == "coupling"
+                else None
+            ),
+            "metric_identity_status": (
+                "saved_data_dependent; no dynamic identities invented"
+                if family in {"time_series", "interactions", "profiles",
+                               "solvation_rdfs", "diffusion", "coupling"}
+                else "not_yet_registered"
+            ),
         })
     if (cfg.get("statistics", {}).get("matched_window_ps") is not None and
             statistics_family_config(cfg, "time_series") is not None):
@@ -345,3 +436,104 @@ def build_plan(cfg: dict, config_path: str | Path, *,
             "Missing/unavailable numerical values must not be silently treated as measured zeros.",
         ],
     }
+
+
+# Writer-owned saved identity columns. This mapping is for reading existing
+# statistics, not an alternate identity or output schema.
+SAVED_STATISTICS_IDENTITY = {
+    "time_series": ("replicate_statistics.parquet", ("group", "metric")),
+    "profiles": ("replicate_profile_statistics.parquet", ("profile",)),
+    "interactions": (
+        "replicate_interaction_metrics.parquet",
+        ("interaction_type", "interaction", "metric"),
+    ),
+    "solvation_rdfs": (
+        "replicate_rdf.parquet", ("solvent", "target_class", "site_class"),
+    ),
+    "diffusion": ("replicate_common_lag_slopes.parquet", ("metric",)),
+    "coupling": ("replicate_correlations.parquet", ("mechanism",)),
+}
+
+
+def inspect_saved_statistics(root: str | Path, *, max_identities: int = 256) -> dict:
+    """Inspect completed statistics read-only; bound high-cardinality discovery.
+
+    Schemas come from actual Parquet metadata, not an independently maintained
+    GUI column list. Only identity columns are scanned, stopping at the cap.
+    """
+    import json
+    import pyarrow.parquet as pq
+
+    if max_identities < 1:
+        raise ValueError("max_identities must be positive")
+    dest = Path(root) / "project_summary" / "statistics"
+    manifest_file = dest / "manifest.json"
+    if not manifest_file.is_file():
+        raise FileNotFoundError(f"No saved statistics manifest: {manifest_file}")
+    manifest = json.loads(manifest_file.read_text())
+    if manifest.get("status") != "complete":
+        raise ValueError("Statistics are incomplete; cannot claim an output catalog")
+    result = {}
+    for family, (identity_file, columns) in SAVED_STATISTICS_IDENTITY.items():
+        folder = dest / STATISTICS_DIRS[family]
+        files = {}
+        for path in sorted(folder.glob("*.parquet")):
+            info = pq.ParquetFile(path)
+            schema = info.schema_arrow
+            files[path.name] = {
+                "columns": schema.names,
+                "column_types": {
+                    field.name: str(field.type) for field in schema
+                },
+                "rows": info.metadata.num_rows,
+                "path": str(path.relative_to(Path(root))),
+                "row_grain": (
+                    STATISTICS_METRIC_CONTRACTS[family][1]
+                    if path.name == identity_file else None
+                ),
+                "row_grain_status": (
+                    "family_identity_source"
+                    if path.name == identity_file else "not_verified_per_file"
+                ),
+            }
+        source = folder / identity_file
+        if not source.is_file():
+            result[family] = {"status": "not_materialized",
+                              "files": files, "identities": [],
+                              "identities_truncated": False}
+            continue
+        reader = pq.ParquetFile(source)
+        available = set(reader.schema_arrow.names)
+        if not set(columns) <= available:
+            raise ValueError(f"Saved statistics {source} lacks identity columns")
+        identities = []
+        seen = set()
+        truncated = False
+        for batch in reader.iter_batches(batch_size=4096, columns=list(columns)):
+            for row in zip(*(batch.column(i).to_pylist()
+                             for i in range(len(columns)))):
+                identity = tuple(None if item is None else str(item) for item in row)
+                if identity in seen:
+                    continue
+                if len(identities) >= max_identities:
+                    truncated = True
+                    break
+                seen.add(identity)
+                identities.append({
+                    **dict(zip(columns, identity)),
+                    "id": (f"statistics:{family}:"
+                           + json.dumps(identity, separators=(",", ":"), ensure_ascii=False)),
+                })
+            if truncated:
+                break
+        result[family] = {
+            "status": "saved",
+            "identity_columns": list(columns),
+            "identity_id_format": "statistics:<family>:<JSON array of persisted identity values>",
+            "source_analysis_run_status": "not inferred from statistics rows; see plan candidate_source_runs",
+            "identities": identities,
+            "identities_truncated": truncated,
+            "files": files,
+        }
+    return {"status": "complete", "families": result,
+            "identity_limit": max_identities}

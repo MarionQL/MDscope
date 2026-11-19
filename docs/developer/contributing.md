@@ -2,6 +2,25 @@
 
 **Rule:** one implementation per operation; preserve scientifically different contracts even when code looks similar. Prefer net simplification.
 
+## Branches and pull requests
+
+Use **GitHub Flow**: `main` is the integration branch; each issue or focused change uses a short-lived branch from `main` (for example, `feat/statistics-metric-selection-179` or `fix/resume-cache-123`). Open a PR, run relevant checks, review the diff, then squash-merge. Do not commit incomplete work directly to `main`, create long-lived `develop` branches, or merge failing changes. Update a PR branch against `main` when needed; resolve conflicts by verifying both behaviors and rerunning affected tests. Delete merged branches.
+
+## Issue tracking
+
+- Title format: `[P0-P3][Area] Imperative, testable outcome` (example: `[P1][Statistics] Select inference per metric`). Use P0 for blocking correctness/data loss, P1 for important defects or required capabilities, P2 for routine improvements, and P3 for low-priority polish.
+- One issue = one observable outcome. Include **goal**, **current behavior**, **acceptance criteria**, **scope/non-goals**, and any dependencies or reproducible examples. Avoid speculative implementation details.
+- Use existing `bug`/`enhancement` labels and established area labels; do not create near-duplicate labels. Link PRs with `Closes #N` only when all acceptance criteria are met; otherwise use `Refs #N` and state remaining work.
+- Use GitHub Projects for prioritization only when a shared board is actively maintained; issues/PRs remain authoritative. Milestones are for actual releases, not arbitrary work buckets.
+
+## Avoid codebase bloat
+
+- **Dead paths:** remove superseded functions, unused exports, stale branches and their tests when changing behavior.
+- **Defensive noise:** validate at boundaries; do not add redundant guards or broad `except` blocks that suppress real errors.
+- **Duplication:** reuse existing utilities rather than copying similar implementations; preserve genuinely different scientific estimators.
+- **Dependencies:** prefer the standard library and installed packages; justify new packages and avoid overlapping functionality.
+- **Scope and docs:** do not add unrequested features, configuration options, wrappers, or lengthy commentary. Update the authoritative short guide and delete obsolete wording.
+
 ## Where code belongs
 
 | Module | Owns |

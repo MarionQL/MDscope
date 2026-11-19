@@ -130,7 +130,14 @@ def _schema(defaults):
     _extend(stats, bootstrap=None, scalar_window_ps=None,
             matched_window_ps=None, interaction_min_occupancy=None,
             interaction_include_kinds=None, interaction_exclude_kinds=None,
-            interaction_progress_every=None, adaptive_hierarchy=None)
+            interaction_progress_every=None, adaptive_hierarchy=None,
+            metric_selection={"time_series": [{"metric": None, "group": None, "inference": None, "ci": None, "hypothesis_tests": None}],
+                              "interactions": [{"kind": None, "interaction": None, "metric": None, "inference": None, "ci": None, "hypothesis_tests": None}],
+                              "profiles": [{"profile": None, "inference": None, "ci": None, "hypothesis_tests": None}],
+                              "solvation_rdfs": [{"solvent": None, "target_class": None,
+                                                  "site_class": None, "inference": None, "ci": None}],
+                              "diffusion": [{"metric": None, "inference": None, "ci": None}],
+                              "coupling": [{"mechanism": None, "inference": None, "ci": None}]})
     stats["hierarchy"]["enabled"] = None
     family = {
         "enabled": None, "bootstrap": None, "bootstrap_draws": None,

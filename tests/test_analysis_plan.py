@@ -210,3 +210,117 @@ def test_implicit_hydration_uses_complete_analysis_descriptor(tmp_path, project)
     assert hydration["plot_family_eligibility"]
     assert set(hydration) == set(next(
         item for item in plan["analyses"] if item["analysis"] == "rmsd"))
+
+
+def test_schema_only_statistics_metric_contracts_are_discoverable(tmp_path, project):
+    path, root = project("plan_metric_selection")
+    cfg = yaml.safe_load(path.read_text())
+    cfg["statistics"]["metric_selection"] = {
+        "time_series": [{"group": "PROA", "metric": "rmsd_A"}],
+        "profiles": [],
+        "interactions": [{"kind": "salt_bridges", "metric": "occupancy"}],
+        "solvation_rdfs": [],
+        "diffusion": [],
+        "coupling": [],
+    }
+    path.write_text(yaml.safe_dump(cfg))
+    plan = build_plan(load_config(path, check_paths=False), path)
+    families = {row["family"]: row for row in plan["statistics_families"]}
+    assert families["profiles"]["status"] == "disabled"
+    assert families["time_series"]["metric_selection"] == [
+        {"group": "PROA", "metric": "rmsd_A"}]
+    assert families["interactions"]["metric_contract"]["identity_fields"] == [
+        "kind", "interaction", "metric"
+    ]
+    assert "bh_fdr" in families["interactions"]["metric_contract"]["supported_estimators"]
+    assert "shell_replicate_contrast" in families["solvation_rdfs"]["metric_contract"]["supported_estimators"]
+    assert all(
+        row["metric_identity_status"].startswith("saved_data_dependent")
+        for family, row in families.items()
+        if family in {"time_series", "interactions", "profiles",
+                      "solvation_rdfs", "diffusion", "coupling"}
+    )
+    assert not root.exists()
+
+
+def test_schema_only_metric_contract_includes_sources_and_inferential_figures(tmp_path, project):
+    path, root = project("metric_catalog")
+    cfg = yaml.safe_load(path.read_text())
+    cfg["statistics"]["metric_selection"] = {
+        "time_series": [{"group": "PROA", "metric": "rmsd_A", "inference": False}]
+    }
+    cfg["plots"]["include"] = ["time_series:rmsd_A:comparison_table"]
+    path.write_text(yaml.safe_dump(cfg))
+    plan = build_plan(load_config(path, check_paths=False), path)
+    by_family = {row["family"]: row for row in plan["statistics_families"]}
+    chosen = by_family["time_series"]
+    assert chosen["metric_contract"]["inferential_selection"] == (
+        "per_entry_inference_boolean_default_true"
+    )
+    assert chosen["metric_contract"]["configured_statistical_figure_ids"] == [
+        "time_series:rmsd_A:comparison_table"
+    ]
+    assert any(item["analysis"] == "rmsd" and item["run_id"] == "default"
+               for item in chosen["candidate_source_runs"])
+    assert "replicate_independence" in chosen["metric_contract"]["eligibility_requirements"]
+    assert not root.exists()
+
+
+def test_metric_estimator_flags_validate_through_real_yaml_schema(tmp_path, project):
+    path, _ = project("metric_estimator_flags")
+    cfg = yaml.safe_load(path.read_text())
+    cfg["statistics"]["metric_selection"] = {
+        "time_series": [{"group": "PROA", "metric": "rmsd_A",
+                         "ci": False, "hypothesis_tests": True}],
+        "solvation_rdfs": [{"solvent": "water", "target_class": "protein",
+                            "site_class": "acidic", "ci": False}],
+    }
+    path.write_text(yaml.safe_dump(cfg))
+    resolved = load_config(path, check_paths=False)
+    plan = build_plan(resolved, path)
+    by_family = {row["family"]: row for row in plan["statistics_families"]}
+    assert set(by_family["time_series"]["metric_contract"]["independent_estimator_toggles"]) == {
+        "ci", "hypothesis_tests"
+    }
+    assert by_family["solvation_rdfs"]["metric_contract"]["independent_estimator_toggles"] == ["ci"]
+    cfg["statistics"]["metric_selection"]["solvation_rdfs"][0]["hypothesis_tests"] = True
+    path.write_text(yaml.safe_dump(cfg))
+    with pytest.raises(ValueError, match="metric_selection"):
+        load_config(path, check_paths=False)
+
+
+def test_saved_statistics_catalog_reads_real_parquet_schema_and_bounds_identities(tmp_path):
+    import pandas as pd
+    from mdscope.planning import inspect_saved_statistics
+    folder = tmp_path / "project_summary/statistics"
+    folder.mkdir(parents=True)
+    (folder / "manifest.json").write_text(json.dumps({"status": "complete"}))
+    source = folder / "time_series/replicate_statistics.parquet"
+    source.parent.mkdir()
+    pd.DataFrame({
+        "group": ["PROA", "PROA", "PROB", "PROB"],
+        "metric": ["rmsd_A", "rmsd_A", "rmsd_A", "radius_of_gyration_A"],
+        "mean_ci_low": [1., 1.5, 2., 3.],
+        "bootstrap_draws": [20, 20, 20, 20],
+    }).to_parquet(source)
+    result = inspect_saved_statistics(tmp_path, max_identities=2)
+    item = result["families"]["time_series"]
+    assert item["status"] == "saved"
+    assert len(item["identities"]) == 2
+    assert item["identities_truncated"]
+    assert item["identities"][0]["id"] == 'statistics:time_series:["PROA","rmsd_A"]'
+    assert item["identities"][0]["group"] == "PROA"
+    assert len({row["id"] for row in item["identities"]}) == 2
+    assert item["identity_columns"] == ["group", "metric"]
+    assert "mean_ci_low" in item["files"][source.name]["columns"]
+    assert item["files"][source.name]["rows"] == 4
+    assert item["files"][source.name]["column_types"]["mean_ci_low"] == "double"
+    assert item["files"][source.name]["column_types"]["bootstrap_draws"] == "int64"
+    assert item["files"][source.name]["row_grain"] == "per-replica observable"
+    assert item["files"][source.name]["row_grain_status"] == "family_identity_source"
+    assert result["families"]["profiles"]["status"] == "not_materialized"
+    with pytest.raises(ValueError, match="max_identities"):
+        inspect_saved_statistics(tmp_path, max_identities=0)
+    (folder / "manifest.json").write_text(json.dumps({"status": "running"}))
+    with pytest.raises(ValueError, match="incomplete"):
+        inspect_saved_statistics(tmp_path)
