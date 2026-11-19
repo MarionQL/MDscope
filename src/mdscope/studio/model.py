@@ -48,6 +48,17 @@ def _atomic_edit(document, choices, operation, *args, **kwargs):
         choices.update(draft_choices)
 
 
+def replace_global_selections(document, edited):
+    """Replace global keys while retaining named groups; fail without mutation."""
+    if not isinstance(edited, dict):
+        raise ValueError("Selections must be a mapping")
+    if "groups" in edited:
+        raise ValueError("Use the named group editor for groups")
+    candidate = deepcopy(document)
+    previous = candidate.setdefault("selections", {}).get("groups", {})
+    candidate["selections"] = {**deepcopy(edited), "groups": deepcopy(previous)}
+    commit_draft(document, candidate)
+
 def change_group(document, old_id, new_id=None, *, duplicate=False, choices=None):
     return _atomic_edit(document, choices, _change_group, old_id, new_id,
                         duplicate=duplicate)
