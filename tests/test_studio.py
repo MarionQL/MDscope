@@ -222,3 +222,10 @@ def test_topology_required_export_invalidates_after_selection_edit(project, monk
     assert any("zero" in item.value for item in at.error)
     assert not at.get("download_button")
     assert not root.exists()
+
+
+def test_guided_family_fields_reuse_backend_estimator_capabilities():
+    from mdscope.studio.model import statistics_selector_fields
+    assert statistics_selector_fields("profiles") == ["profile", "inference", "ci", "hypothesis_tests"]
+    assert statistics_selector_fields("solvation_rdfs") == ["solvent", "target_class", "site_class", "inference", "ci"]
+    assert "hypothesis_tests" not in statistics_selector_fields("diffusion")

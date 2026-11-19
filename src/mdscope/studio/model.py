@@ -123,3 +123,11 @@ def topology_preflight(document, base):
     from ..core.validation import validate_selections
     cfg = resolve_config(document, base=Path(base))
     return validate_selections(cfg, Path(base))
+
+
+def statistics_selector_fields(family):
+    """Guided table columns from backend identity and estimator contracts."""
+    from ..statistics_selection import SIMPLE_FAMILY_KEYS, ESTIMATOR_FLAGS
+    keys = (("kind", "interaction", "metric") if family == "interactions"
+            else SIMPLE_FAMILY_KEYS[family])
+    return [*keys, "inference", *sorted(ESTIMATOR_FLAGS[family])]

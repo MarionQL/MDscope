@@ -235,10 +235,25 @@ def main():
                     known = {(var["metric"], var["group"]) for var in plan["observable_contracts"]}
                     selectors["time_series"] = entries + [item for item in selectors.get("time_series", [])
                                                              if (item["metric"], item.get("group")) not in known]
-                    advanced = yaml_editor("Exact metric selectors for all families (advanced)",
-                                           {key: val for key, val in selectors.items() if key != "time_series"}, "stats:selectors")
-                    if not isinstance(advanced, dict) or "time_series" in advanced:
-                        raise ValueError("Use the controls above for time_series selectors")
+                    from mdscope.studio.model import statistics_selector_fields
+                    import pandas as pd
+                    advanced = {}
+                    for family in studio_metric_selection_defaults():
+                        if family == "time_series":
+                            continue
+                        with st.expander(f"{family} · exact variable selectors"):
+                            st.caption("Add one row per exact backend variable identity. Empty table selects none. Dynamic identities remain unverified until supported data/topology inspection.")
+                            fields = statistics_selector_fields(family)
+                            source = pd.DataFrame(selectors.get(family, []), columns=fields)
+                            columns = {field: st.column_config.CheckboxColumn(field, default=True)
+                                       for field in fields if field in {"inference", "ci", "hypothesis_tests"}}
+                            edited = st.data_editor(source, num_rows="dynamic", hide_index=True,
+                                                    column_config=columns,
+                                                    key=f"stats:table:{family}")
+                            advanced[family] = [
+                                {key: value for key, value in row.items() if pd.notna(value)}
+                                for row in edited.to_dict("records")
+                            ]
                     stats["metric_selection"] = {"time_series": selectors["time_series"], **advanced}
                     controls = yaml_editor("CI / block / test settings", {key: val for key, val in stats.items()
                                                                          if key not in {"enabled", "metric_selection"}}, "stats:settings") or {}
