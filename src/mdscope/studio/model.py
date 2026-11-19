@@ -36,7 +36,36 @@ def import_document(text):
     return raw
 
 
+
+def _atomic_edit(document, choices, operation, *args, **kwargs):
+    """Apply a lifecycle edit only after all validation/reconciliation succeeds."""
+    draft = deepcopy(document)
+    draft_choices = deepcopy(choices) if choices is not None else None
+    operation(draft, *args, choices=draft_choices, **kwargs)
+    commit_draft(document, draft)
+    if choices is not None:
+        choices.clear()
+        choices.update(draft_choices)
+
+
 def change_group(document, old_id, new_id=None, *, duplicate=False, choices=None):
+    return _atomic_edit(document, choices, _change_group, old_id, new_id,
+                        duplicate=duplicate)
+
+
+def delete_named_run(document, name, run_id, *, choices=None):
+    return _atomic_edit(document, choices, _delete_named_run, name, run_id)
+
+
+def clear_named_runs(document, name, *, choices=None):
+    return _atomic_edit(document, choices, _clear_named_runs, name)
+
+
+def delete_system(document, system_id, *, choices=None):
+    return _atomic_edit(document, choices, _delete_system, system_id)
+
+
+def _change_group(document, old_id, new_id=None, *, duplicate=False, choices=None):
     """Rename/duplicate/delete while migrating only actual shared-group callers."""
     from ..config import merge
     from ..planning import authoring_catalog
@@ -194,7 +223,7 @@ def statistics_selector_fields(family):
     return [*keys, "inference", *sorted(ESTIMATOR_FLAGS[family])]
 
 
-def delete_named_run(document, name, run_id, *, choices=None):
+def _delete_named_run(document, name, run_id, *, choices=None):
     """Delete a run and its catalogued selectors; reject dangling references."""
     from ..config import MULTI_RUN_ANALYSES
     if name not in MULTI_RUN_ANALYSES:
@@ -219,7 +248,7 @@ def delete_named_run(document, name, run_id, *, choices=None):
     del runs[run_id]
 
 
-def clear_named_runs(document, name, *, choices=None):
+def _clear_named_runs(document, name, *, choices=None):
     """Return to the default run without retaining removed-run selections."""
     from ..config import MULTI_RUN_ANALYSES
     if name not in MULTI_RUN_ANALYSES:
@@ -305,7 +334,7 @@ def add_system(document, system_id):
         {"label": "rep1", "trajectory": "rep1.xtc"}]}
 
 
-def delete_system(document, system_id, *, choices=None):
+def _delete_system(document, system_id, *, choices=None):
     """Remove condition-owned figures without changing shared figure choices."""
     from ..config import merge
     from ..planning import authoring_catalog
