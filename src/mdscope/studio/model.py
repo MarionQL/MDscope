@@ -409,33 +409,6 @@ def unavailable_exact_statistics(document, plan):
     ]
 
 
-def statistics_selection_mode(document):
-    """Legacy means unrestricted backend selection; exact preserves family keys."""
-    return ("legacy" if document.get("statistics", {}).get("metric_selection") is None
-            else "exact")
-
-def switch_statistics_selection_mode(document, mode, *, saved_exact=None):
-    """Atomic reversible mode transition; never enumerate dynamic identities."""
-    if mode not in {"legacy", "exact"}:
-        raise ValueError("Statistics selection mode must be legacy or exact")
-    from ..statistics_selection import validate_metric_selection
-    stats = document.get("statistics", {})
-    previous = deepcopy(stats.get("metric_selection"))
-    if mode == "legacy":
-        candidate = None
-    elif saved_exact is not None:
-        candidate = deepcopy(saved_exact)
-    elif previous is not None:
-        candidate = previous
-    else:
-        # An unrestricted legacy import has no finite exact allowlist. Start
-        # empty rather than silently opting in every dynamic variable.
-        candidate = studio_metric_selection_defaults()
-    if candidate is not None:
-        validate_metric_selection({**stats, "metric_selection": candidate})
-    document.setdefault("statistics", {})["metric_selection"] = candidate
-    return previous
-
 def statistics_family_mode(document, family):
     """Return 'all', 'none', or 'exact' without enumerating dynamic identities.
 
