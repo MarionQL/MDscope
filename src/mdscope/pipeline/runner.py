@@ -612,10 +612,13 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
         # that is required to establish the provenance of existing products.
         from ..studio.model import inspect_results_directory
         inventory = inspect_results_directory(cfg, Path(config_path).resolve().parent, root)
+        # The inventory includes saved-only analyses discovered from the
+        # persisted configuration as well as currently scheduled analyses.
+        # Require complete coverage before offline finalization can consume
+        # either class of product.
         expected = {
-            (entry.name, entry.run_id or "default", rep.system, rep.label)
-            for rep in iter_replicates(cfg, config_path)
-            for entry in analysis_output_plan(cfg, root / rep.system / rep.label)
+            (row["analysis"], row["run_id"], row["condition"], row["replica"])
+            for row in inventory
         }
         by_key = {
             (row["analysis"], row["run_id"], row["condition"], row["replica"]): row
