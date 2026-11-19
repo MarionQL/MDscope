@@ -209,6 +209,8 @@ def main():
                     show_outputs(plan, name, doc, base)
                     figures = [fig for var in plan["observable_contracts"] if var["analysis"] == name
                                for fig in var["figures"] if not fig["requires_statistics"]]
+                    figures.extend(fig for analysis in plan["analyses"] if analysis["analysis"] == name
+                                   for fig in analysis.get("descriptive_figures", []))
                     if exact_figures:
                         state.choices[name] = figure_picker(figures, f"figure:{name}", state.choices.get(name, (doc.get("plots", {}).get("include") or []) if doc.get("plots", {}).get("enabled") else []))
                     if not figures:
@@ -277,6 +279,8 @@ def main():
                         for family in plan["statistics_families"]:
                             st.json({key: family[key] for key in ("family", "files", "metric_contract")
                                      if key in family})
+                    from mdscope.planning import statistical_figure_candidates
+                    figures.extend(statistical_figure_candidates(resolve_config(doc)))
                     if exact_figures:
                         state.choices["statistics"] = figure_picker(figures, "figure:statistics", state.choices.get("statistics", (doc.get("plots", {}).get("include") or []) if doc.get("plots", {}).get("enabled") else []))
             except (ValueError, TypeError, KeyError, yaml.YAMLError) as exc:

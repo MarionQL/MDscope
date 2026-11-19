@@ -238,3 +238,37 @@ def test_dssp_card_contract_matches_writer_fields():
     assert schema["columns"] == ["time_ps", "topology_residue_index", "residue", "dssp"]
     assert schema["row_grain"] == "one residue per analyzed frame per replicate"
     assert schema["units"]["time_ps"] == "ps"
+
+
+def test_interaction_card_schema_matches_empty_producer():
+    import numpy as np
+    from pathlib import Path
+    from mdscope.registry import FusedOutput, artifact_schema
+    from mdscope.interactions.lipid_hydrogen_bonds import tabulate_events
+    expected = tabulate_events(np.empty((0, 6)), None, [], [])
+    schema = artifact_schema(FusedOutput("lipid_hydrogen_bonds", Path("events.parquet")), Path("events.parquet"))
+    assert schema["columns"] == list(expected.columns)
+
+
+def test_descriptive_interaction_figures_follow_lifetime_control():
+    from mdscope.planning import analysis_figure_candidates
+    cfg = resolve_config(new_document())
+    assert [item["id"] for item in analysis_figure_candidates(cfg, "hydrogen_bonds")] == [
+        "interactions:hydrogen_bonds:occupancy_heatmap"]
+    cfg["analyses"]["lifetimes"]["enabled"] = True
+    candidates = analysis_figure_candidates(cfg, "hydrogen_bonds")
+    assert candidates[-1]["id"] == "interactions:hydrogen_bonds:lifetime_distribution"
+    assert not any(item["requires_statistics"] for item in candidates)
+
+
+def test_nonstructural_statistical_figures_survive_export(tmp_path):
+    from mdscope.planning import statistical_figure_candidates
+    doc = new_document()
+    doc["statistics"]["enabled"] = True
+    doc["statistics"]["metric_selection"]["profiles"] = [{"profile": "sasa_mean"}]
+    doc["statistics"]["metric_selection"]["interactions"] = [{"kind": "hydrogen_bonds", "metric": "occupancy"}]
+    figures = statistical_figure_candidates(resolve_config(doc))
+    assert all(item["requires_statistics"] for item in figures)
+    chosen = "interactions:hydrogen_bonds:occupancy:comparison_table"
+    raw = yaml.safe_load(review(doc, tmp_path, {"statistics": [chosen]})[0])
+    assert raw["plots"]["include"] == [chosen]

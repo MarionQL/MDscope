@@ -89,6 +89,8 @@ def review(document, base, choices=None):
                 for item in selected_stats)
             for fig in var["figures"] if fig["requires_statistics"]
         }
+        from ..planning import statistical_figure_candidates
+        eligible["statistics"].update(fig["id"] for fig in statistical_figure_candidates(cfg))
         ids = []
         for owner, selected in choices.items():
             active = (cfg["statistics"].get("enabled") if owner == "statistics"

@@ -241,6 +241,7 @@ def build_plan(cfg: dict, config_path: str | Path, *,
                     for family in candidate_figures
                 ],
                 "artifact_catalog_status": status,
+                "descriptive_figures": analysis_figure_candidates(cfg, name),
             })
 
     # Hydration can be implicitly scheduled by enabled SDC4 sugar-water metrics.
@@ -268,6 +269,7 @@ def build_plan(cfg: dict, config_path: str | Path, *,
                 for family in meta[2]
             ],
             "artifact_catalog_status": "registered_implicit",
+            "descriptive_figures": analysis_figure_candidates(cfg, "hydration"),
         })
 
     project_statistics = []
@@ -750,3 +752,33 @@ def inspect_saved_plot_ids(cfg: dict, root: str | Path, config_path: str | Path,
         "truncated": truncated,
         "max_identities": max_identities,
     }
+
+
+def analysis_figure_candidates(cfg, name):
+    """Writer-supported descriptive figure candidates, without saved-data reads."""
+    identifiers = []
+    if name in {"hydrogen_bonds", "lipid_hydrogen_bonds", "salt_bridges"}:
+        identifiers.append(f"interactions:{name}:occupancy_heatmap")
+        if cfg["analyses"].get("lifetimes", {}).get("enabled", True):
+            identifiers.append(f"interactions:{name}:lifetime_distribution")
+    if name == "solvation":
+        identifiers.extend(["solvation:water_and_ions", "solvation:contact_survival"])
+    return [dict(describe_plot(identifier), requires_statistics=False,
+                 availability="conditional_on_saved_data") for identifier in identifiers]
+
+
+def statistical_figure_candidates(cfg):
+    """Exact configured identities only; unknown interaction metrics stay unresolved."""
+    selection = cfg.get("statistics", {}).get("metric_selection") or {}
+    identifiers = []
+    for entry in selection.get("profiles", []) or []:
+        stem = safe_plot_stem(entry["profile"])
+        identifiers.extend(f"profiles:{stem}:{variant}" for variant in
+                           ("profile", "distribution", "system_difference", "comparison_table", "bootstrap_table"))
+    for entry in selection.get("interactions", []) or []:
+        if entry.get("metric"):
+            stem = f"{safe_plot_stem(entry['kind'])}:{safe_plot_stem(entry['metric'])}"
+            identifiers.extend(f"interactions:{stem}:{variant}" for variant in
+                               ("bootstrap_table", "comparison_table"))
+    return [dict(describe_plot(identifier), requires_statistics=True,
+                 availability="conditional_on_saved_data") for identifier in dict.fromkeys(identifiers)]

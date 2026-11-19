@@ -46,3 +46,8 @@ authoring does not imply that every option has a guided widget.
 Validation for this increment: 34 Studio/planner tests passed on Python 3.13.
 Previous PR head passed Python checks, figure review and real GROMACS smoke;
 new changes require their own CI results.
+- [x] H-bond event schemas verified against producer fields, including lipid molecule/species identity.
+- [x] Interaction/solvation descriptive figure candidates use production plot IDs.
+- [x] Exact profile/interaction selectors offer separate statistical figure choices.
+  Saved-data availability remains conditional; unspecified interaction metrics do
+  not create guessed statistical plot IDs.

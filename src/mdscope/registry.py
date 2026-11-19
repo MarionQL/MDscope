@@ -36,6 +36,15 @@ def artifact_schema(entry: "FusedOutput", path: Path) -> dict:
             units = {"mean_buried_sasa_nm2": "nm^2",
                      "std_buried_sasa_nm2": "nm^2",
                      "mean_buried_fraction": "fraction"}
+    elif analysis in {"hydrogen_bonds", "lipid_hydrogen_bonds"} and name == "events.parquet":
+        fields = ["time_ps", "donor", "hydrogen", "acceptor"]
+        fields += (["donor_chain", "acceptor_chain", "scope", "interaction_class"]
+                   if analysis == "hydrogen_bonds" else
+                   ["donor_molecule_id", "acceptor_molecule_id", "donor_species",
+                    "acceptor_species", "species_pair", "scope", "interaction_class"])
+        fields += ["distance_A", "angle_deg"]
+        units = {"time_ps": "ps", "distance_A": "angstrom", "angle_deg": "degrees"}
+        row_grain = "one detected donor-hydrogen-acceptor event per analyzed frame per replicate"
     elif analysis == "dssp" and name == "assignments.parquet":
         fields = ["time_ps", "topology_residue_index", "residue", "dssp"]
         units = {"time_ps": "ps", "dssp": "secondary-structure code"}
