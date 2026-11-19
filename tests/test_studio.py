@@ -264,7 +264,6 @@ def test_app_exact_figures_override_imported_disabled_family(tmp_path, monkeypat
     exported = lambda: yaml.safe_load(
         next(item.value for item in at.code if "analyses:" in item.value))
     assert exported()["plots"] == doc["plots"]
-    at.checkbox(key="edit:exact_figures").check().run()
     at.checkbox(key="figure:tree:time_series:rmsd_A:timeseries").check().run()
     assert not at.exception
     selected = "time_series:rmsd_A:timeseries"
@@ -970,7 +969,7 @@ def test_quick_figure_categories_use_backend_switches_without_exact_allowlist():
     assert doc == before
 
 
-def test_app_quick_figure_categories_round_trip(tmp_path, monkeypatch):
+def test_app_imported_figure_categories_preserved_until_tree_edit(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
     from mdscope.studio import app
@@ -983,18 +982,14 @@ def test_app_quick_figure_categories_round_trip(tmp_path, monkeypatch):
     at.session_state["document"] = deepcopy(doc)
     at.run()
     assert not at.exception
-    assert not at.checkbox(key="edit:exact_figures").value
-    at.checkbox(key="edit:quick:figure:profiles").check().run()
+    exported = lambda: yaml.safe_load(
+        next(item.value for item in at.code if "analyses:" in item.value))
+    assert exported()["plots"] == doc["plots"]
+    assert at.checkbox(key="figure:tree:time_series:rmsd_A:timeseries").value
+    at.checkbox(key="figure:tree:time_series:rmsd_A:timeseries").uncheck().run()
     assert not at.exception
-    exported = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
-    assert exported["plots"]["include"] is None
-    assert exported["plots"]["profiles"] is True
-    assert exported["plots"]["time_series"] is True
-    at.checkbox(key="edit:quick:figure:time_series").uncheck().run()
-    assert not at.exception
-    exported = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
-    assert exported["plots"]["time_series"] is False
-    assert exported["plots"]["profiles"] is True
+    assert exported()["plots"]["include"] == []
+    assert exported()["plots"]["enabled"] is False
 
 
 def test_app_hierarchical_figures_support_category_and_individual_override(tmp_path, monkeypatch):
