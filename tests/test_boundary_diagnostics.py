@@ -111,3 +111,31 @@ def test_invalid_mdanalysis_selection_reports_topology_and_preserves_output(
     assert isinstance(failure.value.__cause__, SelectionError)
     assert "unknown_selection_keyword" in str(failure.value)
     assert not root.exists()
+
+
+@pytest.mark.parametrize("times", [
+    [0., 10., 10.],
+    [0., float("nan"), 20.],
+    [10., 0., 20.],
+])
+def test_invalid_saved_time_axis_fails_before_downstream_processing(
+    tmp_path, times
+):
+    import pandas as pd
+    from mdscope.config import DEFAULTS
+
+    root = tmp_path / "saved"
+    summary = root / "example" / "rep1" / "summary"
+    summary.mkdir(parents=True)
+    timeseries = summary / "timeseries.parquet"
+    pd.DataFrame({"time_ps": times}).to_parquet(timeseries)
+    before = timeseries.read_bytes()
+    old_findings = root / "project_summary" / "findings.md"
+    old_findings.parent.mkdir()
+    old_findings.write_bytes(b"previous")
+    rep = SimpleNamespace(system="example", label="rep1")
+    with pytest.raises(RuntimeError, match="invalid time_ps") as failure:
+        _validate_replica_products(DEFAULTS, root, [rep])
+    assert str(timeseries) in str(failure.value)
+    assert timeseries.read_bytes() == before
+    assert old_findings.read_bytes() == b"previous"
