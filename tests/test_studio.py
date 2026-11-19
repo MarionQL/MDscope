@@ -464,7 +464,7 @@ def test_group_rename_and_delete_migrate_inference_identity():
     selectors["time_series"] = [{"metric": "rmsd_A", "group": "patch"}]
     selectors["profiles"] = [{"profile": "rmsf__group_patch"}]
     change_group(doc, "patch", "renamed")
-    assert selectors["time_series"][0]["group"] == "renamed"
+    assert doc["statistics"]["metric_selection"]["time_series"][0]["group"] == "renamed"
     assert selectors["profiles"][0]["profile"] == "rmsf__group_renamed"
     change_group(doc, "renamed")
     assert selectors["time_series"] == selectors["profiles"] == []
@@ -505,7 +505,7 @@ def test_run_deletion_migrates_selectors_and_preserves_referenced_runs():
         delete_named_run(doc, "sasa", "isolated")
     assert doc == before
     delete_named_run(doc, "sasa", "environment")
-    assert selectors["profiles"] == []
+    assert doc["statistics"]["metric_selection"]["profiles"] == []
     assert doc["plots"]["include"] == []
     with pytest.raises(ValueError, match="Last run"):
         delete_named_run(doc, "sasa", "isolated")
@@ -865,7 +865,7 @@ def test_app_rejected_group_rename_preserves_committed_draft_and_choices(tmp_pat
     at.text_input(key="edit:group:patch:id").set_value("existing").run()
     at.button(key="edit:group:patch:Rename").click().run()
     assert not at.exception
-    assert any("already exists" in error.message for error in at.error)
+    assert any("already exists" in error.value for error in at.error)
     assert at.session_state["document"] == before_doc
     assert at.session_state["choices"] == before_choices
     assert at.text_input(key="edit:group:patch:id").value == "existing"
@@ -899,7 +899,7 @@ def test_app_rejected_condition_removal_preserves_committed_state(tmp_path, monk
     monkeypatch.setattr("mdscope.studio.project_editor.delete_system", reject)
     at.button(key="edit:system:condition2:remove").click().run()
     assert not at.exception
-    assert any("injected condition failure" in error.message for error in at.error)
+    assert any("injected condition failure" in error.value for error in at.error)
     assert at.session_state["document"] == before_doc
     assert at.session_state["choices"] == before_choices
 
@@ -918,7 +918,7 @@ def test_app_rejected_global_selection_yaml_preserves_export(tmp_path, monkeypat
     before = deepcopy(at.session_state["document"])
     at.text_area(key="edit:selections").set_value("groups:\n  patch: anything").run()
     assert not at.exception
-    assert any("named group editor" in item.message for item in at.error)
+    assert any("named group editor" in item.value for item in at.error)
     assert at.session_state["document"] == before
     assert at.session_state["document"]["selections"]["groups"] == before["selections"]["groups"]
     at.text_area(key="edit:selections").set_value(
