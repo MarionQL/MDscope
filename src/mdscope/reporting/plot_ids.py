@@ -7,6 +7,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+def safe_plot_stem(value) -> str:
+    """Match the filename normalization used by production figure renderers."""
+    return "".join(ch if ch.isalnum() or ch in "-_." else "_"
+                   for ch in str(value)).strip("_")
+
+
 DYNAMIC_VARIANTS = {
     "time_series": frozenset({
         "timeseries", "distribution", "autocorrelation",
