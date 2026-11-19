@@ -787,3 +787,47 @@ def statistical_figure_candidates(cfg):
                                ("bootstrap_table", "comparison_table"))
     return [dict(describe_plot(identifier), requires_statistics=True,
                  availability="conditional_on_saved_data") for identifier in dict.fromkeys(identifiers)]
+
+
+def authoring_catalog(cfg, *, include_inactive=False):
+    """One catalog for authoring reconciliation and UI figure eligibility."""
+    from copy import deepcopy
+    from .registry import scalar_contracts, configured_profile_variables
+    from .reporting.plot_ids import DYNAMIC_VARIANTS
+    configured = deepcopy(cfg)
+    if include_inactive:
+        for spec in configured["analyses"].values():
+            spec["enabled"] = True
+            for key, run in (spec.get("runs") or {}).items():
+                spec["runs"][key] = {**run, "enabled": True} if isinstance(run, dict) else {"enabled": True}
+    scalars = scalar_contracts(configured)
+    profiles = configured_profile_variables(configured)
+    figures = {name: {} for name in configured["analyses"]}
+    for variable in scalars:
+        for figure in variable["figures"]:
+            owner = "statistics" if figure["requires_statistics"] else variable["analysis"]
+            figures.setdefault(owner, {})[figure["id"]] = figure
+    for name, spec in configured["analyses"].items():
+        if spec.get("enabled"):
+            for figure in analysis_figure_candidates(configured, name):
+                figures[name][figure["id"]] = figure
+    for variable in profiles:
+        for variant in sorted(DYNAMIC_VARIANTS["profiles"]):
+            identifier = f"profiles:{safe_plot_stem(variable['profile'])}:{variant}"
+            figures.setdefault("statistics", {})[identifier] = dict(describe_plot(identifier), requires_statistics=True)
+    for figure in statistical_figure_candidates(configured):
+        figures.setdefault("statistics", {})[figure["id"]] = figure
+    if not include_inactive:
+        selected = configured.get("statistics", {}).get("metric_selection")
+        scalar_selection = None if selected is None else selected.get("time_series")
+        statistics = {}
+        for variable in scalars:
+            if scalar_selection is None or any(item["metric"] == variable["metric"] and item.get("group") == variable["group"] for item in scalar_selection):
+                for figure in variable["figures"]:
+                    if figure["requires_statistics"]:
+                        statistics[figure["id"]] = figure
+        for figure in statistical_figure_candidates(configured):
+            statistics[figure["id"]] = figure
+        figures["statistics"] = statistics
+    return {"scalars": scalars, "profiles": profiles,
+            "figures": {owner: list(items.values()) for owner, items in figures.items()}}

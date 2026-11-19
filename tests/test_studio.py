@@ -483,3 +483,67 @@ def test_distance_group_control_is_backend_boolean(tmp_path, monkeypatch):
     assert not at.exception
     raw = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
     assert raw["analyses"]["residue_membrane_distance"]["groups"] is True
+
+
+def test_group_lifecycle_migrates_density_distance_and_figure_choices():
+    doc = new_document()
+    doc["selections"]["groups"] = {"patch": {"selection": "name CA"}}
+    doc["analyses"]["density_1d"] = {"enabled": True, "selections": {"target": {"selection": "all", "groups": True}}}
+    doc["analyses"]["residue_membrane_distance"] = {"enabled": True, "groups": True}
+    profiles = ["density_1d__default__target__patch", "residue_membrane_distance__default__group_patch__mean_min_distance_A"]
+    doc["statistics"]["metric_selection"]["profiles"] = [{"profile": item} for item in profiles]
+    ids = [f"profiles:{item}:profile" for item in profiles]
+    doc["plots"] = {"enabled": True, "include": ids}
+    choices = {"statistics": list(ids)}
+    change_group(doc, "patch", "new", choices=choices)
+    expected = [item.replace("patch", "new") for item in profiles]
+    assert [item["profile"] for item in doc["statistics"]["metric_selection"]["profiles"]] == expected
+    assert doc["plots"]["include"] == choices["statistics"] == [f"profiles:{item}:profile" for item in expected]
+    change_group(doc, "new", choices=choices)
+    assert doc["plots"]["include"] == choices["statistics"] == []
+    assert doc["statistics"]["metric_selection"]["profiles"] == []
+
+
+def test_imported_inactive_interaction_figures_cannot_leak_through_exact_mode(tmp_path):
+    doc = new_document()
+    doc["plots"] = {"enabled": True, "include": ["interactions:hydrogen_bonds:occupancy_heatmap"]}
+    assert yaml.safe_load(review(doc, tmp_path, {})[0])["plots"]["include"] == []
+    assert yaml.safe_load(review(doc, tmp_path)[0])["plots"]["include"] == doc["plots"]["include"]
+
+
+def test_commit_draft_owns_copy_and_accepts_incomplete_editor_state():
+    from mdscope.studio.model import commit_draft
+    document = new_document()
+    draft = deepcopy(document)
+    draft["systems"] = {}
+    commit_draft(document, draft)
+    draft["project"]["name"] = "later edit"
+    assert document["systems"] == {}
+    assert document["project"]["name"] != "later edit"
+
+
+def test_exact_mode_blocks_unowned_imported_ids_without_rewriting_legacy(tmp_path):
+    doc = new_document()
+    doc["plots"] = {"enabled": True, "include": ["time_series:custom_observable:timeseries"]}
+    with pytest.raises(ValueError, match="ownership contracts"):
+        review(doc, tmp_path, {})
+    assert yaml.safe_load(review(doc, tmp_path)[0])["plots"] == doc["plots"]
+
+
+def test_shared_catalog_supplies_all_guided_profile_figures():
+    from mdscope.planning import authoring_catalog, statistical_figure_candidates
+    doc = new_document()
+    doc["analyses"]["rmsf"]["enabled"] = True
+    doc["statistics"]["metric_selection"]["profiles"] = [{"profile": "rmsf"}]
+    cfg = resolve_config(doc)
+    assert {item["id"] for item in authoring_catalog(cfg)["figures"]["statistics"]} == {
+        item["id"] for item in statistical_figure_candidates(cfg)}
+
+
+def test_invalid_run_creation_does_not_mutate_draft():
+    from mdscope.studio.model import add_named_run
+    doc = new_document()
+    before = deepcopy(doc)
+    with pytest.raises(ValueError, match="reserved"):
+        add_named_run(doc, "sasa", "default")
+    assert doc == before

@@ -18,7 +18,7 @@ def yaml_editor(label, value, key, *, height=140):
     return yaml.safe_load(text)
 
 
-def analysis_settings(name, spec):
+def analysis_settings(name, spec, document):
     """Edit backend defaults with typed widgets; optional fields stay YAML."""
     defaults = DEFAULTS["analyses"].get(name, {})
     result = {}
@@ -38,7 +38,7 @@ def analysis_settings(name, spec):
             edited = yaml_editor(label + " (YAML; null = backend default)", value, widget_key, height=80)
         if key in spec or edited != default:
             result[key] = edited
-    from mdscope.config import MULTI_RUN_ANALYSES, analysis_runs, merge
+    from mdscope.config import MULTI_RUN_ANALYSES
     excluded = {"enabled"} | ({"groups"} if name in {"rmsd", "radius_of_gyration"} else set())
     if name in MULTI_RUN_ANALYSES:
         excluded.add("runs")
@@ -56,17 +56,13 @@ def analysis_settings(name, spec):
                     runs[run_id] = run_options
                     if st.button("Delete run", key=f"edit:run:{name}:{run_id}:delete"):
                         from mdscope.studio.model import delete_named_run
-                        delete_named_run(st.session_state.document, name, run_id)
-                        st.rerun()
+                        delete_named_run(document, name, run_id)
+                        restart_editor(document)
             new_id = st.text_input("New run ID", key=f"edit:runs:{name}:new")
             if st.button("Add run", key=f"edit:runs:{name}:add"):
-                if not new_id or new_id in runs:
-                    raise ValueError("Enter a unique run ID")
-                candidate = {**runs, new_id: {}}
-                cfg = merge(DEFAULTS, {"analyses": {name: {"enabled": True, "runs": candidate}}})
-                analysis_runs(cfg, name)
-                runs[new_id] = {}
-                st.rerun()
+                from mdscope.studio.model import add_named_run
+                add_named_run(document, name, new_id)
+                restart_editor(document)
             result["runs"] = runs
         else:
             spec.pop("runs", None)
@@ -77,6 +73,18 @@ def analysis_settings(name, spec):
     if not isinstance(edited, dict) or set(edited) & (set(defaults) | excluded):
         raise ValueError("Use the controls above for default options, enabled and groups")
     return {**result, **edited}
+
+
+def restart_editor(document):
+    from mdscope.studio.model import commit_draft
+    commit_draft(st.session_state.document, document)
+    st.rerun()
+
+
+@st.cache_data(show_spinner=False, max_entries=32)
+def preview_document(text, base):
+    """Cache pure schema-only planning by draft contents; edits invalidate it."""
+    return review(yaml.safe_load(text), base)
 
 
 def figure_picker(figures, key, existing):
@@ -149,7 +157,7 @@ def main():
             st.rerun()
         except (ValueError, yaml.YAMLError, UnicodeError) as exc:
             st.error(str(exc))
-    doc = state.document
+    doc = deepcopy(state.document)
     plots = doc.get("plots", {})
     exact_figures = st.checkbox("Use exact figure choices", value=(plots.get("include") is not None
                                or not plots.get("enabled", False)), key="edit:exact_figures")
@@ -201,20 +209,16 @@ def main():
                             if action != "Delete" and not target:
                                 raise ValueError("Enter a new group ID")
                             change_group(doc, group_id, None if action == "Delete" else target,
-                                         duplicate=action == "Duplicate")
+                                         duplicate=action == "Duplicate", choices=state.choices)
                             for key in list(state):
                                 if key.startswith("edit:groups:"):
                                     del state[key]
-                            st.rerun()
+                            restart_editor(doc)
             new_id = st.text_input("Group ID", key="edit:new_group")
             if st.button("Add group"):
-                if not new_id or new_id in groups:
-                    raise ValueError("Enter a unique filesystem-safe group ID")
-                candidate = deepcopy(doc)
-                candidate["selections"]["groups"][new_id] = {"selection": "all"}
-                analysis_groups(candidate)
-                groups[new_id] = {"label": new_id, "selection": "all"}
-                st.rerun()
+                from mdscope.studio.model import add_group
+                add_group(doc, new_id)
+                restart_editor(doc)
             st.info("Not validated (topology unavailable or unchecked). Fitted coordinates apply only to supported structural measurements. Membrane/diffusion use source coordinates.")
         except (ValueError, TypeError, yaml.YAMLError) as exc:
             errors.append(str(exc)); st.error(str(exc))
@@ -234,17 +238,15 @@ def main():
                         spec["groups"] = st.multiselect("Named measurement groups", list(doc["selections"].get("groups", {})),
                                                          default=default, key=f"edit:groups:{name}")
                         st.caption("Global measurement is also saved; this list filters grouped rows only.")
-                    edited = analysis_settings(name, spec)
+                    edited = analysis_settings(name, spec, doc)
                     doc["analyses"][name] = {"enabled": True, **edited,
                                               **({"groups": spec["groups"]} if name in {"rmsd", "radius_of_gyration"} and "groups" in spec else {})}
                     st.caption("Supported keys: " + ", ".join(key for key in schema if key != "enabled"))
                     st.caption("Units: _A = Å; _ps = ps; _deg = degrees. Named runs are supported only where runs is listed.")
-                    _, plan = review(doc, base)
+                    _, plan = preview_document(yaml.safe_dump(doc, sort_keys=False), base)
                     show_outputs(plan, name, doc, base)
-                    figures = [fig for var in plan["observable_contracts"] if var["analysis"] == name
-                               for fig in var["figures"] if not fig["requires_statistics"]]
-                    figures.extend(fig for analysis in plan["analyses"] if analysis["analysis"] == name
-                                   for fig in analysis.get("descriptive_figures", []))
+                    from mdscope.planning import authoring_catalog
+                    figures = authoring_catalog(resolve_config(doc))["figures"].get(name, [])
                     if exact_figures:
                         state.choices[name] = figure_picker(figures, f"figure:{name}", state.choices.get(name, (doc.get("plots", {}).get("include") or []) if doc.get("plots", {}).get("enabled") else []))
                     if not figures:
@@ -257,7 +259,7 @@ def main():
         st.caption("Independent units: simulation replicates. Eligibility requires compatible sampling/identities; CI availability is determined by the backend, never by frame count alone.")
         if stats["enabled"]:
             try:
-                _, plan = review(doc, base)
+                _, plan = preview_document(yaml.safe_dump(doc, sort_keys=False), base)
                 exact_stats = (stats.get("metric_selection") is not None or
                                st.checkbox("Select statistics by exact variable", key="stats:exact"))
                 if not exact_stats:
@@ -267,7 +269,6 @@ def main():
                         stats["metric_selection"] = studio_metric_selection_defaults()
                     selectors = stats["metric_selection"]
                     entries = []
-                    figures = []
                     for var in plan["observable_contracts"]:
                         selector = var["statistics_selector"]
                         key = f"stats:{var['metric']}:{var['group']}"
@@ -278,7 +279,6 @@ def main():
                             for flag in sorted(ESTIMATOR_FLAGS["time_series"]):
                                 entry[flag] = st.checkbox(flag, value=(selected or {}).get(flag, (selected or {}).get("inference", True)), key=f"{key}:{flag}")
                             entries.append(entry)
-                            figures.extend(fig for fig in var["figures"] if fig["requires_statistics"])
                     known = {(var["metric"], var["group"]) for var in plan["observable_contracts"]}
                     selectors["time_series"] = entries + [item for item in selectors.get("time_series", [])
                                                              if (item["metric"], item.get("group")) not in known]
@@ -330,8 +330,8 @@ def main():
                         for family in plan["statistics_families"]:
                             st.json({key: family[key] for key in ("family", "files", "metric_contract")
                                      if key in family})
-                    from mdscope.planning import statistical_figure_candidates
-                    figures.extend(statistical_figure_candidates(resolve_config(doc)))
+                    from mdscope.planning import authoring_catalog
+                    figures = authoring_catalog(resolve_config(doc))["figures"].get("statistics", [])
                     if exact_figures:
                         state.choices["statistics"] = figure_picker(figures, "figure:statistics", state.choices.get("statistics", (doc.get("plots", {}).get("include") or []) if doc.get("plots", {}).get("enabled") else []))
             except (ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
@@ -363,6 +363,9 @@ def main():
             st.caption("No output files are overwritten. Save YAML in the configuration directory shown above.")
         except (ValueError, TypeError, KeyError, OSError, yaml.YAMLError) as exc:
             st.error(str(exc))
+
+    from mdscope.studio.model import commit_draft
+    commit_draft(state.document, doc)
 
 
 if __name__ == "__main__":

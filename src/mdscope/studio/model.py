@@ -36,8 +36,11 @@ def import_document(text):
     return raw
 
 
-def change_group(document, old_id, new_id=None, *, duplicate=False):
+def change_group(document, old_id, new_id=None, *, duplicate=False, choices=None):
     """Rename/duplicate/delete while migrating only actual shared-group callers."""
+    from ..config import merge
+    from ..planning import authoring_catalog
+    before = authoring_catalog(merge(DEFAULTS, document), include_inactive=True)
     groups = document.setdefault("selections", {}).setdefault("groups", {})
     if new_id == old_id:
         return
@@ -66,20 +69,50 @@ def change_group(document, old_id, new_id=None, *, duplicate=False):
 
     if not duplicate:
         selection = document.get("statistics", {}).get("metric_selection") or {}
-        for family, field, old_value, new_value in (
-            ("time_series", "group", old_id, new_id),
-            ("profiles", "profile", f"rmsf__group_{old_id}",
-             f"rmsf__group_{new_id}" if new_id else None),
-        ):
-            if family in selection:
-                updated = []
-                for entry in selection[family]:
-                    if entry.get(field) == old_value:
-                        if new_value is None:
-                            continue
-                        entry = {**entry, field: new_value}
-                    updated.append(entry)
-                selection[family] = updated
+        if "time_series" in selection:
+            selection["time_series"] = [
+                {**item, "group": new_id} if item.get("group") == old_id else item
+                for item in selection["time_series"]
+                if item.get("group") != old_id or new_id is not None]
+
+    if not duplicate:
+        after = authoring_catalog(merge(DEFAULTS, document), include_inactive=True)
+        old_profiles = [item["profile"] for item in before["profiles"]]
+        new_profiles = [item["profile"] for item in after["profiles"]]
+        removed = [item for item in old_profiles if item not in new_profiles]
+        added = [item for item in new_profiles if item not in old_profiles]
+        mapping = dict(zip(removed, added)) if new_id else dict.fromkeys(removed)
+        if "profiles" in selection:
+            selection["profiles"] = [dict(item, profile=mapping.get(item["profile"], item["profile"]))
+                                     for item in selection["profiles"]
+                                     if item["profile"] not in mapping or mapping[item["profile"]] is not None]
+        from ..reporting.plot_ids import safe_plot_stem
+        stems = {safe_plot_stem(old): safe_plot_stem(new) if new else None for old, new in mapping.items()}
+        for variable in before["scalars"]:
+            if variable["group"] == old_id:
+                for figure in variable["figures"]:
+                    stem = figure["id"].split(":")[1]
+                    replacement = next((item for item in after["scalars"]
+                                        if item["analysis"] == variable["analysis"] and item["group"] == new_id), None) if new_id else None
+                    stems[stem] = replacement["figures"][0]["id"].split(":")[1] if replacement else None
+        def migrate(ids):
+            result = []
+            for identifier in ids:
+                parts = identifier.split(":")
+                if len(parts) > 2 and parts[0] in {"profiles", "time_series"} and parts[1] in stems:
+                    replacement = stems[parts[1]]
+                    if replacement is None:
+                        continue
+                    parts[1] = replacement
+                    identifier = ":".join(parts)
+                result.append(identifier)
+            return result
+        plots = document.get("plots", {})
+        if plots.get("include") is not None:
+            plots["include"] = migrate(plots["include"])
+        if choices is not None:
+            for owner in choices:
+                choices[owner] = migrate(choices[owner])
 
 
 def review(document, base, choices=None):
@@ -91,49 +124,26 @@ def review(document, base, choices=None):
     raw = deepcopy(document)
     cfg = resolve_config(raw, base=Path(base))
     if choices is not None:
-        from ..registry import STRUCTURAL_SCALAR_METRICS, scalar_contracts
-        from ..registry import configured_profile_variables
-        catalog_cfg = deepcopy(cfg)
-        for name in ("rmsd", "radius_of_gyration", "rmsf", "membrane", "dssp", "sasa", "density_1d", "residue_membrane_distance"):
-            catalog_cfg["analyses"][name]["enabled"] = True
-        for spec in catalog_cfg["analyses"].values():
-            for run_id, run in (spec.get("runs") or {}).items():
-                spec["runs"][run_id] = {**run, "enabled": True} if isinstance(run, dict) else {"enabled": True}
-        catalog_variables = scalar_contracts(catalog_cfg)
-        catalog_profiles = configured_profile_variables(catalog_cfg)
-        variables = scalar_contracts(cfg)
+        from ..planning import authoring_catalog
+        catalog = authoring_catalog(cfg, include_inactive=True)
+        active = authoring_catalog(cfg)
+        variables = active["scalars"]
         active_scalars = {(var["metric"], var["group"]) for var in variables}
-        known_scalars = {(var["metric"], var["group"]) for var in catalog_variables}
-        active_profiles = {var["profile"] for var in configured_profile_variables(cfg)}
-        known_profiles = {var["profile"] for var in catalog_profiles}
+        known_scalars = {(var["metric"], var["group"]) for var in catalog["scalars"]}
+        active_profiles = {var["profile"] for var in active["profiles"]}
+        known_profiles = {var["profile"] for var in catalog["profiles"]}
         selectors = raw.get("statistics", {}).get("metric_selection")
         if selectors is not None:
-            for family, known, active, identity in (
+            for family, known, active_identities, identity in (
                 ("time_series", known_scalars, active_scalars, lambda item: (item["metric"], item.get("group"))),
                 ("profiles", known_profiles, active_profiles, lambda item: item["profile"]),
             ):
                 if family in selectors:
                     selectors[family] = [item for item in selectors[family]
-                                         if identity(item) not in known or identity(item) in active]
+                                         if identity(item) not in known or identity(item) in active_identities]
             cfg = resolve_config(raw, base=Path(base))
-        eligible = {
-            name: {fig["id"] for var in variables if var["analysis"] == name
-                   for fig in var["figures"] if not fig["requires_statistics"]}
-            for name in {var["analysis"] for var in variables}
-        }
-        from ..planning import analysis_figure_candidates
-        for name in cfg["analyses"]:
-            eligible.setdefault(name, set()).update(fig["id"] for fig in analysis_figure_candidates(cfg, name))
-        selected_stats = cfg["statistics"].get("metric_selection", {}).get("time_series")
-        eligible["statistics"] = {
-            fig["id"] for var in variables
-            if selected_stats is None or any(
-                item["metric"] == var["metric"] and item.get("group") == var["group"]
-                for item in selected_stats)
-            for fig in var["figures"] if fig["requires_statistics"]
-        }
-        from ..planning import statistical_figure_candidates
-        eligible["statistics"].update(fig["id"] for fig in statistical_figure_candidates(cfg))
+        eligible = {owner: {figure["id"] for figure in figures}
+                    for owner, figures in authoring_catalog(cfg)["figures"].items()}
         ids = []
         for owner, selected in choices.items():
             active = (cfg["statistics"].get("enabled") if owner == "statistics"
@@ -141,18 +151,14 @@ def review(document, base, choices=None):
             if active:
                 ids.extend(identifier for identifier in selected
                            if owner not in eligible or identifier in eligible[owner])
-        # Preserve imported IDs outside the guided scalar catalog. They remain
-        # explicit configuration, with prerequisites visible in the review plan.
+        # Exact mode must not silently carry unowned imported figures forward.
         original = ((raw.get("plots", {}).get("include") or [])
                     if raw.get("plots", {}).get("enabled", False) else [])
-        managed_ids = {fig["id"] for var in catalog_variables for fig in var["figures"]}
-        from ..reporting.plot_ids import safe_plot_stem
-        managed_ids.update(f"profiles:{safe_plot_stem(var['profile'])}:{variant}"
-                           for var in catalog_profiles for variant in
-                           ("profile", "distribution", "system_difference", "comparison_table", "bootstrap_table"))
-        def managed(identifier):
-            return identifier in managed_ids
-        ids.extend(identifier for identifier in original if not managed(identifier))
+        managed_ids = {fig["id"] for figures in catalog["figures"].values() for fig in figures}
+        unknown = [identifier for identifier in original if identifier not in managed_ids]
+        if unknown:
+            raise ValueError("Imported figures lack authoring ownership contracts: " + ", ".join(unknown) +
+                             ". Keep legacy figure mode or explicitly remove these IDs before exact export.")
         plots = raw.setdefault("plots", {})
         plots.update(enabled=bool(ids), include=list(dict.fromkeys(ids)))
         for variant, flag in (("distribution", "distributions"),
@@ -218,3 +224,38 @@ def delete_named_run(document, name, run_id):
             stems.add(f"residue_membrane_distance__{safe_plot_stem(run_id)}")
         plots["include"] = [identifier for identifier in plots["include"]
                             if not (identifier.startswith("profiles:") and identifier.split(":")[1] in stems)]
+
+
+def commit_draft(document, draft):
+    """Commit editable input atomically; incomplete drafts remain editable."""
+    replacement = deepcopy(draft)
+    if not isinstance(replacement, dict):
+        raise ValueError("Authoring document must be a mapping")
+    document.clear()
+    document.update(replacement)
+
+
+def add_named_run(document, name, run_id):
+    """Validate run identity before mutating the draft."""
+    from ..config import MULTI_RUN_ANALYSES, analysis_runs, merge
+    if name not in MULTI_RUN_ANALYSES:
+        raise ValueError(f"{name} does not support named runs")
+    runs = document["analyses"][name].get("runs", {})
+    if not run_id or run_id in runs:
+        raise ValueError("Enter a unique run ID")
+    candidate = deepcopy(document)
+    candidate["analyses"][name].setdefault("runs", {})[run_id] = {}
+    candidate["analyses"][name]["enabled"] = True
+    analysis_runs(merge(DEFAULTS, candidate), name)
+    document["analyses"][name].setdefault("runs", {})[run_id] = {}
+
+
+def add_group(document, group_id):
+    from ..config import analysis_groups
+    groups = document.setdefault("selections", {}).setdefault("groups", {})
+    if not group_id or group_id in groups:
+        raise ValueError("Enter a unique filesystem-safe group ID")
+    candidate = deepcopy(document)
+    candidate["selections"]["groups"][group_id] = {"selection": "all"}
+    analysis_groups(candidate)
+    groups[group_id] = {"label": group_id, "selection": "all"}

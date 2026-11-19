@@ -217,10 +217,10 @@ Approach:
 
 ## Studio authoring boundary
 
-`studio.model` edits YAML documents and calls `config.resolve_config` and
-`planning.build_plan`; it has no execution/output ownership. The optional
-`studio.app` imports Streamlit only when launched via `mdscope-studio` and offers
-read-only topology preflight through `core.validation`. Structural scalar
-schemas/identities live in `registry.structural_scalar_contracts`, exposed by the
-planner; figure descriptions remain in `reporting.plot_ids`. See the concise
-[delivery plan](studio-plan.md) and [user guide](../studio.md) for current gaps.
+Studio edits detached drafts; `studio.model` owns draft commits, group/run
+operations and exact export reconciliation. `planning.authoring_catalog` supplies
+one figure candidate set to the UI and model, using registry variable contracts
+and production `reporting.plot_ids`. The Streamlit client caches schema-only
+previews by draft content; no trajectory or statistics computations occur.
+Topology checks reuse `core.validation`. See [Studio delivery](studio-plan.md)
+and the [user guide](../studio.md) for coverage and explicit remaining gaps.
