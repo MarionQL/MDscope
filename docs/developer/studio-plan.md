@@ -25,8 +25,9 @@ production rendering. New documents opt out of analyses, statistics and figures.
   and in-session figure choices, including density/distance grouped profiles.
 - Run deletion protects references and removes catalogued selectors/figures.
   Disabling runs retains editable choices but excludes them from active export.
-- Exact mode rejects unowned imported figures with an actionable explanation.
-  Legacy mode preserves their configuration; unknown ownership is not fabricated.
+- The single hierarchical selector preserves imported legacy YAML on no-op export.
+  When an exact-ID export is requested, unowned imported figure IDs are rejected
+  with an actionable explanation; no separate UI mode exists.
 - Preflight belongs to the current exported document. No XTC reads or result writes.
 
 ## Acceptance coverage
@@ -59,7 +60,8 @@ not a growing chronological list in this document.
 
 - Review the local UI on representative browser/display sizes. AppTest covers
   behavior, not visual layout.
-- Recheck latest-head automatic CI after follow-ups; retain prior real-data
-  evidence when numerical and preflight paths are unchanged.
+- Recheck latest-head automatic CI after follow-ups; offline finalization and
+  topology preflight hash implementation changes require their own regression
+  review even when physical estimators are unchanged.
 - Review/merge PR #200 and assess #173 closure. Post-run figure editing stays
   outside this release.
