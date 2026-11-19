@@ -1249,7 +1249,7 @@ def test_explicit_results_root_rejects_unverified_before_mutating_saved_provenan
     root.mkdir()
     original = "persisted scientific provenance"
     (root / "resolved_config.yaml").write_text(original)
-    with pytest.raises(RuntimeError, match="not verified"):
+    with pytest.raises(RuntimeError, match="required persisted replica data are missing or invalid"):
         finalize_project(tmp_path / "analysis.yaml", cfg=resolve_config(doc, base=tmp_path),
                          phase="statistics", results_dir=root)
     assert (root / "resolved_config.yaml").read_text() == original
