@@ -1347,3 +1347,36 @@ def test_app_global_selection_key_deletion_preserves_named_groups(tmp_path, monk
     assert 'alignment' not in exported['selections']
     assert exported['selections']['groups']['patch']['selection'] == 'resid 1:5'
     assert exported['selections']['groups']['patch']['label'] == 'Patch'
+
+def test_global_selections_replacement_is_atomic_and_exact():
+    from mdscope.studio.model import replace_global_selections
+    doc = rmsd_document()
+    doc['selections'] = {'protein': 'protein', 'alignment': 'backbone',
+                         'groups': {'patch': {'selection': 'resid 1:10'}}}
+    original = deepcopy(doc)
+    for invalid in (None, [], {'groups': {}}):
+        with pytest.raises(ValueError):
+            replace_global_selections(doc, invalid)
+        assert doc == original
+    replace_global_selections(doc, {'protein': 'name CA'})
+    assert doc['selections'] == {'protein': 'name CA',
+        'groups': {'patch': {'selection': 'resid 1:10'}}}
+    text, _ = review(doc, '.')
+    raw = yaml.safe_load(text)
+    assert 'alignment' not in raw['selections']
+    assert raw['selections']['groups'] == original['selections']['groups']
+
+def test_exact_figures_override_legacy_false_in_production_resolver(tmp_path):
+    from mdscope.config import figure_enabled
+    doc = rmsd_document()
+    doc['plots'] = {'enabled': True, 'include': None,
+                    'time_series': False, 'families': {'time_series': False}}
+    figure = 'time_series:rmsd_A:timeseries'
+    assert not figure_enabled(resolve_config(doc), figure)
+    exported, _ = review(doc, tmp_path, {'rmsd': [figure]})
+    cfg = resolve_config(yaml.safe_load(exported))
+    assert figure_enabled(cfg, figure)
+    assert cfg['plots']['include'] == [figure]
+    assert cfg['plots']['time_series'] is True
+    assert cfg['plots']['families']['time_series'] is True
+    assert doc['plots']['time_series'] is False
