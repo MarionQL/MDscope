@@ -413,7 +413,7 @@ def main():
                             doc["analyses"][name] = {"enabled": True, **edited,
                                                       **({"groups": spec["groups"]} if name in {"rmsd", "radius_of_gyration"} and "groups" in spec else {})}
                             with st.expander("Technical option names"):
-                            st.caption("Supported keys: " + ", ".join(key for key in schema if key != "enabled"))
+                                st.caption("Supported keys: " + ", ".join(key for key in schema if key != "enabled"))
                             st.caption("Units: Å for distances, ps for time, degrees for angles. Named runs are available where supported.")
                             card_previews.append((name, st.empty()))
                         except (ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
@@ -634,6 +634,16 @@ def main():
             st.checkbox("Select All", value=all(selected(i) for i in all_ids),
                         key="figure:tree:all",
                         on_change=lambda: set_figures(all_ids, state["figure:tree:all"]))
+        # Retain the established family-level selection controls for existing
+        # workflows and imported YAML; the browsing hierarchy below is scientific.
+        with st.expander("Select by output type (advanced)"):
+            for family, entries in figures_by_family.items():
+                ids = list(dict.fromkeys(fig["id"] for _, fig in entries))
+                st.checkbox(f"Select all {family.replace('_', ' ')}",
+                            value=all(selected(i) for i in ids),
+                            key=f"figure:tree:family:{family}",
+                            on_change=lambda ids=ids, family=family: set_figures(
+                                ids, state[f"figure:tree:family:{family}"]))
         # Scientific grouping mirrors the Analyses tab; output family is secondary.
         by_category = {}
         for family, entries in figures_by_family.items():
