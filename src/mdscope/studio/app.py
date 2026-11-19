@@ -26,6 +26,46 @@ def display_metric(name):
     return f"{readable} ({suffix})" if suffix else readable
 
 
+
+# Presentation-only grouping. Backend schemas/catalogs remain authoritative.
+ANALYSIS_CATEGORIES = (
+    ("Protein structure & dynamics", ("alignment", "rmsd", "rmsf", "radius_of_gyration", "dssp", "helix", "tilt", "helix_contacts")),
+    ("Membrane structure & dynamics", ("membrane", "membrane_order", "leaflet_normal", "lipid_alignment", "lipid_contacts", "lipid_diffusion", "local_geometry", "residue_membrane_distance")),
+    ("Solvation & ion coordination", ("solvation", "hydration", "water", "ion", "rdf", "sasa")),
+    ("Molecular interactions", ("hydrogen_bonds", "salt_bridges", "lipid_hydrogen_bonds", "lipid_contacts", "lipid_lifetimes", "lifetimes", "interactions")),
+    ("Glycans & carbohydrates", ("hs", "glycan", "sugar")),
+    ("Advanced & specialized", ("coupling", "coupling_screen", "density_1d", "sdcc_mechanisms", "position_bridge_audit")),
+)
+
+
+def analysis_category(name):
+    """One stable presentation category; no backend option is hidden."""
+    key = name.lower()
+    for category, hints in ANALYSIS_CATEGORIES:
+        if key in hints:
+            return category
+    for category, hints in ANALYSIS_CATEGORIES:
+        if any(key.startswith(hint + "_") or key.endswith("_" + hint) for hint in hints):
+            return category
+    return "Other analyses"
+
+
+def grouped_analyses(names):
+    """Preserve backend ordering within scientific presentation categories."""
+    groups = {}
+    for name in names:
+        groups.setdefault(analysis_category(name), []).append(name)
+    return groups
+
+
+def analysis_title(name):
+    return display_metric(name).replace("Radius Of", "Radius of")
+
+
+def figure_title(fig):
+    return fig.get("label", fig["id"]).replace("_A", " (Å)").replace("_ps", " (ps)").replace("_deg", " (°)")
+
+
 def yaml_editor(label, value, key, *, height=140, help=None):
     text = st.text_area(label, yaml.safe_dump(value, sort_keys=False), key=key, height=height, help=help)
     return yaml.safe_load(text)
@@ -342,29 +382,41 @@ def main():
     with tabs[2]:
         card_previews = []
         card_plan = None
-        for name, schema in analysis_options().items():
-            spec = doc.setdefault("analyses", {}).setdefault(name, {"enabled": DEFAULTS["analyses"].get(name, {}).get("enabled", False)})
-            if isinstance(spec, bool):
-                spec = doc["analyses"][name] = {"enabled": spec}
-            enabled = st.checkbox(f"Enable {name}", value=spec.get("enabled", False), key=f"enable:{name}")
-            spec["enabled"] = enabled
-            if not enabled:
+        available_analyses = analysis_options()
+        filter_text = st.text_input("Find an analysis", key="studio:analysis_search",
+                                    placeholder="Search by analysis name")
+        show_enabled = st.checkbox("Show enabled analyses only", key="studio:enabled_only")
+        for category, names in grouped_analyses(available_analyses).items():
+            visible = [name for name in names
+                       if filter_text.lower() in name.lower() and
+                       (not show_enabled or doc.get("analyses", {}).get(name, {}).get("enabled", False))]
+            if not visible:
                 continue
-            with st.expander(name, expanded=True):
-                try:
-                    if name in {"rmsd", "radius_of_gyration"}:
-                        default = spec.get("groups", list(doc["selections"].get("groups", {})))
-                        spec["groups"] = st.multiselect("Named measurement groups", list(doc["selections"].get("groups", {})),
-                                                         default=default, key=f"edit:groups:{name}")
-                        st.caption("These group IDs come from Selections & alignment. Changing group definitions changes the corresponding measurement atoms; global measurement is also saved. This list filters grouped rows only.")
-                    edited = analysis_settings(name, spec, doc)
-                    doc["analyses"][name] = {"enabled": True, **edited,
-                                              **({"groups": spec["groups"]} if name in {"rmsd", "radius_of_gyration"} and "groups" in spec else {})}
-                    st.caption("Supported keys: " + ", ".join(key for key in schema if key != "enabled"))
-                    st.caption("Units: _A = Å; _ps = ps; _deg = degrees. Named runs are supported only where runs is listed.")
-                    card_previews.append((name, st.empty()))
-                except (ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
-                    errors.append(str(exc)); st.error(str(exc))
+            with st.expander(f"{category} · {len(visible)} analyses", expanded=False):
+                for name in visible:
+                    schema = available_analyses[name]
+                    spec = doc.setdefault("analyses", {}).setdefault(name, {"enabled": DEFAULTS["analyses"].get(name, {}).get("enabled", False)})
+                    if isinstance(spec, bool):
+                        spec = doc["analyses"][name] = {"enabled": spec}
+                    enabled = st.checkbox(f"Enable {name}", value=spec.get("enabled", False), key=f"enable:{name}")
+                    spec["enabled"] = enabled
+                    if not enabled:
+                        continue
+                    with st.expander(name, expanded=True):
+                        try:
+                            if name in {"rmsd", "radius_of_gyration"}:
+                                default = spec.get("groups", list(doc["selections"].get("groups", {})))
+                                spec["groups"] = st.multiselect("Named measurement groups", list(doc["selections"].get("groups", {})),
+                                                                 default=default, key=f"edit:groups:{name}")
+                                st.caption("These group IDs come from Selections & alignment. Changing group definitions changes the corresponding measurement atoms; global measurement is also saved. This list filters grouped rows only.")
+                            edited = analysis_settings(name, spec, doc)
+                            doc["analyses"][name] = {"enabled": True, **edited,
+                                                      **({"groups": spec["groups"]} if name in {"rmsd", "radius_of_gyration"} and "groups" in spec else {})}
+                            st.caption("Supported keys: " + ", ".join(key for key in schema if key != "enabled"))
+                            st.caption("Units: _A = Å; _ps = ps; _deg = degrees. Named runs are supported only where runs is listed.")
+                            card_previews.append((name, st.empty()))
+                        except (ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
+                            errors.append(str(exc)); st.error(str(exc))
         # Fill card placeholders after all settings have been edited, using
         # one coherent plan/catalog snapshot for this Streamlit rerun.
         if card_previews:
