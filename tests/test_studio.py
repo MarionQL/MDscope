@@ -916,7 +916,7 @@ def test_app_rejected_global_selection_yaml_preserves_export(tmp_path, monkeypat
     at.session_state["document"] = deepcopy(doc)
     at.run()
     before = deepcopy(at.session_state["document"])
-    at.text_area(key="edit:selections").set_value("groups:\\n  patch: anything").run()
+    at.text_area(key="edit:selections").set_value("groups:\n  patch: anything").run()
     assert not at.exception
     assert any("named group editor" in item.message for item in at.error)
     assert at.session_state["document"] == before
