@@ -266,6 +266,14 @@ def review(document, base, choices=None):
     return yaml.safe_dump(raw, sort_keys=False, allow_unicode=True), plan
 
 
+def planning_snapshot(document, base):
+    """Resolve one consistent draft for both plan and active figure catalog."""
+    from ..planning import authoring_catalog
+    cfg = resolve_config(document, base=Path(base))
+    return (build_plan(cfg, Path(base) / "analysis.yaml"),
+            authoring_catalog(cfg)["figures"])
+
+
 def topology_preflight(document, base):
     """Read topology only through production preflight; never open trajectories."""
     from ..core.validation import validate_selections
