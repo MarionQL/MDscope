@@ -373,12 +373,12 @@ def main():
                 st.caption("Select all statistics, entire families, or individual known variables. "
                            "All includes dynamic identities that cannot be enumerated before execution.")
                 def set_family(family, checked):
-                    set_statistics_family_mode(doc, family, "all" if checked else "none")
+                    set_statistics_family_mode(state.document, family, "all" if checked else "none")
                     # The widget values are reset when the family changes mode.
                     state.pop(f"stats:table:{family}", None)
                     state.pop(f"stats:tree:convert:{family}", None)
                     state["stats:tree:all"] = all(
-                        statistics_family_mode(doc, item) == "all" for item in families)
+                        statistics_family_mode(state.document, item) == "all" for item in families)
                 def set_all_families():
                     checked = state["stats:tree:all"]
                     for family in families:
