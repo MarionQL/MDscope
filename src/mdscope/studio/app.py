@@ -212,87 +212,9 @@ def main():
             st.error(str(exc))
     doc = deepcopy(state.document)
     choices_before = deepcopy(state.choices)
-    plots = doc.get("plots", {})
-    # One hierarchy for imported family switches and exact selections.
-    # Imported configurations are not converted until a checkbox is changed.
-    st.caption("Figures · select all, whole categories, or individual outputs.")
-    from mdscope.planning import authoring_catalog
-    from mdscope.config import merge, figure_enabled
-    catalog = authoring_catalog(merge(DEFAULTS, doc), include_inactive=True)["figures"]
-    figures_by_family = {}
-    for owner, figures in catalog.items():
-        for fig in figures:
-            family = fig["id"].split(":", 1)[0]
-            figures_by_family.setdefault(family, []).append((owner, fig))
-    all_ids = list(dict.fromkeys(
-        fig["id"] for entries in figures_by_family.values() for _, fig in entries))
-    exact_import = plots.get("include") is not None
-    resolved_figure_cfg = resolve_config(doc) if not exact_import else None
-    initial = set(plots.get("include") or []) if exact_import else {
-        identifier for identifier in all_ids
-        if figure_enabled(resolved_figure_cfg, identifier)
-    }
-    initial.update(identifier for values in state.choices.values() for identifier in values
-                   if exact_import)
-    def selected(identifier):
-        return state.get(f"figure:tree:{identifier}", identifier in initial)
-    def sync_parents():
-        for family, entries in figures_by_family.items():
-            ids = {fig["id"] for _, fig in entries}
-            state[f"figure:tree:family:{family}"] = all(selected(i) for i in ids)
-        state["figure:tree:all"] = bool(all_ids) and all(selected(i) for i in all_ids)
-    def set_figures(ids, checked):
-        for identifier in ids:
-            state[f"figure:tree:{identifier}"] = checked
-        state["figure:tree:edited"] = True
-        sync_parents()
-    def changed_figure():
-        state["figure:tree:edited"] = True
-        sync_parents()
-    if all_ids:
-        st.checkbox("Select All", value=all(selected(i) for i in all_ids),
-                    key="figure:tree:all",
-                    on_change=lambda: set_figures(all_ids, state["figure:tree:all"]))
-    for family, entries in figures_by_family.items():
-        ids = list(dict.fromkeys(fig["id"] for _, fig in entries))
-        with st.expander(f"{family.replace('_', ' ').title()} ({len(ids)} figures)"):
-            st.checkbox(f"Select all {family.replace('_', ' ')}",
-                        value=all(selected(i) for i in ids),
-                        key=f"figure:tree:family:{family}",
-                        on_change=lambda ids=ids, family=family: set_figures(
-                            ids, state[f"figure:tree:family:{family}"]))
-            for owner, fig in entries:
-                identifier = fig["id"]
-                st.checkbox(fig.get("label", identifier),
-                            value=identifier in initial, key=f"figure:tree:{identifier}",
-                            help=identifier, on_change=changed_figure)
-                st.caption(f"{owner} · {fig['destination']}")
-                if "studio:results_inventory" in state and owner != "statistics":
-                    matches = [item for item in state["studio:results_inventory"]
-                               if item["analysis"] == owner]
-                    if matches:
-                        from mdscope.studio.model import results_coverage
-                        for item in results_coverage(matches):
-                            st.caption(
-                                f"Saved {item['run_id']} / {item['condition']}: "
-                                f"{item['verified']}/{item['total']} replicas verified "
-                                f"({item['status']}). Unverified inputs require scheduling.")
-    exact_figures = exact_import or bool(state.get("figure:tree:edited"))
-    if exact_import and not state.get("figure:tree:edited") and not state.choices:
-        state.choices = {
-            owner: [fig["id"] for fig in figures if fig["id"] in initial]
-            for owner, figures in catalog.items()
-        }
-    if state.get("figure:tree:edited"):
-        from mdscope.studio.model import set_figure_selection
-        chosen = {identifier for identifier in all_ids if selected(identifier)}
-        state.choices = set_figure_selection(doc, catalog, chosen)
-        if not exact_import:
-            st.warning("Editing individual figures converts category switches to exact IDs. "
-                       "Figures whose identities depend on unavailable topology/data "
-                       "may not be listed; review the exported figure list.")
     tabs = st.tabs(["1 · Project & systems", "2 · Selections & alignment",
-                    "3 · Analyses", "4 · Statistics", "5 · Review & export"])
+                    "3 · Analyses", "4 · Statistics", "5 · Figures",
+                    "6 · Review & export"])
     errors = []
     with tabs[0]:
         try:
@@ -319,8 +241,8 @@ def main():
         except (ValueError, TypeError, OSError, yaml.YAMLError) as exc:
             errors.append(str(exc)); st.error(str(exc))
     with tabs[1]:
-        st.write("Free-form MDAnalysis atom selections")
-        st.caption("Examples: protein and segid PROA; resid 10:60 and backbone; resname POPC and name P. Expressions are preserved exactly.")
+        st.subheader("Define atom groups used by measurements")
+        st.caption("Enter MDAnalysis atom-selection expressions. A group ID is only a name: it does not select atoms. For example, PROA with selection `all` measures every atom, not just PROA. Check segment names against your topology.")
         try:
             selections = doc.setdefault("selections", {})
             common = {key: value for key, value in selections.items() if key != "groups"}
@@ -333,10 +255,14 @@ def main():
                 if isinstance(groups[group_id], str):
                     groups[group_id] = {"selection": groups[group_id]}
                 with st.expander(group_id):
+                    st.caption("Measurement selection: MDAnalysis expression for atoms to measure (e.g. `protein and segid PROA`). Alignment selection: optional independent fitting atoms for supported structural measurements (e.g. `backbone and segid PROA`). Leave blank to inherit backend defaults. Rename/duplicate ID is only needed when pressing those buttons.")
                     spec = groups[group_id]
                     for field, label in (("label", "Display label"), ("selection", "Measurement group selection"),
                                          ("alignment_selection", "Independent alignment selection (optional)")):
-                        value = st.text_input(label, spec.get(field) or "", key=f"edit:group:{group_id}:{field}")
+                        value = st.text_input(label, spec.get(field) or "", key=f"edit:group:{group_id}:{field}",
+                                              help={"label": "Human-readable name; does not determine atoms.",
+                                                    "selection": "MDAnalysis expression, e.g. protein and segid PROA. `all` selects every atom.",
+                                                    "alignment_selection": "Optional MDAnalysis selection for fitting; only supported structural analyses use it."}[field])
                         if value:
                             spec[field] = value
                         else:
@@ -385,7 +311,7 @@ def main():
                         default = spec.get("groups", list(doc["selections"].get("groups", {})))
                         spec["groups"] = st.multiselect("Named measurement groups", list(doc["selections"].get("groups", {})),
                                                          default=default, key=f"edit:groups:{name}")
-                        st.caption("Global measurement is also saved; this list filters grouped rows only.")
+                        st.caption("These group IDs come from Selections & alignment. Changing group definitions changes the corresponding measurement atoms; global measurement is also saved. This list filters grouped rows only.")
                     edited = analysis_settings(name, spec, doc)
                     doc["analyses"][name] = {"enabled": True, **edited,
                                               **({"groups": spec["groups"]} if name in {"rmsd", "radius_of_gyration"} and "groups" in spec else {})}
@@ -432,7 +358,7 @@ def main():
                     yaml.safe_dump(state.document, sort_keys=True))
                 source_status = statistics_source_status(
                     plan, state.get("studio:results_inventory") if inventory_fresh else None)
-                st.caption("Select all statistics, entire families, or individual known variables. "
+                st.caption("Only variables produced by the configured analyses can be inferred. Select all statistics, entire families, or individual known variables. "
                            "All includes dynamic identities that cannot be enumerated before execution.")
                 def set_family(family, checked):
                     set_statistics_family_mode(state.document, family, "all" if checked else "none")
@@ -561,6 +487,89 @@ def main():
             except (ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
                 errors.append(str(exc)); st.error(str(exc))
     with tabs[4]:
+        st.caption("Select figures from the current analysis and statistics configuration. "
+                   "Figures are optional; this does not execute plotting.")
+        plots = doc.get("plots", {})
+        # One hierarchy for imported family switches and exact selections.
+        # Imported configurations are not converted until a checkbox is changed.
+        st.caption("Figures · select all, whole categories, or individual outputs.")
+        from mdscope.planning import authoring_catalog
+        from mdscope.config import merge, figure_enabled
+        catalog = authoring_catalog(merge(DEFAULTS, doc), include_inactive=True)["figures"]
+        figures_by_family = {}
+        for owner, figures in catalog.items():
+            for fig in figures:
+                family = fig["id"].split(":", 1)[0]
+                figures_by_family.setdefault(family, []).append((owner, fig))
+        all_ids = list(dict.fromkeys(
+            fig["id"] for entries in figures_by_family.values() for _, fig in entries))
+        exact_import = plots.get("include") is not None
+        resolved_figure_cfg = resolve_config(doc) if not exact_import else None
+        initial = set(plots.get("include") or []) if exact_import else {
+            identifier for identifier in all_ids
+            if figure_enabled(resolved_figure_cfg, identifier)
+        }
+        initial.update(identifier for values in state.choices.values() for identifier in values
+                       if exact_import)
+        def selected(identifier):
+            return state.get(f"figure:tree:{identifier}", identifier in initial)
+        def sync_parents():
+            for family, entries in figures_by_family.items():
+                ids = {fig["id"] for _, fig in entries}
+                state[f"figure:tree:family:{family}"] = all(selected(i) for i in ids)
+            state["figure:tree:all"] = bool(all_ids) and all(selected(i) for i in all_ids)
+        def set_figures(ids, checked):
+            for identifier in ids:
+                state[f"figure:tree:{identifier}"] = checked
+            state["figure:tree:edited"] = True
+            sync_parents()
+        def changed_figure():
+            state["figure:tree:edited"] = True
+            sync_parents()
+        if all_ids:
+            st.checkbox("Select All", value=all(selected(i) for i in all_ids),
+                        key="figure:tree:all",
+                        on_change=lambda: set_figures(all_ids, state["figure:tree:all"]))
+        for family, entries in figures_by_family.items():
+            ids = list(dict.fromkeys(fig["id"] for _, fig in entries))
+            with st.expander(f"{family.replace('_', ' ').title()} ({len(ids)} figures)"):
+                st.checkbox(f"Select all {family.replace('_', ' ')}",
+                            value=all(selected(i) for i in ids),
+                            key=f"figure:tree:family:{family}",
+                            on_change=lambda ids=ids, family=family: set_figures(
+                                ids, state[f"figure:tree:family:{family}"]))
+                for owner, fig in entries:
+                    identifier = fig["id"]
+                    st.checkbox(fig.get("label", identifier),
+                                value=identifier in initial, key=f"figure:tree:{identifier}",
+                                help=identifier, on_change=changed_figure)
+                    st.caption(f"{owner} · {fig['destination']}")
+                    if "studio:results_inventory" in state and owner != "statistics":
+                        matches = [item for item in state["studio:results_inventory"]
+                                   if item["analysis"] == owner]
+                        if matches:
+                            from mdscope.studio.model import results_coverage
+                            for item in results_coverage(matches):
+                                st.caption(
+                                    f"Saved {item['run_id']} / {item['condition']}: "
+                                    f"{item['verified']}/{item['total']} replicas verified "
+                                    f"({item['status']}). Unverified inputs require scheduling.")
+        exact_figures = exact_import or bool(state.get("figure:tree:edited"))
+        if exact_import and not state.get("figure:tree:edited") and not state.choices:
+            state.choices = {
+                owner: [fig["id"] for fig in figures if fig["id"] in initial]
+                for owner, figures in catalog.items()
+            }
+        if state.get("figure:tree:edited"):
+            from mdscope.studio.model import set_figure_selection
+            chosen = {identifier for identifier in all_ids if selected(identifier)}
+            state.choices = set_figure_selection(doc, catalog, chosen)
+            if not exact_import:
+                st.warning("Editing individual figures converts category switches to exact IDs. "
+                           "Figures whose identities depend on unavailable topology/data "
+                           "may not be listed; review the exported figure list.")
+    
+    with tabs[5]:
         try:
             text, plan = review(doc, base, state.choices if exact_figures else None)
             st.warning("Schema-only validation: topology, chemistry, trajectory alignment and sampling eligibility remain unverified.")
