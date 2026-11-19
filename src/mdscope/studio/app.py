@@ -185,7 +185,10 @@ def main():
     if not exact_figures:
         st.caption("Quick selection: enable an entire figure category without selecting individual IDs.")
         selected_families = []
-        current_families = quick_figure_families(doc)
+        # Entering Quick from an exact allowlist starts with no broad
+        # categories; never silently expand a narrow selection.
+        current_families = (quick_figure_families(doc)
+                            if plots.get("include") is None else set())
         for family in QUICK_FIGURE_FAMILIES:
             if st.checkbox(f"All {family.replace('_', ' ')} figures",
                            value=family in current_families, key=f"edit:quick:figure:{family}"):
