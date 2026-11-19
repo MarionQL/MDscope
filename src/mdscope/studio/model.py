@@ -94,7 +94,7 @@ def review(document, base, choices=None):
         from ..registry import STRUCTURAL_SCALAR_METRICS, scalar_contracts
         from ..registry import configured_profile_variables
         catalog_cfg = deepcopy(cfg)
-        for name in ("rmsd", "radius_of_gyration", "rmsf", "membrane", "dssp", "sasa"):
+        for name in ("rmsd", "radius_of_gyration", "rmsf", "membrane", "dssp", "sasa", "density_1d", "residue_membrane_distance"):
             catalog_cfg["analyses"][name]["enabled"] = True
         for spec in catalog_cfg["analyses"].values():
             for run_id, run in (spec.get("runs") or {}).items():
@@ -121,6 +121,9 @@ def review(document, base, choices=None):
                    for fig in var["figures"] if not fig["requires_statistics"]}
             for name in {var["analysis"] for var in variables}
         }
+        from ..planning import analysis_figure_candidates
+        for name in cfg["analyses"]:
+            eligible.setdefault(name, set()).update(fig["id"] for fig in analysis_figure_candidates(cfg, name))
         selected_stats = cfg["statistics"].get("metric_selection", {}).get("time_series")
         eligible["statistics"] = {
             fig["id"] for var in variables
@@ -211,5 +214,7 @@ def delete_named_run(document, name, run_id):
     plots = document.get("plots", {})
     if plots.get("include") is not None:
         stems = {safe_plot_stem(profile) for profile in profiles}
+        if name == "residue_membrane_distance":
+            stems.add(f"residue_membrane_distance__{safe_plot_stem(run_id)}")
         plots["include"] = [identifier for identifier in plots["include"]
                             if not (identifier.startswith("profiles:") and identifier.split(":")[1] in stems)]

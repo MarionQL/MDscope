@@ -379,4 +379,47 @@ def configured_profile_variables(cfg):
     if cfg["analyses"]["dssp"].get("enabled", False):
         for kind in ("helix", "sheet", "coil"):
             add("dssp", f"dssp_{kind}_occupancy", "fraction", "Per-frame residue assignments required")
+    for run in analysis_runs(cfg, "density_1d"):
+        for key, raw in run.spec.get("selections", {}).items():
+            target = {"selection": raw} if isinstance(raw, str) else raw
+            unit = "amu/A^3" if target.get("mode", "number") == "mass" else "1/A^3"
+            add("density_1d", f"density_1d__{run.run_id}__{key}", unit,
+                "Compatible physical bin grids and per-frame density cache required", run.run_id)
+            if target.get("groups"):
+                for group in analysis_groups(cfg):
+                    add("density_1d", f"density_1d__{run.run_id}__{key}__{group}", unit,
+                        "Conditional: target/group intersection must be nonempty; compatible grids required", run.run_id)
+    for run in analysis_runs(cfg, "residue_membrane_distance"):
+        names = [("mean_min_distance_A", "angstrom"), ("median_min_distance_A", "angstrom")]
+        if run.spec.get("contact_cutoff_A") is not None:
+            names.append(("fraction_frames_within_cutoff", "fraction"))
+        prefixes = [f"residue_membrane_distance__{run.run_id}"]
+        if run.spec.get("groups"):
+            prefixes.extend(f"residue_membrane_distance__{run.run_id}__group_{group}" for group in analysis_groups(cfg))
+        for prefix in prefixes:
+            for metric, unit in names:
+                add("residue_membrane_distance", f"{prefix}__{metric}", unit,
+                    "Compatible residue identities and per-frame matrix; grouped outputs require nonempty intersections", run.run_id)
     return variables
+
+
+def density_output_contracts(cfg):
+    """Mean density tables saved by DensityProfileAccumulator.finalize."""
+    from .config import profile_dir, analysis_groups
+    outputs = []
+    for run in analysis_runs(cfg, "density_1d"):
+        for key, raw in run.spec.get("selections", {}).items():
+            target = {"selection": raw} if isinstance(raw, str) else raw
+            unit = "amu/A^3" if target.get("mode", "number") == "mass" else "1/A^3"
+            outputs.append(dict(analysis="density_1d", run_id=run.run_id, role="conditional_summary",
+                format="Parquet", columns_status="verified_fixed", row_grain="one spatial bin per target per replicate",
+                columns=[f"{run.spec.get('axis', 'z')}_A", "density", "analysis_instance", "selection_key",
+                         "selection_label", "mode", "density_unit", "n_frames"],
+                units={"density": unit}, path_within_replica=str(profile_dir(Path(), "density_1d", run.run_id) / f"{key}.parquet")))
+            if target.get("groups"):
+                for group in analysis_groups(cfg):
+                    output = dict(outputs[-1])
+                    output["path_within_replica"] = str(profile_dir(Path(), "density_1d", run.run_id) / f"{key}__{group}.parquet")
+                    output["row_grain"] = "conditional on nonempty target/group intersection; one spatial bin per replicate"
+                    outputs.append(output)
+    return outputs

@@ -71,3 +71,20 @@ new changes require their own CI results.
   retained in editable state; deletion removes catalogued SASA profile selectors
   and imported figure IDs. Referenced runs are protected from deletion, including
   SDC4 SASA references. Last-run deletion requires explicitly leaving named mode.
+
+## Density and distance authoring milestone
+
+- [x] Density named-run/target profile identities, number/mass units, global and
+  conditional group table paths and column previews.
+- [x] Distance run mean/median and optional cutoff-fraction profile selectors,
+  conditional grouped profiles and separate descriptive per-condition heatmaps.
+- [x] Both families feed existing exact statistics selectors/figure choices;
+  disabled runs and deleted distance heatmaps are removed from active export.
+- [x] Distance `groups` uses the backend boolean contract; only RMSD/Rg use the
+  shared-group multiselect. No backend `groups` list is invented.
+- [x] Density schema/identity tested against actual saved producer output;
+  distance figure deletion and boolean UI contracts covered by integration tests.
+
+Dynamic dimensions, empty topology-dependent intersections, sampling eligibility
+and unregistered optional outputs remain explicitly conditional. This completes
+this authoring milestone, not all acceptance requirements of #173.

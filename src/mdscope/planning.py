@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import analysis_runs, iter_replicates, plot_enabled, statistics_family_config
-from .registry import analysis_output_plan, required_artifacts, artifact_schema, scalar_contracts, structural_profile_contracts, configured_profile_variables
+from .registry import analysis_output_plan, required_artifacts, artifact_schema, scalar_contracts, structural_profile_contracts, density_output_contracts, configured_profile_variables
 from .statistics_families import STATISTICS_FAMILIES
 from .statistics_selection import ESTIMATOR_FLAGS
 from .reporting.plot_ids import STATIC_IDS, SDC4_CONDITION_STEMS, describe_plot, safe_plot_stem
@@ -469,7 +469,7 @@ def build_plan(cfg: dict, config_path: str | Path, *,
         "analyses": selected,
         "registered_replica_outputs": outputs,
         "observable_contracts": scalar_contracts(cfg),
-        "structural_profile_outputs": structural_profile_contracts(cfg),
+        "structural_profile_outputs": structural_profile_contracts(cfg) + density_output_contracts(cfg),
         "profile_variables": configured_profile_variables(cfg),
         "conditional_replica_outputs": [
             {"path_within_replica": "summary/timeseries.parquet",
@@ -763,6 +763,9 @@ def analysis_figure_candidates(cfg, name):
         identifiers.append(f"interactions:{name}:occupancy_heatmap")
         if cfg["analyses"].get("lifetimes", {}).get("enabled", True):
             identifiers.append(f"interactions:{name}:lifetime_distribution")
+    if name == "residue_membrane_distance":
+        identifiers.extend(f"profiles:residue_membrane_distance__{safe_plot_stem(run.run_id)}:{safe_plot_stem(system)}:distance_heatmap"
+                           for run in analysis_runs(cfg, name) for system in cfg["systems"])
     if name == "solvation":
         identifiers.extend(["solvation:water_and_ions", "solvation:contact_survival"])
     return [dict(describe_plot(identifier), requires_statistics=False,

@@ -23,7 +23,7 @@ def analysis_settings(name, spec):
     defaults = DEFAULTS["analyses"].get(name, {})
     result = {}
     for key, default in defaults.items():
-        if key in {"enabled", "groups"}:
+        if key == "enabled" or (key == "groups" and name in {"rmsd", "radius_of_gyration"}):
             continue
         value = spec.get(key, default)
         label = key.replace("_", " ")
@@ -39,7 +39,7 @@ def analysis_settings(name, spec):
         if key in spec or edited != default:
             result[key] = edited
     from mdscope.config import MULTI_RUN_ANALYSES, analysis_runs, merge
-    excluded = {"enabled", "groups"}
+    excluded = {"enabled"} | ({"groups"} if name in {"rmsd", "radius_of_gyration"} else set())
     if name in MULTI_RUN_ANALYSES:
         excluded.add("runs")
         use_runs = st.checkbox("Configure named runs", value="runs" in spec, key=f"edit:runs:{name}:enabled")
@@ -229,14 +229,14 @@ def main():
                 continue
             with st.expander(name, expanded=True):
                 try:
-                    if "groups" in schema:
+                    if name in {"rmsd", "radius_of_gyration"}:
                         default = spec.get("groups", list(doc["selections"].get("groups", {})))
                         spec["groups"] = st.multiselect("Named measurement groups", list(doc["selections"].get("groups", {})),
                                                          default=default, key=f"edit:groups:{name}")
                         st.caption("Global measurement is also saved; this list filters grouped rows only.")
                     edited = analysis_settings(name, spec)
                     doc["analyses"][name] = {"enabled": True, **edited,
-                                              **({"groups": spec["groups"]} if "groups" in spec else {})}
+                                              **({"groups": spec["groups"]} if name in {"rmsd", "radius_of_gyration"} and "groups" in spec else {})}
                     st.caption("Supported keys: " + ", ".join(key for key in schema if key != "enabled"))
                     st.caption("Units: _A = Å; _ps = ps; _deg = degrees. Named runs are supported only where runs is listed.")
                     _, plan = review(doc, base)

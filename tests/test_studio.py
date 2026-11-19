@@ -424,3 +424,62 @@ def test_disabled_run_statistics_are_filtered_without_losing_editable_choice(tmp
     raw = yaml.safe_load(review(doc, tmp_path, {})[0])
     assert raw["statistics"]["metric_selection"]["profiles"] == []
     assert doc["statistics"]["metric_selection"]["profiles"] == [{"profile": "sasa_mean__paused"}]
+
+
+def test_density_contract_parity_with_real_accumulator(tmp_path):
+    import pandas as pd
+    from mdscope.registry import density_output_contracts, configured_profile_variables
+    from mdscope.config import analysis_runs
+    from mdscope.observables.density_1d import DensityProfileAccumulator, temporal_density_profiles
+    from mdscope_test_support import membrane_universe
+    doc = new_document()
+    doc["analyses"]["density_1d"] = {"enabled": True, "runs": {"lipids": {
+        "selections": {"heads": "resname POPC"}}}}
+    cfg = resolve_config(doc)
+    run, = analysis_runs(cfg, "density_1d")
+    u = membrane_universe()
+    observer = DensityProfileAccumulator(u, cfg, run.spec, run.run_id)
+    for ts in u.trajectory:
+        observer.update(u, float(ts.frame))
+    observer.flush_frames(tmp_path, 0)
+    observer.finalize(tmp_path)
+    contract, = density_output_contracts(cfg)
+    saved = pd.read_parquet(tmp_path / contract["path_within_replica"])
+    assert list(saved.columns) == contract["columns"]
+    assert set(saved.density_unit) == {contract["units"]["density"]}
+    actual = temporal_density_profiles(tmp_path, cfg)
+    assert set(actual) == {item["profile"] for item in configured_profile_variables(cfg)}
+
+
+def test_distance_run_plan_and_heatmap_lifecycle(tmp_path):
+    from mdscope.studio.model import delete_named_run
+    doc = new_document()
+    doc["analyses"]["residue_membrane_distance"] = {"enabled": True, "runs": {
+        "heads": {"membrane_selection": "name P", "contact_cutoff_A": None},
+        "all_lipids": {"membrane_selection": "resname POPC"}}}
+    _, plan = review(doc, tmp_path)
+    profiles = {item["profile"] for item in plan["profile_variables"]}
+    assert "residue_membrane_distance__heads__mean_min_distance_A" in profiles
+    assert "residue_membrane_distance__heads__fraction_frames_within_cutoff" not in profiles
+    identifier = "profiles:residue_membrane_distance__heads:condition1:distance_heatmap"
+    raw = yaml.safe_load(review(doc, tmp_path, {"residue_membrane_distance": [identifier]})[0])
+    assert raw["plots"]["include"] == [identifier]
+    doc["plots"] = {"enabled": True, "include": [identifier]}
+    delete_named_run(doc, "residue_membrane_distance", "heads")
+    assert doc["plots"]["include"] == []
+    raw = yaml.safe_load(review(doc, tmp_path, {"residue_membrane_distance": [identifier]})[0])
+    assert raw["plots"]["include"] == []
+
+
+def test_distance_group_control_is_backend_boolean(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+    monkeypatch.chdir(tmp_path)
+    at = AppTest.from_file(app.__file__).run()
+    at.checkbox(key="enable:residue_membrane_distance").check().run()
+    assert not at.exception
+    at.checkbox(key="edit:setting:residue_membrane_distance:groups").check().run()
+    assert not at.exception
+    raw = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
+    assert raw["analyses"]["residue_membrane_distance"]["groups"] is True
