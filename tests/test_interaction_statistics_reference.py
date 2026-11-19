@@ -86,8 +86,13 @@ def test_factorized_labels_match_legacy_row_format_with_repeats_and_missing_valu
         "residue_1": ["ASP1", "ASP1", "GLU2", None, "ASP1"],
         "residue_2": ["LYS7", "LYS7", "ARG8", "ARG9", "LYS7"],
     })
-    expected = table[["residue_1", "residue_2"]].astype(str).agg(" | ".join, axis=1)
-    assert _interaction_labels(table, ["residue_1", "residue_2"]).tolist() == expected.tolist()
+    # Identity labels are a saved-data contract, not a pandas astype(str)
+    # implementation detail (which differs for nulls across pandas versions).
+    expected = [
+        "ASP1 | LYS7", "ASP1 | LYS7", "GLU2 | ARG8",
+        "None | ARG9", "ASP1 | LYS7",
+    ]
+    assert _interaction_labels(table, ["residue_1", "residue_2"]).tolist() == expected
     assert _interaction_labels(table, []).tolist() == ["interaction"] * len(table)
 
 
