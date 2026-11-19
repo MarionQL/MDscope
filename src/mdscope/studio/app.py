@@ -272,10 +272,9 @@ def main():
                                                 spec.get("selection") or "",
                                                 key=f"edit:group:{group_id}:selection",
                                                 help="MDAnalysis selection syntax, e.g. protein and segid PROA.")
-                    if measurement:
-                        spec["selection"] = measurement
-                    else:
-                        spec.pop("selection", None)
+                    spec["selection"] = measurement
+                    if not measurement.strip():
+                        st.warning("Choose atoms for this group before export. `all` is valid only when you explicitly want every atom.")
                     st.caption("Example: `protein and segid PROA`. The expression `all` selects every atom, regardless of the group name. Verify atom counts with topology preflight.")
                     alignment = st.text_input("Atoms for structural alignment (optional)",
                                               spec.get("alignment_selection") or "",
@@ -300,6 +299,7 @@ def main():
                 target = next_group_id(groups)
                 add_group(doc, target)
                 doc["selections"]["groups"][target]["label"] = "New group"
+                doc["selections"]["groups"][target]["selection"] = ""
                 restart_editor(doc)
             if st.button("Preview selections from topology (no trajectories)", key="edit:groups:preflight"):
                 # An explicit topology-only read, using the same validator as export.
@@ -597,6 +597,10 @@ def main():
     
     with tabs[5]:
         try:
+            missing_groups = [group_id for group_id, spec in doc.get("selections", {}).get("groups", {}).items()
+                              if isinstance(spec, dict) and not (spec.get("selection") or "").strip()]
+            if missing_groups:
+                st.error("Choose a measurement selection for: " + ", ".join(missing_groups))
             text, plan = review(doc, base, state.choices if exact_figures else None)
             st.warning("Schema-only validation: topology, chemistry, trajectory alignment and sampling eligibility remain unverified.")
             from mdscope.studio.model import unavailable_exact_statistics
@@ -625,7 +629,7 @@ def main():
             st.json({"analyses": plan["analyses"], "figures": yaml.safe_load(text).get("plots"),
                      "statistics": yaml.safe_load(text).get("statistics")})
             st.code(text, language="yaml")
-            valid = not errors and not missing_stats and (not require_topology or bool(preflight and preflight[0] == signature))
+            valid = not errors and not missing_groups and not missing_stats and (not require_topology or bool(preflight and preflight[0] == signature))
             st.download_button("Download analysis.yaml", text, file_name="analysis.yaml", mime="text/yaml", disabled=not valid)
             st.caption("No output files are overwritten. Save YAML in the configuration directory shown above.")
         except (ValueError, TypeError, KeyError, OSError, yaml.YAMLError) as exc:
