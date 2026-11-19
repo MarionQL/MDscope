@@ -263,14 +263,14 @@ def review(document, base, choices=None):
             if active:
                 ids.extend(identifier for identifier in selected
                            if owner not in eligible or identifier in eligible[owner])
-        # Exact mode must not silently carry unowned imported figures forward.
+        # Exact-ID export must not silently carry unowned imported figures forward.
         original = ((raw.get("plots", {}).get("include") or [])
                     if raw.get("plots", {}).get("enabled", False) else [])
         managed_ids = {fig["id"] for figures in catalog["figures"].values() for fig in figures}
         unknown = [identifier for identifier in original if identifier not in managed_ids]
         if unknown:
             raise ValueError("Imported figures lack authoring ownership contracts: " + ", ".join(unknown) +
-                             ". Keep legacy figure mode or explicitly remove these IDs before exact export.")
+                             ". Leave the imported selection unchanged or explicitly remove these IDs before exact export.")
         plots = raw.setdefault("plots", {})
         plots.update(enabled=bool(ids), include=list(dict.fromkeys(ids)))
         # Exact figure choices supersede imported legacy switches that would
