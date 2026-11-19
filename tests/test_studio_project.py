@@ -137,3 +137,40 @@ def test_guided_editor_rejected_condition_add_keeps_hierarchy_and_recovers(tmp_p
     assert at.session_state["document"]["statistics"]["metric_selection"] == baseline[
         "statistics"
     ]["metric_selection"]
+
+
+
+def test_topology_identity_hash_streams_large_selection_without_changing_digest():
+    import hashlib
+    import json
+    import tracemalloc
+    from types import SimpleNamespace
+    from mdscope.core.alignment import selection_details
+
+    class Atoms(list):
+        @property
+        def residues(self):
+            return range(100)
+
+    atoms = Atoms(
+        SimpleNamespace(index=i, segid="PROα", resid=i % 100 + 1,
+                        resname="ALA", name=f"C{i % 4}")
+        for i in range(30000)
+    )
+    expected = hashlib.sha256(json.dumps([
+        (a.segid, a.resid, a.resname, a.name) for a in atoms
+    ], ensure_ascii=False).encode()).hexdigest()
+
+    tracemalloc.start()
+    try:
+        details = selection_details(atoms)
+        _, peak_bytes = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert details["ordered_identity_sha256"] == expected
+    assert details["atoms"] == 30000
+    assert details["residues"] == 100
+    assert details["segments"] == ["PROα"]
+    assert len(details["residue_labels"]) == 100
+    assert len(details["first_atoms"]) == 5
+    assert peak_bytes < 3_000_000, f"Topology preview peak working memory: {peak_bytes:,} bytes"
