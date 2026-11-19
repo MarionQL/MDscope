@@ -153,6 +153,31 @@ def main():
     state.setdefault("document", new_document())
     state.setdefault("choices", {})
     base = st.text_input("Configuration directory (relative paths resolve here)", str(Path.cwd()))
+    results_dir = st.text_input(
+        "Existing MDscope results directory (optional)",
+        value=str(Path(base) / state.document.get("project", {}).get(
+            "output", DEFAULTS["project"]["output"])),
+        key="studio:results_dir",
+        help="Inspect saved registered analysis products without reading trajectories. "
+             "A file inventory alone cannot verify scientific provenance.")
+    if st.button("Inspect existing results", key="studio:inspect_results"):
+        try:
+            from mdscope.studio.model import inspect_results_directory
+            state["studio:results_inventory"] = inspect_results_directory(
+                state.document, base, results_dir)
+            state["studio:results_inventory_path"] = results_dir
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            state.pop("studio:results_inventory", None)
+            st.error(str(exc))
+    if "studio:results_inventory" in state:
+        inventory = state["studio:results_inventory"]
+        st.caption("Registered products only; candidate files are NOT verified "
+                   "for provenance, schema or restart completeness.")
+        if inventory:
+            st.dataframe(inventory, hide_index=True)
+        else:
+            st.info("No registered outputs are expected for the currently enabled analyses.")
+
     uploaded = st.file_uploader("Import existing YAML", type=["yaml", "yml"])
     if uploaded is not None and st.button("Load YAML"):
         try:
