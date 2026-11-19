@@ -418,3 +418,61 @@ def test_plot_plan_flags_unknown_named_run_without_claiming_data(tmp_path, proje
     assert figure["run_id"] is None
     assert figure["availability"] == "unavailable_unconfigured_run_or_system"
     assert not root.exists()
+
+
+def test_saved_figure_discovery_uses_only_persisted_metric_identities(tmp_path, project):
+    import pandas as pd
+    from mdscope.planning import inspect_saved_plot_ids
+    path, root = project("discover_saved_plot_ids")
+    cfg = load_config(path, check_paths=False)
+    saved = root / "tiny" / "rep1" / "summary"
+    saved.mkdir(parents=True)
+    pd.DataFrame({
+        "time_ps": [0., 1.], "rmsd_A": [1., 2.],
+        "membrane_thickness_A": [29., 30.]
+    }).to_parquet(saved / "timeseries.parquet")
+    pd.DataFrame({
+        "time_ps": [0., 1.], "group": ["PROA", "PROA"],
+        "rmsd_A": [1., 2.],
+    }).to_parquet(saved / "group_timeseries.parquet")
+    cfg["plots"]["include"] = [
+        "time_series:rmsd_A:timeseries",
+        "time_series:missing_metric:timeseries",
+    ]
+    result = inspect_saved_plot_ids(cfg, root, path)
+    by_id = {row["id"]: row for row in result["figures"]}
+    assert "time_series:rmsd_A:timeseries" in by_id
+    assert "time_series:rmsd_A__group_PROA:timeseries" in by_id
+    assert "time_series:membrane_thickness_A:distribution" in by_id
+    assert by_id["time_series:rmsd_A:timeseries"]["requires_statistics"] is False
+    assert by_id["time_series:rmsd_A:comparison_table"]["requires_statistics"] is True
+    assert result["unconfirmed_requested_ids"] == [
+        "time_series:missing_metric:timeseries"
+    ]
+    assert result["unconfirmed_status"] == "not_observed_in_inspected_saved_products"
+    assert not (root / "project_summary").exists()
+
+
+def test_saved_figure_discovery_limit_and_profile_manifest_gate(tmp_path, project):
+    import json
+    import pandas as pd
+    from mdscope.planning import inspect_saved_plot_ids
+    path, root = project("discover_profiles")
+    cfg = load_config(path, check_paths=False)
+    profiles = root / "project_summary" / "statistics" / "profiles"
+    profiles.mkdir(parents=True)
+    pd.DataFrame({"profile": ["sasa__isolated", "sasa__environment"],
+                  "position": [1, 2], "value": [1., 2.]}).to_parquet(
+                      profiles / "replicate_profiles.parquet")
+    result = inspect_saved_plot_ids(cfg, root, path)
+    assert not any(item["family"] == "profiles" for item in result["figures"])
+    (profiles.parent / "manifest.json").write_text(
+        json.dumps({"status": "complete"}))
+    result = inspect_saved_plot_ids(cfg, root, path)
+    assert any(item["id"] == "profiles:sasa__isolated:profile"
+               for item in result["figures"])
+    bounded = inspect_saved_plot_ids(cfg, root, path, max_identities=1)
+    assert len(bounded["figures"]) == 1
+    assert bounded["truncated"]
+    with pytest.raises(ValueError, match="max_identities"):
+        inspect_saved_plot_ids(cfg, root, path, max_identities=0)
