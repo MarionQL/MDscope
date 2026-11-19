@@ -19,19 +19,23 @@ Relative topology, trajectory and output paths resolve from that directory.
    inspect actual per-condition matches without loading trajectories. Group RMSD
    measures the intersection with `selections.features`; group Rg intersects its
    own selection. Group filters do not suppress the global scalar.
-3. Enable analyses individually. Edit supported backend options, inspect saved
-   schema/path contracts, then choose descriptive figures. Everything starts off.
-4. Optionally enable statistics and select exact variables and estimators.
-   Structural scalar choices are guided; other families accept exact backend
-   selectors in YAML. Inference uses independent replicas, with backend coverage
-   checks deciding availability.
+3. Enable analyses individually. Edit supported backend options and inspect
+   illustrative schema/path contracts. Choose optional figures through the
+   single Select All → category → figure hierarchy. Everything starts off.
+4. Optionally enable statistics and use the one hierarchical selector:
+   Select All → family → metric/observable → estimator options. Individual known
+   variables are guided; dynamic families support exact backend selector tables.
+   A whole family includes future identities without enumerating them. Inference
+   uses independent replicas, with backend coverage checks deciding availability.
 5. Review and download. Path checks and topology preflight are explicit buttons;
    topology-required mode blocks download until the current document passes.
    Schema-only export remains marked unverified.
 
-No trajectories, saved-result inputs, calculations or plot jobs are opened by the
-wizard. Schema placeholders are **ILLUSTRATIVE — NO MD RESULTS**. The figure cards
-show the production plot ID and destination; they do not compute example plots.
+The wizard does not open trajectories or run analyses, statistics, or plot jobs.
+Saved products are inspected read-only **only** when explicitly requested through
+**Inspect existing results**; topology reads also require explicit preflight.
+Schema placeholders are **ILLUSTRATIVE — NO MD RESULTS**. Figure entries show
+production plot IDs and destinations without computing example plots.
 
 ## Current coverage
 
@@ -51,8 +55,9 @@ show the production plot ID and destination; they do not compute example plots.
 | Option help | Backend field help, selection/reference semantics and unit suffixes |
 | Post-run figure editor | Deferred |
 
-Imported options and legacy all-variable/all-figure switches are retained until
-explicitly replaced by exact selectors. Explicit figure choices override conflicting
+Imported options and legacy all-variable/all-figure switches are retained on
+no-op export until the user edits their hierarchy; there is no separate
+Legacy/Exact interface. Explicit figure choices override conflicting
 legacy family/variant switches in exported YAML; unrelated switches are preserved.
 YAML comments/formatting are not retained. Review export
 before replacing a configuration. Protein/features/alignment defaults are parsed
