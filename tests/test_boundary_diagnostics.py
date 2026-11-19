@@ -59,3 +59,39 @@ def test_corrupt_checkpoint_reports_replica_and_preserves_raw_bytes(tmp_path):
     assert isinstance(failure.value.__cause__, (OSError, ValueError, EOFError))
     assert checkpoint.read_bytes() == b"corrupted checkpoint"
     assert sentinel.read_bytes() == b"previous results"
+
+
+@pytest.mark.parametrize("manifest_content,expected", [
+    (None, "missing"),
+    ("{invalid", "invalid"),
+    ('{"status":"running"}', "running"),
+])
+def test_statistical_plot_manifest_failure_preserves_existing_figures(
+    tmp_path, project, manifest_content, expected
+):
+    import yaml
+    from mdscope.pipeline.runner import finalize_project
+
+    config, root = project("plot_manifest_diagnostic")
+    raw = yaml.safe_load(config.read_text())
+    raw["plots"] = {
+        "enabled": True,
+        "include": ["time_series:rmsd_A:bootstrap_table"],
+    }
+    config.write_text(yaml.safe_dump(raw))
+    root.mkdir()
+    existing = root / "project_summary" / "figures" / "old.png"
+    existing.parent.mkdir(parents=True)
+    existing.write_bytes(b"prior figure")
+    manifest = root / "project_summary" / "statistics" / "manifest.json"
+    if manifest_content is not None:
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text(manifest_content)
+    with pytest.raises(RuntimeError, match="completed statistics") as failure:
+        finalize_project(
+            config, cfg=load_config(config, check_paths=False),
+            root=root, phase="plotting"
+        )
+    assert expected in str(failure.value)
+    assert str(manifest) in str(failure.value)
+    assert existing.read_bytes() == b"prior figure"
