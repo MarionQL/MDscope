@@ -186,11 +186,9 @@ def statistics_selector_fields(family):
     return [*keys, "inference", *sorted(ESTIMATOR_FLAGS[family])]
 
 
-def delete_named_run(document, name, run_id):
+def delete_named_run(document, name, run_id, *, choices=None):
     """Delete a run and its catalogued selectors; reject dangling references."""
-    from ..config import MULTI_RUN_ANALYSES, merge
-    from ..planning import authoring_catalog
-    from ..reporting.plot_ids import safe_plot_stem
+    from ..config import MULTI_RUN_ANALYSES
     if name not in MULTI_RUN_ANALYSES:
         raise ValueError(f"{name} does not support named runs")
     spec = document["analyses"][name]
@@ -209,20 +207,48 @@ def delete_named_run(document, name, run_id):
                        if mechanism.get(key) == run_id]
     if references:
         raise ValueError(f"Run {run_id!r} is referenced by {', '.join(references)}; change those references before deletion")
+    _discard_run_outputs(document, name, {run_id}, choices)
+    del runs[run_id]
+
+
+def clear_named_runs(document, name, *, choices=None):
+    """Return to the default run without retaining removed-run selections."""
+    from ..config import MULTI_RUN_ANALYSES
+    if name not in MULTI_RUN_ANALYSES:
+        raise ValueError(f"{name} does not support named runs")
+    spec = document["analyses"][name]
+    run_ids = set(spec.get("runs") or {})
+    mechanism = document["analyses"].get("sdc4_mechanisms", {})
+    if name == "sasa" and isinstance(mechanism, dict):
+        references = [key for key in ("sasa_run", "environment_sasa_run") if mechanism.get(key) in run_ids]
+        if references:
+            raise ValueError("Named SASA runs are referenced by sdc4_mechanisms: " + ", ".join(references))
+    _discard_run_outputs(document, name, run_ids, choices)
+    spec.pop("runs", None)
+
+
+def _discard_run_outputs(document, name, run_ids, choices):
+    from ..config import merge
+    from ..planning import authoring_catalog
+    from ..reporting.plot_ids import safe_plot_stem
     catalog = authoring_catalog(merge(DEFAULTS, document), include_inactive=True)
     profiles = {item["profile"] for item in catalog["profiles"]
-                if item["analysis"] == name and item["run_id"] == run_id}
-    del runs[run_id]
+                if item["analysis"] == name and item["run_id"] in run_ids}
     selectors = document.get("statistics", {}).get("metric_selection") or {}
     if "profiles" in selectors:
         selectors["profiles"] = [item for item in selectors["profiles"] if item["profile"] not in profiles]
     plots = document.get("plots", {})
+    stems = {safe_plot_stem(profile) for profile in profiles}
+    if name == "residue_membrane_distance":
+        stems.update(f"residue_membrane_distance__{safe_plot_stem(run_id)}" for run_id in run_ids)
+    def retain(identifiers):
+        return [identifier for identifier in identifiers
+                if not (identifier.startswith("profiles:") and identifier.split(":")[1] in stems)]
     if plots.get("include") is not None:
-        stems = {safe_plot_stem(profile) for profile in profiles}
-        if name == "residue_membrane_distance":
-            stems.add(f"residue_membrane_distance__{safe_plot_stem(run_id)}")
-        plots["include"] = [identifier for identifier in plots["include"]
-                            if not (identifier.startswith("profiles:") and identifier.split(":")[1] in stems)]
+        plots["include"] = retain(plots["include"])
+    if choices is not None:
+        for owner in choices:
+            choices[owner] = retain(choices[owner])
 
 
 def commit_draft(document, draft):

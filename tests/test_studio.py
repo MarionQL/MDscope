@@ -570,7 +570,9 @@ def test_delete_disabled_run_removes_optional_contract_choices():
     profile = "residue_membrane_distance__old__fraction_frames_within_cutoff"
     doc["statistics"]["metric_selection"]["profiles"] = [{"profile": profile}]
     doc["plots"] = {"enabled": True, "include": [f"profiles:{profile}:profile"]}
-    delete_named_run(doc, "residue_membrane_distance", "old")
+    choices = {"statistics": [f"profiles:{profile}:profile"], "residue_membrane_distance": ["profiles:residue_membrane_distance__old:condition1:distance_heatmap"]}
+    delete_named_run(doc, "residue_membrane_distance", "old", choices=choices)
+    assert all(value == [] for value in choices.values())
     assert doc["statistics"]["metric_selection"]["profiles"] == []
     assert doc["plots"]["include"] == []
     assert list(doc["analyses"]["residue_membrane_distance"]["runs"]) == ["keep"]
@@ -584,3 +586,24 @@ def test_disabled_membrane_suboption_filters_export_and_preserves_draft(tmp_path
     raw = yaml.safe_load(review(doc, tmp_path, {})[0])
     assert raw["statistics"]["metric_selection"]["time_series"] == []
     assert doc == before
+
+
+def test_return_to_default_run_prunes_choices_and_protects_external_references(tmp_path):
+    from mdscope.studio.model import clear_named_runs
+    doc = new_document()
+    doc["analyses"]["sasa"] = {"enabled": True, "runs": {"custom": {}}}
+    profile = "sasa_mean__custom"
+    doc["statistics"]["metric_selection"]["profiles"] = [{"profile": profile}]
+    choices = {"statistics": [f"profiles:{profile}:profile"]}
+    doc["plots"] = {"enabled": True, "include": choices["statistics"][:]}
+    doc["analyses"]["sdc4_mechanisms"] = {"enabled": False, "sasa_run": "custom"}
+    before = deepcopy(doc)
+    with pytest.raises(ValueError, match="referenced"):
+        clear_named_runs(doc, "sasa", choices=choices)
+    assert doc == before
+    doc["analyses"]["sdc4_mechanisms"] = False
+    clear_named_runs(doc, "sasa", choices=choices)
+    assert "runs" not in doc["analyses"]["sasa"]
+    assert choices["statistics"] == []
+    assert doc["plots"]["include"] == []
+    assert yaml.safe_load(review(doc, tmp_path, choices)[0])["statistics"]["metric_selection"]["profiles"] == []

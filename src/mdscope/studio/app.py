@@ -61,7 +61,7 @@ def analysis_settings(name, spec, document):
                     runs[run_id] = run_options
                     if st.button("Delete run", key=f"edit:run:{name}:{run_id}:delete"):
                         from mdscope.studio.model import delete_named_run
-                        delete_named_run(document, name, run_id)
+                        delete_named_run(document, name, run_id, choices=st.session_state.choices)
                         restart_editor(document)
             new_id = st.text_input("New run ID", key=f"edit:runs:{name}:new")
             if st.button("Add run", key=f"edit:runs:{name}:add"):
@@ -70,7 +70,9 @@ def analysis_settings(name, spec, document):
                 restart_editor(document)
             result["runs"] = runs
         else:
-            spec.pop("runs", None)
+            if "runs" in spec:
+                from mdscope.studio.model import clear_named_runs
+                clear_named_runs(document, name, choices=st.session_state.choices)
     optional = {key: value for key, value in spec.items()
                 if key not in defaults and key not in excluded}
     edited = yaml_editor("Additional supported options (YAML)", optional,
@@ -83,6 +85,11 @@ def analysis_settings(name, spec, document):
 def restart_editor(document):
     from mdscope.studio.model import commit_draft
     commit_draft(st.session_state.document, document)
+    # Rebuild widgets from the committed draft and explicit figure choices.
+    # Deleted/recreated IDs must not inherit stale widget values.
+    for key in list(st.session_state):
+        if key.startswith(("edit:", "figure:", "stats:", "enable:")):
+            del st.session_state[key]
     st.rerun()
 
 
@@ -222,9 +229,6 @@ def main():
                                 raise ValueError("Enter a new group ID")
                             change_group(doc, group_id, None if action == "Delete" else target,
                                          duplicate=action == "Duplicate", choices=state.choices)
-                            for key in list(state):
-                                if key.startswith("edit:groups:"):
-                                    del state[key]
                             restart_editor(doc)
             new_id = st.text_input("Group ID", key="edit:new_group")
             if st.button("Add group"):
