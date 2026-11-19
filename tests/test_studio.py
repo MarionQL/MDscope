@@ -972,8 +972,8 @@ def test_app_imported_figure_categories_preserved_until_tree_edit(tmp_path, monk
     assert at.checkbox(key="figure:tree:time_series:rmsd_A:timeseries").value
     at.checkbox(key="figure:tree:time_series:rmsd_A:timeseries").uncheck().run()
     assert not at.exception
-    assert exported()["plots"]["include"] == []
-    assert exported()["plots"]["enabled"] is False
+    assert exported()["plots"]["include"] == ["time_series:rmsd_A:distribution"]
+    assert exported()["plots"]["enabled"] is True
 
 
 def test_app_hierarchical_figures_support_category_and_individual_override(tmp_path, monkeypatch):
