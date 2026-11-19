@@ -469,8 +469,6 @@ def main():
                     # The widget values are reset when the family changes mode.
                     state.pop(f"stats:table:{family}", None)
                     state.pop(f"stats:tree:convert:{family}", None)
-                    state["stats:tree:all"] = all(
-                        statistics_family_mode(state.document, item) == "all" for item in eligible_families)
                 def set_all_families():
                     checked = state["stats:tree:all"]
                     for family in eligible_families:
