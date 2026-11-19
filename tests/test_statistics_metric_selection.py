@@ -414,7 +414,8 @@ def test_changing_metric_selection_rebuilds_statistics_without_touching_raw_data
     cfg["statistics"]["metric_selection"] = {"time_series": [
         {"group": "PROA", "metric": "rmsd_A"}
     ]}
-    root = tmp_path / "results"
+    # The finalizer's root is the project containing these replicas.
+    root = tmp_path / "inputs"
     analyze_project(cfg, root, paths)
     initial = pd.read_parquet(
         root / "project_summary/statistics/time_series/replicate_statistics.parquet"
