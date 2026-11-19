@@ -95,3 +95,18 @@ def test_statistical_plot_manifest_failure_preserves_existing_figures(
     assert expected in str(failure.value)
     assert str(manifest) in str(failure.value)
     assert existing.read_bytes() == b"prior figure"
+
+
+def test_invalid_mdanalysis_selection_reports_topology_and_preserves_output(
+    tmp_path, project
+):
+    from MDAnalysis.exceptions import SelectionError
+
+    config, root = project("bad_parser_selection")
+    cfg = load_config(config)
+    cfg["selections"]["protein"] = "unknown_selection_keyword"
+    with pytest.raises(ValueError, match="System 'tiny'.*selections") as failure:
+        validate_selections(cfg, config.parent)
+    assert isinstance(failure.value.__cause__, SelectionError)
+    assert "unknown_selection_keyword" in str(failure.value)
+    assert not root.exists()
