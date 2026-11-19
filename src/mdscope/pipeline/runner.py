@@ -616,9 +616,16 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
         # persisted configuration as well as currently scheduled analyses.
         # Require complete coverage before offline finalization can consume
         # either class of product.
+        # Derive expected coverage from the current configuration, not the
+        # inventory itself: a missing inventory row must never become an
+        # implicitly successful preflight.
+        from ..registry import analysis_output_plan
+        replicates_for_preflight = list(iter_replicates(cfg, config_path))
         expected = {
-            (row["analysis"], row["run_id"], row["condition"], row["replica"])
-            for row in inventory
+            (entry.name, entry.run_id or "default", rep.system, rep.label)
+            for rep in replicates_for_preflight
+            for entry in analysis_output_plan(
+                cfg, root / rep.system / rep.label)
         }
         by_key = {
             (row["analysis"], row["run_id"], row["condition"], row["replica"]): row
