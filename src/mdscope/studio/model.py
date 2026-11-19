@@ -359,11 +359,16 @@ def statistics_source_status(plan, inventory=None):
     return {
         family["family"]: {
             "status": "scheduled" if scheduled.get(family["family"]) else
-                      "verified_existing" if any(
-                          row["status"] == "verified_existing"
-                          and family["family"] in ANALYSIS_METADATA.get(
-                              row["analysis"], ("", (), ()))[1]
-                          for row in coverage) else "unavailable",
+                      "verified_existing" if (
+                          any(family["family"] in ANALYSIS_METADATA.get(
+                              row["analysis"], ("", (), ()))[1] for row in coverage)
+                          and all(row["status"] == "verified_existing"
+                                  for row in coverage if family["family"] in
+                                  ANALYSIS_METADATA.get(row["analysis"], ("", (), ()))[1])
+                      ) else "partial_existing" if any(
+                          family["family"] in ANALYSIS_METADATA.get(
+                              row["analysis"], ("", (), ()))[1] for row in coverage
+                      ) else "unavailable",
             "scheduled_sources": scheduled.get(family["family"], []),
             "existing_coverage": [
                 row for row in coverage
