@@ -1206,3 +1206,23 @@ def test_results_inventory_requires_marker_matching_config_and_valid_schema(tmp_
     changed_status = next(item for item in inspect_results_directory(
         changed, tmp_path, root) if item["analysis"] == "sasa")["status"]
     assert changed_status == "incompatible"
+
+
+def test_statistics_source_status_reports_verified_coverage_without_inventing_inputs(tmp_path):
+    from mdscope.studio.model import statistics_source_status
+    doc = rmsd_document()
+    _, plan = review(doc, tmp_path)
+    rows = [
+        {"analysis": "sasa", "run_id": "A", "condition": "control",
+         "replica": "rep1", "status": "verified_existing"},
+        {"analysis": "sasa", "run_id": "A", "condition": "control",
+         "replica": "rep2", "status": "missing"},
+    ]
+    status = statistics_source_status(plan, rows)
+    assert status["profiles"]["status"] == "scheduled" if any(
+        item["analysis"] == "rmsf" for item in plan["analyses"]) else "unavailable"
+    coverage = status["profiles"]["existing_coverage"]
+    assert len(coverage) == 1
+    assert coverage[0]["run_id"] == "A"
+    assert coverage[0]["verified"] == 1
+    assert coverage[0]["status"] == "partial"
