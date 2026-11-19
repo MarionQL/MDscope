@@ -1142,3 +1142,67 @@ def test_exact_statistics_without_producer_blocks_export_but_unrestricted_does_n
     doc["analyses"]["hydrogen_bonds"]["enabled"] = True
     _, plan = review(doc, tmp_path)
     assert unavailable_exact_statistics(doc, plan) == []
+
+
+def test_results_coverage_does_not_collapse_named_runs_or_replicas():
+    from mdscope.studio.model import results_coverage
+    rows = [
+        {"analysis": "sasa", "run_id": "A", "condition": "control",
+         "replica": "rep1", "status": "verified_existing"},
+        {"analysis": "sasa", "run_id": "A", "condition": "control",
+         "replica": "rep2", "status": "incompatible"},
+        {"analysis": "sasa", "run_id": "B", "condition": "control",
+         "replica": "rep1", "status": "verified_existing"},
+        {"analysis": "sasa", "run_id": "A", "condition": "treated",
+         "replica": "rep1", "status": "verified_existing"},
+    ]
+    coverage = results_coverage(rows)
+    assert len(coverage) == 3
+    a = next(row for row in coverage
+             if row["run_id"] == "A" and row["condition"] == "control")
+    assert a["status"] == "partial"
+    assert a["verified"] == 1 and a["total"] == 2
+    assert a["replicas"] == {"rep1": "verified_existing", "rep2": "incompatible"}
+
+
+def test_results_inventory_requires_marker_matching_config_and_valid_schema(tmp_path):
+    import json
+    import pandas as pd
+    from mdscope.config import resolve_config, iter_replicates
+    from mdscope.pipeline.runner import _replicate_state_prefix
+    from mdscope.registry import analysis_output_plan
+    from mdscope.studio.model import inspect_results_directory
+
+    doc = rmsd_document()
+    doc["analyses"]["sasa"] = {"enabled": True}
+    root = tmp_path / "results"
+    root.mkdir()
+    cfg = resolve_config(doc, base=tmp_path)
+    rep = next(iter(iter_replicates(cfg, tmp_path / "analysis.yaml")))
+    entry = next(item for item in analysis_output_plan(cfg, root / rep.system / rep.label)
+                 if item.name == "sasa")
+    entry.path.parent.mkdir(parents=True)
+    pd.DataFrame({"time_ps": [0.], "topology_residue_index": [0],
+                  "sasa_nm2": [1.]}).to_parquet(entry.path)
+    summary = root / rep.system / rep.label / "summary" / "timeseries.parquet"
+    summary.parent.mkdir(parents=True)
+    pd.DataFrame({"time_ps": [0.], "rmsd_A": [1.]}).to_parquet(summary)
+    (root / "resolved_config.yaml").write_text(yaml.safe_dump(cfg))
+    def status():
+        return next(item for item in inspect_results_directory(doc, tmp_path, root)
+                    if item["analysis"] == "sasa")["status"]
+    assert status() == "incompatible"
+    marker = root / ".state" / (
+        _replicate_state_prefix(rep) + "-" + entry.checkpoint_key + ".json")
+    marker.parent.mkdir()
+    marker.write_text(json.dumps({"status": "complete"}))
+    assert status() == "verified_existing"
+    entry.path.write_bytes(b"not a parquet file")
+    assert status() == "incompatible"
+    pd.DataFrame({"time_ps": [0.], "topology_residue_index": [0],
+                  "sasa_nm2": [1.]}).to_parquet(entry.path)
+    changed = deepcopy(doc)
+    changed["analyses"]["sasa"]["probe_radius_A"] = 1.8
+    changed_status = next(item for item in inspect_results_directory(
+        changed, tmp_path, root) if item["analysis"] == "sasa")["status"]
+    assert changed_status == "incompatible"
