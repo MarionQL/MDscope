@@ -477,13 +477,15 @@ def main():
                 cutoff = float(stats.get("interaction_min_occupancy", 0.0))
                 if not 0.0 <= cutoff <= 1.0:
                     raise ValueError("statistics.interaction_min_occupancy must be between 0 and 1")
-                stats["interaction_min_occupancy"] = st.slider(
+                selected_cutoff = st.slider(
                     "Retain interactions with occupancy in at least one replicate",
                     min_value=0.0, max_value=1.0, value=cutoff, step=0.01,
                     format="%.2f", key="stats:interaction_min_occupancy",
                     help="0 disables filtering. 0.20 retains an interaction if it "
                          "occupies at least 20% of sampled frames in any replicate. "
                          "This filters interaction identities before statistical inference.")
+                if "interaction_min_occupancy" in stats or selected_cutoff != 0.0:
+                    stats["interaction_min_occupancy"] = selected_cutoff
                 controls = yaml_editor("CI / block / test settings", {key: val for key, val in stats.items()
                                                                      if key not in {"enabled", "metric_selection", "interaction_min_occupancy"}}, "stats:settings") or {}
                 if set(controls) & {"enabled", "metric_selection", "interaction_min_occupancy"}:
