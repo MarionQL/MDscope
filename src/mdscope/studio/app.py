@@ -236,7 +236,10 @@ def main():
                     for field, label in (("label", "Display label"), ("selection", "Measurement group selection"),
                                          ("alignment_selection", "Independent alignment selection (optional)")):
                         value = st.text_input(label, spec.get(field) or "", key=f"edit:group:{group_id}:{field}")
-                        spec[field] = value if value else None
+                        if value:
+                            spec[field] = value
+                        else:
+                            spec.pop(field, None)
                     target = st.text_input("New group ID for rename/duplicate", key=f"edit:group:{group_id}:id")
                     for action in ("Rename", "Duplicate", "Delete"):
                         if st.button(action, key=f"edit:group:{group_id}:{action}"):
