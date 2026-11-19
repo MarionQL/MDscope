@@ -422,7 +422,7 @@ def main():
                 # Rebuild below only after statistic selector edits.
                 plan = card_plan
                 if plan is None:
-                    _, plan = preview_document(yaml.safe_dump(doc, sort_keys=False), base)
+                    plan, _ = preview_document(yaml.safe_dump(doc, sort_keys=False), base)
                 from mdscope.studio.model import (
                     statistics_family_mode, set_statistics_family_mode,
                     set_statistics_exact_family, statistics_selector_fields,
@@ -548,7 +548,7 @@ def main():
                 stats.update(controls)
                 # Statistics-stage previews must reflect the current rerun's
                 # edited metric selection, not the earlier analysis-card plan.
-                _, plan = preview_document(yaml.safe_dump(doc, sort_keys=False), base)
+                plan, _ = preview_document(yaml.safe_dump(doc, sort_keys=False), base)
                 st.caption("Dynamic metric identities outside the structural scalar catalog require exact backend IDs. No identity or output schema is invented.")
                 with st.expander("Expected statistics outputs and eligibility"):
                     st.caption("ILLUSTRATIVE — NO MD RESULTS. Candidate files are conditional on eligible data; Base schemas below include only verified writer columns; optional provenance remains conditional.")
