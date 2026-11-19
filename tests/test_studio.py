@@ -1262,3 +1262,24 @@ def test_explicit_results_root_refuses_conflicting_roots(tmp_path):
         finalize_project(tmp_path / "analysis.yaml",
                          cfg=resolve_config(rmsd_document(), base=tmp_path),
                          root=tmp_path, results_dir=tmp_path)
+
+
+def test_explicit_results_root_uses_saved_only_inventory_before_statistics(tmp_path, monkeypatch):
+    from mdscope.pipeline import runner
+    from mdscope.studio import model
+    root = tmp_path / "saved"
+    root.mkdir()
+    doc = rmsd_document()
+    cfg = resolve_config(doc, base=tmp_path)
+    seen = {}
+    def inventory(document, base, directory):
+        seen["root"] = directory
+        return [{"analysis": "sasa", "run_id": "A", "condition": "system1",
+                 "replica": "rep1", "status": "partial"}]
+    monkeypatch.setattr(model, "inspect_results_directory", inventory)
+    with pytest.raises(RuntimeError, match="sasa/A/system1/rep1/partial"):
+        runner.finalize_project(tmp_path / "analysis.yaml", cfg=cfg,
+                                phase="statistics", results_dir=root)
+    assert seen["root"] == root
+    assert not (root / "resolved_config.yaml").exists()
+    assert not (root / "project_summary").exists()
