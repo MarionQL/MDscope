@@ -61,3 +61,79 @@ def test_guided_setup_roundtrip_and_mode_switch(tmp_path, monkeypatch):
     assert list(exported()["systems"]) == ["condition1"]
     assert not at.exception
     assert list(tmp_path.iterdir()) == []
+
+
+
+def test_group_replica_condition_rejections_are_atomic_across_selectors():
+    from mdscope.studio.model import (
+        add_group, add_replica, add_system, change_group, delete_system,
+        remove_replica,
+    )
+
+    doc = new_document()
+    doc["selections"]["groups"]["patch"] = {"selection": "resid 1:10"}
+    doc["statistics"]["metric_selection"]["time_series"] = [
+        {"metric": "rmsd_A", "group": "patch", "ci": True}
+    ]
+    figure = "time_series:rmsd_A:timeseries"
+    doc["plots"] = {"enabled": True, "include": [figure]}
+    choices = {"rmsd": [figure]}
+    baseline = deepcopy(doc)
+    initial_choices = deepcopy(choices)
+
+    for operation in (
+        lambda: add_group(doc, "patch"),
+        lambda: add_group(doc, "../invalid"),
+        lambda: change_group(doc, "missing", "new", choices=choices),
+        lambda: add_system(doc, "condition1"),
+        lambda: add_system(doc, "../invalid"),
+        lambda: add_replica(doc, "unknown"),
+        lambda: remove_replica(doc, "unknown", 0),
+        lambda: remove_replica(doc, "condition1", 0),
+        lambda: remove_replica(doc, "condition1", 4),
+        lambda: delete_system(doc, "unknown", choices=choices),
+        lambda: delete_system(doc, "condition1", choices=choices),
+    ):
+        with pytest.raises((ValueError, KeyError)):
+            operation()
+        assert doc == baseline
+        assert choices == initial_choices
+
+    add_replica(doc, "condition1")
+    assert [rep["label"] for rep in doc["systems"]["condition1"]["replicates"]] == [
+        "rep1", "rep2"
+    ]
+    remove_replica(doc, "condition1", 1)
+    assert doc == baseline
+    assert choices == initial_choices
+
+
+def test_guided_editor_rejected_condition_add_keeps_hierarchy_and_recovers(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+
+    monkeypatch.chdir(tmp_path)
+    doc = new_document()
+    doc["analyses"]["rmsd"]["enabled"] = True
+    doc["statistics"]["metric_selection"]["time_series"] = [
+        {"metric": "rmsd_A", "ci": True}
+    ]
+    at = AppTest.from_file(app.__file__)
+    at.session_state["document"] = deepcopy(doc)
+    at.run()
+    assert not at.exception
+    baseline = deepcopy(at.session_state["document"])
+    choices = deepcopy(at.session_state["choices"])
+    at.text_input(key="edit:system:new").set_value("../escape").run()
+    at.button(key="edit:system:add").click().run()
+    assert not at.exception
+    assert at.session_state["document"] == baseline
+    assert at.session_state["choices"] == choices
+    at.text_input(key="edit:system:new").set_value("other").run()
+    at.button(key="edit:system:add").click().run()
+    assert not at.exception
+    assert "other" in at.session_state["document"]["systems"]
+    assert at.session_state["document"]["statistics"]["metric_selection"] == baseline[
+        "statistics"
+    ]["metric_selection"]
