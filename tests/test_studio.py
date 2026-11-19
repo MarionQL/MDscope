@@ -769,7 +769,9 @@ def test_app_statistics_tree_preserves_dynamic_all_and_exact_choices(tmp_path, m
     exported = lambda: yaml.safe_load(
         next(item.value for item in at.code if "analyses:" in item.value))
     assert exported()["statistics"]["metric_selection"] is None
-    at.checkbox(key="stats:tree:family:time_series").uncheck().run()
+    at.radio(key="stats:selection_mode").set_value("exact").run()
+    assert not at.exception
+    assert not at.checkbox(key="stats:tree:family:time_series").value
     assert not at.exception
     assert exported()["statistics"]["metric_selection"]["time_series"] == []
     at.checkbox(key="stats:rmsd_A:None").check().run()
