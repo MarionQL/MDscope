@@ -58,6 +58,13 @@ def grouped_analyses(names):
     return groups
 
 
+def eligible_statistics_families(source_status, families):
+    """Show only families backed by scheduled or verified saved producers."""
+    return tuple(family for family in families if
+                 source_status.get(family, {}).get("scheduled_sources") or
+                 source_status.get(family, {}).get("status") == "verified_existing")
+
+
 def analysis_title(name):
     return display_metric(name).replace("Radius Of", "Radius of")
 
@@ -456,9 +463,7 @@ def main():
                     yaml.safe_dump(state.document, sort_keys=True))
                 source_status = statistics_source_status(
                     plan, state.get("studio:results_inventory") if inventory_fresh else None)
-                eligible_families = tuple(family for family in families if
-                    source_status.get(family, {}).get("scheduled_sources") or
-                    source_status.get(family, {}).get("existing_coverage"))
+                eligible_families = eligible_statistics_families(source_status, families)
                 if not eligible_families:
                     st.info("No eligible statistics sources. Enable an analysis or inspect verified saved results.")
                 st.caption("Only scheduled analyses and verified saved outputs are eligible. All measurements includes dynamic identities; estimator choices are separate.")
@@ -474,7 +479,7 @@ def main():
                     for family in eligible_families:
                         set_family(family, checked)
                         state[f"stats:tree:family:{family}"] = checked
-                st.checkbox("Include all eligible measurements",
+                st.checkbox("Include all eligible measurements (advanced)",
                             value=all(statistics_family_mode(doc, family) == "all"
                                       for family in eligible_families) if eligible_families else False,
                             key="stats:tree:all", on_change=set_all_families,
