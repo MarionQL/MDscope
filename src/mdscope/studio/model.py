@@ -426,7 +426,9 @@ def switch_statistics_selection_mode(document, mode, *, saved_exact=None):
     elif previous is not None:
         candidate = previous
     else:
-        candidate = {}
+        # An unrestricted legacy import has no finite exact allowlist. Start
+        # empty rather than silently opting in every dynamic variable.
+        candidate = studio_metric_selection_defaults()
     if candidate is not None:
         validate_metric_selection({**stats, "metric_selection": candidate})
     document.setdefault("statistics", {})["metric_selection"] = candidate
