@@ -208,68 +208,83 @@ def show_outputs(plan, name, document, base):
 
 def main():
     st.set_page_config(page_title="MDscope Studio", layout="wide")
+    st.markdown("""
+    <style>
+      :root { --mdscope-ink: #1B1715; --mdscope-oxblood: #713A3D;
+              --mdscope-parchment: #F0E4CB; --mdscope-olive: #72704A; }
+      .block-container { max-width: 1250px; padding-top: 1.6rem; }
+      h1, h2, h3 { letter-spacing: -.025em; }
+      h1 { color: #713A3D !important; font-family: Georgia, serif !important; }
+      [data-testid="stTabs"] [data-baseweb="tab-list"] { gap: .2rem; overflow-x: auto; }
+      [data-testid="stTabs"] button[role="tab"] { font-weight: 600; }
+      [data-testid="stExpander"] { border-radius: .55rem; }
+      [data-testid="stAlert"] { border-radius: .5rem; }
+    </style>
+    """, unsafe_allow_html=True)
     st.title("MDscope Studio")
-    st.caption("Configure analyses → choose optional figures/statistics → export YAML. No trajectory jobs run here.")
+    st.caption("Scientific configuration workspace · Cozy Chem Corner visual identity")
+    st.caption("Configure analyses → select eligible statistics and figures → validate and export YAML. No trajectory jobs run here.")
     state = st.session_state
     state.setdefault("document", new_document())
     state.setdefault("choices", {})
-    base = st.text_input("Configuration directory (relative paths resolve here)", str(Path.cwd()))
-    results_dir = st.text_input(
-        "Existing MDscope results directory (optional)",
-        value=str(Path(base) / state.document.get("project", {}).get(
-            "output", DEFAULTS["project"]["output"])),
-        key="studio:results_dir",
-        help="Inspect saved registered analysis products without reading trajectories. "
-             "A file inventory alone cannot verify scientific provenance.")
-    if st.button("Inspect existing results", key="studio:inspect_results"):
-        try:
-            from mdscope.studio.model import inspect_results_directory
-            state["studio:results_inventory"] = inspect_results_directory(
-                state.document, base, results_dir)
-            state["studio:results_inventory_path"] = results_dir
-            state["studio:results_inventory_config"] = yaml.safe_dump(state.document, sort_keys=True)
-        except (OSError, ValueError, KeyError, TypeError) as exc:
-            state.pop("studio:results_inventory", None)
-            st.error(str(exc))
-    if "studio:results_inventory" in state:
-        inventory = state["studio:results_inventory"]
-        if (state.get("studio:results_inventory_path") != results_dir or
-                state.get("studio:results_inventory_config") !=
-                yaml.safe_dump(state.document, sort_keys=True)):
-            st.warning("Results inventory is stale after configuration/path changes; inspect again.")
-        st.caption("Verification checks saved configuration and input paths, "
-                   "completed stage markers, replica summaries, and registered artifact "
-                   "schemas, but not source-file content hashes. Offline CLI "
-                   "finalization revalidates its complete prerequisite set separately.")
-        from mdscope.studio.model import results_coverage
-        coverage = results_coverage(inventory)
-        if coverage:
-            st.write("**Verified coverage by analysis, run and condition**")
-            st.dataframe(coverage, hide_index=True)
-            if all(row["status"] == "verified_existing" for row in coverage):
-                st.caption("For saved-data-only execution, use "
-                           "mdscope statistics analysis.yaml --results-dir PATH "
-                           "or mdscope plotting analysis.yaml --results-dir PATH. "
-                           "The CLI revalidates the files before finalization.")
-        if inventory:
-            st.dataframe(inventory, hide_index=True)
-        else:
-            st.info("No registered outputs are expected for the currently enabled analyses.")
+    with st.expander("Workspace, existing results and YAML import", expanded=False):
+        base = st.text_input("Configuration directory (relative paths resolve here)", str(Path.cwd()))
+        results_dir = st.text_input(
+            "Existing MDscope results directory (optional)",
+            value=str(Path(base) / state.document.get("project", {}).get(
+                "output", DEFAULTS["project"]["output"])),
+            key="studio:results_dir",
+            help="Inspect saved registered analysis products without reading trajectories. "
+                 "A file inventory alone cannot verify scientific provenance.")
+        if st.button("Inspect existing results", key="studio:inspect_results"):
+            try:
+                from mdscope.studio.model import inspect_results_directory
+                state["studio:results_inventory"] = inspect_results_directory(
+                    state.document, base, results_dir)
+                state["studio:results_inventory_path"] = results_dir
+                state["studio:results_inventory_config"] = yaml.safe_dump(state.document, sort_keys=True)
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                state.pop("studio:results_inventory", None)
+                st.error(str(exc))
+        if "studio:results_inventory" in state:
+            inventory = state["studio:results_inventory"]
+            if (state.get("studio:results_inventory_path") != results_dir or
+                    state.get("studio:results_inventory_config") !=
+                    yaml.safe_dump(state.document, sort_keys=True)):
+                st.warning("Results inventory is stale after configuration/path changes; inspect again.")
+            st.caption("Verification checks saved configuration and input paths, "
+                       "completed stage markers, replica summaries, and registered artifact "
+                       "schemas, but not source-file content hashes. Offline CLI "
+                       "finalization revalidates its complete prerequisite set separately.")
+            from mdscope.studio.model import results_coverage
+            coverage = results_coverage(inventory)
+            if coverage:
+                st.write("**Verified coverage by analysis, run and condition**")
+                st.dataframe(coverage, hide_index=True)
+                if all(row["status"] == "verified_existing" for row in coverage):
+                    st.caption("For saved-data-only execution, use "
+                               "mdscope statistics analysis.yaml --results-dir PATH "
+                               "or mdscope plotting analysis.yaml --results-dir PATH. "
+                               "The CLI revalidates the files before finalization.")
+            if inventory:
+                st.dataframe(inventory, hide_index=True)
+            else:
+                st.info("No registered outputs are expected for the currently enabled analyses.")
 
-    uploaded = st.file_uploader("Import existing YAML", type=["yaml", "yml"])
-    if uploaded is not None and st.button("Load YAML"):
-        try:
-            document = import_document(uploaded.getvalue().decode("utf-8"))
-            # Recreate widget state as well as the document on import.
-            for key in list(state):
-                if key.startswith(("edit:", "enable:", "figure:", "stats:")):
-                    del state[key]
-            state.document = document
-            state.choices = {}
-            state.pop("preflight", None)
-            st.rerun()
-        except (ValueError, yaml.YAMLError, UnicodeError) as exc:
-            st.error(str(exc))
+        uploaded = st.file_uploader("Import existing YAML", type=["yaml", "yml"])
+        if uploaded is not None and st.button("Load YAML"):
+            try:
+                document = import_document(uploaded.getvalue().decode("utf-8"))
+                # Recreate widget state as well as the document on import.
+                for key in list(state):
+                    if key.startswith(("edit:", "enable:", "figure:", "stats:")):
+                        del state[key]
+                state.document = document
+                state.choices = {}
+                state.pop("preflight", None)
+                st.rerun()
+            except (ValueError, yaml.YAMLError, UnicodeError) as exc:
+                st.error(str(exc))
     doc = deepcopy(state.document)
     choices_before = deepcopy(state.choices)
     tabs = st.tabs(["1 · Project & systems", "2 · Selections & alignment",
