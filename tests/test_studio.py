@@ -607,3 +607,28 @@ def test_return_to_default_run_prunes_choices_and_protects_external_references(t
     assert choices["statistics"] == []
     assert doc["plots"]["include"] == []
     assert yaml.safe_load(review(doc, tmp_path, choices)[0])["statistics"]["metric_selection"]["profiles"] == []
+
+
+def test_selections_tab_topology_preview_uses_real_parser(project, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+    path, root = project("studio_selection_preview")
+    monkeypatch.chdir(path.parent)
+    doc = new_document()
+    doc["systems"] = yaml.safe_load(path.read_text())["systems"]
+    doc["selections"]["groups"] = {"ca": {"selection": "protein and name CA"}}
+    at = AppTest.from_file(app.__file__)
+    at.session_state["document"] = doc
+    at.run()
+    assert not at.exception
+    at.button(key="edit:groups:preflight").click().run()
+    assert not at.exception
+    assert any("Topology selections parsed" in item.value for item in at.success)
+    assert any("ca:" in item.value and "atoms" in item.value for item in at.caption)
+    assert not root.exists()
+
+    at.text_input(key="edit:group:ca:selection").set_value("resname NOTHING").run()
+    at.button(key="edit:groups:preflight").click().run()
+    assert any("zero" in item.value for item in at.error)
+    assert not root.exists()
