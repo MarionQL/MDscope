@@ -620,6 +620,11 @@ def _prune_removed_catalog_outputs(previous, document, choices):
             item for item in selectors["profiles"]
             if item["profile"] not in removed_profiles
         ]
+        # Exact selector entries generate statistical figure candidates.
+        # Rebuild after pruning stale selectors, or the retired figure
+        # incorrectly appears active and survives the catalog difference.
+        new = authoring_catalog(merge(DEFAULTS, document),
+                                include_inactive=True)
     old_ids = {fig["id"] for figures in old["figures"].values()
                for fig in figures}
     new_ids = {fig["id"] for figures in new["figures"].values()
