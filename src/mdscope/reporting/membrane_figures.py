@@ -71,6 +71,11 @@ def plot_lipid_contacts(cfg, root, system_repouts):
     if (not plot_enabled(cfg, "lipid_contacts")
             or not cfg.get('analyses', {}).get('lipid_contacts', {}).get('enabled', False)):
         return
+    from .lipid_contact_bootstrap import plot_lipid_contact_bootstrap
+    if plot_lipid_contact_bootstrap(cfg, Path(root)):
+        return
+    # Legacy saved-data products have no bootstrap CI: render descriptive
+    # species panels only rather than implying inferential support.
     indices = ['leaflet', 'species_a', 'species_b']
     metrics = ['neighbors_per_molecule', 'enrichment']
     tables = []
