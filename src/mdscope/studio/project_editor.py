@@ -6,14 +6,15 @@ from mdscope.config import DEFAULTS
 from mdscope.studio.model import add_replica, add_system, delete_system, remove_replica
 
 
-def path_picker(label, value, key, *, directory=False, optional=False):
-    """Browse paths on the HPC host, not the user's browser machine."""
+def path_picker(label, value, key, *, directory=False, optional=False, create_on_run=False):
+    """Browse paths on the host running Studio, not the browser machine."""
     pending = st.session_state.pop(f"{key}:pending_path", None)
     if pending is not None:
         st.session_state[key] = pending
         value = pending
     value = st.text_input(label, value, key=key,
-                          help="Path on the machine running MDscope Studio. Click Browse to choose an existing file.")
+                          help=("Output directories may be created when the pipeline runs." if create_on_run else
+                                "Path on the machine running MDscope Studio. Browse to select an existing path."))
     if value:
         path = Path(value).expanduser()
         exists = path.is_dir() if directory else path.is_file()
@@ -22,7 +23,9 @@ def path_picker(label, value, key, *, directory=False, optional=False):
         elif path.exists():
             st.warning("Path exists but is not the expected file/directory type.")
         else:
-            st.caption("Not yet verified on this machine" if optional else "⚠ Path not found on this machine")
+            st.caption("Output directory will be created when MDscope runs." if create_on_run else
+                       "Optional path not present on this machine" if optional else
+                       "⚠ Path not found on this machine")
     pending_dir = st.session_state.pop(f"{key}:pending_dir", None)
     if pending_dir is not None:
         st.session_state[f"{key}:browse_dir"] = pending_dir
@@ -64,7 +67,7 @@ def project_settings(document, restart):
     st.subheader("Project")
     project = document.setdefault("project", {})
     for field, label in (("name", "Project name"), ("output", "Output directory")):
-        project[field] = (path_picker(label, project.get(field, DEFAULTS["project"][field]), f"edit:project:{field}", directory=True)
+        project[field] = (path_picker(label, project.get(field, DEFAULTS["project"][field]), f"edit:project:{field}", directory=True, create_on_run=True)
                           if field == "output" else st.text_input(label, project.get(field, DEFAULTS["project"][field]), key=f"edit:project:{field}"))
     st.subheader("Simulation conditions")
     st.caption("Each condition contains one topology and one or more independent simulation replicas.")
@@ -76,7 +79,7 @@ def project_settings(document, restart):
                          if field == "topology" else st.text_input(label, spec.get(field, ""), key=f"edit:system:{system_id}:{field}"))
                 if value or field in spec:
                     spec[field] = value
-            st.caption("Paths refer to the ARC host. Existence does not establish topology/trajectory compatibility.")
+            st.caption("Paths refer to the machine running Studio (local WSL or ARC). Existence does not establish topology/trajectory compatibility.")
             replicas = spec.setdefault("replicates", [])
             for index, rep in enumerate(replicas):
                 # CLI shorthand remains accepted; a guided edit preserves its path.
