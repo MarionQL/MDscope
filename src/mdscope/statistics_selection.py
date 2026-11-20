@@ -27,6 +27,7 @@ ESTIMATOR_FLAGS = {
     "solvation_rdfs": frozenset({"ci"}),
     "diffusion": frozenset({"ci"}),
     "coupling": frozenset({"ci"}),
+    "lipid_contacts": frozenset({"ci"}),
 }
 
 
