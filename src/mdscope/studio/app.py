@@ -1,5 +1,6 @@
 """Optional localhost configuration wizard. Run via mdscope-studio."""
 from copy import deepcopy
+import base64
 from pathlib import Path
 
 import streamlit as st
@@ -208,7 +209,7 @@ def show_outputs(plan, name, document, base):
 
 def main():
     st.set_page_config(page_title="MDscope Studio", layout="wide")
-    st.markdown("""
+    header_html = """
     <style>
       :root {
         --mdscope-cyan: #54B6E6;
@@ -262,7 +263,23 @@ def main():
         .mdscope-mark { width: 44px; height: 44px; } }
     </style>
     <div class="mdscope-identity">
-      <svg class="mdscope-mark" viewBox="0 0 70 70" role="img" aria-label="Brown Lab inspired molecular geometry">
+      __MDSCOPE_LOGO__
+      <div>
+        <div class="mdscope-eyebrow">Brown Lab · Scientific workspace</div>
+        <div class="mdscope-name">MDscope Studio</div>
+        <div class="mdscope-subtitle">Configure analyses · Define statistics · Build figures · Validate and export</div>
+      </div>
+    </div>
+    """
+    logo_file = Path(__file__).parent / "assets" / "brown_lab_logo.png"
+    if logo_file.is_file():
+        encoded = base64.b64encode(logo_file.read_bytes()).decode("ascii")
+        logo_markup = (
+            '<img class="mdscope-mark" alt="Brown Lab logo" '
+            f'src="data:image/png;base64,{encoded}">'
+        )
+    else:
+        logo_markup = """      <svg class="mdscope-mark" viewBox="0 0 70 70" role="img" aria-label="Brown Lab inspired molecular geometry">
         <polygon points="19,5 48,5 63,31 48,57 19,57 4,31"
           fill="none" stroke="#92959C" stroke-width="4" transform="translate(-2,-4)"/>
         <polygon points="19,5 48,5 63,31 48,57 19,57 4,31"
@@ -270,14 +287,8 @@ def main():
         <polygon points="19,5 48,5 63,31 48,57 19,57 4,31"
           fill="none" stroke="#54B6E6" stroke-width="4" transform="translate(4,7)"/>
         <circle cx="37" cy="38" r="17" fill="none" stroke="#54B6E6" stroke-width="3"/>
-      </svg>
-      <div>
-        <div class="mdscope-eyebrow">Brown Lab · Scientific workspace</div>
-        <div class="mdscope-name">MDscope Studio</div>
-        <div class="mdscope-subtitle">Configure analyses · Define statistics · Build figures · Validate and export</div>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
+      </svg>"""
+    st.markdown(header_html.replace("__MDSCOPE_LOGO__", logo_markup), unsafe_allow_html=True)
     st.info("Use Studio to set up your systems, choose analyses, configure statistics and figures, and export a validated YAML configuration. To process trajectories, run MDscope separately using the exported file.")
     state = st.session_state
     state.setdefault("document", new_document())
