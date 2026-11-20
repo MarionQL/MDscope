@@ -207,6 +207,50 @@ def show_outputs(plan, name, document, base):
         st.info("Output schema depends on selections/topology or is not yet registered. See review plan.")
 
 
+
+@st.fragment(run_every="2s")
+def _show_topology_progress(state, systems, groups):
+    """Poll completed background work; never parse topologies on the UI thread."""
+    topology = state.get("studio:topology_future")
+    group_future = state.get("studio:group_future")
+    with st.expander("Topology identifiers and group matches", expanded=True):
+        if topology is None or not topology.done():
+            st.info("Reading topology in the background. You can continue editing Studio.")
+        else:
+            try:
+                metadata = topology.result()
+                for system_id, spec in systems.items():
+                    info = metadata.get(system_id, {})
+                    st.markdown(f"**{spec.get('label') or system_id}**")
+                    if info.get("error"):
+                        st.warning(info["error"])
+                        continue
+                    st.caption(f"{info['atoms']:,} atoms · {info['residues']:,} residues · {info['segments']:,} segments")
+                    for name, values in info["identifiers"].items():
+                        st.write(f"{name}: " + (", ".join(values[:40]) + (f" (+{len(values)-40} more)" if len(values)>40 else "") if values else "Not provided by topology"))
+            except (OSError, ValueError, TypeError) as exc:
+                st.error(f"Topology inspection failed: {exc}")
+        if groups:
+            if group_future is None or not group_future.done():
+                st.caption("Checking reusable-group selections in the background…")
+            else:
+                try:
+                    results = group_future.result()
+                    for system_id, matches in results.items():
+                        if "error" in matches:
+                            continue
+                        st.markdown(f"**Group matches · {system_id}**")
+                        for group_id, match in matches.items():
+                            if "error" in match:
+                                st.warning(f"{group_id}: {match['error']}")
+                            elif match["atoms"] == 0:
+                                st.warning(f"{group_id}: matches zero atoms")
+                            else:
+                                st.caption(f"{group_id}: {match['atoms']:,} atoms, {match['residues']:,} residues")
+                except (OSError, ValueError, TypeError) as exc:
+                    st.error(f"Group inspection failed: {exc}")
+
+
 def main():
     st.set_page_config(page_title="MDscope Studio", layout="wide")
     header_html = """
@@ -342,9 +386,8 @@ def main():
                 st.error(str(exc))
     doc = deepcopy(state.document)
     choices_before = deepcopy(state.choices)
-    tabs = st.tabs(["1 · Project & systems", "2 · Selections & alignment",
-                    "3 · Analyses", "4 · Statistics", "5 · Figures",
-                    "6 · Review & export"])
+    tabs = st.tabs(["1 · Project & systems", "2 · Analyses",
+                    "3 · Statistics", "4 · Figures", "5 · Review & export"])
     errors = []
     with tabs[0]:
         try:
@@ -366,16 +409,10 @@ def main():
                 project_settings(doc, restart_editor)
         except (ValueError, TypeError, OSError, yaml.YAMLError) as exc:
             errors.append(str(exc)); st.error(str(exc))
-    with tabs[1]:
-        st.subheader("Atom selections & reusable groups")
-        st.info("Groups let you reuse one atom selection across multiple analyses. For example, define Protein A as `protein and segid PROA` to measure contacts with Protein B. The name is descriptive; the selection determines which atoms are included.")
+        st.subheader("Reusable measurement groups")
+        st.caption("Define a selection once and reuse it across analyses. For example, Protein A can select `protein and segid PROA`. Groups have stable YAML IDs and editable display names.")
         try:
-            selections = doc.setdefault("selections", {})
-            common = {key: value for key, value in selections.items() if key != "groups"}
-            common = yaml_editor("Global selections (measurement features and fitting atoms are independent)",
-                                 common, "edit:selections")
-            from mdscope.studio.model import replace_global_selections
-            replace_global_selections(doc, common)
+            doc.setdefault("selections", {}).setdefault("groups", {})
             groups = doc["selections"]["groups"]
             def next_group_id(existing, prefix="group"):
                 number = 1
@@ -390,24 +427,17 @@ def main():
                 with st.expander(spec.get("label") or group_id):
                     label = st.text_input("Group name", spec.get("label") or group_id,
                                           key=f"edit:group:{group_id}:label",
-                                          help="Display name shown in Studio. The internal YAML ID stays stable.")
+                                          help="Human-readable label for this reusable selection. Analyses reference its stable YAML group ID (shown below); renaming the label does not change which atoms are selected.")
                     if label and label != (spec.get("label") or group_id):
                         spec["label"] = label
+                    st.caption(f"Reusable YAML group ID: `{group_id}`")
                     measurement = st.text_input("Atoms to measure · MDAnalysis selection",
                                                 spec.get("selection") or "",
                                                 key=f"edit:group:{group_id}:selection",
                                                 help="MDAnalysis selection syntax, e.g. protein and segid PROA.")
                     spec["selection"] = measurement
                     if not measurement.strip():
-                        st.warning("Choose atoms for this group before export. `all` is valid only when you explicitly want every atom.")
-                    alignment = st.text_input("Atoms for structural alignment (optional)",
-                                              spec.get("alignment_selection") or "",
-                                              key=f"edit:group:{group_id}:alignment_selection",
-                                              help="Independent MDAnalysis selection for fitting where the analysis supports alignment.")
-                    if alignment:
-                        spec["alignment_selection"] = alignment
-                    else:
-                        spec.pop("alignment_selection", None)
+                        st.warning("Choose a specific atom selection for this group.")
                     left, right = st.columns(2)
                     if left.button("Duplicate group", key=f"edit:group:{group_id}:Duplicate"):
                         target = next_group_id(groups)
@@ -424,49 +454,34 @@ def main():
                 doc["selections"]["groups"][target]["label"] = "New group"
                 doc["selections"]["groups"][target]["selection"] = ""
                 restart_editor(doc)
-            # Topology-only preflight is cached by topology metadata and the
-            # relevant configuration. Never load trajectories during authoring.
-            cfg = resolve_config(doc, base=Path(base))
-            topology_paths = [Path(system["topology"]) for system in cfg["systems"].values()]
-            if topology_paths and all(path.is_file() for path in topology_paths):
-                import hashlib
-                fingerprint = hashlib.sha256(
-                    yaml.safe_dump({
-                        "systems": doc.get("systems"),
-                        "selections": doc.get("selections"),
-                        "analyses": doc.get("analyses"),
-                        "base": str(Path(base).resolve()),
-                        "topologies": [
-                            (str(path), path.stat().st_size, path.stat().st_mtime_ns)
-                            for path in topology_paths
-                        ],
-                    }, sort_keys=True).encode("utf-8")
-                ).hexdigest()
-                if state.get("studio:selection_preflight_key") != fingerprint:
-                    state["studio:selection_preflight_key"] = fingerprint
-                    try:
-                        state["studio:selection_preflight_result"] = topology_preflight(doc, base)
-                        state.pop("studio:selection_preflight_error", None)
-                    except (ValueError, TypeError, OSError, KeyError) as exc:
-                        state.pop("studio:selection_preflight_result", None)
-                        state["studio:selection_preflight_error"] = str(exc)
-                if state.get("studio:selection_preflight_error"):
-                    st.error("Topology selection validation failed: " + state["studio:selection_preflight_error"])
-                elif state.get("studio:selection_preflight_result"):
-                    counts = state["studio:selection_preflight_result"]
-                    st.success("Selections checked against the topology. Trajectory contents have not been read.")
-                    for system_id, result in counts.items():
-                        st.markdown(f"**{doc['systems'].get(system_id, {}).get('label') or system_id}**")
-                        for group_id, info in result.get("groups", {}).items():
-                            matched = info["measurement"]
-                            st.success(f"{group_id}: {matched['atoms']} atoms and {matched['residues']} residues matched.")
-                        with st.expander("Technical selection details"):
-                            st.json(result)
-            else:
-                st.info("Select an existing topology file in Project & systems to enable automatic selection checks.")
+            from mdscope.studio.topology_preview import topology_signature, submit_topologies, submit_groups
+            import hashlib
+            systems = doc.get("systems", {})
+            signature = topology_signature(systems, base)
+            if state.get("studio:topology_signature") != signature:
+                state["studio:topology_signature"] = signature
+                state["studio:topology_future"] = submit_topologies(systems, base)
+                state.pop("studio:group_signature", None)
+            group_signature = hashlib.sha256(
+                (signature + yaml.safe_dump(doc["selections"]["groups"], sort_keys=True)).encode()
+            ).hexdigest()
+            if state.get("studio:group_signature") != group_signature:
+                state["studio:group_signature"] = group_signature
+                state["studio:group_future"] = submit_groups(
+                    systems, base, deepcopy(doc["selections"]["groups"]))
+            _show_topology_progress(state, systems, doc["selections"]["groups"])
         except (ValueError, TypeError, OSError, yaml.YAMLError) as exc:
             errors.append(str(exc)); st.error(str(exc))
-    with tabs[2]:
+    with tabs[1]:
+        st.subheader("Global analysis selections")
+        try:
+            selections = doc.setdefault("selections", {})
+            common = {key: value for key, value in selections.items() if key != "groups"}
+            common = yaml_editor("Global selections", common, "edit:selections")
+            from mdscope.studio.model import replace_global_selections
+            replace_global_selections(doc, common)
+        except (ValueError, TypeError, yaml.YAMLError) as exc:
+            errors.append(str(exc)); st.error(str(exc)
         card_previews = []
         card_plan = None
         available_analyses = analysis_options()
@@ -495,7 +510,7 @@ def main():
                                 default = spec.get("groups", list(doc["selections"].get("groups", {})))
                                 spec["groups"] = st.multiselect("Named measurement groups", list(doc["selections"].get("groups", {})),
                                                                  default=default, key=f"edit:groups:{name}")
-                                st.caption("These group IDs come from Selections & alignment. Changing group definitions changes the corresponding measurement atoms; global measurement is also saved. This list filters grouped rows only.")
+                                st.caption("These group IDs are defined under Project & systems. Changing group definitions changes the corresponding measurement atoms; global measurement is also saved. This list filters grouped rows only.")
                             edited = analysis_settings(name, spec, doc)
                             doc["analyses"][name] = {"enabled": True, **edited,
                                                       **({"groups": spec["groups"]} if name in {"rmsd", "radius_of_gyration"} and "groups" in spec else {})}
@@ -518,7 +533,7 @@ def main():
                             st.info("No analysis-only figures verified for this analysis; nothing selected automatically.")
             except (ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
                 errors.append(str(exc)); st.error(str(exc))
-    with tabs[3]:
+    with tabs[2]:
         stats = doc.setdefault("statistics", {})
         stats["enabled"] = st.checkbox("Enable statistics", value=stats.get("enabled", DEFAULTS["statistics"]["enabled"]), key="stats:master")
         st.caption("Independent units: simulation replicates. Eligibility requires compatible sampling/identities; CI availability is determined by the backend, never by frame count alone.")
@@ -709,7 +724,7 @@ def main():
                 from mdscope.planning import authoring_catalog
             except (ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
                 errors.append(str(exc)); st.error(str(exc))
-    with tabs[4]:
+    with tabs[3]:
         st.caption("Select figures from the current analysis and statistics configuration. "
                    "Figures are optional; this does not execute plotting.")
         plots = doc.get("plots", {})
@@ -808,7 +823,7 @@ def main():
                            "Figures whose identities depend on unavailable topology/data "
                            "may not be listed; review the exported figure list.")
     
-    with tabs[5]:
+    with tabs[4]:
         try:
             missing_groups = [group_id for group_id, spec in doc.get("selections", {}).get("groups", {}).items()
                               if isinstance(spec, dict) and not (spec.get("selection") or "").strip()]
