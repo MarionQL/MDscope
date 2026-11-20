@@ -122,19 +122,19 @@ def project_settings(document, restart):
         add_system(document, f"condition{index}")
         restart(document)
     with st.expander("Advanced sampling & time settings"):
-        st.caption("Sampling affects which frames are analyzed; defaults retain every frame.")
+        st.caption("Choose which trajectory frames to process. Leave start and stop blank to use the entire trajectory.")
         trajectory = document.setdefault("trajectory", {})
         left, right = st.columns(2)
         for column, field in zip((left, right), ("stride", "chunk_frames")):
             with column:
-                trajectory[field] = st.number_input(field.replace("_", " "), min_value=1,
+                trajectory[field] = st.number_input({"stride": "Frame stride (frames)", "chunk_frames": "Processing chunk size (frames)"}[field], min_value=1,
                     value=trajectory.get(field, DEFAULTS["trajectory"][field]), step=1, key=f"edit:trajectory:{field}")
-        st.caption("Frame start is inclusive; stop is exclusive. Negative indices follow Python slicing. Blank bounds use the trajectory extent.")
+        st.caption("Frame indices start at 0. For example: start 100, stop 1000, stride 10 processes frames 100, 110, …, 990.")
         for column, field in zip((left, right), ("start", "stop")):
             with column:
-                value = st.text_input(f"Frame {field} (optional)", str(trajectory.get(field)) if trajectory.get(field) is not None else "", key=f"edit:trajectory:{field}")
+                value = st.text_input({"start": "Start frame index (inclusive; optional)", "stop": "Stop frame index (exclusive; optional)"}[field], str(trajectory.get(field)) if trajectory.get(field) is not None else "", key=f"edit:trajectory:{field}")
             trajectory[field] = int(value) if value.strip() else None
         time = document.setdefault("time", {})
-        value = st.text_input("Override frame spacing (ps; blank uses trajectory time)", str(time.get("dt_ps")) if time.get("dt_ps") is not None else "", key="edit:time:dt_ps")
+        value = st.text_input("Override time between frames (ps; optional)", str(time.get("dt_ps")) if time.get("dt_ps") is not None else "", key="edit:time:dt_ps")
         time["dt_ps"] = float(value) if value.strip() else None
-        time["origin_ps"] = st.number_input("Time origin (ps)", value=float(time.get("origin_ps", 0.)), key="edit:time:origin_ps")
+        time["origin_ps"] = st.number_input("Initial simulation time (ps)", value=float(time.get("origin_ps", 0.)), key="edit:time:origin_ps")
