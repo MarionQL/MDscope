@@ -574,7 +574,7 @@ def add_group(document, group_id):
     groups = candidate.setdefault("selections", {}).setdefault("groups", {})
     if not group_id or group_id in groups:
         raise ValueError("Enter a unique filesystem-safe group ID")
-    groups[group_id] = {"label": group_id, "selection": "all"}
+    groups[group_id] = {"label": group_id, "selection": ""}
     analysis_groups(candidate)
     commit_draft(document, candidate)
 
