@@ -217,7 +217,7 @@ def main():
         --mdscope-slate: #92959C;
         --mdscope-ink: #172431;
       }
-      .block-container { max-width: 1280px; padding-top: 2.75rem; padding-bottom: 3rem; }
+      .block-container { max-width: 1280px; padding-top: 3.5rem; padding-bottom: 3rem; }
       h1, h2, h3 { letter-spacing: -.035em; }
       h1 { font-weight: 760 !important; }
       [data-testid="stTabs"] [data-baseweb="tab-list"] {
@@ -247,7 +247,7 @@ def main():
       }
       .mdscope-identity {
         display: flex; align-items: center; gap: 1rem;
-        padding: 1.1rem 1.2rem; margin-top: .5rem; margin-bottom: .8rem;
+        padding: 1.45rem 1.2rem; margin-top: 1rem; margin-bottom: .8rem;
         border: 1px solid rgba(128,145,165,.22); border-radius: 1rem;
         background: linear-gradient(115deg, rgba(84,182,230,.085), rgba(163,108,176,.06) 58%, transparent);
       }
@@ -257,6 +257,7 @@ def main():
       .mdscope-name { font-size: clamp(1.5rem, 3vw, 2.1rem); font-weight: 760;
         letter-spacing: -.045em; line-height: 1.2; }
       .mdscope-subtitle { font-size: .86rem; opacity: .7; margin-top: .15rem; }
+      .mdscope-mark polygon, .mdscope-mark circle { vector-effect: non-scaling-stroke; }
       @media (max-width: 640px) { .mdscope-identity { gap: .7rem; padding: .9rem; }
         .mdscope-mark { width: 44px; height: 44px; } }
     </style>
@@ -277,7 +278,7 @@ def main():
       </div>
     </div>
     """, unsafe_allow_html=True)
-    st.caption("Configuration authoring only · No trajectory jobs run in Studio.")
+    st.info("Use Studio to set up your systems, choose analyses, configure statistics and figures, and export a validated YAML configuration. To process trajectories, run MDscope separately using the exported file.")
     state = st.session_state
     state.setdefault("document", new_document())
     state.setdefault("choices", {})
