@@ -364,14 +364,11 @@ def main():
             else:
                 from mdscope.studio.project_editor import project_settings
                 project_settings(doc, restart_editor)
-            if st.button("Check input paths (read-only)"):
-                resolve_config(doc, base=Path(base), check_paths=True)
-                st.success("Configured input paths exist; trajectory contents were not checked.")
         except (ValueError, TypeError, OSError, yaml.YAMLError) as exc:
             errors.append(str(exc)); st.error(str(exc))
     with tabs[1]:
-        st.subheader("Define atom groups used by measurements")
-        st.caption("Enter MDAnalysis atom-selection expressions. A group ID is only a name: it does not select atoms. For example, PROA with selection `all` measures every atom, not just PROA. Check segment names against your topology.")
+        st.subheader("Atom selections & reusable groups")
+        st.info("Groups let you reuse one atom selection across multiple analyses. For example, define Protein A as `protein and segid PROA` to measure contacts with Protein B. The name is descriptive; the selection determines which atoms are included.")
         try:
             selections = doc.setdefault("selections", {})
             common = {key: value for key, value in selections.items() if key != "groups"}
@@ -380,7 +377,6 @@ def main():
             from mdscope.studio.model import replace_global_selections
             replace_global_selections(doc, common)
             groups = doc["selections"]["groups"]
-            st.caption("Group names are display labels. Studio assigns a stable internal ID automatically; existing IDs are preserved when editing imported YAML.")
             def next_group_id(existing, prefix="group"):
                 number = 1
                 while f"{prefix}_{number}" in existing:
@@ -397,7 +393,6 @@ def main():
                                           help="Display name shown in Studio. The internal YAML ID stays stable.")
                     if label and label != (spec.get("label") or group_id):
                         spec["label"] = label
-                    st.caption("Choose a name that identifies the atoms being measured, such as Protein A or TM helix.")
                     measurement = st.text_input("Atoms to measure · MDAnalysis selection",
                                                 spec.get("selection") or "",
                                                 key=f"edit:group:{group_id}:selection",
@@ -405,7 +400,6 @@ def main():
                     spec["selection"] = measurement
                     if not measurement.strip():
                         st.warning("Choose atoms for this group before export. `all` is valid only when you explicitly want every atom.")
-                    st.caption("Example: `protein and segid PROA`. The expression `all` selects every atom, regardless of the group name. Verify atom counts with topology preflight.")
                     alignment = st.text_input("Atoms for structural alignment (optional)",
                                               spec.get("alignment_selection") or "",
                                               key=f"edit:group:{group_id}:alignment_selection",
@@ -414,7 +408,6 @@ def main():
                         spec["alignment_selection"] = alignment
                     else:
                         spec.pop("alignment_selection", None)
-                    st.caption("Example: `backbone and segid PROA`. Leave empty to use the analysis default; alignment does not change which atoms are measured.")
                     left, right = st.columns(2)
                     if left.button("Duplicate group", key=f"edit:group:{group_id}:Duplicate"):
                         target = next_group_id(groups)
@@ -431,28 +424,47 @@ def main():
                 doc["selections"]["groups"][target]["label"] = "New group"
                 doc["selections"]["groups"][target]["selection"] = ""
                 restart_editor(doc)
-            if st.button("Preview selections from topology (no trajectories)", key="edit:groups:preflight"):
-                # An explicit topology-only read, using the same validator as export.
-                counts = topology_preflight(doc, base)
-                st.success("Topology selection preflight completed. This does not validate trajectories or chemical identities.")
-                for system_id, result in counts.items():
-                    st.markdown(f"**Condition: {system_id}**")
-                    for group_id, info in result.get("groups", {}).items():
-                        matched = info["measurement"]
-                        st.success(f"{group_id}: {matched['atoms']} atoms and {matched['residues']} residues verified.")
-                    details = result.get("details", {})
-                    for field in ("protein", "alignment", "features"):
-                        status = details.get(field, {}).get("status", "unknown")
-                        if status == "not_required":
-                            st.caption(f"— {field.title()}: not required by enabled analyses")
-                        elif result.get(field) is not None:
-                            st.success(f"{field.title()}: selection checked.")
-                        else:
-                            st.warning(f"{field.title()}: {status.replace('_', ' ')}.")
-                    with st.expander("Technical preflight details"):
-                        st.json(result)
+            # Topology-only preflight is cached by topology metadata and the
+            # relevant configuration. Never load trajectories during authoring.
+            from mdscope.studio.model import resolve_config as _resolve_config
+            cfg = _resolve_config(doc, base=Path(base))
+            topology_paths = [Path(system.topology) for system in cfg.systems.values()]
+            if topology_paths and all(path.is_file() for path in topology_paths):
+                import hashlib
+                fingerprint = hashlib.sha256(
+                    yaml.safe_dump({
+                        "systems": doc.get("systems"),
+                        "selections": doc.get("selections"),
+                        "analyses": doc.get("analyses"),
+                        "base": str(Path(base).resolve()),
+                        "topologies": [
+                            (str(path), path.stat().st_size, path.stat().st_mtime_ns)
+                            for path in topology_paths
+                        ],
+                    }, sort_keys=True).encode("utf-8")
+                ).hexdigest()
+                if state.get("studio:selection_preflight_key") != fingerprint:
+                    state["studio:selection_preflight_key"] = fingerprint
+                    try:
+                        state["studio:selection_preflight_result"] = topology_preflight(doc, base)
+                        state.pop("studio:selection_preflight_error", None)
+                    except (ValueError, TypeError, OSError, KeyError) as exc:
+                        state.pop("studio:selection_preflight_result", None)
+                        state["studio:selection_preflight_error"] = str(exc)
+                if state.get("studio:selection_preflight_error"):
+                    st.error("Topology selection validation failed: " + state["studio:selection_preflight_error"])
+                elif state.get("studio:selection_preflight_result"):
+                    counts = state["studio:selection_preflight_result"]
+                    st.success("Selections checked against the topology. Trajectory contents have not been read.")
+                    for system_id, result in counts.items():
+                        st.markdown(f"**{doc['systems'].get(system_id, {}).get('label') or system_id}**")
+                        for group_id, info in result.get("groups", {}).items():
+                            matched = info["measurement"]
+                            st.success(f"{group_id}: {matched['atoms']} atoms and {matched['residues']} residues matched.")
+                        with st.expander("Technical selection details"):
+                            st.json(result)
             else:
-                st.info("Selections not checked against topology. Fitted coordinates apply only to supported structural measurements; membrane/diffusion use source coordinates.")
+                st.info("Select an existing topology file in Project & systems to enable automatic selection checks.")
         except (ValueError, TypeError, OSError, yaml.YAMLError) as exc:
             errors.append(str(exc)); st.error(str(exc))
     with tabs[2]:
