@@ -481,7 +481,7 @@ def main():
             from mdscope.studio.model import replace_global_selections
             replace_global_selections(doc, common)
         except (ValueError, TypeError, yaml.YAMLError) as exc:
-            errors.append(str(exc)); st.error(str(exc)
+            errors.append(str(exc)); st.error(str(exc))
         card_previews = []
         card_plan = None
         available_analyses = analysis_options()
@@ -511,6 +511,20 @@ def main():
                                 spec["groups"] = st.multiselect("Named measurement groups", list(doc["selections"].get("groups", {})),
                                                                  default=default, key=f"edit:groups:{name}")
                                 st.caption("These group IDs are defined under Project & systems. Changing group definitions changes the corresponding measurement atoms; global measurement is also saved. This list filters grouped rows only.")
+                                if name == "rmsd":
+                                    for group_id in spec["groups"]:
+                                        group = doc["selections"]["groups"][group_id]
+                                        if isinstance(group, str):
+                                            group = doc["selections"]["groups"][group_id] = {"selection": group}
+                                        fit = st.text_input(
+                                            f"Alignment atoms · {group.get('label') or group_id}",
+                                            value=group.get("alignment_selection") or "",
+                                            key=f"edit:rmsd:alignment:{group_id}",
+                                            help="Optional MDAnalysis selection used to fit this group before RMSD. Leave blank to use the normal alignment behavior.")
+                                        if fit.strip():
+                                            group["alignment_selection"] = fit
+                                        else:
+                                            group.pop("alignment_selection", None)
                             edited = analysis_settings(name, spec, doc)
                             doc["analyses"][name] = {"enabled": True, **edited,
                                                       **({"groups": spec["groups"]} if name in {"rmsd", "radius_of_gyration"} and "groups" in spec else {})}
