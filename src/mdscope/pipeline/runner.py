@@ -597,11 +597,151 @@ def _validate_replica_products(cfg, root, replicates):
         )
 
 
-def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, phase="statistics"):
+def _verified_saved_configuration(current, saved, system, replica, analysis):
+    """Compare source identity and analysis settings, not reporting options."""
+    for key in ("sampling", "selections", "alignment", "cache"):
+        if current.get(key) != saved.get(key):
+            return False, key + " configuration differs"
+    if current["systems"][system].get("topology") != saved["systems"][system].get("topology"):
+        return False, "topology source differs"
+    def by_label(cfg):
+        return {str(item.get("label", f"rep{i}")): item
+                for i, item in enumerate(cfg["systems"][system]["replicates"], 1)}
+    if replica not in by_label(saved) or by_label(current)[replica] != by_label(saved)[replica]:
+        return False, "replicate input identity differs"
+    if (current["analyses"].get(analysis, {}).get("enabled") and
+            current["analyses"].get(analysis) != saved["analyses"].get(analysis)):
+        return False, "analysis settings differ"
+    return True, ""
+
+
+def inspect_results_directory(document, base, results_directory):
+    """Read-only inventory of registered per-replica analysis artifacts.
+
+    Complete registered file sets are *candidates*, not validated scientific
+    results: provenance, schemas, checkpoint state and unregistered products
+    require further verification before reuse.
+    """
+    from ..config import iter_replicates, resolve_config
+    from ..registry import analysis_output_plan, required_artifacts
+
+    root = Path(results_directory).expanduser()
+    if not root.is_absolute():
+        root = Path(base) / root
+    root = root.resolve()
+    if not root.is_dir():
+        raise ValueError(f"Results directory does not exist: {root}")
+    cfg = resolve_config(document, base=Path(base))
+    saved = None
+    saved_config = root / "resolved_config.yaml"
+    if saved_config.is_file():
+        import yaml
+        try:
+            saved = resolve_config(yaml.safe_load(saved_config.read_text()), base=Path(base))
+        except (OSError, ValueError, TypeError, KeyError, yaml.YAMLError):
+            saved = None
+    inventory = []
+    for replica in iter_replicates(cfg, Path(base) / "analysis.yaml"):
+        replica_root = root / replica.system / replica.label
+        current_entries = list(analysis_output_plan(cfg, replica_root))
+        saved_entries = []
+        if saved is not None:
+            try:
+                saved_entries = list(analysis_output_plan(saved, replica_root))
+            except (KeyError, ValueError, TypeError):
+                pass
+        entries = {entry.checkpoint_key: (entry, cfg) for entry in current_entries}
+        for entry in saved_entries:
+            entries.setdefault(entry.checkpoint_key, (entry, saved))
+        for entry, source_cfg in entries.values():
+            required = required_artifacts(entry, source_cfg)
+            present = [path for path in required
+                       if path.is_file() and path.stat().st_size > 0]
+            verified = False
+            reason = "Missing or unreadable saved resolved configuration"
+            if saved is not None:
+                try:
+                    compatible, reason = _verified_saved_configuration(
+                        cfg, saved, replica.system, replica.label, entry.name)
+                    if compatible and len(present) == len(required):
+                        import json
+                        key = (_replicate_state_prefix(replica) + "-" +
+                               entry.checkpoint_key)
+                        marker = root / ".state" / f"{key}.json"
+                        try:
+                            completed = json.loads(marker.read_text()).get("status") == "complete"
+                        except (OSError, ValueError, AttributeError):
+                            completed = False
+                        if not completed:
+                            reason = "No completed analysis stage marker"
+                        else:
+                            _validate_analysis_output(entry, source_cfg)
+                            _check_artifact(replica_root / "summary" / "timeseries.parquet")
+                            verified = True
+                            reason = "Validated stage marker, saved configuration, summary and registered artifacts"
+                except (RuntimeError, OSError, ValueError, KeyError, TypeError) as exc:
+                    reason = str(exc)
+            inventory.append({
+                "reason": reason,
+                "scheduled": entry.checkpoint_key in {item.checkpoint_key for item in current_entries},
+                "analysis": entry.name,
+                "run_id": entry.run_id or "default",
+                "condition": replica.system,
+                "replica": replica.label,
+                "present": len(present),
+                "required": len(required),
+                "status": ("verified_existing" if verified else
+                           "incompatible" if len(present) == len(required) else
+                           "partial" if present else "missing"),
+                "missing": [str(path.relative_to(root)) for path in required
+                            if path not in present],
+            })
+    return inventory
+
+
+def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, phase="statistics", *, results_dir=None):
     if phase not in {"statistics", "plotting"}:
         raise ValueError(f"Unknown finalization phase: {phase}")
     cfg = cfg or load_config(config_path)
     verbose = cfg.get("progress", {}).get("enabled", True)
+    if results_dir is not None:
+        if root is not None:
+            raise ValueError("Specify either root or results_dir, not both")
+        root = Path(results_dir).expanduser().resolve()
+        if not root.is_dir():
+            raise FileNotFoundError(f"Existing results directory not found: {root}")
+        # Never call initialize() here: it overwrites the saved resolved config
+        # that is required to establish the provenance of existing products.
+        inventory = inspect_results_directory(cfg, Path(config_path).resolve().parent, root)
+        # The inventory includes saved-only analyses discovered from the
+        # persisted configuration as well as currently scheduled analyses.
+        # Require complete coverage before offline finalization can consume
+        # either class of product.
+        # Derive expected coverage from the current configuration, not the
+        # inventory itself: a missing inventory row must never become an
+        # implicitly successful preflight.
+        from ..registry import analysis_output_plan
+        replicates_for_preflight = list(iter_replicates(cfg, config_path))
+        expected = {
+            (entry.name, entry.run_id or "default", rep.system, rep.label)
+            for rep in replicates_for_preflight
+            for entry in analysis_output_plan(
+                cfg, root / rep.system / rep.label)
+        }
+        by_key = {
+            (row["analysis"], row["run_id"], row["condition"], row["replica"]): row
+            for row in inventory
+        }
+        invalid = [
+            (*key, by_key[key]["status"] if key in by_key else "missing")
+            for key in sorted(expected)
+            if key not in by_key or by_key[key]["status"] != "verified_existing"
+        ]
+        if invalid:
+            raise RuntimeError(
+                "Existing results are not verified for every scheduled analysis/run/"
+                "condition/replica; refusing downstream finalization: " +
+                "; ".join("/".join(map(str, row)) for row in invalid[:20]))
     if root is None:
         if phase == "plotting":
             root = project_root(cfg, config_path)

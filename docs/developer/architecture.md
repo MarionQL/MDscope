@@ -214,3 +214,13 @@ Approach:
 **No database or rewrite of existing scientific files.** Different observables (RDF shape, occupancy, residence, SASA burial, diffusion, state populations) retain different estimands.
 
 [Workflows](../workflows.md) · [Configuration](../configuration.md) · [Validation gaps](validation-gaps.md)
+
+## Studio authoring boundary
+
+Studio edits detached drafts; `studio.model` owns draft commits, group/run
+operations and exact export reconciliation. `planning.authoring_catalog` supplies
+one figure candidate set to the UI and model, using registry variable contracts
+and production `reporting.plot_ids`. The Streamlit client caches schema-only
+previews by draft content; no trajectory or statistics computations occur.
+Topology checks reuse `core.validation`. See [Studio delivery](studio-plan.md)
+and the [user guide](../studio.md) for coverage and explicit remaining gaps.

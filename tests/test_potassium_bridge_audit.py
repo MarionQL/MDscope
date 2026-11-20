@@ -90,6 +90,13 @@ def test_audit_requires_bonded_charged_sites_and_tracks_periodic_steric_referenc
     assert shifted.bridging_ions.tolist() == [1, 0, 0, 0]
     rdf = pd.read_parquet(output / "rdf.parquet")
     assert rdf.query("kind == 'water_oxygen'").pair_count.sum() == 1
+    from mdscope.registry import artifact_schema, fused_output, required_artifacts
+    entry = fused_output(tmp_path / "test/rep1", "potassium_bridge_audit")
+    for path in required_artifacts(entry, cfg):
+        if path.suffix == ".parquet":
+            contract = artifact_schema(entry, path)
+            assert contract["columns"] is not None
+            assert set(contract["columns"]) <= set(pd.read_parquet(path).columns)
     u.atoms[potassium].charge = 0.
     with pytest.raises(ValueError, match="unbonded"):
         topology_sites(u, config)

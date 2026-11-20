@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import analysis_runs, iter_replicates, plot_enabled, statistics_family_config
-from .registry import analysis_output_plan, required_artifacts, artifact_schema
+from .registry import analysis_output_plan, required_artifacts, artifact_schema, scalar_contracts, structural_profile_contracts, density_output_contracts, configured_profile_variables
 from .statistics_families import STATISTICS_FAMILIES
 from .statistics_selection import ESTIMATOR_FLAGS
 from .reporting.plot_ids import STATIC_IDS, SDC4_CONDITION_STEMS, describe_plot, safe_plot_stem
@@ -185,6 +185,7 @@ def build_plan(cfg: dict, config_path: str | Path, *,
     No disk access and no trajectory or bootstrap computations occur here.
     Topology counts, when supplied, must come from genuine topology preflight.
     """
+    from .core.alignment import structural_selection_requirements
     config_path = Path(config_path).resolve()
     reps = list(iter_replicates(cfg, config_path))
     template_root = Path("__replica__")
@@ -241,6 +242,7 @@ def build_plan(cfg: dict, config_path: str | Path, *,
                     for family in candidate_figures
                 ],
                 "artifact_catalog_status": status,
+                "descriptive_figures": analysis_figure_candidates(cfg, name),
             })
 
     # Hydration can be implicitly scheduled by enabled SDC4 sugar-water metrics.
@@ -268,8 +270,10 @@ def build_plan(cfg: dict, config_path: str | Path, *,
                 for family in meta[2]
             ],
             "artifact_catalog_status": "registered_implicit",
+            "descriptive_figures": analysis_figure_candidates(cfg, "hydration"),
         })
 
+    from .statistics_contracts import statistics_output_contract
     project_statistics = []
     for family in STATISTICS_FAMILIES:
         project_statistics.append({
@@ -291,6 +295,7 @@ def build_plan(cfg: dict, config_path: str | Path, *,
                 for item in selected
                 if family in (ANALYSIS_METADATA.get(item["analysis"], ("", (), ()))[1])
             ],
+            "output_schema": statistics_output_contract(family),
             "metric_contract": {
                 "identity_fields": STATISTICS_METRIC_CONTRACTS[family][0],
                 "row_grain": STATISTICS_METRIC_CONTRACTS[family][1],
@@ -463,9 +468,13 @@ def build_plan(cfg: dict, config_path: str | Path, *,
             for rep in reps
         ],
         "selections": cfg["selections"],
+        "structural_selection_requirements": structural_selection_requirements(cfg),
         "topology_counts": topology_counts,
         "analyses": selected,
         "registered_replica_outputs": outputs,
+        "observable_contracts": scalar_contracts(cfg),
+        "structural_profile_outputs": structural_profile_contracts(cfg) + density_output_contracts(cfg),
+        "profile_variables": configured_profile_variables(cfg),
         "conditional_replica_outputs": [
             {"path_within_replica": "summary/timeseries.parquet",
              "format": "Parquet", "status": "written_if_nonempty",
@@ -749,3 +758,114 @@ def inspect_saved_plot_ids(cfg: dict, root: str | Path, config_path: str | Path,
         "truncated": truncated,
         "max_identities": max_identities,
     }
+
+
+def analysis_figure_candidates(cfg, name):
+    """Writer-supported descriptive figure candidates, without saved-data reads."""
+    identifiers = []
+    if name in {"hydrogen_bonds", "lipid_hydrogen_bonds", "salt_bridges"}:
+        identifiers.append(f"interactions:{name}:occupancy_heatmap")
+        if cfg["analyses"].get("lifetimes", {}).get("enabled", True):
+            identifiers.append(f"interactions:{name}:lifetime_distribution")
+    if name == "residue_membrane_distance":
+        identifiers.extend(f"profiles:residue_membrane_distance__{safe_plot_stem(run.run_id)}:{safe_plot_stem(system)}:distance_heatmap"
+                           for run in analysis_runs(cfg, name) for system in cfg["systems"])
+    if name == "solvation":
+        identifiers.append("solvation:water_and_ions")
+        from .registry import fused_output
+        if any(path.name == "survival.parquet" for path in required_artifacts(fused_output(Path("__replica__"), "solvation"), cfg)):
+            identifiers.append("solvation:contact_survival")
+    if name == "shared_states":
+        identifiers += ["shared_states:state_populations", "shared_states:state_sampling_diagnostics"]
+    if name == "sdc4_mechanisms":
+        identifiers.extend(f"sdc4:{safe_plot_stem(system)}:{stem}" for system in cfg["systems"] for stem in sorted(SDC4_CONDITION_STEMS))
+    if name == "lipid_contacts":
+        identifiers.extend(f"lipid_contacts:lipid_contact_matrix_{system}_{leaflet}_{metric}"
+                           for system in cfg["systems"] for leaflet in ("upper", "lower")
+                           for metric in ("neighbors_per_molecule", "enrichment"))
+    if name == "membrane" and cfg["analyses"]["membrane"].get("msd", {}).get("enabled"):
+        identifiers.append("diffusion:diffusion_coefficients")
+    return [dict(describe_plot(identifier), requires_statistics=False,
+                 availability="conditional_on_saved_data") for identifier in identifiers]
+
+
+def statistical_figure_candidates(cfg):
+    """Exact configured identities only; unknown interaction metrics stay unresolved."""
+    selection = cfg.get("statistics", {}).get("metric_selection") or {}
+    identifiers = []
+    for entry in selection.get("profiles", []) or []:
+        stem = safe_plot_stem(entry["profile"])
+        identifiers.extend(f"profiles:{stem}:{variant}" for variant in
+                           ("profile", "distribution", "system_difference", "comparison_table", "bootstrap_table"))
+    for entry in selection.get("interactions", []) or []:
+        if entry.get("metric"):
+            stem = f"{safe_plot_stem(entry['kind'])}:{safe_plot_stem(entry['metric'])}"
+            identifiers.extend(f"interactions:{stem}:{variant}" for variant in
+                               ("bootstrap_table", "comparison_table"))
+    if selection.get("solvation_rdfs"):
+        identifiers.append("solvation:shell_rdf")
+    if any(item.get("metric", "").startswith("lipid_footprint_") for item in selection.get("time_series", []) or []):
+        identifiers.extend(["lipid_enrichment:lipid_enrichment_heatmap", "lipid_enrichment:lipid_area_density_heatmap"])
+    return [dict(describe_plot(identifier), requires_statistics=True,
+                 availability="conditional_on_saved_data") for identifier in dict.fromkeys(identifiers)]
+
+
+def authoring_catalog(cfg, *, include_inactive=False):
+    """One catalog for authoring reconciliation and UI figure eligibility."""
+    from copy import deepcopy
+    from .registry import scalar_contracts, configured_profile_variables
+    from .reporting.plot_ids import DYNAMIC_VARIANTS
+    configured = deepcopy(cfg)
+    from .config import normalize_analysis_booleans
+    normalize_analysis_booleans(configured)
+    if include_inactive:
+        for spec in configured["analyses"].values():
+            spec["enabled"] = True
+            for key, run in (spec.get("runs") or {}).items():
+                spec["runs"][key] = {**run, "enabled": True} if isinstance(run, dict) else {"enabled": True}
+        # Ownership includes supported but currently disabled suboptions.
+        membrane = configured["analyses"]["membrane"]
+        for field in ("area_per_lipid", "thickness", "msd"):
+            membrane.setdefault(field, {})["enabled"] = True
+        for name in ("rmsd", "radius_of_gyration"):
+            configured["analyses"][name].pop("groups", None)
+        distance = configured["analyses"]["residue_membrane_distance"]
+        for spec in [distance, *(distance.get("runs") or {}).values()]:
+            if isinstance(spec, dict):
+                spec["groups"] = True
+        density = configured["analyses"]["density_1d"]
+        for spec in [density, *(density.get("runs") or {}).values()]:
+            if isinstance(spec, dict):
+                for key, target in (spec.get("selections") or {}).items():
+                    spec["selections"][key] = {**({"selection": target} if isinstance(target, str) else target), "groups": True}
+    scalars = scalar_contracts(configured)
+    profiles = configured_profile_variables(configured, include_optional=include_inactive)
+    figures = {name: {} for name in configured["analyses"]}
+    for variable in scalars:
+        for figure in variable["figures"]:
+            owner = "statistics" if figure["requires_statistics"] else variable["analysis"]
+            figures.setdefault(owner, {})[figure["id"]] = figure
+    for name, spec in configured["analyses"].items():
+        if spec.get("enabled"):
+            for figure in analysis_figure_candidates(configured, name):
+                figures[name][figure["id"]] = figure
+    for variable in profiles:
+        for variant in sorted(DYNAMIC_VARIANTS["profiles"]):
+            identifier = f"profiles:{safe_plot_stem(variable['profile'])}:{variant}"
+            figures.setdefault("statistics", {})[identifier] = dict(describe_plot(identifier), requires_statistics=True)
+    for figure in statistical_figure_candidates(configured):
+        figures.setdefault("statistics", {})[figure["id"]] = figure
+    if not include_inactive:
+        selected = configured.get("statistics", {}).get("metric_selection")
+        scalar_selection = None if selected is None else selected.get("time_series")
+        statistics = {}
+        for variable in scalars:
+            if scalar_selection is None or any(item["metric"] == variable["metric"] and item.get("group") == variable["group"] for item in scalar_selection):
+                for figure in variable["figures"]:
+                    if figure["requires_statistics"]:
+                        statistics[figure["id"]] = figure
+        for figure in statistical_figure_candidates(configured):
+            statistics[figure["id"]] = figure
+        figures["statistics"] = statistics
+    return {"scalars": scalars, "profiles": profiles,
+            "figures": {owner: list(items.values()) for owner, items in figures.items()}}

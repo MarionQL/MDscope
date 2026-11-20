@@ -47,7 +47,7 @@ Previews call the **production** figure renderers using deterministic fake saved
 
 ## Change checklist
 
-- **Scope:** inspect callers, relevant contracts, tests and docs. Change one coherent responsibility at a time; avoid speculative abstractions.
+- **Scope:** inspect callers, relevant contracts, tests and docs. Complete the authorized milestone across its affected responsibilities; keep ownership clear and avoid speculative abstractions. Small commits are review units, not delivery limits.
 - **Compatibility:** migrate known callers before removing an internal module; retain a tested adapter when external use or staged migration requires it. Preserve public CLI/YAML/output contracts unless explicitly migrated.
 - **Scientific invariants:** retain units, populations, coordinate frame, PBC, mass weighting, selection chemistry, time sampling, missing-vs-zero semantics and results.
 - **Performance:** minimize trajectory traversals, memory, I/O and dense atom-pair materialization. Preserve fused and sparse processing.

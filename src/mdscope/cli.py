@@ -108,7 +108,7 @@ def cmd_replicate(args):
 def cmd_finalize(args, phase="statistics"):
     from .pipeline.runner import finalize_project
 
-    print(finalize_project(args.config, phase=phase))
+    print(finalize_project(args.config, phase=phase, results_dir=getattr(args, "results_dir", None)))
 
 
 def cmd_report(args):
@@ -153,6 +153,9 @@ def main():
     for phase in ("statistics", "plotting"):
         p = sub.add_parser(phase, help=f"Run only the {phase} finalization phase")
         p.add_argument("config")
+        p.add_argument("--results-dir", type=Path,
+                       help="Reuse validated existing analysis products from this directory; "
+                            "do not schedule trajectory analyses")
         p.set_defaults(func=lambda a, phase=phase: cmd_finalize(a, phase=phase))
     p = sub.add_parser("scan-residue-regions", help="Find contiguous changes in saved residue profiles")
     p.add_argument("statistics_dir", type=Path)

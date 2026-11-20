@@ -194,8 +194,10 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash=None):
     setup_started = perf_counter() if profiler.enabled else None
     universe = mda.Universe(str(rep.topology), str(rep.trajectory))
     selections = cfg["selections"]
-    protein = universe.select_atoms(selections["protein"])
-    if not len(protein):
+    from ..core.alignment import resolve_structural_atoms
+    structural, required_by = resolve_structural_atoms(universe, cfg)
+    protein = structural["protein"]
+    if required_by["protein"] and not len(protein):
         raise ValueError(f"Protein selection matched zero atoms: {selections['protein']}")
     alignment_spec = cfg["analyses"].get("alignment", {})
     alignment_enabled = bool(alignment_spec.get("enabled", True))
@@ -204,17 +206,13 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash=None):
             alignment_spec.get("selection") or selections.get("alignment") or "protein and name CA"
         )
     )
-    features = universe.select_atoms(selections.get("features") or alignment_selection)
-    if not len(features):
+    features = structural["features"]
+    if required_by["features"] and not len(features):
         raise ValueError("Feature selection matched zero atoms")
 
     # Frame 0 is the structural reference for all alignment/RMSD calculations.
     universe.trajectory[0]
-    alignment_atoms = (
-        universe.select_atoms(alignment_selection)
-        if alignment_enabled
-        else universe.atoms[[]]
-    )
+    alignment_atoms = structural["alignment"]
     if alignment_enabled and not len(alignment_atoms):
         raise ValueError(
             f"Alignment selection matched zero atoms: {alignment_selection}"
@@ -240,7 +238,8 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash=None):
     ligand_state = initialize_ligand_contacts(universe, protein, ligand, cfg)
 
     rg_spec = cfg["analyses"].get("radius_of_gyration", {})
-    rg_atoms = universe.select_atoms(str(rg_spec.get("selection") or selections["protein"]))
+    rg_atoms = (universe.select_atoms(str(rg_spec.get("selection") or selections["protein"]))
+                if rg_spec.get("enabled", True) else universe.atoms[[]])
     if rg_spec.get("enabled", True) and not len(rg_atoms):
         raise ValueError("radius_of_gyration.selection matched zero atoms")
 
@@ -262,7 +261,7 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash=None):
     for group_id, group_spec in analysis_groups(cfg).items():
         atoms = universe.select_atoms(group_spec["selection"])
         measured = features.intersection(atoms)
-        if not len(atoms) or not len(measured):
+        if not len(atoms) or (required_by["features"] and not len(measured)):
             raise ValueError(f"Analysis group {group_id!r} resolved to zero atoms/features")
         align_selection = group_spec.get("alignment_selection") if alignment_enabled else None
         if align_selection:
