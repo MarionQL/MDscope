@@ -218,47 +218,45 @@ def show_outputs(plan, name, document, base):
 
 
 
-@st.fragment(run_every="2s")
+@st.fragment(run_every="3s")
 def _show_topology_progress(state, systems, groups):
-    """Poll completed background work; never parse topologies on the UI thread."""
-    topology = state.get("studio:topology_future")
-    group_future = state.get("studio:group_future")
+    """Only the small status fragment refreshes while a worker is in progress."""
+    future = state.get("studio:topology_preview_future")
     with st.expander("Topology identifiers and group matches", expanded=True):
-        if topology is None or not topology.done():
+        if future is None or not future.done():
             st.info("Reading topology in the background. You can continue editing Studio.")
-        else:
-            try:
-                metadata = topology.result()
-                for system_id, spec in systems.items():
-                    info = metadata.get(system_id, {})
-                    st.markdown(f"**{spec.get('label') or system_id}**")
-                    if info.get("error"):
-                        st.warning(info["error"])
-                        continue
-                    st.caption(f"{info['atoms']:,} atoms · {info['residues']:,} residues · {info['segments']:,} segments")
-                    for name, values in info["identifiers"].items():
-                        st.write(f"{name}: " + (", ".join(values[:40]) + (f" (+{len(values)-40} more)" if len(values)>40 else "") if values else "Not provided by topology"))
-            except (OSError, ValueError, TypeError) as exc:
-                st.error(f"Topology inspection failed: {exc}")
+            return
+        try:
+            result = future.result()
+        except (OSError, ValueError, TypeError) as exc:
+            st.error(f"Topology inspection failed: {exc}")
+            return
+        metadata = result["metadata"]
+        for system_id, spec in systems.items():
+            info = metadata.get(system_id, {})
+            st.markdown(f"**{spec.get('label') or system_id}**")
+            if info.get("error"):
+                st.warning(info["error"])
+                continue
+            st.caption(f"{info['atoms']:,} atoms · {info['residues']:,} residues · {info['segments']:,} segments")
+            for name, values in info["identifiers"].items():
+                labels = ", ".join(values[:40])
+                if len(values) > 40:
+                    labels += f" (+{len(values) - 40} more)"
+                st.write(f"{name}: {labels or 'Not provided by topology'}")
         if groups:
-            if group_future is None or not group_future.done():
-                st.caption("Checking reusable-group selections in the background…")
-            else:
-                try:
-                    results = group_future.result()
-                    for system_id, matches in results.items():
-                        if "error" in matches:
-                            continue
-                        st.markdown(f"**Group matches · {system_id}**")
-                        for group_id, match in matches.items():
-                            if "error" in match:
-                                st.warning(f"{group_id}: {match['error']}")
-                            elif match["atoms"] == 0:
-                                st.warning(f"{group_id}: matches zero atoms")
-                            else:
-                                st.caption(f"{group_id}: {match['atoms']:,} atoms, {match['residues']:,} residues")
-                except (OSError, ValueError, TypeError) as exc:
-                    st.error(f"Group inspection failed: {exc}")
+            for system_id, matches in result["groups"].items():
+                if "error" in matches:
+                    continue
+                st.markdown(f"**Group matches · {system_id}**")
+                for group_id, match in matches.items():
+                    if "error" in match:
+                        st.warning(f"{group_id}: {match['error']}")
+                    elif match["atoms"] == 0:
+                        st.warning(f"{group_id}: matches zero atoms")
+                    else:
+                        st.caption(f"{group_id}: {match['atoms']:,} atoms, {match['residues']:,} residues")
+
 
 
 def main():
@@ -464,21 +462,18 @@ def main():
                 doc["selections"]["groups"][target]["label"] = "New group"
                 doc["selections"]["groups"][target]["selection"] = ""
                 restart_editor(doc)
-            from mdscope.studio.topology_preview import topology_signature, submit_topologies, submit_groups
+            from mdscope.studio.topology_preview import topology_signature, submit_preview
             import hashlib
             systems = doc.get("systems", {})
             signature = topology_signature(systems, base)
-            if state.get("studio:topology_signature") != signature:
-                state["studio:topology_signature"] = signature
-                state["studio:topology_future"] = submit_topologies(systems, base)
-                state.pop("studio:group_signature", None)
-            group_signature = hashlib.sha256(
-                (signature + yaml.safe_dump(doc["selections"]["groups"], sort_keys=True)).encode()
+            groups_snapshot = deepcopy(doc["selections"]["groups"])
+            preview_key = hashlib.sha256(
+                (signature + yaml.safe_dump(groups_snapshot, sort_keys=True)).encode()
             ).hexdigest()
-            if state.get("studio:group_signature") != group_signature:
-                state["studio:group_signature"] = group_signature
-                state["studio:group_future"] = submit_groups(
-                    systems, base, deepcopy(doc["selections"]["groups"]))
+            if state.get("studio:topology_preview_key") != preview_key:
+                state["studio:topology_preview_key"] = preview_key
+                state["studio:topology_preview_future"] = submit_preview(
+                    deepcopy(systems), base, groups_snapshot)
             _show_topology_progress(state, systems, doc["selections"]["groups"])
         except (ValueError, TypeError, OSError, yaml.YAMLError) as exc:
             errors.append(str(exc)); st.error(str(exc))
