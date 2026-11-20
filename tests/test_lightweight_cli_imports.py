@@ -44,5 +44,5 @@ def test_statistics_dispatcher_uses_same_family_identifiers():
     assert EXECUTION_FAMILIES is STATISTICS_FAMILIES
     assert STATISTICS_FAMILIES == (
         "time_series", "profiles", "interactions", "solvation_rdfs",
-        "diffusion", "coupling",
+        "diffusion", "coupling", "lipid_contacts",
     )
