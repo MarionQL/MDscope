@@ -151,6 +151,8 @@ def contact_frames(table: pd.DataFrame, classes: dict[str, list[str]]) -> pd.Dat
     missing = (table.molecules_a.to_numpy(float) <= 0) | (table.molecules_b.to_numpy(float) <= 0)
     data.loc[missing, list(METRICS)] = np.nan
     data.insert(0, "level", "species")
+    if not mapping:
+        return data  # Legacy YAML: species inference remains available.
     class_data = _classes(table, mapping)
     class_data.insert(0, "level", "class")
     return pd.concat([data, class_data], ignore_index=True)
@@ -194,8 +196,6 @@ def analyze_lipid_contacts(cfg: dict, root: Path, system_repouts: dict[str, list
     seed = int(settings.get("seed", 2026))
     resample = settings.get("hierarchy", {}).get("resample_replicates", True)
     classes = cfg["analyses"]["lipid_contacts"].get("classes") or {}
-    if not classes:
-        raise ValueError("analyses.lipid_contacts.classes is required for class-level statistics")
     outdir = ensure_dir(Path(root) / "project_summary/statistics/lipid_contacts")
     prepared = {}
     rep_rows = []
