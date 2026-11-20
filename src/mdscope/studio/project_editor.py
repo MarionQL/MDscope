@@ -19,13 +19,14 @@ def path_picker(label, value, key, *, directory=False, optional=False, create_on
         path = Path(value).expanduser()
         exists = path.is_dir() if directory else path.is_file()
         if exists:
-            st.caption("✓ Found on this machine")
+            st.success("Path found on this machine.")
         elif path.exists():
             st.warning("Path exists but is not the expected file/directory type.")
         else:
-            st.caption("Output directory will be created when MDscope runs." if create_on_run else
-                       "Optional path not present on this machine" if optional else
-                       "⚠ Path not found on this machine")
+            st.info("Output directory will be created when MDscope runs.") if create_on_run else (
+                st.info("Optional path not present on this machine.") if optional else
+                st.error("Required input path not found on this machine.")
+            )
     pending_dir = st.session_state.pop(f"{key}:pending_dir", None)
     if pending_dir is not None:
         st.session_state[f"{key}:browse_dir"] = pending_dir
