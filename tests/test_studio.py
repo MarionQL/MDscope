@@ -159,9 +159,10 @@ def test_app_group_editor_auto_ids_and_duplicate(tmp_path, monkeypatch):
     at = AppTest.from_file(app.__file__).run()
     at.button(key="edit:new_group:add").click().run()
     at.text_input(key="edit:group:group_1:selection").set_value("resid 10:60 and backbone").run()
-    at.text_input(key="edit:group:group_1:alignment_selection").set_value("name CA").run()
+    
     at.checkbox(key="enable:rmsd").check().run()
     at.multiselect(key="edit:groups:rmsd").set_value(["group_1"]).run()
+    at.text_input(key="edit:rmsd:alignment:group_1").set_value("name CA").run()
     at.button(key="edit:group:group_1:Duplicate").click().run()
     assert not at.exception
     raw = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
@@ -170,6 +171,32 @@ def test_app_group_editor_auto_ids_and_duplicate(tmp_path, monkeypatch):
     assert raw["selections"]["groups"]["group_2"]["alignment_selection"] == "name CA"
     assert raw["analyses"]["rmsd"]["groups"] == ["group_1"]
 
+
+
+def test_studio_five_step_layout_and_group_default(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+    from mdscope.studio.model import new_document, add_group
+    doc = new_document()
+    add_group(doc, "my_group")
+    assert doc["selections"]["groups"]["my_group"]["selection"] == ""
+    monkeypatch.chdir(tmp_path)
+    at = AppTest.from_file(app.__file__).run()
+    assert not at.exception
+    assert len(at.tabs) == 5
+    assert all("Selections & alignment" not in tab.label for tab in at.tabs)
+
+
+def test_background_topology_missing_file_and_group_independence(tmp_path):
+    from mdscope.studio.topology_preview import (
+        inspect_topologies, inspect_groups, topology_signature,
+    )
+    systems = {"one": {"topology": "not_here.tpr"}}
+    signature = topology_signature(systems, tmp_path)
+    assert signature == topology_signature(systems, tmp_path)
+    assert "not found" in inspect_topologies(systems, tmp_path)["one"]["error"]
+    assert "error" in inspect_groups(systems, tmp_path, {"patch": {"selection": "name CA"}})["one"]
 
 def test_disabled_imported_figures_do_not_get_enabled_by_authoring(tmp_path):
     doc = rmsd_document()
