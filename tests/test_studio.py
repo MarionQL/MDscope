@@ -219,6 +219,50 @@ def test_studio_five_step_layout_and_group_default(tmp_path, monkeypatch):
     assert all("Selections & alignment" not in tab.label for tab in at.tabs)
 
 
+def test_group_edit_does_not_restart_completed_topology(tmp_path, monkeypatch):
+    """A group addition may revalidate groups, never erase loaded identifiers."""
+    pytest.importorskip("streamlit")
+    from concurrent.futures import Future
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app, topology_preview
+
+    monkeypatch.chdir(tmp_path)
+    counters = {"topology": 0, "groups": 0}
+
+    def done(value):
+        future = Future()
+        future.set_result(value)
+        return future
+
+    def fake_topologies(systems, base):
+        counters["topology"] += 1
+        return done({
+            system_id: {"atoms": 3, "residues": 2, "segments": 1,
+                        "identifiers": {"SegIDs": ["PROA"],
+                                        "Chain IDs": ["A"],
+                                        "Residue names": ["ALA"]}}
+            for system_id in systems
+        })
+
+    def fake_groups(systems, base, groups):
+        counters["groups"] += 1
+        return done({system_id: {
+            group_id: {"error": "Enter an atom selection"}
+            for group_id in groups
+        } for system_id in systems})
+
+    monkeypatch.setattr(topology_preview, "submit_topologies", fake_topologies)
+    monkeypatch.setattr(topology_preview, "submit_groups", fake_groups)
+    at = AppTest.from_file(app.__file__).run()
+    assert not at.exception
+    assert counters["topology"] == 1
+    at.button(key="edit:new_group:add").click().run()
+    assert not at.exception
+    assert counters["topology"] == 1
+    assert counters["groups"] >= 2
+    assert at.session_state["studio:topology_future"].result()
+
+
 def test_combined_topology_preview_reads_once_and_matches_groups(tmp_path, monkeypatch):
     from mdscope.studio import topology_preview as preview
     import numpy as np
