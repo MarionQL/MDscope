@@ -41,11 +41,15 @@ def plot_lipid_enrichment_matrix(cfg,root):
         table=grouped.pivot(index="species",columns="column",values="mean")
         if table.empty:continue
         values=table.to_numpy(float)
+        if not np.isfinite(values).any():
+            continue
         signed=np.full_like(values,np.nan,dtype=float)
         good=np.isfinite(values)&(values>=0)
         # Plot 0 observed enrichment on a labeled finite clipping floor.
         signed[good]=np.log2(np.maximum(values[good],1e-3))
-        fig,ax=plt.subplots(figsize=(max(7,len(table.columns)*1.5),max(3.5,len(table.index)*.58+2)))
+        longest = max(map(len, table.index.astype(str)), default=0)
+        fig,ax=plt.subplots(figsize=(max(9,len(table.columns)*1.7) + min(4, longest*.07),
+                                     max(4,len(table.index)*.54+2)))
         cmap=plt.get_cmap("RdBu_r").copy();cmap.set_bad("lightgrey")
         image=ax.imshow(signed,aspect="auto",vmin=-2.5,vmax=2.5,cmap=cmap)
         ax.set_xticks(range(len(table.columns)),table.columns,rotation=45,ha="right")
@@ -53,12 +57,14 @@ def plot_lipid_enrichment_matrix(cfg,root):
         ax.set_title(title+" (equal replica means)")
         ax.set_xlabel("Condition and leaflet")
         ax.set_ylabel("Lipid species")
-        for i in range(values.shape[0]):
-            for j in range(values.shape[1]):
-                if np.isfinite(values[i,j]):
-                    ax.text(j,i,f"{values[i,j]:.2f}×",ha="center",va="center",fontsize=9)
+        if values.shape[0] * values.shape[1] <= 80:
+            for i in range(values.shape[0]):
+                for j in range(values.shape[1]):
+                    if np.isfinite(values[i,j]):
+                        ax.text(j,i,f"{values[i,j]:.2f}×",ha="center",va="center",fontsize=9)
         cb=fig.colorbar(image,ax=ax,pad=.025);cb.set_label("log₂ ratio (display clipped)")
-        fig.tight_layout()
+        fig.subplots_adjust(left=min(.42, max(.19, .09 + .007 * longest)),
+                            right=.88, bottom=.20, top=.90)
         dest=ensure_dir(Path(root)/"project_summary"/"figures"/"membrane")
         fig.savefig(dest/filename,dpi=figure_dpi(cfg, f"lipid_enrichment:{Path(filename).stem}",
                                                   int(cfg.get("plots",{}).get("dpi",250))))
@@ -97,7 +103,11 @@ def plot_lipid_contacts(cfg, root, system_repouts):
     def draw(values, title, metric, filename, *, difference=False):
         if not figure_enabled(cfg, f"lipid_contacts:{Path(filename).stem}"):
             return
-        fig, ax = plt.subplots(figsize=(7, 6))
+        if values.empty or not np.isfinite(values.to_numpy(float)).any():
+            return
+        longest = max((len(str(v)) for v in (*values.index, *values.columns)), default=0)
+        size = max(7, min(16, 3 + .7 * max(values.shape)))
+        fig, ax = plt.subplots(figsize=(size + min(4, .08 * longest), size))
         cmap = plt.get_cmap('RdBu_r' if difference else 'viridis').with_extremes(bad='lightgrey')
         scale = {}
         if difference:
@@ -105,14 +115,17 @@ def plot_lipid_contacts(cfg, root, system_repouts):
             limit = float(finite.max()) if len(finite) and finite.max() > 0 else 1.
             scale = dict(vmin=-limit, vmax=limit)
         image = ax.imshow(values, cmap=cmap, **scale)
-        ax.set_xticks(range(len(values.columns)), values.columns, rotation=60)
+        ax.set_xticks(range(len(values.columns)), values.columns, rotation=55, ha="right")
         ax.set_yticks(range(len(values)), values.index)
+        ax.tick_params(axis="both", labelsize=max(7, min(11, 13 - .18 * max(values.shape))))
         ax.set_xlabel('Neighbor species B')
         ax.set_ylabel('Reference species A')
         ax.set_title(f'{title}: {metric.replace("_", " ")}')
         units = 'Neighbors per molecule' if metric == 'neighbors_per_molecule' else 'Contact share / possible-pair share'
         fig.colorbar(image, ax=ax, label=f'Difference in {units.lower()}' if difference else units)
-        fig.tight_layout()
+        fig.subplots_adjust(left=min(.4, max(.17, .09 + .008 * longest)),
+                            right=.88, bottom=min(.38, max(.17, .10 + .008 * longest)),
+                            top=.9)
         fig.savefig(dest / filename, dpi=figure_dpi(cfg, f"lipid_contacts:{Path(filename).stem}",
                                                     int(cfg.get('plots', {}).get('dpi', 180))))
         plt.close(fig)
@@ -151,8 +164,12 @@ def plot_project_diffusion(cfg, root):
     if not source.is_file():
         return
     data = pd.read_parquet(source)
+    data = data.loc[np.isfinite(
+        pd.to_numeric(data["diffusion_nm2_ns"], errors="coerce"))]
+    if data.empty:
+        return
     groups = data.groupby(["system", "metric"], sort=True)
-    fig, ax = plt.subplots(figsize=(max(6, 1.4 * groups.ngroups), 4.8))
+    fig, ax = plt.subplots(figsize=(max(8, 1.5 * groups.ngroups), 5))
     labels, ticks = [], []
     for i, ((system, metric), rows) in enumerate(groups):
         values = rows["diffusion_nm2_ns"].dropna().to_numpy(float)
