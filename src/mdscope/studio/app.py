@@ -440,16 +440,16 @@ def main():
                     st.markdown(f"**Condition: {system_id}**")
                     for group_id, info in result.get("groups", {}).items():
                         matched = info["measurement"]
-                        st.caption(f"✓ {group_id}: {matched['atoms']} atoms, {matched['residues']} residues")
+                        st.success(f"{group_id}: {matched['atoms']} atoms and {matched['residues']} residues verified.")
                     details = result.get("details", {})
                     for field in ("protein", "alignment", "features"):
                         status = details.get(field, {}).get("status", "unknown")
                         if status == "not_required":
                             st.caption(f"— {field.title()}: not required by enabled analyses")
                         elif result.get(field) is not None:
-                            st.caption(f"✓ {field.title()}: selection checked")
+                            st.success(f"{field.title()}: selection checked.")
                         else:
-                            st.caption(f"— {field.title()}: {status.replace('_', ' ')}")
+                            st.warning(f"{field.title()}: {status.replace('_', ' ')}.")
                     with st.expander("Technical preflight details"):
                         st.json(result)
             else:
@@ -505,7 +505,7 @@ def main():
                     with placeholder.container():
                         show_outputs(card_plan, name, doc, base)
                         if not card_figures.get(name):
-                            st.caption("No analysis-only figure IDs verified for this card yet; no figures selected automatically.")
+                            st.info("No analysis-only figures verified for this analysis; nothing selected automatically.")
             except (ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
                 errors.append(str(exc)); st.error(str(exc))
     with tabs[3]:
@@ -834,7 +834,7 @@ def main():
             st.code(text, language="yaml")
             valid = not errors and not missing_groups and not missing_stats and (not require_topology or bool(preflight and preflight[0] == signature))
             st.download_button("Download analysis.yaml", text, file_name="analysis.yaml", mime="text/yaml", disabled=not valid)
-            st.caption("No output files are overwritten. Save YAML in the configuration directory shown above.")
+            st.info("Export saves a YAML configuration; it does not overwrite analysis results.")
         except (ValueError, TypeError, KeyError, OSError, yaml.YAMLError) as exc:
             st.error(str(exc))
 
