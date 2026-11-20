@@ -219,6 +219,44 @@ def test_studio_five_step_layout_and_group_default(tmp_path, monkeypatch):
     assert all("Selections & alignment" not in tab.label for tab in at.tabs)
 
 
+def test_combined_topology_preview_reads_once_and_matches_groups(tmp_path, monkeypatch):
+    from mdscope.studio import topology_preview as preview
+    import numpy as np
+
+    calls = []
+    class FakeAtoms:
+        segids = np.array(["PROA", "PROA", "SOLV"])
+        chainIDs = np.array(["A", "A", ""])
+        resnames = np.array(["ALA", "ALA", "HOH"])
+        def __len__(self):
+            return 3
+
+    class FakeUniverse:
+        def __init__(self, path):
+            calls.append(path)
+            self.atoms = FakeAtoms()
+            self.residues = [object(), object()]
+            self.segments = [object(), object()]
+        def select_atoms(self, expression):
+            assert expression == "segid PROA"
+            class Match:
+                residues = [object()]
+                def __len__(self):
+                    return 2
+            return Match()
+
+    topology = tmp_path / "topology.pdb"
+    topology.touch()
+    monkeypatch.setattr(preview, "Universe", FakeUniverse)
+    result = preview.inspect_preview(
+        {"one": {"topology": topology.name}}, tmp_path,
+        {"protein_a": {"selection": "segid PROA"}})
+    assert len(calls) == 1
+    assert result["metadata"]["one"]["atoms"] == 3
+    assert result["metadata"]["one"]["identifiers"]["SegIDs"] == ["PROA", "SOLV"]
+    assert result["groups"]["one"]["protein_a"] == {"atoms": 2, "residues": 1}
+
+
 def test_background_topology_missing_file_and_group_independence(tmp_path):
     from mdscope.studio.topology_preview import (
         inspect_topologies, inspect_groups, topology_signature,
