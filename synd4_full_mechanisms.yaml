@@ -515,4 +515,13 @@ cache:
   keep: true
 
 plots:
-  enabled: false
+  # All supported saved-data figure families, including exploratory
+  # multimetric residue-response/bootstrap contrast heatmaps.
+  enabled: true
+  profiles: true
+  time_series: true
+  interactions: true
+  distributions: false
+  autocorrelation: false
+  bootstrap_tables: false
+  dpi: 200
