@@ -173,6 +173,36 @@ def test_app_group_editor_auto_ids_and_duplicate(tmp_path, monkeypatch):
 
 
 
+def test_statistical_figure_kind_classifies_exact_plot_variants():
+    from mdscope.studio.app import figure_stat_type
+    assert figure_stat_type("time_series:rmsd_A:autocorrelation") == "Autocorrelation"
+    assert figure_stat_type("time_series:rmsd_A:bootstrap_table") == "Bootstrap & replicate statistics"
+    assert figure_stat_type("profiles:rmsf:comparison_table") == "Hypothesis tests & condition comparisons"
+    assert figure_stat_type("time_series:rmsd_A:timeseries") == "Other figures"
+
+
+def test_bulk_statistical_figure_selection_preserves_other_types(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+    monkeypatch.chdir(tmp_path)
+    at = AppTest.from_file(app.__file__).run()
+    at.checkbox(key="enable:rmsd").check().run()
+    auto = "figure:tree:time_series:rmsd_A:autocorrelation"
+    boot = "figure:tree:time_series:rmsd_A:bootstrap_table"
+    method = "figure:tree:method:Autocorrelation"
+    if not at.checkbox(key=auto) or not at.checkbox(key=boot):
+        pytest.skip("Statistical figures unavailable under this configuration")
+    at.checkbox(key=boot).check().run()
+    at.checkbox(key=method).check().run()
+    assert at.checkbox(key=auto).value
+    assert at.checkbox(key=boot).value
+    at.checkbox(key=method).uncheck().run()
+    assert not at.checkbox(key=auto).value
+    assert at.checkbox(key=boot).value
+    assert not at.exception
+
+
 def test_studio_five_step_layout_and_group_default(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
