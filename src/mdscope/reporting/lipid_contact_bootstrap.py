@@ -38,7 +38,7 @@ def _draw(cfg, dest: Path, table: pd.DataFrame, *, ordered: list[str],
     image = ax.imshow(np.ma.masked_invalid(matrix), cmap=cmap, **limits)
     ax.set_xticks(range(len(ordered)), ordered, rotation=55, ha="right")
     ax.set_yticks(range(len(ordered)), ordered)
-    ax.set_xlabel("Lipid " + ("class" if "class_" in stem else "species") + " B")
+    ax.set_xlabel("Lipid " + ("class" if stem.startswith("lipid_contact_class_") else "species") + " B")
     ax.set_ylabel("Reference lipid " + ("class" if "class_" in stem else "species") + " A")
     ax.set_title(title + "\n" + metric.replace("_", " "))
     if comparison and supported:
