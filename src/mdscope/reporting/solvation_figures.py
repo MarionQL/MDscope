@@ -18,6 +18,9 @@ def solvation_rdf_figure(root, system_repouts, *, max_panels=6, dpi=150):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    rdf = rdf.loc[np.isfinite(pd.to_numeric(rdf["mean_g_bulk"], errors="coerce"))]
+    if rdf.empty:
+        return None
     groups=list(rdf.groupby(["solvent","target_class","site_class"],sort=True))
     groups=groups[:max_panels]
     n=len(groups)
@@ -28,6 +31,8 @@ def solvation_rdf_figure(root, system_repouts, *, max_panels=6, dpi=150):
             x=(curve.r_inner_A.to_numpy(float)+curve.r_outer_A.to_numpy(float))/2
             y=curve.mean_g_bulk.to_numpy(float)
             sd=curve.sd_g_bulk.to_numpy(float)
+            if not np.isfinite(y).any():
+                continue
             ax.plot(x,y,label=f"{system} (n={int(curve.n_replicates.min())})")
             ax.fill_between(x,y-sd,y+sd,alpha=.18)
             if "mean_g_aqueous_reference" in curve:
@@ -37,7 +42,8 @@ def solvation_rdf_figure(root, system_repouts, *, max_panels=6, dpi=150):
         ax.axhline(1,color="gray",ls=":",lw=.8)
         ax.set_title(" / ".join(map(str,key)),fontsize=9)
         ax.set_ylabel("g(r); solid: full-cell reference")
-        ax.legend(fontsize=7,frameon=False)
+        if ax.get_legend_handles_labels()[0]:
+            ax.legend(fontsize=7,frameon=False)
     axes[-1,0].set_xlabel("Distance (Å)")
     fig.tight_layout()
     buf=BytesIO()
@@ -63,6 +69,9 @@ def solvation_timeseries_figure(system_repouts, *, max_panels=4, dpi=150):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     df=pd.concat(data,ignore_index=True)
+    df = df.loc[np.isfinite(pd.to_numeric(df["mean_n_solvent"], errors="coerce"))]
+    if df.empty:
+        return None
     groups=list(df.groupby(["solvent","target_class","site_class"],sort=True))
     selected=groups[:max_panels]
     fig,axes=plt.subplots(len(selected),1,figsize=(7.2,max(2.6,2.25*len(selected))),
@@ -104,12 +113,17 @@ def solvation_survival_figure(system_repouts, *, max_curves=8, dpi=150):
                 if len(curves)>=max_curves:
                     break
                 curves.append((f"{system}/{rep.name}/{key}",group))
+    curves = [
+        (label, df) for label, df in curves
+        if np.isfinite(pd.to_numeric(df["survival_probability"], errors="coerce")).any()
+        and np.isfinite(pd.to_numeric(df["duration_ps"], errors="coerce")).any()
+    ]
     if not curves:
         return None
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    fig,ax=plt.subplots(figsize=(7.2,3.7))
+    fig,ax=plt.subplots(figsize=(max(7.2, min(14, 5.5 + .5 * len(curves))), 4.5))
     for label,df in curves:
         df=df.sort_values("duration_ps")
         ax.step(df.duration_ps,df.survival_probability,where="post",label=label,lw=1,marker=".")
@@ -122,10 +136,11 @@ def solvation_survival_figure(system_repouts, *, max_curves=8, dpi=150):
     ax.set_xlabel("Observed contact duration (ps)")
     ax.set_ylabel("Survival probability")
     ax.set_ylim(0,1.02)
-    ax.legend(fontsize=6,frameon=False)
+    ax.legend(fontsize=7,frameon=False,loc="upper left",
+              bbox_to_anchor=(1.02, 1), borderaxespad=0)
     fig.tight_layout()
     buf=BytesIO()
-    fig.savefig(buf,format="png",dpi=dpi)
+    fig.savefig(buf,format="png",dpi=dpi,bbox_inches="tight")
     plt.close(fig)
     buf.seek(0)
     return buf,len(curves)
