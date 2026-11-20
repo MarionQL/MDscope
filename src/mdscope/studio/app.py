@@ -74,6 +74,16 @@ def figure_title(fig):
     return fig.get("label", fig["id"]).replace("_A", " (Å)").replace("_ps", " (ps)").replace("_deg", " (°)")
 
 
+def figure_stat_type(identifier):
+    """Classify statistical figures by the exact production plot variant."""
+    variant = identifier.rsplit(":", 1)[-1]
+    return {
+        "bootstrap_table": "Bootstrap & replicate statistics",
+        "comparison_table": "Hypothesis tests & condition comparisons",
+        "autocorrelation": "Autocorrelation",
+    }.get(variant, "Other figures")
+
+
 def yaml_editor(label, value, key, *, height=140, help=None):
     text = st.text_area(label, yaml.safe_dump(value, sort_keys=False), key=key, height=height, help=help)
     return yaml.safe_load(text)
@@ -798,30 +808,56 @@ def main():
                             key=f"figure:tree:family:{family}",
                             on_change=lambda ids=ids, family=family: set_figures(
                                 ids, state[f"figure:tree:family:{family}"]))
-        # Scientific grouping mirrors the Analyses tab; output family is secondary.
+        # Statistical outputs are grouped by inference type before source family.
+        # Exact plot IDs stay authoritative; this is presentation only.
         by_category = {}
         for family, entries in figures_by_family.items():
             for owner, fig in entries:
-                by_category.setdefault(analysis_category(owner), {}).setdefault(owner, {}).setdefault(family, []).append(fig)
-        for category, owners in by_category.items():
-            count = sum(len(figs) for families in owners.values() for figs in families.values())
+                category = "Statistics" if owner == "statistics" else analysis_category(owner)
+                method = figure_stat_type(fig["id"]) if owner == "statistics" else "Analysis figures"
+                by_category.setdefault(category, {}).setdefault(method, {}).setdefault(owner, {}).setdefault(family, []).append(fig)
+
+        stat_entries = by_category.get("Statistics", {})
+        if stat_entries:
+            st.markdown("**Select by statistical output type**")
+            st.caption("Toggle an entire class of figures. Bootstrap summaries and hypothesis-test comparisons are independent; autocorrelation is a diagnostic, not a hypothesis test.")
+            for method, owners in stat_entries.items():
+                ids = list(dict.fromkeys(
+                    fig["id"] for families in owners.values()
+                    for figs in families.values() for fig in figs))
+                key = f"figure:tree:method:{method}"
+                # A previously checked type checkbox must update when individual
+                # children are modified, without overwriting child choices.
+                state[key] = bool(ids) and all(selected(i) for i in ids)
+                st.checkbox(f"{method} · {len(ids)} figures",
+                            key=key,
+                            on_change=lambda ids=ids, key=key: set_figures(ids, state[key]))
+
+        for category, methods in by_category.items():
+            count = sum(len(figs) for owners in methods.values()
+                        for families in owners.values() for figs in families.values())
             with st.expander(f"{category} · {count} figures"):
-                for owner, families in owners.items():
-                    with st.expander(analysis_title(owner)):
-                        for family, figs in families.items():
-                            ids = list(dict.fromkeys(fig["id"] for fig in figs))
-                            with st.expander(f"{family.replace('_', ' ').title()} · {len(ids)} outputs"):
-                                st.checkbox(f"Select all {analysis_title(owner)} / {family.replace('_', ' ')}",
-                                            value=all(selected(i) for i in ids),
-                                            key=f"figure:tree:family:{family}:owner:{owner}",
-                                            on_change=lambda ids=ids, owner=owner, family=family: set_figures(
-                                                ids, state[f"figure:tree:family:{family}:owner:{owner}"]))
-                                for fig in figs:
-                                    identifier = fig["id"]
-                                    st.checkbox(figure_title(fig), value=identifier in initial,
-                                                key=f"figure:tree:{identifier}", help=identifier,
-                                                on_change=changed_figure)
-                                    st.caption(fig["destination"])
+                for method, owners in methods.items():
+                    method_context = (st.expander(f"{method} · " + str(sum(
+                        len(figs) for families in owners.values() for figs in families.values())))
+                        if category == "Statistics" else st.container())
+                    with method_context:
+                        for owner, families in owners.items():
+                            with st.expander(analysis_title(owner)):
+                                for family, figs in families.items():
+                                    ids = list(dict.fromkeys(fig["id"] for fig in figs))
+                                    with st.expander(f"{family.replace('_', ' ').title()} · {len(ids)} outputs"):
+                                        st.checkbox(f"Select all {analysis_title(owner)} / {method} / {family.replace('_', ' ')}",
+                                                    value=all(selected(i) for i in ids),
+                                                    key=f"figure:tree:family:{family}:owner:{owner}:method:{method}",
+                                                    on_change=lambda ids=ids, owner=owner, family=family, method=method: set_figures(
+                                                        ids, state[f"figure:tree:family:{family}:owner:{owner}:method:{method}"]))
+                                        for fig in figs:
+                                            identifier = fig["id"]
+                                            st.checkbox(figure_title(fig), value=identifier in initial,
+                                                        key=f"figure:tree:{identifier}", help=identifier,
+                                                        on_change=changed_figure)
+                                            st.caption(fig["destination"])
         exact_figures = exact_import or bool(state.get("figure:tree:edited"))
         if exact_import and not state.get("figure:tree:edited") and not state.choices:
             state.choices = {
