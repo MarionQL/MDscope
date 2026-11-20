@@ -12,6 +12,7 @@ BASE_COLUMNS = {
     "solvation_rdfs": ("replicate_rdf.parquet", ["system", "replicate", "solvent", "target_class", "site_class", "r_inner_A", "r_outer_A", "g_bulk"], "replicate / chemical identity / radial bin; descriptive g(r)"),
     "diffusion": ("replicate_common_lag_slopes.parquet", ["metric", "system", "replicate", "value"], "replicate / common-lag diffusion metric"),
     "coupling": ("replicate_correlations.parquet", ["system", "replicate", "mechanism", "x", "y", "pearson_block_r", "block_frames", "n_blocks", "interpretation"], "replicate / mechanism pair; exploratory association"),
+    "lipid_contacts": ("replicate_statistics.parquet", ["system", "replicate", "level", "leaflet", "species_a", "species_b", "metric", "mean", "mean_ci_low", "mean_ci_high", "bootstrap_draws", "ci_level"], "replicate / lipid species or class / leaflet / pair / metric"),
 }
 
 
