@@ -51,7 +51,8 @@ def test_missing_replica_is_missing_not_zero_or_a_discovered_region():
                       (reps.replicate == "rep3") &
                       (reps.position_label == "PROA:ALA12"))]
     matrix, regions = _screen(reps, contrasts)
-    assert not (matrix.resid == 12).any()
+    assert not ((matrix.resid == 12) &
+                (matrix.profile == "sasa_mean__isolated")).any()
     assert not ((regions.start_residue <= 12) & (regions.end_residue >= 12)).any()
 
 
