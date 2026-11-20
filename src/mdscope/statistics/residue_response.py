@@ -81,8 +81,9 @@ def residue_response_screen(replicates: pd.DataFrame, contrasts: pd.DataFrame,
     for item in c.itertuples(index=False):
         key = (str(item.profile), str(item.position_label))
         support_row = lookup.get(key, {})
-        if not (support_row.get(str(item.system_1), False) and
-                support_row.get(str(item.system_2), False)):
+        if not all(pd.notna(support_row.get(system)) and
+                   bool(support_row[system])
+                   for system in (str(item.system_1), str(item.system_2))):
             continue
         found = _RESIDUE_LABEL.fullmatch(str(item.position_label))
         if not found or found["chain"] == "?":
