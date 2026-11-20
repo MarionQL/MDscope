@@ -38,6 +38,7 @@ SDC4_CONDITION_STEMS = frozenset({
 })
 
 STATIC_IDS = frozenset({
+    "profiles:residue_response:heatmap",
     "shared_states:state_populations",
     "shared_states:state_sampling_diagnostics",
     "solvation:shell_rdf",
