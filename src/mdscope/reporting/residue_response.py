@@ -62,7 +62,7 @@ def plot_residue_response(cfg: dict, root: Path) -> None:
         ax.set_xlabel("Residue number (within chain)")
         ax.set_ylabel("Residue-resolved observable")
         ax.set_title(f"{chain}: {right} minus {left}\n"
-                     "Scaled by within-residue replica SD; dots: pointwise 95% CI excludes zero")
+                     "Scaled by within-residue replica SD; dots: configured pointwise CI excludes zero")
         region_ids = group.loc[group.region_id.notna(), "region_id"].unique()
         for region_id in region_ids:
             res = group.loc[group.region_id == region_id, "resid"].unique()
