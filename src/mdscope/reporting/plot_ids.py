@@ -243,7 +243,8 @@ def id_from_figure_path(path: Path) -> str | None:
         return identifier if identifier in STATIC_IDS else None
     if "lipid_contacts" in parts:
         identifier = f"lipid_contacts:{name}"
-        if name.startswith(("lipid_contact_matrix_", "lipid_contact_difference_")):
+        if name.startswith(("lipid_contact_matrix_", "lipid_contact_difference_",
+                            "lipid_contact_class_matrix_", "lipid_contact_class_difference_")):
             return identifier
     if (len(parts) >= 5 and parts[-3] == "sdc4" and
             parts[-4] == "figures" and name in SDC4_CONDITION_STEMS):
