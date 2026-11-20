@@ -218,7 +218,6 @@ def show_outputs(plan, name, document, base):
 
 
 
-@st.fragment(run_every="3s")
 def _show_topology_progress(state, systems, groups):
     """Only the small status fragment refreshes while a worker is in progress."""
     future = state.get("studio:topology_preview_future")
@@ -257,6 +256,19 @@ def _show_topology_progress(state, systems, groups):
                     else:
                         st.caption(f"{group_id}: {match['atoms']:,} atoms, {match['residues']:,} residues")
 
+
+
+@st.fragment(run_every="3s")
+def _pending_topology_fragment(state, systems, groups):
+    if state["studio:topology_preview_future"].done():
+        # Replace the polling fragment with a static completed fragment.
+        st.rerun()
+    _show_topology_progress(state, systems, groups)
+
+
+@st.fragment
+def _completed_topology_fragment(state, systems, groups):
+    _show_topology_progress(state, systems, groups)
 
 
 def main():
@@ -474,7 +486,10 @@ def main():
                 state["studio:topology_preview_key"] = preview_key
                 state["studio:topology_preview_future"] = submit_preview(
                     deepcopy(systems), base, groups_snapshot)
-            _show_topology_progress(state, systems, doc["selections"]["groups"])
+            if state["studio:topology_preview_future"].done():
+                _completed_topology_fragment(state, systems, doc["selections"]["groups"])
+            else:
+                _pending_topology_fragment(state, systems, doc["selections"]["groups"])
         except (ValueError, TypeError, OSError, yaml.YAMLError) as exc:
             errors.append(str(exc)); st.error(str(exc))
     with tabs[1]:
