@@ -166,3 +166,46 @@ mdscope scan-residue-regions /path/to/project_summary/statistics
 - Three independent replicas per condition give limited permutation resolution; inspect temporal stability and each replicate before interpreting biological contrasts.
 
 [Configuration](configuration.md) · [Analysis definitions](analyses.md) · [Scientific audit](developer/scientific-audit.md)
+
+
+## Exploratory multimetric residue response heatmap (#203)
+
+The ordinary profile statistics phase now writes
+`project_summary/statistics/profiles/residue_response_matrix.parquet` and
+`residue_response_regions.parquet` when saved residue-profile contrasts exist.
+These are **descriptive, data-selected regions**, not functional sequence
+motifs or independently tested region-level confidence intervals.
+
+- Per-residue contrasts retain their original units and the pointwise
+  confidence bounds produced by the existing hierarchical bootstrap.
+- `standardized_effect` divides each point estimate by the **median
+  positive within-residue replica SD** for that profile (pooled across
+  systems and positions). Undefined scales remain missing, not zero.
+- Neighboring residue fingerprint vectors are joined only within the
+  same chain and consecutive residue numbers, with at least two shared
+  finite metrics and cosine similarity >= 0.7. Regions require at least
+  three residues and two wholly observed metrics.
+- The heatmap shades standardized changes (clipped to ±3 for display),
+  marks pointwise CI exclusions as dots, and outlines **exploratory**
+  contiguous regions. No inference is performed after selecting regions.
+- Existing profile exports use residue display labels. Ambiguous duplicate
+  labels fail; authoritative cross-system topology-index mappings and
+  out-of-sample region validation are follow-ups in #203.
+
+To obtain preliminary tables from an already **complete** statistics
+folder without reading any trajectory:
+
+```bash
+mdscope scan-residue-regions results_memb_full_analysis/project_summary/statistics
+mdscope plotting synd4_full_mechanisms.yaml
+```
+
+Heatmaps are saved under
+`project_summary/figures/profiles/residue_response/` when plotting is
+enabled. The optional figure ID is
+`profiles:residue_response:heatmap`; omitting `plots.include` generates
+all enabled figure types. Regenerate statistics with
+`mdscope statistics synd4_full_mechanisms.yaml` if existing profile
+contrasts were never calculated, or rerun the replica pipeline only for
+genuinely missing measurement products. Recalculating statistics archives
+the prior statistical outputs; it does not imply rereading XTC files.
