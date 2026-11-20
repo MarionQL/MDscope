@@ -209,3 +209,68 @@ all enabled figure types. Regenerate statistics with
 contrasts were never calculated, or rerun the replica pipeline only for
 genuinely missing measurement products. Recalculating statistics archives
 the prior statistical outputs; it does not imply rereading XTC files.
+
+
+## Leaflet-specific lipid–lipid contact bootstrap and class aggregation
+
+The existing `analyses.lipid_contacts` observer stores per-frame, **unique
+undirected bonded-molecule pair counts**, by lipid species and current leaflet,
+in `<system>/<replicate>/extensions/lipid_contacts/matrix.parquet`.
+Multiple atom contacts between the same molecule pair count once per frame.
+These are geometric contacts, **not lipid hydrogen bonds**.
+
+`analyses.lipid_contacts.classes` maps each lipid species to exactly one
+lipid class. The default full SDC4 configuration distinguishes phosphatidylcholine,
+phosphatidylethanolamine, anionic phospholipids, sphingomyelin,
+cholesterol, glycosphingolipids, and free ceramide. Unmapped or duplicated
+species assignments fail validation during statistics.
+
+The offline `lipid_contacts` statistics family:
+- counts unordered species pairs only once **before** combining them into
+  classes, then renders mirrored AB/BA matrix cells for convenient reading;
+- sums instantaneous molecule populations within each class and recomputes
+  same-class possible pairs as `N*(N-1)/2` and cross-class possible pairs as
+  `N_A*N_B` before estimating random-mixing enrichment;
+- retains the directional `neighbors_per_molecule` normalization
+  (A→B and B→A may differ) but not directional pair counts;
+- treats an absent lipid class or species as **unavailable**, not zero; a
+  populated but noncontacting pair is measured zero;
+- bootstraps temporally correlated frames within each replicate and resamples
+  replicates hierarchically, using independent conditions unless intentionally
+  configured as paired. It reports the mean and **pointwise** confidence
+  interval for each leaflet × pair × metric, including conditions and
+  between-condition contrasts (system 2 minus system 1).
+
+The supported metrics are `pair_count_undirected` (unique pairs/frame),
+`neighbors_per_molecule` (per-reference-lipid contacts) and `enrichment`
+(observed contact share / finite-population possible-pair share). The
+sampled-frame block length is conservatively the maximum autocorrelation-based
+block length across complete metrics within each replica/leaflet/grouping.
+
+Statistics products under
+`project_summary/statistics/lipid_contacts/`:
+`replicate_statistics.parquet`, `system_statistics.parquet`,
+`system_comparisons.parquet`. Both species-level and class-level outputs
+are saved in the same tables, marked by `level`. The contrast coverage
+audit also includes this family.
+
+Figures under `project_summary/figures/lipid_contacts/` include
+`lipid_contact_{matrix,difference}_...` for species and
+`lipid_contact_class_{matrix,difference}_...` for classes, with one
+heatmap per leaflet and metric. Difference-map dots mark cells with a
+pointwise bootstrap interval excluding zero; **they are not FDR-significant
+results**. Colors use shared scales across panels of the same grouping
+and metric.
+
+When existing framewise contact matrices are already complete, no trajectory
+rerun is required:
+
+```bash
+mdscope statistics synd4_full_mechanisms.yaml
+mdscope plotting synd4_full_mechanisms.yaml
+```
+
+Statistics finalization archives previous statistics exports. A changed
+`classes` mapping affects **offline inference and plots**, not the
+per-molecule contact observer. The class grouping is a reporting identity,
+not a pooled interaction cutoff or thermodynamic binding affinity.
