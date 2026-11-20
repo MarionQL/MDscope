@@ -22,7 +22,7 @@ def test_full_yaml_preserves_all_original_simulations():
         assert full["analyses"][name]["enabled"], name
     hs = full["analyses"]["sdc4_mechanisms"]["hs_auto"]
     assert hs["enabled"] and hs["expected_chains"] == 6
-    assert "report" not in full and full["plots"]["enabled"] is False
+    assert "report" not in full and full["plots"]["enabled"] is True
 
     analyses = full["analyses"]
     assert analyses["membrane"]["msd"]["multi_origin"]
