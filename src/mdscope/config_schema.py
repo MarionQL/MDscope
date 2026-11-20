@@ -74,6 +74,7 @@ def option_schema(defaults):
         "allow_absent_species": None, "selection": None,
         "species_selections": {"*": None},
         "cutoff_A": None, "batch_atoms": None,
+        "classes": {"*": None},
     }
     analyses["local_environment"] = {
         "enabled": None, "label": None,
