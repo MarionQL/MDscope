@@ -90,7 +90,7 @@ def _source_files(root, system_repouts, family):
     root = Path(root)
     folders = {'time_series':'statistics/time_series','profiles':'statistics/profiles',
                'interactions':'statistics/interactions','solvation':'statistics/solvation',
-               'shared_states':'shared_states','diffusion':'diffusion'}
+               'shared_states':'shared_states','diffusion':'diffusion', 'lipid_contacts':'statistics/lipid_contacts'}
     paths = list((root/'project_summary'/folders[family]).glob('*.parquet')) if family in folders else []
     for reps in system_repouts.values():
         for rep in reps:
