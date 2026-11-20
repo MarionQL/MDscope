@@ -365,7 +365,7 @@ def main():
                     if left.button("Duplicate group", key=f"edit:group:{group_id}:Duplicate"):
                         target = next_group_id(groups)
                         change_group(doc, group_id, target, duplicate=True, choices=state.choices)
-                        doc["selections"]["groups"][target]["label"] = f"{spec['label']} copy"
+                        doc["selections"]["groups"][target]["label"] = f"{spec.get('label') or group_id} copy"
                         restart_editor(doc)
                     if right.button("Delete group", key=f"edit:group:{group_id}:Delete"):
                         change_group(doc, group_id, None, choices=state.choices)
@@ -385,7 +385,7 @@ def main():
                     st.markdown(f"**Condition: {system_id}**")
                     for group_id, info in result.get("groups", {}).items():
                         matched = info["measurement"]
-                        st.write(f"✓ {group_id}: {matched['atoms']} atoms, {matched['residues']} residues")
+                        st.caption(f"✓ {group_id}: {matched['atoms']} atoms, {matched['residues']} residues")
                     details = result.get("details", {})
                     for field in ("protein", "alignment", "features"):
                         status = details.get(field, {}).get("status", "unknown")
