@@ -11,29 +11,24 @@ Open the localhost URL printed by Streamlit (also usable through VS Code port
 forwarding). Save downloaded YAML in the configuration directory set in Studio.
 Relative topology, trajectory and output paths resolve from that directory.
 
-1. Set project, condition/system IDs, replica labels/paths and sampling settings
-   with guided controls. Add/remove conditions and replicas; the last of each is
-   protected. Advanced YAML remains available and preserves supported options.
-2. Enter global selections and any reusable MDAnalysis groups. Fitting atoms can
-   differ from measurement atoms. Use **Preview selections from topology** to
-   inspect actual per-condition matches without loading trajectories. Group RMSD
-   measures the intersection with `selections.features`; group Rg intersects its
-   own selection. Group filters do not suppress the global scalar.
-3. Enable analyses individually. Edit supported backend options and inspect
-   illustrative schema/path contracts. Choose optional figures through the
-   single Select All → category → figure hierarchy. Everything starts off.
-4. Optionally enable statistics and use the one hierarchical selector:
-   Select All → family → metric/observable → estimator options. Individual known
-   variables are guided; dynamic families support exact backend selector tables.
-   A whole family includes future identities without enumerating them. Inference
-   uses independent replicas, with backend coverage checks deciding availability.
-5. Review and download. Path checks and topology preflight are explicit buttons;
-   topology-required mode blocks download until the current document passes.
-   Schema-only export remains marked unverified.
+1. Set project, condition/system IDs, replica paths and sampling settings.
+   Reusable measurement groups now live here. Topology parsing starts in a
+   background thread, and the panel shows per-system atom/residue counts,
+   SegIDs, chain IDs, residue names, and group matches as results arrive.
+   The rest of Studio remains editable during this work. No trajectories load.
+2. Configure global selections and individual analyses. Group-specific structural
+   fitting selections are edited under RMSD, not project setup. Group RMSD
+   measures the intersection with `selections.features`; group Rg intersects
+   its own selection. Group filters do not suppress the global scalar.
+3. Optionally configure statistics and its hierarchical metric selector.
+4. Choose optional figures through the hierarchical figure selector.
+5. Review and export. Explicit production topology preflight is still required
+   when topology-verified export is enabled; background metadata does not
+   replace full validation.
 
 The wizard does not open trajectories or run analyses, statistics, or plot jobs.
 Saved products are inspected read-only **only** when explicitly requested through
-**Inspect existing results**; topology reads also require explicit preflight.
+**Inspect existing results**; Studio also reads topologies automatically in a worker for lightweight metadata and group validation.
 Schema placeholders are **ILLUSTRATIVE — NO MD RESULTS**. Figure entries show
 production plot IDs and destinations without computing example plots.
 
@@ -44,7 +39,7 @@ production plot IDs and destinations without computing example plots.
 | No-data RMSD/Rg schema, selection provenance and exact figure IDs | Guided |
 | Figure and inference defaults off; inactive scalar figures removed | Implemented |
 | Named groups: add, duplicate, rename, delete | Implemented |
-| Actual topology counts, atom preview, segment/residue labels | Explicit preview in Selections and export preflight |
+| Actual topology counts, atom preview, segment/residue labels | Automatic, nonblocking metadata/group inspection in Project & systems; explicit export preflight |
 | Supported analysis options | Backend settings + advanced YAML |
 | Named runs (SASA, density, residue distance) | Add/delete editor with inherited per-run option panels |
 | All registered artifact schemas | Displayed; uncatalogued shapes explicitly unknown |
