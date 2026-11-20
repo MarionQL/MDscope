@@ -6,15 +6,14 @@ from mdscope.config import DEFAULTS
 from mdscope.studio.model import add_replica, add_system, delete_system, remove_replica
 
 
-def path_picker(label, value, key, *, directory=False, optional=False, create_on_run=False):
+def path_picker(label, value, key, *, directory=False, optional=False, create_on_run=False, help_text=None):
     """Browse paths on the host running Studio, not the browser machine."""
     pending = st.session_state.pop(f"{key}:pending_path", None)
     if pending is not None:
         st.session_state[key] = pending
         value = pending
     value = st.text_input(label, value, key=key,
-                          help=("Output directories may be created when the pipeline runs." if create_on_run else
-                                "Path on the machine running MDscope Studio. Browse to select an existing path."))
+                          help=help_text or ("MDscope creates this directory when analyses run." if create_on_run else None))
     if value:
         path = Path(value).expanduser()
         exists = path.is_dir() if directory else path.is_file()
@@ -76,11 +75,10 @@ def project_settings(document, restart):
     for system_id, spec in list(systems.items()):
         with st.expander(f"{spec.get('label') or 'Condition ' + str(list(systems).index(system_id) + 1)} · {len(spec.get('replicates', []))} replica(s)", expanded=(system_id == next(iter(systems)))):
             for field, label in (("label", "Display label"), ("topology", "Topology path")):
-                value = (path_picker(label, spec.get(field, ""), f"edit:system:{system_id}:{field}")
+                value = (path_picker(label, spec.get(field, ""), f"edit:system:{system_id}:{field}", help_text="Topology used to define the atom identities, order, and structure for every replica in this condition. Examples: topology.tpr, topology.pdb, topology.gro, topology.psf, topology.prmtop. Format support depends on the MDAnalysis readers installed; verify the selected file with topology preflight.")
                          if field == "topology" else st.text_input(label, spec.get(field, ""), key=f"edit:system:{system_id}:{field}", placeholder="e.g., Wild Type, Apo, Ligand Bound", help="Shown in condition headings, figure legends, and reports. Leave blank to use the default condition name."))
                 if value or field in spec:
                     spec[field] = value
-            st.caption("Topology: structure and atom identities shared by all replicas in this condition. Use the matching simulation topology (e.g., GROMACS .tpr).")
             replicas = spec.setdefault("replicates", [])
             for index, rep in enumerate(replicas):
                 # CLI shorthand remains accepted; a guided edit preserves its path.
@@ -93,19 +91,16 @@ def project_settings(document, restart):
                     (right, "msd_trajectory", "Optional source-frame MSD trajectory"),
                 ):
                     with column:
-                        st.caption("Production trajectory for this replica; frames must match the topology atom count and order (e.g., .xtc or .trr)." if field == "trajectory" else "Optional original, unmodified-coordinate trajectory for membrane MSD; same frames and atom order as the primary trajectory. Leave blank unless needed.")
-                        value = (path_picker(label, rep.get(field) or "", f"edit:rep:{system_id}:{index}:{field}", optional=field == "msd_trajectory")
+                        value = (path_picker(label, rep.get(field) or "", f"edit:rep:{system_id}:{index}:{field}", optional=field == "msd_trajectory", help_text=("Primary production trajectory. Frames must contain atoms in the same order as the topology. Examples: rep1.xtc, rep1.trr, rep1.dcd, rep1.nc. Supported formats depend on installed MDAnalysis readers." if field == "trajectory" else "Optional trajectory with original, unmodified coordinates for membrane MSD. Must represent the same replica, with compatible atoms and corresponding frames as the primary trajectory. Examples: rep1_unmodified.xtc, rep1_unmodified.trr. Leave blank unless this analysis needs it."))
                                  if field in {"trajectory", "msd_trajectory"} else
                                  st.text_input(label, rep.get(field) or "", key=f"edit:rep:{system_id}:{index}:{field}", placeholder=(f"Rep {index + 1}" if field == "plot_label" else f"rep{index + 1}")))
                     if value:
                         rep[field] = value
                     else:
                         rep.pop(field, None)
-                st.caption(f"Figure label defaults to Rep {index + 1}. To change it, expand Replica naming below.") if not rep.get("plot_label") else None
                 with st.expander("Replica naming (optional)"):
-                    st.caption("Display label appears in figure legends and reports (e.g., Rep 1, Seed 42). Internal replica ID identifies saved outputs; change it only if necessary.")
                     for field, label in (("plot_label", "Figure and report label"), ("label", "Advanced: internal replica ID")):
-                        value = st.text_input(label, rep.get(field) or "", key=f"edit:rep:{system_id}:{index}:{field}")
+                        value = st.text_input(label, rep.get(field) or "", key=f"edit:rep:{system_id}:{index}:{field}", help=("Appears in figure legends and reports; default is Rep " + str(index + 1) + "." if field == "plot_label" else "Filesystem-safe identifier for output directories and replica matching. Leave unchanged unless necessary."))
                         if value:
                             rep[field] = value
                         else:
