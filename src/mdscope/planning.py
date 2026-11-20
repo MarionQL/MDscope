@@ -33,6 +33,7 @@ STATISTICS_DIRS = {
     "solvation_rdfs": "solvation",
     "diffusion": "diffusion",
     "coupling": "coupling",
+    "lipid_contacts": "lipid_contacts",
 }
 
 
@@ -108,6 +109,10 @@ STATISTICS_METRIC_CONTRACTS = {
                   ["diffusion:diffusion_coefficients"]),
     "coupling": (["mechanism"], "per-replica mechanism pair",
                  ["block_correlation", "replicate_contrast"], []),
+    "lipid_contacts": (["level", "leaflet", "species_a", "species_b", "metric"],
+                       "one molecular pair class per leaflet and independent replicate",
+                       ["temporal_block_bootstrap", "hierarchical_ci"],
+                       ["lipid_contacts:lipid_contact_{matrix,difference}_*"]),
 }
 
 STATISTICS_CANDIDATES = {
@@ -125,6 +130,8 @@ STATISTICS_CANDIDATES = {
     "diffusion": ("replicate_common_lag_slopes.parquet",
                   "common_lag_comparisons.parquet"),
     "coupling": ("replicate_correlations.parquet", "system_comparisons.parquet"),
+    "lipid_contacts": ("replicate_statistics.parquet", "system_statistics.parquet",
+                       "system_comparisons.parquet"),
 }
 
 
