@@ -73,30 +73,74 @@ def orientation_vector(atoms):
     return unit(axis)
 
 
-def sequence_matches(ca_atoms, patterns):
-    """Return actual chain/segment-specific matches; numbering is topology-derived.
+def sequence_matches(ca_atoms, patterns, *, allow_overlaps=True):
+    """Match protein motifs within contiguous topology-ordered chain fragments.
 
-    Finds each motif from residue names, NOT hardcoded residue numbers. Chain A
-    and B must be represented by distinguishable chainIDs or segids.
+    Returns motif IDs mapped to ordered topology residue indices (resindices).
+    Labels retain the legacy motif_chain_ordinal form when chain names are
+    unambiguous. A CA atom must represent each residue exactly once.
+
+    Missing/modified amino acids are represented as X, not silently treated
+    as their closest standard residue. Hits containing X are rejected.
     """
     groups = {}
     for atom in ca_atoms:
-        chain = str(getattr(atom, "chainID", "") or getattr(atom, "segid", "") or "chain")
-        groups.setdefault(chain, []).append(atom)
+        if str(getattr(atom, "name", "CA")) != "CA":
+            raise ValueError("Motif matching requires CA-only protein atoms")
+        try:
+            chain = str(getattr(atom, "chainID", "") or "").strip()
+        except NoDataError:
+            chain = ""
+        try:
+            segid = str(getattr(atom, "segid", "") or "").strip()
+        except NoDataError:
+            segid = ""
+        if not chain:
+            chain = segid
+        if not chain:
+            raise ValueError("Motif matching requires chainID or segid")
+        group_id = (int(getattr(atom, "segindex", 0)), chain)
+        groups.setdefault(group_id, []).append(atom)
+
+    # Two distinct segments may carry the same chain label; avoid collisions
+    # without changing existing IDs for normal single-segment SDC4 chains.
+    counts = {}
+    for _, chain in groups:
+        counts[chain] = counts.get(chain, 0) + 1
     matches = {}
-    for chain, residues in groups.items():
-        seq = "".join(AA3.get(a.resname.upper(), "X") for a in residues)
-        for motif, pattern in patterns.items():
-            try:
-                found = list(re.finditer(f"(?=({pattern}))", seq))
-            except re.error as e:
-                raise ValueError(f"Invalid motif regex {motif}: {pattern}") from e
-            for k, hit in enumerate(found, 1):
-                start = hit.start()
-                end = start + len(hit.group(1))
-                picked = residues[start:end]
-                key = f"{motif}_{chain}_{k}"
-                matches[key] = np.unique([a.resindex for a in picked]).astype(int)
+    for (segindex, chain), atoms in groups.items():
+        atoms.sort(key=lambda atom: int(atom.resindex))
+        indices = [int(atom.resindex) for atom in atoms]
+        if len(indices) != len(set(indices)):
+            raise ValueError(f"Duplicate CA residue in motif selection: {chain}")
+        label = chain if counts[chain] == 1 else f"{chain}_seg{segindex}"
+        ordinal = {motif: 0 for motif in patterns}
+        # A selection gap is a fragment boundary, never a motif bridge.
+        fragments = []
+        for atom in atoms:
+            if not fragments or int(atom.resindex) != int(fragments[-1][-1].resindex) + 1:
+                fragments.append([])
+            fragments[-1].append(atom)
+        for fragment in fragments:
+            seq = "".join(AA3.get(str(a.resname).upper(), "X") for a in fragment)
+            for motif, pattern in patterns.items():
+                try:
+                    compiled = re.compile(str(pattern))
+                except re.error as exc:
+                    raise ValueError(f"Invalid motif regex {motif}: {pattern}") from exc
+                # Lookaheads provide overlapping hits; a normal finditer
+                # provides nonoverlapping hits. Both must consume residues.
+                expression = re.compile(f"(?=({pattern}))") if allow_overlaps else compiled
+                for hit in expression.finditer(seq):
+                    start = hit.start()
+                    end = start + len(hit.group(1)) if allow_overlaps else hit.end()
+                    if end <= start or "X" in seq[start:end]:
+                        continue
+                    ordinal[motif] += 1
+                    key = f"{motif}_{label}_{ordinal[motif]}"
+                    matches[key] = np.asarray(
+                        [a.resindex for a in fragment[start:end]], dtype=int
+                    )
     return matches
 
 
