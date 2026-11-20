@@ -95,5 +95,15 @@ def scan_saved_residue_regions(statistics_dir: Path) -> Path:
         replicas.setdefault(path.parent.name, []).append(path.name)
     source = statistics_dir / "profiles" / "replicate_profiles.parquet"
     output = source.with_name("residue_regions.parquet")
-    atomic_parquet(output, scan_residue_regions(pd.read_parquet(source), replicas))
+    replicate_data = pd.read_parquet(source)
+    atomic_parquet(output, scan_residue_regions(replicate_data, replicas))
+    contrast_file = source.with_name("system_comparisons.parquet")
+    if contrast_file.is_file():
+        from .residue_response import residue_response_screen
+        matrix, regions = residue_response_screen(
+            replicate_data, pd.read_parquet(contrast_file), replicas,
+        )
+        if not matrix.empty:
+            atomic_parquet(source.with_name("residue_response_matrix.parquet"), matrix)
+            atomic_parquet(source.with_name("residue_response_regions.parquet"), regions)
     return output
