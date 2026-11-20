@@ -15,7 +15,10 @@ Relative topology, trajectory and output paths resolve from that directory.
    Reusable measurement groups now live here. Topology parsing starts in a
    background thread, and the panel shows per-system atom/residue counts,
    SegIDs, chain IDs, residue names, and group matches as results arrive.
-   The rest of Studio remains editable during this work. No trajectories load.
+   The rest of Studio remains editable during this work. Adding or editing a
+   group retains previously loaded topology identifiers and revalidates only
+   the group matches against the cached topology. A changed topology path or
+   file revision invalidates the topology cache. No trajectories load.
 2. Configure global selections and individual analyses. Group-specific structural
    fitting selections are edited under RMSD, not project setup. Group RMSD
    measures the intersection with `selections.features`; group Rg intersects
