@@ -210,11 +210,14 @@ def main():
     st.set_page_config(page_title="MDscope Studio", layout="wide")
     st.markdown("""
     <style>
-      :root { --mdscope-ink: #1B1715; --mdscope-oxblood: #713A3D;
-              --mdscope-parchment: #F0E4CB; --mdscope-olive: #72704A; }
+      :root { --mdscope-maroon: #861F41; --mdscope-orange: #E5751F;
+              --mdscope-ink: #252525; --mdscope-neutral: #F6F5F3; }
       .block-container { max-width: 1250px; padding-top: 1.6rem; }
       h1, h2, h3 { letter-spacing: -.025em; }
-      h1 { color: #713A3D !important; font-family: Georgia, serif !important; }
+      h1 { color: var(--mdscope-maroon) !important; }
+      [data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+        color: var(--mdscope-maroon) !important;
+      }
       [data-testid="stTabs"] [data-baseweb="tab-list"] { gap: .2rem; overflow-x: auto; }
       [data-testid="stTabs"] button[role="tab"] { font-weight: 600; }
       [data-testid="stExpander"] { border-radius: .55rem; }
@@ -222,7 +225,7 @@ def main():
     </style>
     """, unsafe_allow_html=True)
     st.title("MDscope Studio")
-    st.caption("Scientific configuration workspace · Cozy Chem Corner visual identity")
+    st.caption("Scientific configuration workspace · Brown Lab")
     st.caption("Configure analyses → select eligible statistics and figures → validate and export YAML. No trajectory jobs run here.")
     state = st.session_state
     state.setdefault("document", new_document())
