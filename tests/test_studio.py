@@ -191,8 +191,8 @@ def test_bulk_statistical_figure_selection_preserves_other_types(tmp_path, monke
     auto = "figure:tree:time_series:rmsd_A:autocorrelation"
     boot = "figure:tree:time_series:rmsd_A:bootstrap_table"
     method = "figure:tree:method:Autocorrelation"
-    if not at.checkbox(key=auto) or not at.checkbox(key=boot):
-        pytest.skip("Statistical figures unavailable under this configuration")
+    assert any(item.key == auto for item in at.checkbox)
+    assert any(item.key == boot for item in at.checkbox)
     at.checkbox(key=boot).check().run()
     at.checkbox(key=method).check().run()
     assert at.checkbox(key=auto).value
