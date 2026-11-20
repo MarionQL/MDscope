@@ -1,9 +1,10 @@
-"""Nonblocking, topology-only metadata and group validation for Studio.
+"""Nonblocking topology metadata and reusable-group validation for Studio.
 
-Each system topology is parsed once per preview request. Workers never access
-Streamlit session state, trajectories, or analysis outputs.
+Topologies are cached by filesystem revision in a bounded worker-local cache.
+Group edits reuse their loaded Universe and never invalidate metadata.
 """
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from pathlib import Path
 import hashlib
 import json
@@ -11,41 +12,53 @@ import json
 from MDAnalysis import Universe
 from MDAnalysis.exceptions import SelectionError
 
-_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="mdscope-topology")
+# One worker serializes access to cached MDAnalysis Universes. Keep only
+# two loaded revisions to bound memory on large multi-condition projects.
+_POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mdscope-topology")
+
+
+def _topology_path(spec, base):
+    path = Path(spec.get("topology") or "")
+    return (path if path.is_absolute() else Path(base).resolve() / path).resolve()
+
+
+def _topology_revision(path):
+    try:
+        stat = path.stat()
+        return (stat.st_size, stat.st_mtime_ns)
+    except OSError:
+        return None
 
 
 def topology_signature(systems, base):
-    """Fingerprint topology paths and revisions, not unrelated analysis settings."""
-    base = Path(base).resolve()
-    entries = []
-    for system_id, spec in systems.items():
-        path = Path(spec.get("topology") or "")
-        path = path if path.is_absolute() else base / path
-        path = path.resolve()
-        try:
-            stat = path.stat()
-            revision = [stat.st_size, stat.st_mtime_ns]
-        except OSError:
-            revision = None
-        entries.append([system_id, str(path), revision])
+    """Only a topology path or file revision change invalidates metadata."""
+    entries = [
+        [system_id, str(_topology_path(spec, base)),
+         _topology_revision(_topology_path(spec, base))]
+        for system_id, spec in systems.items()
+    ]
     return hashlib.sha256(json.dumps(entries).encode()).hexdigest()
 
 
-def inspect_preview(systems, base, groups):
-    """Read each topology once, extracting metadata and optional group matches."""
-    base = Path(base).resolve()
+@lru_cache(maxsize=2)
+def _cached_universe(path, revision):
+    # Called only by the single worker for asynchronous requests.
+    return Universe(path)
+
+
+def _read_universe(path):
+    if not path.is_file():
+        raise FileNotFoundError(f"Topology file not found: {path}")
+    return _cached_universe(str(path), _topology_revision(path))
+
+
+def inspect_topologies(systems, base):
+    """Get stable metadata once per topology version, without trajectories."""
     metadata = {}
-    matches_by_system = {}
     for system_id, spec in systems.items():
-        path = Path(spec.get("topology") or "")
-        path = (path if path.is_absolute() else base / path).resolve()
-        if not path.is_file():
-            error = f"Topology file not found: {path}"
-            metadata[system_id] = {"error": error}
-            matches_by_system[system_id] = {"error": error}
-            continue
+        path = _topology_path(spec, base)
         try:
-            universe = Universe(str(path))
+            universe = _read_universe(path)
             atoms = universe.atoms
             identifiers = {}
             for key, attribute in (("SegIDs", "segids"), ("Chain IDs", "chainIDs"),
@@ -63,9 +76,19 @@ def inspect_preview(systems, base, groups):
                 "path": str(path),
             }
         except (OSError, ValueError, TypeError, AttributeError) as exc:
-            error = f"Could not read {path}: {exc}"
-            metadata[system_id] = {"error": error}
-            matches_by_system[system_id] = {"error": error}
+            metadata[system_id] = {"error": f"Could not read {path}: {exc}"}
+    return metadata
+
+
+def inspect_groups(systems, base, groups):
+    """Resolve groups against cached topologies, independently of metadata."""
+    matches_by_system = {}
+    for system_id, spec in systems.items():
+        path = _topology_path(spec, base)
+        try:
+            universe = _read_universe(path)
+        except (OSError, ValueError, TypeError) as exc:
+            matches_by_system[system_id] = {"error": str(exc)}
             continue
         matches = {}
         for group_id, group_spec in groups.items():
@@ -82,19 +105,20 @@ def inspect_preview(systems, base, groups):
             except (SelectionError, ValueError, AttributeError, TypeError) as exc:
                 matches[group_id] = {"error": str(exc)}
         matches_by_system[system_id] = matches
-    return {"metadata": metadata, "groups": matches_by_system}
+    return matches_by_system
 
 
-def inspect_topologies(systems, base):
-    """Compatibility helper for metadata-only callers."""
-    return inspect_preview(systems, base, {})["metadata"]
+def inspect_preview(systems, base, groups):
+    """Combined synchronous entry point for testing and scripted consumers."""
+    return {
+        "metadata": inspect_topologies(systems, base),
+        "groups": inspect_groups(systems, base, groups),
+    }
 
 
-def inspect_groups(systems, base, groups):
-    """Compatibility helper for group-only callers."""
-    return inspect_preview(systems, base, groups)["groups"]
+def submit_topologies(systems, base):
+    return _POOL.submit(inspect_topologies, systems, str(base))
 
 
-def submit_preview(systems, base, groups):
-    """One background job per requested configuration, never two competing reads."""
-    return _POOL.submit(inspect_preview, systems, str(base), groups)
+def submit_groups(systems, base, groups):
+    return _POOL.submit(inspect_groups, systems, str(base), groups)
