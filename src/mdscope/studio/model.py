@@ -21,7 +21,7 @@ def new_document():
     return {
         "project": {"name": "mdscope_project", "output": "mdscope_results"},
         "systems": {"condition1": {"topology": "topology.tpr", "replicates": [
-            {"label": "rep1", "trajectory": "rep1.xtc"}]}},
+            {"label": "rep1", "plot_label": "Rep 1", "trajectory": "rep1.xtc"}]}},
         "selections": {"groups": {}},
         "analyses": {name: {"enabled": False} for name in analysis_options()},
         "statistics": {"enabled": False,
@@ -607,7 +607,7 @@ def add_replica(document, system_id):
         number += 1
     label = f"rep{number}"
     _validate_path_component(label, "replica label")
-    replicas.append({"label": label, "trajectory": f"{label}.xtc"})
+    replicas.append({"label": label, "plot_label": f"Rep {number}", "trajectory": f"{label}.xtc"})
     commit_draft(document, candidate)
 
 
