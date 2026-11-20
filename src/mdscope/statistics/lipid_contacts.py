@@ -37,7 +37,9 @@ def _validate_species(table: pd.DataFrame) -> None:
         raise ValueError("lipid contact frame times must be finite")
     for leaflet, data in table.groupby("leaflet"):
         times = np.sort(data.time_ps.unique())
-        if not _regular_times(times):
+        # A single frame is valid for direct aggregation/oracle tests, but
+        # the bootstrap phase separately requires a regular time grid.
+        if len(times) > 1 and not _regular_times(times):
             raise ValueError(f"lipid contacts: irregular frame times in {leaflet}")
         groups = data.groupby("time_ps", sort=False)
         expected = len(data.species_a.unique()) ** 2
