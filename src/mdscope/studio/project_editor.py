@@ -71,37 +71,40 @@ def project_settings(document, restart):
         project[field] = (path_picker(label, project.get(field, DEFAULTS["project"][field]), f"edit:project:{field}", directory=True, create_on_run=True)
                           if field == "output" else st.text_input(label, project.get(field, DEFAULTS["project"][field]), key=f"edit:project:{field}"))
     st.subheader("Simulation conditions")
-    st.caption("Each condition contains one topology and one or more independent simulation replicas.")
+    st.markdown("**Compare simulation conditions** — each condition uses one topology and one or more independent trajectories.")
     systems = document.setdefault("systems", {})
     for system_id, spec in list(systems.items()):
-        with st.expander(f"{spec.get('label') or system_id} · {len(spec.get('replicates', []))} replica(s)", expanded=(system_id == next(iter(systems)))):
+        with st.expander(f"{spec.get('label') or 'Condition ' + str(list(systems).index(system_id) + 1)} · {len(spec.get('replicates', []))} replica(s)", expanded=(system_id == next(iter(systems)))):
             for field, label in (("label", "Display label"), ("topology", "Topology path")):
                 value = (path_picker(label, spec.get(field, ""), f"edit:system:{system_id}:{field}")
-                         if field == "topology" else st.text_input(label, spec.get(field, ""), key=f"edit:system:{system_id}:{field}"))
+                         if field == "topology" else st.text_input(label, spec.get(field, ""), key=f"edit:system:{system_id}:{field}", placeholder="e.g., Wild Type, Apo, Ligand Bound", help="Shown in condition headings, figure legends, and reports. Leave blank to use the default condition name."))
                 if value or field in spec:
                     spec[field] = value
-            st.caption("Paths refer to the machine running Studio (local WSL or ARC). Existence does not establish topology/trajectory compatibility.")
+            st.caption("Topology: structure and atom identities shared by all replicas in this condition. Use the matching simulation topology (e.g., GROMACS .tpr).")
             replicas = spec.setdefault("replicates", [])
             for index, rep in enumerate(replicas):
                 # CLI shorthand remains accepted; a guided edit preserves its path.
                 if isinstance(rep, str):
                     rep = replicas[index] = {"trajectory": rep}
-                st.markdown(f"**Replica {index + 1}**")
+                st.markdown(f"#### {rep.get('plot_label') or 'Rep ' + str(index + 1)}")
                 left, right = st.columns(2)
                 for column, field, label in (
                     (left, "trajectory", "Trajectory path"),
                     (right, "msd_trajectory", "Optional source-frame MSD trajectory"),
                 ):
                     with column:
+                        st.caption("Production trajectory for this replica; frames must match the topology atom count and order (e.g., .xtc or .trr)." if field == "trajectory" else "Optional original, unmodified-coordinate trajectory for membrane MSD; same frames and atom order as the primary trajectory. Leave blank unless needed.")
                         value = (path_picker(label, rep.get(field) or "", f"edit:rep:{system_id}:{index}:{field}", optional=field == "msd_trajectory")
                                  if field in {"trajectory", "msd_trajectory"} else
-                                 st.text_input(label, rep.get(field) or "", key=f"edit:rep:{system_id}:{index}:{field}"))
+                                 st.text_input(label, rep.get(field) or "", key=f"edit:rep:{system_id}:{index}:{field}", placeholder=(f"Rep {index + 1}" if field == "plot_label" else f"rep{index + 1}")))
                     if value:
                         rep[field] = value
                     else:
                         rep.pop(field, None)
-                with st.expander("Advanced replica labels"):
-                    for field, label in (("label", "Replica ID"), ("plot_label", "Display label")):
+                st.caption(f"Figure label defaults to Rep {index + 1}. To change it, expand Replica naming below.") if not rep.get("plot_label") else None
+                with st.expander("Replica naming (optional)"):
+                    st.caption("Display label appears in figure legends and reports (e.g., Rep 1, Seed 42). Internal replica ID identifies saved outputs; change it only if necessary.")
+                    for field, label in (("plot_label", "Figure and report label"), ("label", "Advanced: internal replica ID")):
                         value = st.text_input(label, rep.get(field) or "", key=f"edit:rep:{system_id}:{index}:{field}")
                         if value:
                             rep[field] = value
