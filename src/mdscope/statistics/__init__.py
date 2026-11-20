@@ -8,6 +8,7 @@ from .solvation import analyze_solvation_rdfs
 from .diffusion import analyze_multi_origin_diffusion
 from .coverage import write_contrast_coverage
 from .coupling import analyze_coupling
+from .lipid_contacts import analyze_lipid_contacts
 from .windows import matched_grid
 
 from ..statistics_families import STATISTICS_FAMILIES
@@ -46,8 +47,13 @@ def analyze_project(cfg, root, system_repouts):
         archive_output(dest / "manifest.json", Path(root) / ".archives/statistics/manifests",
                        "previous.json")
     manifest = {
-        "families": {name: "enabled" if statistics_family_config(cfg, name) is not None else "disabled"
-                     for name in families},
+        "families": {
+            name: ("enabled" if statistics_family_config(cfg, name) is not None
+                   and (name != "lipid_contacts" or
+                        cfg.get("analyses", {}).get("lipid_contacts", {}).get("enabled", False))
+                   else "disabled")
+            for name in families
+        },
         "methods": cfg.get("statistics", {}),
         "status": "running",
         "replicate_paths": [os.path.relpath(rep, root)
@@ -74,6 +80,7 @@ def analyze_project(cfg, root, system_repouts):
         ("solvation_rdfs", "solvation", analyze_solvation_rdfs),
         ("diffusion", "diffusion", analyze_multi_origin_diffusion),
         ("coupling", "coupling", analyze_coupling),
+        ("lipid_contacts", "lipid_contacts", analyze_lipid_contacts),
     ):
         if (dest / folder).exists():
             archive_output(dest / folder, Path(root) / ".archives/statistics" / folder,

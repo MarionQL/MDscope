@@ -74,6 +74,7 @@ def option_schema(defaults):
         "allow_absent_species": None, "selection": None,
         "species_selections": {"*": None},
         "cutoff_A": None, "batch_atoms": None,
+        "classes": {"*": None},
     }
     analyses["local_environment"] = {
         "enabled": None, "label": None,
@@ -166,7 +167,10 @@ def option_schema(defaults):
                               "solvation_rdfs": [{"solvent": None, "target_class": None,
                                                   "site_class": None, "inference": None, "ci": None}],
                               "diffusion": [{"metric": None, "inference": None, "ci": None}],
-                              "coupling": [{"mechanism": None, "inference": None, "ci": None}]})
+                              "coupling": [{"mechanism": None, "inference": None, "ci": None}],
+                              "lipid_contacts": [{"level": None, "leaflet": None,
+                                                  "species_a": None, "species_b": None,
+                                                  "metric": None, "inference": None, "ci": None}]})
     stats["hierarchy"]["enabled"] = None
     family = {
         "enabled": None, "bootstrap": None, "bootstrap_draws": None,

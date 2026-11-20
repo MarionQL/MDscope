@@ -65,8 +65,10 @@ def validate_plot_ids(include):
                 and parts[2] in SDC4_CONDITION_STEMS):
             continue
         if (len(parts) == 2 and parts[0] == "lipid_contacts" and
-                parts[1].startswith(("lipid_contact_matrix_", "lipid_contact_difference_"))
-                and parts[1].endswith(("_neighbors_per_molecule", "_enrichment"))):
+                parts[1].startswith(("lipid_contact_matrix_", "lipid_contact_difference_",
+                                     "lipid_contact_class_matrix_", "lipid_contact_class_difference_"))
+                and parts[1].endswith(("_pair_count_undirected",
+                                       "_neighbors_per_molecule", "_enrichment"))):
             continue
         if len(parts) == 3 and parts[0] in {"time_series", "profiles"}:
             if parts[1] and parts[2] in DYNAMIC_VARIANTS[parts[0]]:
@@ -161,9 +163,12 @@ def describe_plot(identifier: str) -> dict:
         destination = f"project_summary/figures/membrane/{parts[1]}.png"
         unit_notes = "Local/leaflet or area-corrected ratio (dimensionless)"
     elif family == "lipid_contacts":
-        source = ["{system}/{replicate}/extensions/lipid_contacts/matrix.parquet"]
+        source = ["{system}/{replicate}/extensions/lipid_contacts/matrix.parquet",
+                  "project_summary/statistics/lipid_contacts/system_statistics.parquet",
+                  "project_summary/statistics/lipid_contacts/system_comparisons.parquet"]
         destination = f"project_summary/figures/lipid_contacts/{parts[1]}.png"
-        unit_notes = "Neighbors per molecule or enrichment ratio"
+        unit_notes = ("Unique undirected molecule pairs/frame, neighbors per reference "
+                      "molecule, or random-mixing enrichment; per leaflet, pointwise bootstrap")
     elif family == "shared_states":
         stem = parts[1]
         source = ["project_summary/shared_states/" + (
@@ -241,7 +246,8 @@ def id_from_figure_path(path: Path) -> str | None:
         return identifier if identifier in STATIC_IDS else None
     if "lipid_contacts" in parts:
         identifier = f"lipid_contacts:{name}"
-        if name.startswith(("lipid_contact_matrix_", "lipid_contact_difference_")):
+        if name.startswith(("lipid_contact_matrix_", "lipid_contact_difference_",
+                            "lipid_contact_class_matrix_", "lipid_contact_class_difference_")):
             return identifier
     if (len(parts) >= 5 and parts[-3] == "sdc4" and
             parts[-4] == "figures" and name in SDC4_CONDITION_STEMS):

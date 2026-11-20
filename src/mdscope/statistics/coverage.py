@@ -25,6 +25,8 @@ SOURCES = (
      ("metric",), ("saved",)),
     ("solvation_rdfs", "solvation", "replicate_rdf_shells", "rdf_shell_comparisons",
      ("solvent", "target_class", "site_class", "normalization", "shell_cutoff_A"), ("saved",)),
+    ("lipid_contacts", "lipid_contacts", "replicate_statistics", "system_comparisons",
+     ("level", "leaflet", "species_a", "species_b", "metric"), ("saved",)),
 )
 
 COLUMNS = [

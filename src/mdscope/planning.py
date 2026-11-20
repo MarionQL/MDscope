@@ -33,6 +33,7 @@ STATISTICS_DIRS = {
     "solvation_rdfs": "solvation",
     "diffusion": "diffusion",
     "coupling": "coupling",
+    "lipid_contacts": "lipid_contacts",
 }
 
 
@@ -56,7 +57,7 @@ ANALYSIS_METADATA = {
     "lifetimes": ("Contact persistence postprocessing", ("interactions",), ("interactions",)),
     "bilayer_normal": ("Local lipid normal orientations", ("time_series",), ("time_series",)),
     "lipid_enrichment": ("Protein footprint / leaflet lipid enrichment", ("time_series",), ("lipid_enrichment",)),
-    "lipid_contacts": ("Per-molecule lipid neighborhood contacts", ("time_series",), ("lipid_contacts",)),
+    "lipid_contacts": ("Per-molecule lipid neighborhood contacts", ("time_series", "lipid_contacts"), ("lipid_contacts",)),
     "local_environment": ("Protein–lipid/glycan neighborhood observables", ("time_series",), ("time_series",)),
     "coupling_screen": ("Saved-feature coupling diagnostics", ("coupling",), ()),
     "sdc4_mechanisms": ("SDC4-specific motif, domain and membrane mechanisms", ("time_series", "profiles"), ("sdc4",)),
@@ -108,6 +109,10 @@ STATISTICS_METRIC_CONTRACTS = {
                   ["diffusion:diffusion_coefficients"]),
     "coupling": (["mechanism"], "per-replica mechanism pair",
                  ["block_correlation", "replicate_contrast"], []),
+    "lipid_contacts": (["level", "leaflet", "species_a", "species_b", "metric"],
+                       "one molecular pair class per leaflet and independent replicate",
+                       ["temporal_block_bootstrap", "hierarchical_ci"],
+                       ["lipid_contacts:lipid_contact_{matrix,difference}_*"]),
 }
 
 STATISTICS_CANDIDATES = {
@@ -125,6 +130,8 @@ STATISTICS_CANDIDATES = {
     "diffusion": ("replicate_common_lag_slopes.parquet",
                   "common_lag_comparisons.parquet"),
     "coupling": ("replicate_correlations.parquet", "system_comparisons.parquet"),
+    "lipid_contacts": ("replicate_statistics.parquet", "system_statistics.parquet",
+                       "system_comparisons.parquet"),
 }
 
 

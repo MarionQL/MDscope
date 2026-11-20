@@ -198,7 +198,7 @@ def test_studio_new_config_explicitly_disables_all_inference_families():
     selection = studio_metric_selection_defaults()
     assert set(selection) == {
         "time_series", "profiles", "interactions",
-        "solvation_rdfs", "diffusion", "coupling",
+        "solvation_rdfs", "diffusion", "coupling", "lipid_contacts",
     }
     cfg = deepcopy(DEFAULTS)
     cfg["statistics"]["metric_selection"] = selection

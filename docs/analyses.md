@@ -64,7 +64,7 @@ For species A/B on an instantaneous leaflet, the unique undirected pair count `C
 - Possible pairs: `N_A N_B` (A≠B) or `N_A(N_A−1)/2` (A=B).
 - Random-mixing enrichment = observed contact share / possible-pair share. A complete graph gives **1**; this is **not** an affinity or steric-size correction.
 - Absent population/reference → NaN; an available pair with zero contacts gives zero when the leaflet has other contacts.
-- Output: `extensions/lipid_contacts/{matrix,timeseries}.parquet` and `selection_audit.json`. Heatmaps average **replicas equally**, mask missing species, and are descriptive.
+- Output: `extensions/lipid_contacts/{matrix,timeseries}.parquet` and `selection_audit.json`. Heatmaps average **replicas equally** and mask absent species. With completed lipid-contact statistics, species/class matrices and leaflet-separated difference heatmaps use hierarchical block-bootstrap pointwise intervals; a CI excluding zero is exploratory, **not** FDR-significant evidence. Without completed contact statistics, legacy species-only figures remain descriptive.
 
 For matched local SDC4 lipid specificity, `A_s` is the number of species-s anchors within a chosen local disk and `C_s` is the **subset of those same molecules** contacting the protein:
 
