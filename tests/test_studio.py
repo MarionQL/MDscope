@@ -188,6 +188,7 @@ def test_bulk_statistical_figure_selection_preserves_other_types(tmp_path, monke
     monkeypatch.chdir(tmp_path)
     at = AppTest.from_file(app.__file__).run()
     at.checkbox(key="enable:rmsd").check().run()
+    at.checkbox(key="stats:master").check().run()
     auto = "figure:tree:time_series:rmsd_A:autocorrelation"
     boot = "figure:tree:time_series:rmsd_A:bootstrap_table"
     method = "figure:tree:method:Autocorrelation"
