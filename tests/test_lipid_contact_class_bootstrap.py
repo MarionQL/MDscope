@@ -124,3 +124,28 @@ def test_bootstrap_exports_complete_replicas_leaflets_and_condition_differences(
                    (comp.species_a == "GM1a") &
                    (comp.species_b == "POPC")]
     assert missing.difference_ci_low.isna().all()
+
+    # Production plotting is saved-data-only; check precise plot IDs and PNGs.
+    import json
+    from mdscope.reporting.lipid_contact_bootstrap import plot_lipid_contact_bootstrap
+    from mdscope.reporting.plot_ids import id_from_figure_path
+    stats_dir = tmp_path / "project_summary/statistics"
+    (stats_dir / "manifest.json").write_text(json.dumps({
+        "status": "complete", "methods": cfg["statistics"],
+        "families": {"lipid_contacts": "enabled"},
+    }))
+    cfg["analyses"]["lipid_contacts"]["species_selections"] = {
+        name: "unused" for name in ["POPC", "DOPC", "PSM", "GM1a"]
+    }
+    selected_ids = [
+        "lipid_contacts:lipid_contact_class_difference_control__treated_upper_pair_count_undirected",
+        "lipid_contacts:lipid_contact_difference_control__treated_upper_pair_count_undirected",
+    ]
+    cfg["plots"] = {"enabled": True, "include": selected_ids, "dpi": 75}
+    assert plot_lipid_contact_bootstrap(cfg, tmp_path)
+    for plot_id in selected_ids:
+        path = tmp_path / "project_summary/figures/lipid_contacts" / (
+            plot_id.split(":", 1)[1] + ".png"
+        )
+        assert path.read_bytes().startswith(b"\x89PNG")
+        assert id_from_figure_path(path) == plot_id
