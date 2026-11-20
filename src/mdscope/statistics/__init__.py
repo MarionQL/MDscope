@@ -47,8 +47,13 @@ def analyze_project(cfg, root, system_repouts):
         archive_output(dest / "manifest.json", Path(root) / ".archives/statistics/manifests",
                        "previous.json")
     manifest = {
-        "families": {name: "enabled" if statistics_family_config(cfg, name) is not None else "disabled"
-                     for name in families},
+        "families": {
+            name: ("enabled" if statistics_family_config(cfg, name) is not None
+                   and (name != "lipid_contacts" or
+                        cfg.get("analyses", {}).get("lipid_contacts", {}).get("enabled", False))
+                   else "disabled")
+            for name in families
+        },
         "methods": cfg.get("statistics", {}),
         "status": "running",
         "replicate_paths": [os.path.relpath(rep, root)
