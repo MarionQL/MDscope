@@ -13,6 +13,7 @@ SIMPLE_FAMILY_KEYS = {
     "solvation_rdfs": ("solvent", "target_class", "site_class"),
     "diffusion": ("metric",),
     "coupling": ("mechanism",),
+    "lipid_contacts": ("level", "leaflet", "species_a", "species_b", "metric"),
 }
 
 
@@ -173,7 +174,7 @@ def studio_metric_selection_defaults():
     """
     return {family: [] for family in (
         "time_series", "profiles", "interactions", "solvation_rdfs",
-        "diffusion", "coupling",
+        "diffusion", "coupling", "lipid_contacts",
     )}
 
 
