@@ -57,7 +57,7 @@ ANALYSIS_METADATA = {
     "lifetimes": ("Contact persistence postprocessing", ("interactions",), ("interactions",)),
     "bilayer_normal": ("Local lipid normal orientations", ("time_series",), ("time_series",)),
     "lipid_enrichment": ("Protein footprint / leaflet lipid enrichment", ("time_series",), ("lipid_enrichment",)),
-    "lipid_contacts": ("Per-molecule lipid neighborhood contacts", ("time_series",), ("lipid_contacts",)),
+    "lipid_contacts": ("Per-molecule lipid neighborhood contacts", ("time_series", "lipid_contacts"), ("lipid_contacts",)),
     "local_environment": ("Protein–lipid/glycan neighborhood observables", ("time_series",), ("time_series",)),
     "coupling_screen": ("Saved-feature coupling diagnostics", ("coupling",), ()),
     "sdc4_mechanisms": ("SDC4-specific motif, domain and membrane mechanisms", ("time_series", "profiles"), ("sdc4",)),
