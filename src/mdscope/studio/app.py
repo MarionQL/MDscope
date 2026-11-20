@@ -217,7 +217,7 @@ def main():
         --mdscope-slate: #92959C;
         --mdscope-ink: #172431;
       }
-      .block-container { max-width: 1280px; padding-top: 1.35rem; padding-bottom: 3rem; }
+      .block-container { max-width: 1280px; padding-top: 2.75rem; padding-bottom: 3rem; }
       h1, h2, h3 { letter-spacing: -.035em; }
       h1 { font-weight: 760 !important; }
       [data-testid="stTabs"] [data-baseweb="tab-list"] {
@@ -247,16 +247,18 @@ def main():
       }
       .mdscope-identity {
         display: flex; align-items: center; gap: 1rem;
-        padding: .9rem 1.1rem; margin-bottom: .8rem;
+        padding: 1.1rem 1.2rem; margin-top: .5rem; margin-bottom: .8rem;
         border: 1px solid rgba(128,145,165,.22); border-radius: 1rem;
         background: linear-gradient(115deg, rgba(84,182,230,.085), rgba(163,108,176,.06) 58%, transparent);
       }
-      .mdscope-mark { flex: none; width: 54px; height: 54px; }
+      .mdscope-mark { flex: none; width: 54px; height: 54px; overflow: visible; }
       .mdscope-eyebrow { font-size: .72rem; letter-spacing: .15em;
         text-transform: uppercase; font-weight: 750; color: var(--mdscope-cyan-deep); }
       .mdscope-name { font-size: clamp(1.5rem, 3vw, 2.1rem); font-weight: 760;
         letter-spacing: -.045em; line-height: 1.2; }
       .mdscope-subtitle { font-size: .86rem; opacity: .7; margin-top: .15rem; }
+      @media (max-width: 640px) { .mdscope-identity { gap: .7rem; padding: .9rem; }
+        .mdscope-mark { width: 44px; height: 44px; } }
     </style>
     <div class="mdscope-identity">
       <svg class="mdscope-mark" viewBox="0 0 70 70" role="img" aria-label="Brown Lab inspired molecular geometry">
