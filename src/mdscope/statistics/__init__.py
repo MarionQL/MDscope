@@ -8,6 +8,7 @@ from .solvation import analyze_solvation_rdfs
 from .diffusion import analyze_multi_origin_diffusion
 from .coverage import write_contrast_coverage
 from .coupling import analyze_coupling
+from .lipid_contacts import analyze_lipid_contacts
 from .windows import matched_grid
 
 from ..statistics_families import STATISTICS_FAMILIES
@@ -74,6 +75,7 @@ def analyze_project(cfg, root, system_repouts):
         ("solvation_rdfs", "solvation", analyze_solvation_rdfs),
         ("diffusion", "diffusion", analyze_multi_origin_diffusion),
         ("coupling", "coupling", analyze_coupling),
+        ("lipid_contacts", "lipid_contacts", analyze_lipid_contacts),
     ):
         if (dest / folder).exists():
             archive_output(dest / folder, Path(root) / ".archives/statistics" / folder,
