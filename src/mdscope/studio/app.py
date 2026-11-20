@@ -271,23 +271,12 @@ def main():
       </div>
     </div>
     """
-    logo_file = Path(__file__).parent / "assets" / "brown_lab_logo.png"
-    if logo_file.is_file():
-        encoded = base64.b64encode(logo_file.read_bytes()).decode("ascii")
-        logo_markup = (
-            '<img class="mdscope-mark" alt="Brown Lab logo" '
-            f'src="data:image/png;base64,{encoded}">'
-        )
-    else:
-        logo_markup = """      <svg class="mdscope-mark" viewBox="0 0 70 70" role="img" aria-label="Brown Lab inspired molecular geometry">
-        <polygon points="19,5 48,5 63,31 48,57 19,57 4,31"
-          fill="none" stroke="#92959C" stroke-width="4" transform="translate(-2,-4)"/>
-        <polygon points="19,5 48,5 63,31 48,57 19,57 4,31"
-          fill="none" stroke="#A36CB0" stroke-width="4" transform="translate(1,1)"/>
-        <polygon points="19,5 48,5 63,31 48,57 19,57 4,31"
-          fill="none" stroke="#54B6E6" stroke-width="4" transform="translate(4,7)"/>
-        <circle cx="37" cy="38" r="17" fill="none" stroke="#54B6E6" stroke-width="3"/>
-      </svg>"""
+    logo_file = Path(__file__).parent / "assets" / "MM+Lab+Logo.png"
+    encoded = base64.b64encode(logo_file.read_bytes()).decode("ascii")
+    logo_markup = (
+        '<img class="mdscope-mark" alt="Brown Lab logo" '
+        f'src="data:image/png;base64,{encoded}">'
+    )
     st.markdown(header_html.replace("__MDSCOPE_LOGO__", logo_markup), unsafe_allow_html=True)
     st.info("Use Studio to set up your systems, choose analyses, configure statistics and figures, and export a validated YAML configuration. To process trajectories, run MDscope separately using the exported file.")
     state = st.session_state
