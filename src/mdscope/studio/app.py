@@ -210,23 +210,72 @@ def main():
     st.set_page_config(page_title="MDscope Studio", layout="wide")
     st.markdown("""
     <style>
-      :root { --mdscope-maroon: #861F41; --mdscope-orange: #E5751F;
-              --mdscope-ink: #252525; --mdscope-neutral: #F6F5F3; }
-      .block-container { max-width: 1250px; padding-top: 1.6rem; }
-      h1, h2, h3 { letter-spacing: -.025em; }
-      h1 { color: var(--mdscope-maroon) !important; }
-      [data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
-        color: var(--mdscope-maroon) !important;
+      :root {
+        --mdscope-cyan: #54B6E6;
+        --mdscope-cyan-deep: #147EA9;
+        --mdscope-violet: #A36CB0;
+        --mdscope-slate: #92959C;
+        --mdscope-ink: #172431;
       }
-      [data-testid="stTabs"] [data-baseweb="tab-list"] { gap: .2rem; overflow-x: auto; }
-      [data-testid="stTabs"] button[role="tab"] { font-weight: 600; }
-      [data-testid="stExpander"] { border-radius: .55rem; }
-      [data-testid="stAlert"] { border-radius: .5rem; }
+      .block-container { max-width: 1280px; padding-top: 1.35rem; padding-bottom: 3rem; }
+      h1, h2, h3 { letter-spacing: -.035em; }
+      h1 { font-weight: 760 !important; }
+      [data-testid="stTabs"] [data-baseweb="tab-list"] {
+        gap: .25rem; overflow-x: auto; scrollbar-width: thin;
+        border-bottom: 1px solid rgba(128,145,165,.25);
+      }
+      [data-testid="stTabs"] button[role="tab"] {
+        font-weight: 620; border-radius: .6rem .6rem 0 0;
+        padding: .65rem 1rem; white-space: nowrap;
+      }
+      [data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+        color: var(--mdscope-cyan-deep) !important;
+        background: rgba(84,182,230,.085);
+        border-bottom-color: var(--mdscope-cyan) !important;
+      }
+      [data-testid="stExpander"] {
+        border-radius: .85rem; border-color: rgba(128,145,165,.22);
+      }
+      [data-testid="stAlert"] { border-radius: .75rem; }
+      [data-testid="stButton"] button, [data-testid="stPopover"] button {
+        border-radius: .65rem; transition: border-color .15s ease;
+      }
+      [data-testid="stButton"] button:hover { border-color: var(--mdscope-cyan-deep); }
+      [data-testid="stMetric"] {
+        border: 1px solid rgba(128,145,165,.18); border-radius: .75rem;
+        padding: .65rem .9rem;
+      }
+      .mdscope-identity {
+        display: flex; align-items: center; gap: 1rem;
+        padding: .9rem 1.1rem; margin-bottom: .8rem;
+        border: 1px solid rgba(128,145,165,.22); border-radius: 1rem;
+        background: linear-gradient(115deg, rgba(84,182,230,.085), rgba(163,108,176,.06) 58%, transparent);
+      }
+      .mdscope-mark { flex: none; width: 54px; height: 54px; }
+      .mdscope-eyebrow { font-size: .72rem; letter-spacing: .15em;
+        text-transform: uppercase; font-weight: 750; color: var(--mdscope-cyan-deep); }
+      .mdscope-name { font-size: clamp(1.5rem, 3vw, 2.1rem); font-weight: 760;
+        letter-spacing: -.045em; line-height: 1.2; }
+      .mdscope-subtitle { font-size: .86rem; opacity: .7; margin-top: .15rem; }
     </style>
+    <div class="mdscope-identity">
+      <svg class="mdscope-mark" viewBox="0 0 70 70" role="img" aria-label="Brown Lab inspired molecular geometry">
+        <polygon points="19,5 48,5 63,31 48,57 19,57 4,31"
+          fill="none" stroke="#92959C" stroke-width="4" transform="translate(-2,-4)"/>
+        <polygon points="19,5 48,5 63,31 48,57 19,57 4,31"
+          fill="none" stroke="#A36CB0" stroke-width="4" transform="translate(1,1)"/>
+        <polygon points="19,5 48,5 63,31 48,57 19,57 4,31"
+          fill="none" stroke="#54B6E6" stroke-width="4" transform="translate(4,7)"/>
+        <circle cx="37" cy="38" r="17" fill="none" stroke="#54B6E6" stroke-width="3"/>
+      </svg>
+      <div>
+        <div class="mdscope-eyebrow">Brown Lab · Scientific workspace</div>
+        <div class="mdscope-name">MDscope Studio</div>
+        <div class="mdscope-subtitle">Configure analyses · Define statistics · Build figures · Validate and export</div>
+      </div>
+    </div>
     """, unsafe_allow_html=True)
-    st.title("MDscope Studio")
-    st.caption("Scientific configuration workspace · Brown Lab")
-    st.caption("Configure analyses → select eligible statistics and figures → validate and export YAML. No trajectory jobs run here.")
+    st.caption("Configuration authoring only · No trajectory jobs run in Studio.")
     state = st.session_state
     state.setdefault("document", new_document())
     state.setdefault("choices", {})
