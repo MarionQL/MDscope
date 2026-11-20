@@ -90,3 +90,29 @@ def test_diffusion_skips_all_missing_coefficients(tmp_path):
                  ).to_parquet(target / "replicate_coefficients.parquet")
     plot_project_diffusion(_cfg(), tmp_path)
     assert not (target / "diffusion_coefficients.png").exists()
+
+
+def test_solvation_rdf_skips_all_missing_curves(tmp_path):
+    from mdscope.reporting.solvation_figures import solvation_rdf_figure
+
+    path = tmp_path / "project_summary/statistics/solvation"
+    path.mkdir(parents=True)
+    pd.DataFrame([dict(system="control", solvent="water",
+                       target_class="protein", site_class="acidic",
+                       r_inner_A=2., r_outer_A=3.,
+                       mean_g_bulk=np.nan, sd_g_bulk=np.nan,
+                       n_replicates=3)]).to_parquet(path / "system_rdf.parquet")
+    assert solvation_rdf_figure(tmp_path, {}) is None
+
+
+def test_solvation_timeseries_skips_all_missing_counts(tmp_path):
+    from mdscope.reporting.solvation_figures import solvation_timeseries_figure
+
+    rep = tmp_path / "control/rep1"
+    path = rep / "extensions/solvation"
+    path.mkdir(parents=True)
+    pd.DataFrame([dict(time_ps=100., solvent="water",
+                       target_class="protein", site_class="acidic",
+                       mean_n_solvent=np.nan)]).to_parquet(
+                           path / "species_timeseries.parquet")
+    assert solvation_timeseries_figure({"control": [rep]}) is None
