@@ -26,26 +26,47 @@ def path_picker(label, value, key, *, directory=False, optional=False, create_on
                 st.info("Optional path not present on this machine.") if optional else
                 st.error("Required input path not found on this machine.")
             )
+    # Keep browser navigation independent from the configured input path.
+    # All browser locations are absolute so '..' and parent navigation are stable.
+    browse_key = f"{key}:browse_dir"
     pending_dir = st.session_state.pop(f"{key}:pending_dir", None)
     if pending_dir is not None:
-        st.session_state[f"{key}:browse_dir"] = pending_dir
-        st.session_state.pop(f"{key}:browse_choice", None)
-    with st.popover("Browse files" if not directory else "Browse folders"):
-        location = st.text_input("Directory to browse", str(Path(value).expanduser().parent) if value else str(Path.cwd()),
-                                 key=f"{key}:browse_dir")
-        folder = Path(location).expanduser()
+        st.session_state[browse_key] = str(Path(pending_dir).expanduser().resolve())
+    elif browse_key not in st.session_state:
+        candidate = Path(value).expanduser() if value else Path.cwd()
+        st.session_state[browse_key] = str(
+            (candidate if candidate.is_dir() else candidate.parent).resolve()
+        )
+    with st.popover("Browse folders" if directory else "Browse files"):
+        location = st.text_input(
+            "Directory to browse", key=browse_key,
+            help="Enter an absolute directory path (e.g., /home/user/data), or navigate using the buttons below.",
+        )
+        folder = Path(location).expanduser().resolve()
+        if str(folder) != st.session_state.get(f"{key}:browse_listing_dir"):
+            st.session_state[f"{key}:browse_listing_dir"] = str(folder)
+            st.session_state.pop(f"{key}:browse_choice", None)
         if st.button("Go to parent folder", key=f"{key}:browse_parent"):
             st.session_state[f"{key}:pending_dir"] = str(folder.parent)
             st.rerun()
         if not folder.is_dir():
-            st.warning("Directory not found or inaccessible.")
+            st.warning("Directory not found or inaccessible. Enter an existing directory path.")
         else:
+            if directory and st.button("Use this folder", key=f"{key}:browse_current"):
+                st.session_state[f"{key}:pending_path"] = str(folder)
+                st.rerun()
             try:
-                entries = sorted(folder.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))[:200]
-                options = [str(entry) for entry in entries
+                entries = sorted(
+                    folder.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())
+                )[:200]
+                options = [str(entry.resolve()) for entry in entries
                            if entry.is_dir() or (not directory and entry.is_file())]
                 if options:
-                    chosen = st.selectbox("Choose a folder or file", options, key=f"{key}:browse_choice")
+                    chosen = st.selectbox(
+                        "Choose a folder or file", options,
+                        format_func=lambda path: Path(path).name,
+                        key=f"{key}:browse_choice",
+                    )
                     if Path(chosen).is_dir():
                         if st.button("Open folder", key=f"{key}:browse_open"):
                             st.session_state[f"{key}:pending_dir"] = chosen
