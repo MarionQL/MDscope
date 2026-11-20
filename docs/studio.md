@@ -21,7 +21,10 @@ Relative topology, trajectory and output paths resolve from that directory.
    measures the intersection with `selections.features`; group Rg intersects
    its own selection. Group filters do not suppress the global scalar.
 3. Optionally configure statistics and its hierarchical metric selector.
-4. Choose optional figures through the hierarchical figure selector.
+4. Choose optional figures through the hierarchical figure selector. Statistical
+   figures can be bulk-selected by bootstrap/replicate summaries,
+   between-condition comparisons, or autocorrelation, independently of each
+   other; individual exact plot IDs remain editable.
 5. Review and export. Explicit production topology preflight is still required
    when topology-verified export is enabled; background metadata does not
    replace full validation.
