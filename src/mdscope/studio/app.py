@@ -364,7 +364,6 @@ def main():
             else:
                 from mdscope.studio.project_editor import project_settings
                 project_settings(doc, restart_editor)
-            st.caption("Use conditions as system IDs; replicate entries accept label, trajectory and optional msd_trajectory. Time units: ps.")
             if st.button("Check input paths (read-only)"):
                 resolve_config(doc, base=Path(base), check_paths=True)
                 st.success("Configured input paths exist; trajectory contents were not checked.")
