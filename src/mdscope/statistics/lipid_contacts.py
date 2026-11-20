@@ -60,7 +60,8 @@ def _ordered_contacts(table: pd.DataFrame) -> pd.DataFrame:
     if (table.loc[:, ["species_a", "species_b"]].isna().any(axis=None)):
         raise ValueError("missing lipid species identity")
     symmetric = table.assign(
-        first=np.minimum(left, right), second=np.maximum(left, right),
+        first=np.where(left <= right, left, right),
+        second=np.where(left <= right, right, left),
     )
     checks = symmetric.groupby([*FRAME_ID, "first", "second"])
     if checks.pair_count_undirected.nunique(dropna=False).gt(1).any():
@@ -86,7 +87,8 @@ def _classes(table: pd.DataFrame, mapping: dict[str, str]) -> pd.DataFrame:
     undirected["class_b"] = undirected.species_b.map(mapping)
     aa = undirected.class_a.to_numpy(str)
     bb = undirected.class_b.to_numpy(str)
-    undirected["class_a"], undirected["class_b"] = np.minimum(aa, bb), np.maximum(aa, bb)
+    undirected["class_a"], undirected["class_b"] = (np.where(aa <= bb, aa, bb),
+                                                   np.where(aa <= bb, bb, aa))
     counts = (undirected.groupby([*FRAME_ID, "class_a", "class_b"], as_index=False)
               .pair_count_undirected.sum())
     population = (table.loc[:, [*FRAME_ID, "species_a", "molecules_a"]]
@@ -107,8 +109,10 @@ def _classes(table: pd.DataFrame, mapping: dict[str, str]) -> pd.DataFrame:
     pop_b = population.rename(columns={"class": "species_b", "molecules_a": "molecules_b"})
     complete = complete.merge(pop_a, on=[*FRAME_ID, "species_a"], validate="many_to_one")
     complete = complete.merge(pop_b, on=[*FRAME_ID, "species_b"], validate="many_to_one")
-    complete["class_a"] = np.minimum(complete.species_a, complete.species_b)
-    complete["class_b"] = np.maximum(complete.species_a, complete.species_b)
+    complete["class_a"] = np.where(complete.species_a <= complete.species_b,
+                                   complete.species_a, complete.species_b)
+    complete["class_b"] = np.where(complete.species_a <= complete.species_b,
+                                   complete.species_b, complete.species_a)
     complete = complete.merge(counts, on=[*FRAME_ID, "class_a", "class_b"],
                               how="left", validate="many_to_one")
     complete.pair_count_undirected = complete.pair_count_undirected.fillna(0)
