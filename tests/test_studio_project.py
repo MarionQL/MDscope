@@ -38,7 +38,6 @@ def test_guided_setup_roundtrip_and_mode_switch(tmp_path, monkeypatch):
     at.text_input(key="edit:trajectory:stop").set_value("20").run()
     at.text_input(key="edit:time:dt_ps").set_value("5").run()
     at.button(key="edit:system:condition1:add_rep").click().run()
-    at.text_input(key="edit:system:new").set_value("other").run()
     at.button(key="edit:system:add").click().run()
     assert not at.exception
     def exported():
@@ -57,7 +56,7 @@ def test_guided_setup_roundtrip_and_mode_switch(tmp_path, monkeypatch):
     at.button(key="edit:rep:condition1:0:remove").click().run()
     assert len(exported()["systems"]["condition1"]["replicates"]) == 1
     assert exported()["systems"]["condition1"]["replicates"][0]["label"] == "rep2"
-    at.button(key="edit:system:other:remove").click().run()
+    at.button(key="edit:system:condition2:remove").click().run()
     assert list(exported()["systems"]) == ["condition1"]
     assert not at.exception
     assert list(tmp_path.iterdir()) == []
@@ -125,15 +124,21 @@ def test_guided_editor_rejected_condition_add_keeps_hierarchy_and_recovers(tmp_p
     assert not at.exception
     baseline = deepcopy(at.session_state["document"])
     choices = deepcopy(at.session_state["choices"])
-    at.text_input(key="edit:system:new").set_value("../escape").run()
+
+    def reject(*args, **kwargs):
+        raise ValueError("injected condition failure")
+
+    with monkeypatch.context() as patch:
+        patch.setattr("mdscope.studio.project_editor.add_system", reject)
+        at.button(key="edit:system:add").click().run()
+        assert not at.exception
+        assert any("injected condition failure" in item.value for item in at.error)
+        assert at.session_state["document"] == baseline
+        assert at.session_state["choices"] == choices
+
     at.button(key="edit:system:add").click().run()
     assert not at.exception
-    assert at.session_state["document"] == baseline
-    assert at.session_state["choices"] == choices
-    at.text_input(key="edit:system:new").set_value("other").run()
-    at.button(key="edit:system:add").click().run()
-    assert not at.exception
-    assert "other" in at.session_state["document"]["systems"]
+    assert "condition2" in at.session_state["document"]["systems"]
     assert at.session_state["document"]["statistics"]["metric_selection"] == baseline[
         "statistics"
     ]["metric_selection"]
