@@ -65,8 +65,10 @@ def validate_plot_ids(include):
                 and parts[2] in SDC4_CONDITION_STEMS):
             continue
         if (len(parts) == 2 and parts[0] == "lipid_contacts" and
-                parts[1].startswith(("lipid_contact_matrix_", "lipid_contact_difference_"))
-                and parts[1].endswith(("_neighbors_per_molecule", "_enrichment"))):
+                parts[1].startswith(("lipid_contact_matrix_", "lipid_contact_difference_",
+                                     "lipid_contact_class_matrix_", "lipid_contact_class_difference_"))
+                and parts[1].endswith(("_pair_count_undirected",
+                                       "_neighbors_per_molecule", "_enrichment"))):
             continue
         if len(parts) == 3 and parts[0] in {"time_series", "profiles"}:
             if parts[1] and parts[2] in DYNAMIC_VARIANTS[parts[0]]:
