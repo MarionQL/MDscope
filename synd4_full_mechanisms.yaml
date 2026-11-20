@@ -198,6 +198,16 @@ analyses:
     enabled: true
     axis: z
     allow_absent_species: true
+    # These lipid classes are for offline aggregation of unique molecule
+    # pairs; no trajectory reread is needed when matrix.parquet exists.
+    classes:
+      phosphatidylcholine: [POPC, DPPC, DOPC]
+      phosphatidylethanolamine: [POPE]
+      anionic_phospholipids: [POPS, POPI]
+      sphingomyelin: [PSM]
+      cholesterol: [CHL1]
+      glycosphingolipids: [GM1a, BGAL]
+      ceramide: [CER160]
     selection: &whole_lipids "(resname POPC DPPC POPE POPI POPS PSM DOPC CHL1) or (chainID GM1a BGAL CER160)"
     species_selections: *lipid_anchors
 
