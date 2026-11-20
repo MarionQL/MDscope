@@ -87,8 +87,14 @@ def sequence_matches(ca_atoms, patterns, *, allow_overlaps=True):
     for atom in ca_atoms:
         if str(atom.name) != "CA":
             raise ValueError("Motif matching requires CA-only protein atoms")
-        chain = str(getattr(atom, "chainID", "") or "").strip()
-        segid = str(getattr(atom, "segid", "") or "").strip()
+        try:
+            chain = str(getattr(atom, "chainID", "") or "").strip()
+        except NoDataError:
+            chain = ""
+        try:
+            segid = str(getattr(atom, "segid", "") or "").strip()
+        except NoDataError:
+            segid = ""
         if not chain:
             chain = segid
         if not chain:
