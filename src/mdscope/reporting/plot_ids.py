@@ -163,9 +163,12 @@ def describe_plot(identifier: str) -> dict:
         destination = f"project_summary/figures/membrane/{parts[1]}.png"
         unit_notes = "Local/leaflet or area-corrected ratio (dimensionless)"
     elif family == "lipid_contacts":
-        source = ["{system}/{replicate}/extensions/lipid_contacts/matrix.parquet"]
+        source = ["{system}/{replicate}/extensions/lipid_contacts/matrix.parquet",
+                  "project_summary/statistics/lipid_contacts/system_statistics.parquet",
+                  "project_summary/statistics/lipid_contacts/system_comparisons.parquet"]
         destination = f"project_summary/figures/lipid_contacts/{parts[1]}.png"
-        unit_notes = "Neighbors per molecule or enrichment ratio"
+        unit_notes = ("Unique undirected molecule pairs/frame, neighbors per reference "
+                      "molecule, or random-mixing enrichment; per leaflet, pointwise bootstrap")
     elif family == "shared_states":
         stem = parts[1]
         source = ["project_summary/shared_states/" + (
