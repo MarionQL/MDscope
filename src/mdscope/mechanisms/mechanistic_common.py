@@ -85,7 +85,7 @@ def sequence_matches(ca_atoms, patterns, *, allow_overlaps=True):
     """
     groups = {}
     for atom in ca_atoms:
-        if str(atom.name) != "CA":
+        if str(getattr(atom, "name", "CA")) != "CA":
             raise ValueError("Motif matching requires CA-only protein atoms")
         try:
             chain = str(getattr(atom, "chainID", "") or "").strip()
@@ -99,7 +99,7 @@ def sequence_matches(ca_atoms, patterns, *, allow_overlaps=True):
             chain = segid
         if not chain:
             raise ValueError("Motif matching requires chainID or segid")
-        group_id = (int(atom.segindex), chain)
+        group_id = (int(getattr(atom, "segindex", 0)), chain)
         groups.setdefault(group_id, []).append(atom)
 
     # Two distinct segments may carry the same chain label; avoid collisions
