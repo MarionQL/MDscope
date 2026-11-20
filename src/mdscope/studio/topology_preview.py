@@ -86,9 +86,6 @@ def inspect_groups(systems, base, groups):
             if not selection or not selection.strip():
                 matches[group_id] = {"error": "Enter an atom selection"}
                 continue
-            if selection.strip().lower() == "all":
-                matches[group_id] = {"error": "Choose a specific subset of atoms for a reusable group"}
-                continue
             try:
                 atoms = universe.select_atoms(selection)
                 matches[group_id] = {"atoms": len(atoms), "residues": len(atoms.residues)}
