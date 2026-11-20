@@ -878,6 +878,8 @@ def plot_all(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
     if plot_enabled(cfg, "profiles"):
         plot_profiles(cfg, root, system_repouts)
         _plot_residue_distance_heatmaps(cfg, root, system_repouts)
+        from .residue_response import plot_residue_response
+        plot_residue_response(cfg, root)
     if plot_enabled(cfg, "interactions"):
         plot_interactions(cfg, root, system_repouts)
 
