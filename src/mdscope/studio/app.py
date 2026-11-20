@@ -426,9 +426,8 @@ def main():
                 restart_editor(doc)
             # Topology-only preflight is cached by topology metadata and the
             # relevant configuration. Never load trajectories during authoring.
-            from mdscope.studio.model import resolve_config as _resolve_config
-            cfg = _resolve_config(doc, base=Path(base))
-            topology_paths = [Path(system.topology) for system in cfg.systems.values()]
+            cfg = resolve_config(doc, base=Path(base))
+            topology_paths = [Path(system["topology"]) for system in cfg["systems"].values()]
             if topology_paths and all(path.is_file() for path in topology_paths):
                 import hashlib
                 fingerprint = hashlib.sha256(
