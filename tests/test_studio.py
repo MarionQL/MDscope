@@ -186,9 +186,13 @@ def test_bulk_statistical_figure_selection_preserves_other_types(tmp_path, monke
     from streamlit.testing.v1 import AppTest
     from mdscope.studio import app
     monkeypatch.chdir(tmp_path)
-    at = AppTest.from_file(app.__file__).run()
-    at.checkbox(key="enable:rmsd").check().run()
-    at.checkbox(key="stats:master").check().run()
+    doc = rmsd_document()
+    doc["statistics"]["enabled"] = True
+    doc["statistics"]["metric_selection"] = None
+    at = AppTest.from_file(app.__file__)
+    at.session_state["document"] = deepcopy(doc)
+    at.run()
+    assert not at.exception
     auto = "figure:tree:time_series:rmsd_A:autocorrelation"
     boot = "figure:tree:time_series:rmsd_A:bootstrap_table"
     method = "figure:tree:method:Autocorrelation"
@@ -840,28 +844,43 @@ def test_return_to_default_run_prunes_choices_and_protects_external_references(t
     assert yaml.safe_load(review(doc, tmp_path, choices)[0])["statistics"]["metric_selection"]["profiles"] == []
 
 
-def test_selections_tab_topology_preview_uses_real_parser(project, monkeypatch):
+def test_automatic_topology_preview_uses_real_parser(project, monkeypatch):
     pytest.importorskip("streamlit")
+    from concurrent.futures import Future
     from streamlit.testing.v1 import AppTest
-    from mdscope.studio import app
+    from mdscope.studio import app, topology_preview
     path, root = project("studio_selection_preview")
     monkeypatch.chdir(path.parent)
     doc = new_document()
     doc["systems"] = yaml.safe_load(path.read_text())["systems"]
     doc["selections"]["groups"] = {"ca": {"selection": "protein and name CA"}}
+    # Execute the actual topology parsing deterministically for AppTest rather
+    # than depending on a background worker finishing during a UI rerun.
+    def completed(function, *args):
+        future = Future()
+        try:
+            future.set_result(function(*args))
+        except Exception as exc:
+            future.set_exception(exc)
+        return future
+
+    monkeypatch.setattr(topology_preview, "submit_topologies",
+                        lambda systems, base: completed(
+                            topology_preview.inspect_topologies, systems, base))
+    monkeypatch.setattr(topology_preview, "submit_groups",
+                        lambda systems, base, groups: completed(
+                            topology_preview.inspect_groups, systems, base, groups))
     at = AppTest.from_file(app.__file__)
     at.session_state["document"] = doc
     at.run()
     assert not at.exception
-    at.button(key="edit:groups:preflight").click().run()
-    assert not at.exception
-    assert any("Topology selection preflight completed" in item.value for item in at.success)
-    assert any("ca:" in item.value and "atoms" in item.value for item in at.caption)
+    assert any("ca:" in item.value and "atoms" in item.value
+               for item in at.caption)
     assert not root.exists()
 
     at.text_input(key="edit:group:ca:selection").set_value("resname NOTHING").run()
-    at.button(key="edit:groups:preflight").click().run()
-    assert any("zero" in item.value for item in at.error)
+    assert not at.exception
+    assert any("matches zero atoms" in item.value for item in at.warning)
     assert not root.exists()
 
 
