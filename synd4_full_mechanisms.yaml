@@ -530,6 +530,7 @@ plots:
   enabled: true
   profiles: true
   time_series: true
+  time_series_rolling_window_ns: 100  # trailing time-based mean; plot only
   interactions: true
   distributions: false
   autocorrelation: false
