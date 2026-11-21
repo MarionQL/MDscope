@@ -146,3 +146,41 @@ def test_solvation_rdf_production_panels_share_y_limits(tmp_path, monkeypatch):
     assert result is not None
     assert len(ranges) == 1
     assert ranges[0][0] == pytest.approx(ranges[0][1])
+
+
+def test_distance_heatmaps_share_time_axis_and_distance_colorbar(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    import mdscope.config as config
+    import mdscope.reporting.plotting as plotting
+
+    run = SimpleNamespace(run_id="default", label="Test", spec={})
+    monkeypatch.setattr(config, "analysis_runs", lambda cfg, analysis: [run])
+    monkeypatch.setattr(
+        config, "profile_dir",
+        lambda repout, analysis, run_id: repout / "profiles" / analysis / run_id,
+    )
+    repouts = [tmp_path / "control" / f"rep{i}" for i in (1, 2)]
+    for repout, last_time, peak in zip(repouts, (10_000., 20_000.), (2., 20.)):
+        folder = repout / "profiles/residue_membrane_distance/default"
+        folder.mkdir(parents=True)
+        np.save(folder / "distance_matrix_A.npy",
+                np.array([[1., peak], [1., peak]], dtype=np.float32))
+        np.save(folder / "time_ps.npy", np.array([0., last_time]))
+        pd.DataFrame({"residue": ["ALA1", "GLY2"]}).to_parquet(
+            folder / "residues.parquet")
+
+    observed = []
+    def capture(fig, path, cfg):
+        observed.append([(ax.get_ylim(), ax.images[0].get_clim()) for ax in fig.axes
+                         if ax.images])
+        plt.close(fig)
+    monkeypatch.setattr(plotting, "_save", capture)
+    cfg = {"plots": {"enabled": True},
+           "systems": {"control": {"replicates": [
+               {"label": "rep1"}, {"label": "rep2"}]}}}
+    plotting._plot_residue_distance_heatmaps(
+        cfg, tmp_path, {"control": repouts})
+    assert len(observed) == 1 and len(observed[0]) == 2
+    assert observed[0][0][0] == pytest.approx(observed[0][1][0])
+    assert observed[0][0][1] == pytest.approx(observed[0][1][1])
+    assert observed[0][0][1][1] == pytest.approx(20.)
