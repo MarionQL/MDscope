@@ -217,25 +217,24 @@ def figure_status(path, cfg, root, system_repouts, records=None):
 
 
 def statistics_status(cfg, root, family):
-    """Explain eligibility, preserving explicitly identified legacy exports."""
-    import json
+    """Explain eligibility with explicit legacy and publication policies."""
+    from ..statistics.manifest_reader import read_statistics_manifest
     stats = cfg.get('statistics', {})
     option = stats.get('families', {}).get(family, True)
-    if not stats.get('enabled', True) or option is False or (isinstance(option, dict) and not option.get('enabled', True)):
+    if (not stats.get('enabled', True) or option is False or
+            (isinstance(option, dict) and not option.get('enabled', True))):
         return 'disabled'
-    manifest = Path(root)/'project_summary/statistics/manifest.json'
-    if not manifest.exists():
+    facts = read_statistics_manifest(Path(root)/'project_summary/statistics/manifest.json')
+    if facts.state == 'missing':
         return 'legacy_unverified'
-    try:
-        record = json.loads(manifest.read_text())
-        if record.get('status', 'complete') != 'complete':
-            return 'incomplete'
-        if record.get('families', {}).get(family) == 'disabled':
-            return 'unavailable'
-        if 'methods' not in record:
-            return 'legacy_unverified'
-    except (ValueError, TypeError, KeyError, AttributeError, OSError):
+    if facts.state == 'invalid':
         return 'invalid_manifest'
+    if facts.state == 'incomplete':
+        return 'incomplete'
+    if facts.family_disabled(family):
+        return 'unavailable'
+    if facts.state == 'legacy' or not facts.methods_present:
+        return 'legacy_unverified'
     return 'valid'
 
 
