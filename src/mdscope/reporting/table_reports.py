@@ -10,6 +10,7 @@ from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 import os
+import shutil
 import tempfile
 
 from matplotlib.backends.backend_pdf import PdfPages
@@ -61,16 +62,40 @@ class TableReports:
                     if not (data.startswith(b"%PDF-") and
                             b"%%EOF" in data[-1024:]):
                         raise ValueError(f"Invalid generated PDF: {pending}")
-                for report, pending in self.pending.items():
-                    os.replace(pending, report)
+                # Backup prior publications in their own directories. If the
+                # second replacement fails, restore the first as well.
+                backups = {}
+                published = []
+                try:
+                    for report in self.pending:
+                        if report.exists():
+                            with tempfile.NamedTemporaryFile(
+                                    prefix=".statistics_tables.", suffix=".backup.pdf",
+                                    dir=report.parent, delete=False) as temporary:
+                                backup = Path(temporary.name)
+                            backups[report] = backup
+                            shutil.copy2(report, backup)
+                    for report, pending in self.pending.items():
+                        os.replace(pending, report)
+                        published.append(report)
+                except BaseException:
+                    for report in reversed(published):
+                        if report in backups:
+                            os.replace(backups[report], report)
+                        else:
+                            report.unlink(missing_ok=True)
+                    raise
+                finally:
+                    for backup in backups.values():
+                        backup.unlink(missing_ok=True)
+                for report in self.pending:
                     self._archive_old_pngs(report.parent)
-                # Selection and available data may change between runs. A
-                # report absent from a completed session must not remain active.
+                # Reports absent from this complete session are superseded.
                 active = set(self.pending)
-                for report in sorted(self.root.rglob("statistics_tables.pdf")):
-                    if ".archives" in report.parts or report in active:
-                        continue
-                    self._archive_obsolete_pdf(report)
+                report_root = self.root / "project_summary" / "figures"
+                for report in sorted(report_root.rglob("statistics_tables.pdf")):
+                    if report not in active:
+                        self._archive_obsolete_pdf(report)
                 self._record_published_pages()
         finally:
             for pending in self.pending.values():
