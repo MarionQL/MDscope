@@ -224,3 +224,22 @@ and production `reporting.plot_ids`. The Streamlit client caches schema-only
 previews by draft content; no trajectory or statistics computations occur.
 Topology checks reuse `core.validation`. See [Studio delivery](studio-plan.md)
 and the [user guide](../studio.md) for coverage and explicit remaining gaps.
+
+## Persisted-input readiness
+
+`pipeline.persisted_inputs` owns read-only artifact/schema checks, summary time
+grids, checkpoint identity/counts, scientific configuration compatibility and
+registered saved-result inventory. `registry.saved_output_plan` adds core streamed
+products from the existing scalar/profile contracts without changing the fused
+trajectory schedule. Core reuse compares alignment provenance and saved columns/
+time grids. Runner imports these operations; Studio
+adapts the same owner rather than importing trajectory orchestration. Browsing
+requires provenance/markers; direct legacy finalization preserves its structural
+validation policy. Expected coverage is derived independently from the current
+configuration. Saved-only sources are projected into a detached downstream
+configuration only when all configured replicas pass; authoring switches and
+saved source configuration are preserved.
+
+Residue-response discovery remains in `statistics.residue_response`; the shared
+YAML schema owns its selections/parameters and a derived-product manifest owns
+settings/completion. It consumes saved profiles/contrasts, not trajectories.

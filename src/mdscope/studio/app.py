@@ -14,6 +14,17 @@ from mdscope.studio.model import (
 from mdscope.statistics_selection import ESTIMATOR_FLAGS, studio_metric_selection_defaults
 
 
+def saved_readiness_details(inventory):
+    """Use the shared inspection reasons in each downstream selection tree."""
+    if not inventory:
+        return
+    with st.expander("Saved input readiness and reasons"):
+        fields = ("analysis", "run_id", "condition", "replica", "scheduled", "status",
+                  "reason", "statistics_ready", "statistics_reason")
+        st.dataframe([{key: row.get(key) for key in fields if key in row}
+                      for row in inventory], hide_index=True)
+
+
 def display_metric(name):
     """Human-facing name; keep the original backend identifier in YAML."""
     known = {"rmsd": "RMSD", "rmsf": "RMSF", "rdf": "RDF", "sasa": "SASA",
@@ -381,8 +392,9 @@ def main():
                 st.warning("Results inventory is stale after configuration/path changes; inspect again.")
             st.caption("Verification checks saved configuration and input paths, "
                        "completed stage markers, replica summaries, and registered artifact "
-                       "schemas, but not source-file content hashes. Offline CLI "
-                       "finalization revalidates its complete prerequisite set separately.")
+                       "schemas and summary time/checkpoint identity. Source-file content hashes "
+                       "and chemistry/convergence are not established. Offline CLI "
+                       "finalization rechecks inputs before publishing.")
             from mdscope.studio.model import results_coverage
             coverage = results_coverage(inventory)
             if coverage:
@@ -607,9 +619,11 @@ def main():
                 inventory_fresh = (
                     state.get("studio:results_inventory_path") == results_dir
                     and state.get("studio:results_inventory_config") ==
-                    yaml.safe_dump(state.document, sort_keys=True))
+                    yaml.safe_dump(doc, sort_keys=True))
                 source_status = statistics_source_status(
                     plan, state.get("studio:results_inventory") if inventory_fresh else None)
+                if inventory_fresh:
+                    saved_readiness_details(state.get("studio:results_inventory"))
                 eligible_families = eligible_statistics_families(source_status, families)
                 if not eligible_families:
                     st.info("No eligible statistics sources. Enable an analysis or inspect verified saved results.")
@@ -788,6 +802,21 @@ def main():
         merged = merge(DEFAULTS, doc)
         catalog = authoring_catalog(merged, include_inactive=True)["figures"]
         active_catalog = authoring_catalog(merged)["figures"]
+        inventory_fresh = (
+            state.get("studio:results_inventory_path") == results_dir
+            and state.get("studio:results_inventory_config") ==
+            yaml.safe_dump(doc, sort_keys=True))
+        if inventory_fresh:
+            from mdscope.studio.model import saved_source_catalog
+            saved_catalog = saved_source_catalog(doc, base, state.get("studio:results_inventory", []))["figures"]
+            for owner, figures in saved_catalog.items():
+                known = {fig["id"] for fig in active_catalog.get(owner, [])}
+                active_catalog.setdefault(owner, []).extend(fig for fig in figures if fig["id"] not in known)
+            for owner, figures in active_catalog.items():
+                known = {fig["id"] for fig in catalog.get(owner, [])}
+                catalog.setdefault(owner, []).extend(fig for fig in figures if fig["id"] not in known)
+            st.caption("Saved-only figure sources require all configured replicas to pass the same input checks used by finalization.")
+            saved_readiness_details(state.get("studio:results_inventory"))
         figures_by_family = {}
         for owner, figures in active_catalog.items():
             for fig in figures:
@@ -907,15 +936,17 @@ def main():
                               if isinstance(spec, dict) and not (spec.get("selection") or "").strip()]
             if missing_groups:
                 st.error("Choose a measurement selection for: " + ", ".join(missing_groups))
-            text, plan = review(doc, base, state.choices if exact_figures else None)
+            text, plan = review(doc, base, state.choices if exact_figures else None, inventory=(state.get("studio:results_inventory") if inventory_fresh else None))
             st.warning("Schema-only validation: topology, chemistry, trajectory alignment and sampling eligibility remain unverified.")
             from mdscope.studio.model import unavailable_exact_statistics
-            missing_stats = unavailable_exact_statistics(yaml.safe_load(text), plan)
+            missing_stats = unavailable_exact_statistics(
+                doc, plan,
+                state.get("studio:results_inventory") if inventory_fresh else None)
             if missing_stats:
-                st.error("Exact statistics requested without scheduled source analyses: " +
+                st.error("Exact statistics requested without scheduled or verified saved sources: " +
                          ", ".join(missing_stats) +
-                         ". Enable a compatible analysis; existing files are not "
-                         "yet verified as reusable.")
+                         ". Enable a compatible analysis or inspect existing results "
+                         "for the current configuration and path.")
 
             require_topology = st.checkbox("Require topology preflight before export")
             signature = text + str(Path(base).resolve())

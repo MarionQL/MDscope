@@ -11,13 +11,7 @@ import re
 import numpy as np
 import pandas as pd
 
-# Only residue-resolved protein observables with comparable labels.
-_RESIDUE_PROFILE = re.compile(
-    r"^(?:rmsf$|dssp_(?:helix|sheet|coil)_occupancy$|"
-    r"sasa_mean(?:__|$)|sasa_buried_nm2__|"
-    r"residue_occlusion__|residue_water_coordination__all$|"
-    r"residue_membrane_distance__(?!.*__group_))"
-)
+from ..statistics_contracts import RESIDUE_RESPONSE_PROFILE
 _RESIDUE_LABEL = re.compile(r"^(?P<chain>[^:]+):[A-Za-z]+(?P<resid>-?\d+)$")
 _KEYS = ["system_1", "system_2", "profile", "position_label"]
 
@@ -25,7 +19,8 @@ _KEYS = ["system_1", "system_2", "profile", "position_label"]
 def residue_response_screen(replicates: pd.DataFrame, contrasts: pd.DataFrame,
                             expected_replicates: dict[str, list[str]],
                             *, min_length: int = 3,
-                            minimum_cosine: float = 0.7):
+                            minimum_cosine: float = 0.7,
+                            profiles=None, chains=None):
     """Return (effect matrix, contiguous multi-metric regions).
 
     Per-profile scale = pooled within-(system,residue) replica standard
@@ -47,8 +42,14 @@ def residue_response_screen(replicates: pd.DataFrame, contrasts: pd.DataFrame,
                                 "difference_ci_low", "difference_ci_high"}
     if not required_rep.issubset(replicates) or not required_cmp.issubset(contrasts):
         raise ValueError("Residue response requires saved replica profiles and bootstrap contrasts")
-    r = replicates.loc[replicates.profile.astype(str).str.match(_RESIDUE_PROFILE)].copy()
-    c = contrasts.loc[contrasts.profile.astype(str).str.match(_RESIDUE_PROFILE)].copy()
+    if profiles is not None:
+        unsupported = [name for name in profiles if not RESIDUE_RESPONSE_PROFILE.match(name)]
+        if unsupported:
+            raise ValueError(f"Unsupported residue-response profiles: {unsupported}")
+        replicates = replicates.loc[replicates.profile.isin(profiles)]
+        contrasts = contrasts.loc[contrasts.profile.isin(profiles)]
+    r = replicates.loc[replicates.profile.astype(str).str.match(RESIDUE_RESPONSE_PROFILE)].copy()
+    c = contrasts.loc[contrasts.profile.astype(str).str.match(RESIDUE_RESPONSE_PROFILE)].copy()
     if r.empty or c.empty:
         return pd.DataFrame(columns=columns), pd.DataFrame(columns=region_columns)
     for frame, identity in ((r, ["system", "replicate", "profile", "position_label"]),
@@ -86,7 +87,7 @@ def residue_response_screen(replicates: pd.DataFrame, contrasts: pd.DataFrame,
                    for system in (str(item.system_1), str(item.system_2))):
             continue
         found = _RESIDUE_LABEL.fullmatch(str(item.position_label))
-        if not found or found["chain"] == "?":
+        if not found or found["chain"] == "?" or (chains is not None and found["chain"] not in chains):
             continue
         scale = scales.get(item.profile, np.nan)
         difference = float(item.difference_system2_minus_system1)
@@ -152,3 +153,47 @@ def residue_response_screen(replicates: pd.DataFrame, contrasts: pd.DataFrame,
                 start = i
         emit(start, len(residues))
     return result, pd.DataFrame(regions, columns=region_columns)
+
+
+def write_residue_response(replicates, contrasts, expected_replicates, outdir, cfg):
+    """Publish the configured derived screen without touching its profile inputs.
+
+    The completion manifest is written last; readers reject interrupted updates.
+    Superseded products are archived, including disabling and empty selections.
+    """
+    from pathlib import Path
+    from ..config import residue_response_settings
+    from ..core.persistence import atomic_json, atomic_parquet, archive_output
+    settings = residue_response_settings(cfg)
+    status = ("disabled" if not settings["enabled"] else
+              "empty_selection" if settings["profiles"] == [] or settings["chains"] == []
+              else "complete")
+    matrix = regions = None
+    if status == "complete":
+        matrix, regions = residue_response_screen(
+            replicates, contrasts, expected_replicates,
+            min_length=settings["min_length"], minimum_cosine=settings["minimum_cosine"],
+            profiles=settings["profiles"], chains=settings["chains"],
+        )
+        if matrix.empty:
+            status = "no_eligible_data"
+    outdir = Path(outdir)
+    record = {
+        "status": "running", "settings": settings, "exploratory": True,
+        "independent_units": "simulation_replicates",
+        "replicates": expected_replicates,
+        "source_files": ["replicate_profiles.parquet", "system_comparisons.parquet"],
+        "input_rows": {"replicate_profiles": len(replicates), "contrasts": len(contrasts)},
+    }
+    manifest = outdir / "residue_response_manifest.json"
+    atomic_json(manifest, record)
+    for name in ("residue_response_matrix.parquet", "residue_response_regions.parquet"):
+        path = outdir / name
+        if path.exists():
+            archive_output(path, outdir / ".archives" / "residue_response", name)
+    if status == "complete":
+        atomic_parquet(outdir / "residue_response_matrix.parquet", matrix)
+        atomic_parquet(outdir / "residue_response_regions.parquet", regions)
+    record["status"] = status
+    atomic_json(manifest, record)
+    return record

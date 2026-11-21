@@ -50,9 +50,9 @@ For generalization PRs:
 Existing controls include `selections.groups`, supported analysis-specific
 selection fields, `membrane_order.tails`/`lipid_overrides`, SDC4 TM/ectodomain,
 HS/motif/lipid definitions, `statistics.metric_selection` and exact `plots.include`.
-These are not universal keys accepted by every analysis. Generic state-feature
-sources and residue-response discovery controls still have open implementation
-work (#163 and #218); do not advertise proposed fields as already supported.
+These are not universal keys accepted by every analysis. Generic state-feature sources still have open implementation work (#163).
+Residue-response discovery is controlled by `statistics.residue_response`; see
+the validated options below. Do not advertise proposed fields as supported.
 
 ### Groups vs named runs
 
@@ -267,3 +267,75 @@ Preflight checks topology selections, group/alignment sizes, lipid-anchor owners
 `mdscope report STATISTICS_DIR` requires a **complete** manifest and contrast coverage table. Block settings live under `statistics.block.*`; retired aliases and `analyses.autocorrelation` / `analyses.distribution_statistics` must not be used.
 
 [Scientific estimators](analyses.md) · [Workflow and restart](workflows.md) · [Scientific contracts](developer/scientific-contracts.md)
+
+## Residue-response discovery
+
+Cross-metric residue-response discovery is a separate exploratory saved-data
+stage. Configure it independently of profile inference and figure selection:
+
+```yaml
+statistics:
+  residue_response:
+    enabled: true
+    profiles: [sasa_mean__isolated, residue_occlusion__any]
+    chains: [PROA, PROB]
+    min_length: 4
+    minimum_cosine: 0.8
+```
+
+- Omitted settings preserve the earlier behavior: enabled, all supported saved
+  residue profiles/chains, minimum length 3 and cosine similarity 0.7.
+- `profiles` and `chains` are exact identity lists. `null` includes all supported
+  available identities; `[]` includes none. Unsupported profile families fail
+  rather than acquiring a fabricated residue interpretation.
+- `min_length` is an integer at least 2; `minimum_cosine` is finite in [0, 1].
+  Changing these settings does not alter the underlying profile contrasts, CIs
+  or physical units. Two complete metrics are still required to form a region.
+- Disabling discovery or selecting no identities archives previous response
+  matrices/regions and records why no current product was produced. The separate
+  older single-profile `residue_regions.parquet` screen retains its own behavior.
+- `residue_response_manifest.json` records effective settings, replica identities,
+  source table names/row counts and completion status. Running/stale/disabled
+  response products are not advertised as current heatmaps. Legacy outputs
+  without this new manifest remain explicitly unverified.
+- Planning exposes effective settings and prerequisites; Studio's Advanced
+  statistics YAML edits the same fields and preserves import/export semantics.
+  Your configured SDC4 motifs and predefined regions remain independent.
+
+Regenerate from saved statistics using the saved manifest's settings, or an
+explicit validated YAML override (no topology/trajectory is opened):
+
+```bash
+mdscope scan-residue-regions RESULTS/project_summary/statistics
+mdscope scan-residue-regions RESULTS/project_summary/statistics --config analysis.yaml
+```
+
+These regions remain exploratory groupings of the same estimated effects.
+Pointwise CI exclusions do not validate discovered region boundaries or provide
+selection-adjusted region intervals.
+
+## Existing results and readiness
+
+Studio inspection and offline finalization share registered-product validation,
+summary time-grid checks, available checkpoint identity/frame counts and derived
+prerequisites. Saved reuse additionally requires compatible saved scientific
+configuration and completed stage markers. Reporting labels/options and source
+revision changes alone do not invalidate compatible scientific data; changed
+sampling, source identity, selections or selected-run settings do.
+
+Inspected saved-only analysis/run sources are available to downstream catalogs
+and readers only when every configured condition/replica is verified. Reusing
+these sources does not enable trajectory tasks or change the editable YAML;
+finalization records the effective analysis inputs in its statistics manifest.
+Unavailable/unregistered products are not promoted to verified by file existence.
+Inspection reads saved numerical products and can take time on large projects;
+it does not prove chemistry, sampling convergence or source-file content hashes.
+
+The CLI rechecks inputs at execution, before replacing provenance or archived
+results. Keep all intended source paths, condition/replica/run identities,
+selections and downstream statistics/figures in the YAML:
+
+```bash
+mdscope statistics analysis.yaml --results-dir PATH
+mdscope plotting analysis.yaml --results-dir PATH
+```

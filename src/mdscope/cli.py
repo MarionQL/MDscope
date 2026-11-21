@@ -120,7 +120,8 @@ def cmd_report(args):
 def cmd_scan_residue_regions(args):
     from .statistics.residue_regions import scan_saved_residue_regions
 
-    print(scan_saved_residue_regions(args.statistics_dir))
+    cfg = load_config(args.config, check_paths=False) if getattr(args, "config", None) else None
+    print(scan_saved_residue_regions(args.statistics_dir, cfg=cfg))
 
 
 def main():
@@ -159,6 +160,7 @@ def main():
         p.set_defaults(func=lambda a, phase=phase: cmd_finalize(a, phase=phase))
     p = sub.add_parser("scan-residue-regions", help="Find contiguous changes in saved residue profiles")
     p.add_argument("statistics_dir", type=Path)
+    p.add_argument("--config", help="Use validated YAML discovery settings instead of saved methods")
     p.set_defaults(func=cmd_scan_residue_regions)
     p = sub.add_parser("report", help="Summarize bootstrap findings from a completed statistics directory")
     p.add_argument("statistics_dir", type=Path)

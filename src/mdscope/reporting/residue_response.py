@@ -22,6 +22,9 @@ def plot_residue_response(cfg: dict, root: Path) -> None:
         return
     if not current_statistics(cfg, root, "profiles"):
         return
+    from .figure_inventory import residue_response_status
+    if residue_response_status(cfg, root) not in {"valid", "legacy_unverified"}:
+        return
     stats = root / "project_summary/statistics/profiles"
     source = stats / "residue_response_matrix.parquet"
     if not source.exists():

@@ -5,6 +5,17 @@ coverage and optional chemistry/reference columns may extend them. Identities ar
 not independent samples: condition inference uses simulation replicas.
 """
 
+import re
+
+# Residue-resolved protein observables with comparable saved labels. Shared by
+# YAML validation and the saved-data screen so eligibility has one definition.
+RESIDUE_RESPONSE_PROFILE = re.compile(
+    r"^(?:rmsf$|dssp_(?:helix|sheet|coil)_occupancy$|"
+    r"sasa_mean(?:__|$)|sasa_buried_nm2__|"
+    r"residue_occlusion__|residue_water_coordination__all$|"
+    r"residue_membrane_distance__(?!.*__group_))"
+)
+
 BASE_COLUMNS = {
     "time_series": ("replicate_statistics.parquet", ["system", "replicate", "group", "metric", "mean", "median", "mean_ci_low", "mean_ci_high", "median_ci_low", "median_ci_high", "temporal_sampling_status", "bootstrap_draws", "ci_level"], "replicate / group / metric"),
     "profiles": ("system_profiles.parquet", ["system", "profile", "position", "position_label", "mean", "n_replicates", "mean_ci_low", "mean_ci_high", "bootstrap_draws", "ci_level"], "condition / profile / aligned position"),

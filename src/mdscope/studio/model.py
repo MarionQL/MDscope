@@ -227,7 +227,7 @@ def _change_group(document, old_id, new_id=None, *, duplicate=False, choices=Non
             for owner in choices:
                 choices[owner] = migrate(choices[owner])
 
-def review(document, base, choices=None):
+def review(document, base, choices=None, *, inventory=None):
     """Return validated YAML + production plan, filtering inactive figure choices.
 
     choices maps analysis names or 'statistics' to exact plot IDs. The editable
@@ -237,8 +237,13 @@ def review(document, base, choices=None):
     cfg = resolve_config(raw, base=Path(base))
     if choices is not None:
         from ..planning import authoring_catalog
-        catalog = authoring_catalog(cfg, include_inactive=True)
-        active = authoring_catalog(cfg)
+        if inventory:
+            from ..pipeline.persisted_inputs import configuration_with_saved_sources
+            authoring_cfg = configuration_with_saved_sources(cfg, inventory)
+        else:
+            authoring_cfg = cfg
+        catalog = authoring_catalog(authoring_cfg, include_inactive=True)
+        active = _saved_source_catalog(cfg, inventory) if inventory else authoring_catalog(authoring_cfg)
         variables = active["scalars"]
         active_scalars = {(var["metric"], var["group"]) for var in variables}
         known_scalars = {(var["metric"], var["group"]) for var in catalog["scalars"]}
@@ -255,11 +260,11 @@ def review(document, base, choices=None):
                                          if identity(item) not in known or identity(item) in active_identities]
             cfg = resolve_config(raw, base=Path(base))
         eligible = {owner: {figure["id"] for figure in figures}
-                    for owner, figures in authoring_catalog(cfg)["figures"].items()}
+                    for owner, figures in active["figures"].items()}
         ids = []
         for owner, selected in choices.items():
             active = (cfg["statistics"].get("enabled") if owner == "statistics"
-                      else cfg["analyses"].get(owner, {}).get("enabled"))
+                      else authoring_cfg["analyses"].get(owner, {}).get("enabled"))
             if active:
                 ids.extend(identifier for identifier in selected
                            if owner not in eligible or identifier in eligible[owner])
@@ -308,16 +313,39 @@ def topology_preflight(document, base):
 
 def inspect_results_directory(document, base, results_directory):
     """Read-only saved-output inventory delegated to the production pipeline."""
-    from ..pipeline.runner import inspect_results_directory as inspect
+    from ..pipeline.persisted_inputs import inspect_results_directory as inspect
     return inspect(document, base, results_directory)
+
+
+def saved_source_catalog(document, base, inventory):
+    """Describe saved-only choices without changing the editable YAML switches."""
+    cfg = resolve_config(document, base=Path(base))
+    return _saved_source_catalog(cfg, inventory)
+
+
+def _saved_source_catalog(cfg, inventory):
+    """Retain static figures while exposing only supported saved inference."""
+    from ..pipeline.persisted_inputs import configuration_with_saved_sources
+    from ..planning import authoring_catalog
+    catalog = authoring_catalog(configuration_with_saved_sources(cfg, inventory))
+    statistical = authoring_catalog(configuration_with_saved_sources(cfg, inventory, statistics=True))
+    for key in ("scalars", "profiles"):
+        catalog[key] = statistical[key]
+    catalog["figures"]["statistics"] = statistical["figures"].get("statistics", [])
+    return catalog
 
 
 def results_coverage(inventory):
     """Group exact analysis/run/condition/replica identities without collapsing runs."""
     grouped = {}
+    expected = {}
     for entry in inventory:
         key = (entry["analysis"], entry["run_id"], entry["condition"])
         grouped.setdefault(key, {})[entry["replica"]] = entry["status"]
+        expected.setdefault(key, set()).update(entry.get("expected_replicates", []))
+    for key, labels in expected.items():
+        for label in labels:
+            grouped[key].setdefault(label, "missing")
     return [
         {"analysis": analysis, "run_id": run_id, "condition": condition,
          "replicas": dict(sorted(replicas.items())),
@@ -346,7 +374,9 @@ def statistics_source_status(plan, inventory=None):
     """Expose planned producers and verified saved coverage without conflation."""
     from ..planning import ANALYSIS_METADATA
     scheduled = planned_statistics_sources(plan)
-    coverage = results_coverage(inventory or [])
+    coverage = results_coverage([
+        {**row, "status": row["status"] if row.get("statistics_ready", True) else "incompatible"}
+        for row in inventory or []])
     return {
         family["family"]: {
             "status": "scheduled" if scheduled.get(family["family"]) else
@@ -371,7 +401,7 @@ def statistics_source_status(plan, inventory=None):
     }
 
 
-def unavailable_exact_statistics(document, plan):
+def unavailable_exact_statistics(document, plan, inventory=None):
     """Reject explicit requested identities with no scheduled input producer.
 
     Unrestricted families are not errors: the backend may skip unsupported
@@ -379,12 +409,13 @@ def unavailable_exact_statistics(document, plan):
     """
     if not document.get("statistics", {}).get("enabled", False):
         return []
-    status = statistics_source_status(plan)
-    return [
+    status = statistics_source_status(plan, inventory)
+    from ..pipeline.persisted_inputs import unavailable_saved_statistics
+    return sorted(set(unavailable_saved_statistics(document, inventory)) | {
         family for family, info in status.items()
         if info["status"] == "unavailable"
         and statistics_family_mode(document, family) == "exact"
-    ]
+    })
 
 
 def statistics_family_mode(document, family):

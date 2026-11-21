@@ -149,6 +149,27 @@ def record_generated_figures(cfg, root, system_repouts, before):
     atomic_json(dest,records)
 
 
+def residue_response_status(cfg, root):
+    """Keep previously rendered exploratory regions tied to effective settings."""
+    import json
+    from ..config import residue_response_settings
+    settings = residue_response_settings(cfg)
+    if (not settings["enabled"] or settings["profiles"] == [] or settings["chains"] == []):
+        return "disabled"
+    path = Path(root) / "project_summary/statistics/profiles/residue_response_manifest.json"
+    if not path.exists():
+        return "legacy_unverified"
+    try:
+        record = json.loads(path.read_text())
+        if not isinstance(record, dict):
+            return "invalid_manifest"
+        if record.get("status") != "complete":
+            return "incomplete"
+        return "valid" if record.get("settings") == settings else "stale_configuration"
+    except (OSError, ValueError, TypeError):
+        return "invalid_manifest"
+
+
 def figure_status(path, cfg, root, system_repouts, records=None):
     import json
     from PIL import Image
@@ -156,6 +177,10 @@ def figure_status(path, cfg, root, system_repouts, records=None):
     from .plot_ids import id_from_figure_path
     root, path = Path(root), Path(path)
     family = figure_family(path)
+    if path.parent.name == "residue_response" and "profiles" in path.parts:
+        status = residue_response_status(cfg, root)
+        if status not in {"valid", "legacy_unverified"}:
+            return status
     # Old SDC4 diagnostics lived beside each replica's Parquet files.
     # The current figure renderer writes condition-level PNGs instead. Do not
     # advertise stale legacy PNGs as active, and never delete user artifacts.
