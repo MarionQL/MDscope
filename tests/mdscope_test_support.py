@@ -110,11 +110,13 @@ def solvation_universe():
     return u
 
 
-def invoke_cli(tmp_path: Path, *args: str, stdin: str | None = None, ok: bool = True):
+def invoke_cli(tmp_path: Path, *args: str, stdin: str | None = None, ok: bool = True,
+               env: dict[str, str] | None = None):
     command = ["mdscope", *map(str, args)]
     result = subprocess.run(
         command, input=stdin, text=True, capture_output=True,
         cwd=tmp_path, timeout=150, check=False,
+        env=None if env is None else {**os.environ, **env},
     )
     if ok:
         assert result.returncode == 0, (
