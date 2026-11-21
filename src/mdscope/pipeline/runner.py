@@ -8,7 +8,6 @@ from __future__ import annotations
 import glob
 import json
 import shutil
-from zipfile import BadZipFile, ZipFile
 from time import perf_counter
 from pathlib import Path
 
@@ -37,6 +36,13 @@ from ..observables.membrane_order import membrane_order_timeseries, run_membrane
 from ..observables.residue_membrane_distance import run_residue_membrane_distance
 from ..observables.structure_profiles import postprocess_structure_profiles, run_structure_profiles
 from ..statistics import analyze_project
+from .persisted_inputs import (
+    check_artifact as _check_artifact,
+    validate_analysis_output as _validate_analysis_output,
+    replicate_state_prefix as _replicate_state_prefix,
+    validate_replica_products as _validate_replica_products,
+    inspect_results_directory, configuration_with_saved_sources,
+)
 from .progress import stage_progress
 from .streaming import run_streaming_pass, validate_stream_inventory, complete_membrane_density
 from ..observables.density_1d import missing_membrane_density_runs
@@ -46,7 +52,7 @@ from .fused_distance import enabled_names as distance_enabled_names, run_fused_d
 from .fused_all import run_fused_only
 from ..mechanisms.sdc4_mechanisms import enabled as sdc4_enabled, run_sdc4_mechanisms, complete_residue_occlusion
 from ..mechanisms.residue_occlusion import (
-    OCCLUSION_FILE, IDENTITY_COLUMNS, FRACTION_COLUMNS, WATER_COLUMNS, residue_environment_pending,
+    OCCLUSION_FILE, residue_environment_pending,
 )
 from ..mechanisms.shared_states import fit_shared_states
 from ..mechanisms.hs_hydration import temporal_hs_hydration_profiles
@@ -55,94 +61,6 @@ from .replica_tasks import specialized_tasks, additional_time_series
 from ..observables.lipid_enrichment import footprint_pending, summarize_lipid_composition
 from ..observables.msd import summarize_diffusion, summarize_project_diffusion, summarize_project_multi_origin
 from ..observables.multi_origin_pipeline import run_multi_origin_diffusion
-
-
-def _check_artifact(path: Path) -> int:
-    """Check a required product using its metadata only."""
-    size = path.stat().st_size
-    if not path.is_file() or not size:
-        raise ValueError(f"Missing or empty artifact: {path}")
-    if path.suffix == ".parquet":
-        from pyarrow.parquet import read_metadata
-        read_metadata(path)
-    elif path.suffix == ".npy":
-        np.load(path, allow_pickle=False, mmap_mode="r")
-    elif path.suffix == ".npz":
-        # ZIP CRC verification streams payload blocks instead of loading a
-        # potentially large order-profile array into RAM.
-        with ZipFile(path) as archive:
-            if not archive.namelist() or archive.testzip() is not None:
-                raise ValueError(f"Invalid NPZ payload: {path}")
-    elif path.suffix == ".json":
-        if not isinstance(json.loads(path.read_text()), dict):
-            raise ValueError(f"Expected a JSON object: {path}")
-    return size
-
-
-def _validate_analysis_output(entry, cfg, *, allow_missing_occlusion=False):
-    """Check enabled primary/companion products before reuse or finalization."""
-    try:
-        occlusion = entry.path.parent / OCCLUSION_FILE
-        spec = cfg["analyses"].get(entry.name, {})
-        may_add_occlusion = (
-            entry.name == "sdc4_mechanisms" and spec.get("residue_occlusion")
-            and allow_missing_occlusion and residue_environment_pending(occlusion, spec)
-        )
-        for path in required_artifacts(entry, cfg):
-            if may_add_occlusion and path == occlusion:
-                continue
-            _check_artifact(path)
-        if entry.path.suffix == ".parquet":
-            from pyarrow.parquet import read_schema
-            columns = set(read_schema(entry.path).names)
-            expected = {
-                "solvation": {"frame", "time_ps", "target_id", "n_solvent"},
-                "dssp": {"time_ps", "topology_residue_index", "dssp"},
-                "sasa": {"time_ps", "topology_residue_index", "sasa_nm2"},
-                "hydrogen_bonds": {"time_ps", "donor", "acceptor"},
-                "lipid_hydrogen_bonds": {"time_ps", "donor", "acceptor"},
-            }.get(entry.name, {"time_ps"})
-            if not expected <= columns:
-                raise ValueError(f"{entry.path}: missing columns {sorted(expected - columns)}")
-        if entry.name == "membrane_order":
-            index = pd.read_parquet(entry.path.parent / "profile_index.parquet")
-            for filename in index["file"]:
-                path = entry.path.parent / str(filename)
-                if path.parent != entry.path.parent:
-                    raise ValueError(f"Invalid profile filename: {filename}")
-                _check_artifact(path)
-                with np.load(path, allow_pickle=False) as profile:
-                    if not {"time_ps", "values", "positions", "labels"} <= set(profile.files):
-                        raise ValueError(f"{path}: missing order-profile arrays")
-        if entry.name == "sdc4_mechanisms":
-            if not may_add_occlusion and cfg["analyses"]["sdc4_mechanisms"].get("residue_occlusion"):
-                columns = set(read_schema(occlusion).names)
-                required = {*IDENTITY_COLUMNS, *FRACTION_COLUMNS}
-                if spec.get("residue_water_cutoff_A") is not None:
-                    required.update(WATER_COLUMNS)
-                if not required <= columns:
-                    raise ValueError(f"{occlusion}: missing residue occlusion columns")
-            path = entry.path.parent / "lipid_density_maps.npz"
-            with np.load(path, allow_pickle=False) as maps:
-                expected = {"counts", "density_per_nm2", "enrichment_fold",
-                            "bulk_density_per_nm2", "species", "leaflet",
-                            "x_edges_A", "y_edges_A", "nframes"}
-                if not expected <= set(maps.files):
-                    raise ValueError(f"{path}: missing density-map arrays")
-        if entry.name == "residue_membrane_distance":
-            directory = entry.path.parent
-            matrix = np.load(entry.path, allow_pickle=False, mmap_mode="r")
-            times = np.load(directory / "time_ps.npy", allow_pickle=False)
-            from pyarrow.parquet import read_metadata
-            residues = read_metadata(directory / "residues.parquet").num_rows
-            if (matrix.ndim != 2 or times.ndim != 1 or matrix.shape != (len(times), residues)
-                    or not len(times) or not np.isfinite(times).all() or np.any(np.diff(times) <= 0)):
-                raise ValueError(f"{directory}: distance matrix/time/residue shape or time-axis mismatch")
-    except (OSError, ValueError, KeyError, EOFError, TypeError, IndexError, BadZipFile) as exc:
-        raise RuntimeError(
-            f"invalid required {entry.name} artifact: {exc}. Existing outputs were preserved; "
-            "restore the required product or recompute in a separate output directory."
-        ) from exc
 
 
 class RunState:
@@ -307,15 +225,6 @@ def summarize_replicate(repout: Path, cfg: dict):
         atomic_parquet(path, grouped)
         written.append(path)
     return tuple(written)
-
-
-def _replicate_state_prefix(rep) -> str:
-    # Keep the historical replica marker filename. It encodes identity only.
-    identity_hash = config_hash({
-        "system": rep.system,
-        "replicate": rep.label,
-    })
-    return f"rep-{identity_hash}"
 
 
 def run_replicate(rep, cfg: dict, root: Path, state: RunState):
@@ -533,172 +442,6 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
             print(f"TIMING {rep.system}/{rep.label} {item['stage']}: {item['seconds']:.3f} s", flush=True)
 
 
-def _validate_replica_products(cfg, root, replicates):
-    # Finalization consumes persisted replica products, not the trajectory.
-    # A changed reporting configuration or source revision must not force
-    # expensive completed trajectories to be rerun. Validate the actual
-    # required input using its persisted structure.
-    missing = []
-    verbose = cfg.get("progress", {}).get("enabled", True)
-    for index, rep in enumerate(replicates, 1):
-        if verbose:
-            print(f"Validating replica {index}/{len(replicates)} {rep.system}/{rep.label}", flush=True)
-        repout = root / rep.system / rep.label
-        timeseries = repout / "summary" / "timeseries.parquet"
-        if not timeseries.is_file():
-            missing.append(
-                f"{rep.system}/{rep.label}: missing {timeseries}; "
-                "finish the replica before offline statistics or plotting"
-            )
-            continue
-        try:
-            times = pd.read_parquet(timeseries, columns=["time_ps"])["time_ps"]
-            if (times.empty or not np.isfinite(times.to_numpy(dtype=float)).all()
-                    or not times.is_monotonic_increasing or not times.is_unique):
-                missing.append(
-                    f"{rep.system}/{rep.label}: invalid time_ps in {timeseries} "
-                    "(empty, nonfinite, duplicated or nonmonotonic); "
-                    "inspect or regenerate the affected replica summary"
-                )
-                continue
-            for entry in analysis_output_plan(cfg, repout):
-                _validate_analysis_output(entry, cfg)
-                if entry.name == "lipid_enrichment" and footprint_pending(
-                    entry.path, cfg["analyses"]["lipid_enrichment"]
-                ):
-                    raise ValueError("lipid footprint settings changed; run MDscope with this config")
-            temporal_hs_hydration_profiles(repout, cfg, times.to_numpy(float))
-            if missing_membrane_density_runs(repout, cfg):
-                raise ValueError("missing membrane-relative density; run MDscope with this config")
-            msd = cfg.get("analyses", {}).get("membrane", {}).get("msd", {})
-            if msd.get("enabled") and msd.get("multi_origin"):
-                for name in ("multi_origin_diffusion.parquet", "multi_origin_msd.parquet"):
-                    _check_artifact(repout / "summary" / name)
-            checkpoint = repout / "cache" / "stream_checkpoint.npz"
-            if checkpoint.is_file():
-                with np.load(checkpoint, allow_pickle=False) as cp:
-                    if "replicate_identity" in cp and not np.array_equal(
-                            cp["replicate_identity"], [rep.system, rep.label]):
-                        raise ValueError("checkpoint replicate identity mismatch")
-                    if "processed" in cp:
-                        count = cp["processed"]
-                        if count.shape != () or count.dtype.kind not in "iu" or len(times) != int(count):
-                            raise ValueError("summary frame count disagrees with checkpoint")
-        except (OSError, ValueError, KeyError, ImportError, EOFError, TypeError, IndexError, BadZipFile, RuntimeError) as exc:
-            missing.append(
-                f"{rep.system}/{rep.label}: invalid persisted inputs under {repout} "
-                f"({exc}); inspect the affected saved artifact before retrying"
-            )
-    if missing:
-        raise RuntimeError(
-            "Cannot finalize: required persisted replica data are missing or invalid. "
-            "Existing outputs were not replaced. "
-            + "; ".join(missing)
-        )
-
-
-def _verified_saved_configuration(current, saved, system, replica, analysis):
-    """Compare source identity and analysis settings, not reporting options."""
-    for key in ("sampling", "selections", "alignment", "cache"):
-        if current.get(key) != saved.get(key):
-            return False, key + " configuration differs"
-    if current["systems"][system].get("topology") != saved["systems"][system].get("topology"):
-        return False, "topology source differs"
-    def by_label(cfg):
-        return {str(item.get("label", f"rep{i}")): item
-                for i, item in enumerate(cfg["systems"][system]["replicates"], 1)}
-    if replica not in by_label(saved) or by_label(current)[replica] != by_label(saved)[replica]:
-        return False, "replicate input identity differs"
-    if (current["analyses"].get(analysis, {}).get("enabled") and
-            current["analyses"].get(analysis) != saved["analyses"].get(analysis)):
-        return False, "analysis settings differ"
-    return True, ""
-
-
-def inspect_results_directory(document, base, results_directory):
-    """Read-only inventory of registered per-replica analysis artifacts.
-
-    Complete registered file sets are *candidates*, not validated scientific
-    results: provenance, schemas, checkpoint state and unregistered products
-    require further verification before reuse.
-    """
-    from ..config import iter_replicates, resolve_config
-    from ..registry import analysis_output_plan, required_artifacts
-
-    root = Path(results_directory).expanduser()
-    if not root.is_absolute():
-        root = Path(base) / root
-    root = root.resolve()
-    if not root.is_dir():
-        raise ValueError(f"Results directory does not exist: {root}")
-    cfg = resolve_config(document, base=Path(base))
-    saved = None
-    saved_config = root / "resolved_config.yaml"
-    if saved_config.is_file():
-        import yaml
-        try:
-            saved = resolve_config(yaml.safe_load(saved_config.read_text()), base=Path(base))
-        except (OSError, ValueError, TypeError, KeyError, yaml.YAMLError):
-            saved = None
-    inventory = []
-    for replica in iter_replicates(cfg, Path(base) / "analysis.yaml"):
-        replica_root = root / replica.system / replica.label
-        current_entries = list(analysis_output_plan(cfg, replica_root))
-        saved_entries = []
-        if saved is not None:
-            try:
-                saved_entries = list(analysis_output_plan(saved, replica_root))
-            except (KeyError, ValueError, TypeError):
-                pass
-        entries = {entry.checkpoint_key: (entry, cfg) for entry in current_entries}
-        for entry in saved_entries:
-            entries.setdefault(entry.checkpoint_key, (entry, saved))
-        for entry, source_cfg in entries.values():
-            required = required_artifacts(entry, source_cfg)
-            present = [path for path in required
-                       if path.is_file() and path.stat().st_size > 0]
-            verified = False
-            reason = "Missing or unreadable saved resolved configuration"
-            if saved is not None:
-                try:
-                    compatible, reason = _verified_saved_configuration(
-                        cfg, saved, replica.system, replica.label, entry.name)
-                    if compatible and len(present) == len(required):
-                        import json
-                        key = (_replicate_state_prefix(replica) + "-" +
-                               entry.checkpoint_key)
-                        marker = root / ".state" / f"{key}.json"
-                        try:
-                            completed = json.loads(marker.read_text()).get("status") == "complete"
-                        except (OSError, ValueError, AttributeError):
-                            completed = False
-                        if not completed:
-                            reason = "No completed analysis stage marker"
-                        else:
-                            _validate_analysis_output(entry, source_cfg)
-                            _check_artifact(replica_root / "summary" / "timeseries.parquet")
-                            verified = True
-                            reason = "Validated stage marker, saved configuration, summary and registered artifacts"
-                except (RuntimeError, OSError, ValueError, KeyError, TypeError) as exc:
-                    reason = str(exc)
-            inventory.append({
-                "reason": reason,
-                "scheduled": entry.checkpoint_key in {item.checkpoint_key for item in current_entries},
-                "analysis": entry.name,
-                "run_id": entry.run_id or "default",
-                "condition": replica.system,
-                "replica": replica.label,
-                "present": len(present),
-                "required": len(required),
-                "status": ("verified_existing" if verified else
-                           "incompatible" if len(present) == len(required) else
-                           "partial" if present else "missing"),
-                "missing": [str(path.relative_to(root)) for path in required
-                            if path not in present],
-            })
-    return inventory
-
-
 def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, phase="statistics", *, results_dir=None):
     if phase not in {"statistics", "plotting"}:
         raise ValueError(f"Unknown finalization phase: {phase}")
@@ -741,13 +484,13 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
             raise RuntimeError(
                 "Existing results are not verified for every scheduled analysis/run/"
                 "condition/replica; refusing downstream finalization: " +
-                "; ".join("/".join(map(str, row)) for row in invalid[:20]))
+                "; ".join("/".join(map(str, row)) +
+                          (": " + by_key[row[:4]].get("reason", "") if row[:4] in by_key else "")
+                          for row in invalid[:20]))
+        cfg = configuration_with_saved_sources(cfg, inventory)
+    initialize_after_validation = root is None and phase == "statistics"
     if root is None:
-        if phase == "plotting":
-            root = project_root(cfg, config_path)
-        else:
-            with stage_progress("Statistics project initialization", enabled=verbose):
-                root, _ = initialize(config_path, cfg)
+        root = project_root(cfg, config_path)
     replicates = list(iter_replicates(cfg, config_path))
     if phase == "statistics":
         with stage_progress("Statistics replica validation", enabled=verbose):
@@ -800,6 +543,9 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
             # Even descriptive figures must not read incomplete, stale or
             # corrupted per-replica products.
             _validate_replica_products(cfg, root, replicates)
+    if initialize_after_validation:
+        with stage_progress("Statistics project initialization", enabled=verbose):
+            root, _ = initialize(config_path, cfg)
     project_summary = root / "project_summary"
     if phase != "plotting" and project_summary.exists():
         archived=_archive_previous_output(project_summary,root/".archives"/"project_summary","previous")

@@ -455,7 +455,20 @@ def build_plan(cfg: dict, config_path: str | Path, *,
     if analyses["dssp"].get("enabled") and analyses["dssp"].get("backend") == "parallel":
         additional_passes.append("parallel_dssp")
 
+    from .config import residue_response_settings
+    response = residue_response_settings(cfg)
+    response_status = ("disabled_statistics" if not cfg["statistics"].get("enabled", True)
+                       or statistics_family_config(cfg, "profiles") is None
+                       else "disabled" if not response["enabled"]
+                       else "empty_selection" if response["profiles"] == [] or response["chains"] == []
+                       else "conditional_saved_profile_contrasts")
     return {
+        "residue_response": {
+            "settings": response, "status": response_status,
+            "exploratory": True, "trajectory_reads": False,
+            "requires": ["replicate_profiles.parquet", "system_comparisons.parquet"],
+            "manifest": "project_summary/statistics/profiles/residue_response_manifest.json",
+        },
         "schema_version": 1,
         "validation": {
             "mode": validation_mode,

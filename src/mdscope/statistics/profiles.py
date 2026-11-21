@@ -525,17 +525,10 @@ def analyze_profiles(
             )
         atomic_parquet(outdir / "system_comparisons.parquet", comp)
 
-        # Cross-metric regions are descriptive groupings of existing contrasts.
-        # No additional XTC read or post-selection confidence interval.
-        if rep_points:
-            from .residue_response import residue_response_screen
-            matrix, regions = residue_response_screen(
-                pd.DataFrame(rep_points), comp,
-                {system: [repout.name for repout in repouts]
-                 for system, repouts in system_repouts.items()},
-            )
-            if not matrix.empty:
-                atomic_parquet(outdir / "residue_response_matrix.parquet", matrix)
-                atomic_parquet(outdir / "residue_response_regions.parquet", regions)
-
-
+    # This derived stage has its own YAML controls; primary inference is unchanged.
+    from .residue_response import write_residue_response
+    write_residue_response(
+        pd.DataFrame(rep_points), comp,
+        {system: [repout.name for repout in repouts]
+         for system, repouts in system_repouts.items()}, outdir, cfg,
+    )
