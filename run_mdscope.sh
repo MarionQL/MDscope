@@ -9,6 +9,8 @@
 #SBATCH --array=0-5
 #SBATCH --output=slurm-out/mdscope/%x-%A_%a.out
 #SBATCH --error=slurm-out/mdscope/%x-%A_%a.err
+# ARC defaults above suit the six-replica synd4_full_mechanisms.yaml; override
+# them on the sbatch command line (docs/workflows.md#slurm-jobs).
 
 set -euo pipefail
 
@@ -27,23 +29,31 @@ if [[ ! -f "${YAML}" ]]; then
     exit 2
 fi
 
-# Activate the environment containing MDscope and its dependencies.
-source /apps/common/software/Miniconda3/24.7.1-0/etc/profile.d/conda.sh
-conda activate mdanalysis
 export PYTHONUNBUFFERED=1
 export MDSCOPE_PROGRESS_EVERY_PERCENT="${MDSCOPE_PROGRESS_EVERY_PERCENT:-1}"
 # Enable lightweight trajectory/analysis timing during SLURM runs by default.
 export MDSCOPE_PROFILE="${MDSCOPE_PROFILE:-1}"
-python -m pip install --no-deps -e "${ROOT}"
+# shellcheck source=scripts/slurm_job_env.sh
+source "${ROOT}/scripts/slurm_job_env.sh"
+mdscope_activate_env
+mdscope_preflight
 
-python - <<'PY'
-import mdscope.cli as cli
-import mdscope.pipeline.progress as progress
-print(f"MDscope CLI source: {cli.__file__}", flush=True)
-print(f"Progress reporter source: {progress.__file__}", flush=True)
-PY
-if git -C "${ROOT}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    echo "MDscope commit: $(git -C "${ROOT}" rev-parse --short HEAD)"
+# One task per YAML replicate, indexed 0..N-1 in `mdscope plan` order. Every
+# task checks the whole submitted array before reading any trajectory.
+if ! n_replicates="$(python -m mdscope.cli plan "${YAML}" --format json \
+        | python -c 'import json, sys; print(len(json.load(sys.stdin)["replicates"]))')"; then
+    echo "ERROR: could not derive the replicate count from: mdscope plan ${YAML}" >&2
+    exit 2
+fi
+expected="0-$((n_replicates - 1))"
+if [[ "${SLURM_ARRAY_TASK_COUNT:-}" != "${n_replicates}" \
+      || "${SLURM_ARRAY_TASK_MIN:-}" != 0 \
+      || "${SLURM_ARRAY_TASK_MAX:-}" != "$((n_replicates - 1))" ]]; then
+    echo "ERROR: Slurm array ${SLURM_ARRAY_TASK_MIN:-?}-${SLURM_ARRAY_TASK_MAX:-?}" \
+         "(${SLURM_ARRAY_TASK_COUNT:-?} tasks) does not match the ${n_replicates}" \
+         "replicates in ${YAML}; expected --array=${expected}." >&2
+    echo "Resubmit: sbatch --array=${expected} run_mdscope.sh ${YAML}" >&2
+    exit 2
 fi
 
 echo "============================================================"
