@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import math
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -105,7 +107,42 @@ def _examples(findings):
     return examples.drop_duplicates("example_group").head(8).index
 
 
-def _markdown(coverage, findings, inventory):
+def _design_resolution(manifest):
+    """Minimum attainable exact two-sided p, or a conservative draw-resolution note."""
+    counts = Counter()
+    for entry in manifest.get("replicate_paths", []):
+        parts = Path(entry).parts
+        if len(parts) == 2 and ".." not in parts:
+            counts[parts[0]] += 1
+    methods = manifest.get("methods", {})
+    tests = methods.get("hypothesis_tests", {}) or {}
+    design = tests.get("design", "independent")
+    limit = int(tests.get("exact_max_assignments", 100000))
+    draws = int(tests.get("permutation_draws", 10000))
+    def floor(left, right):
+        na, nb = counts[left], counts[right]
+        if not na or not nb:
+            return float("nan"), "unknown"
+        if design == "paired":
+            # Pair identities are required: count matched labels, not the smaller size.
+            paths = {system: {Path(s).parts[1] for s in manifest.get("replicate_paths", [])
+                              if len(Path(s).parts) == 2 and Path(s).parts[0] == system}
+                     for system in (left, right)}
+            n = len(paths[left] & paths[right])
+            assignments = 2 ** n
+            minimum = 2 / assignments if n else float("nan")
+        else:
+            assignments = math.comb(na + nb, na)
+            minimum = 2 / assignments
+        if assignments > limit:
+            # Monte Carlo's +1 correction has resolution 1/(draws+1);
+            # this is NOT a guaranteed attainable exact p-value.
+            return 1 / (draws + 1), "monte_carlo_resolution"
+        return minimum, "exact"
+    return counts, floor
+
+
+def _markdown(coverage, findings, inventory, *, design=None, alpha=.05):
     lines = [
         "# MDscope findings", "",
         "Findings have finite bootstrap intervals entirely above or below zero.",
@@ -115,6 +152,20 @@ def _markdown(coverage, findings, inventory):
         "| Family | CI excludes zero | CI includes zero | Unavailable or disabled |",
         "| --- | ---: | ---: | ---: |",
     ]
+    if design is not None:
+        _, floor = design
+        comparisons = sorted(set(zip(coverage.system_1.dropna(), coverage.system_2.dropna())))
+        warnings = []
+        for left, right in comparisons:
+            value, method = floor(left, right)
+            if method == "exact" and np.isfinite(value) and value > alpha:
+                warnings.append(
+                    f"{left} vs {right}: smallest attainable exact two-sided p = {value:.4g} "
+                    f"(alpha = {alpha:.4g})."
+                )
+        if warnings:
+            lines[5:5] = ["**Design limitation:** " + " ".join(warnings),
+                          "Pointwise bootstrap exclusions do not imply BH-adjusted significance.", ""]
     for family, rows in coverage.groupby("family", sort=True):
         supported = int(findings.family.eq(family).sum())
         overlapping = int(rows.status.eq("includes_zero").sum())
@@ -129,15 +180,17 @@ def _markdown(coverage, findings, inventory):
         lines.extend([
             "", f"## {_cell(right)} minus {_cell(left)} — {_cell(family)}", "",
             f"{len(rows)} interval exclusions. Representative rows are ordered by separation from zero relative to interval size.",
-            "", "| Observable | Estimator | Difference | Bootstrap interval | q |",
-            "| --- | --- | ---: | --- | ---: |",
+            "", "| Observable | Estimator | Replicates | Min p | Difference | Bootstrap interval | q |",
+            "| --- | --- | --- | ---: | ---: | --- | ---: |",
         ])
         for row in rows.loc[_examples(rows)].itertuples(index=False):
             identity = ", ".join(f"{key}={value}" for key, value in json.loads(row.observable).items() if value != "")
             q = f"{row.q_value:.3g}" if pd.notna(row.q_value) else "—"
             level = f"{row.ci_level:.0%} " if pd.notna(row.ci_level) else ""
+            rep_count = f"{row.n_replicates_system_1} vs {row.n_replicates_system_2}"
+            minimum = f"{row.min_attainable_p:.4g}" if pd.notna(row.min_attainable_p) else "—"
             lines.append(
-                f"| {_cell(identity)} | {_cell(row.estimator)} | {getattr(row, _DIFFERENCE):.5g} | "
+                f"| {_cell(identity)} | {_cell(row.estimator)} | {rep_count} | {minimum} | {getattr(row, _DIFFERENCE):.5g} | "
                 f"{level}[{row.ci_low:.5g}, {row.ci_high:.5g}] | {q} |"
             )
     lines.extend([
@@ -194,9 +247,24 @@ def generate_report(statistics_dir: Path) -> Path:
     findings = coverage.loc[supported].sort_values(
         ["family", "system_1", "system_2", "observable", "estimator"], ignore_index=True,
     )
+    counts, floor = _design_resolution(manifest)
+    for table in (coverage, findings):
+        table["n_replicates_system_1"] = table.system_1.map(counts).fillna(0).astype(int)
+        table["n_replicates_system_2"] = table.system_2.map(counts).fillna(0).astype(int)
+        table["min_attainable_p"] = [
+            floor(left, right)[0] if isinstance(left, str) and isinstance(right, str)
+            else float("nan")
+            for left, right in zip(table.system_1, table.system_2)
+        ]
+        table["p_resolution_kind"] = [
+            floor(left, right)[1] if isinstance(left, str) and isinstance(right, str)
+            else "unknown"
+            for left, right in zip(table.system_1, table.system_2)
+        ]
     sources = set(coverage.loc[coverage.observable.notna(), "source_table"])
     inventory = _inventory(statistics_dir, manifest, sources)
-    markdown = _markdown(coverage, findings, inventory)
+    alpha = manifest.get("methods", {}).get("hypothesis_tests", {}).get("alpha", .05)
+    markdown = _markdown(coverage, findings, inventory, design=(counts, floor), alpha=float(alpha))
     atomic_parquet(statistics_dir / "findings.parquet", findings)
     atomic_parquet(statistics_dir / "output_inventory.parquet", inventory)
     report = statistics_dir / "findings.md"

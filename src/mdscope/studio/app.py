@@ -355,11 +355,17 @@ def main():
     </div>
     """
     logo_file = Path(__file__).parent / "assets" / "MM+Lab+Logo.png"
-    encoded = base64.b64encode(logo_file.read_bytes()).decode("ascii")
-    logo_markup = (
-        '<img class="mdscope-mark" alt="Brown Lab logo" '
-        f'src="data:image/png;base64,{encoded}">'
-    )
+    logo_markup = ""
+    if logo_file.is_file():
+        try:
+            encoded = base64.b64encode(logo_file.read_bytes()).decode("ascii")
+        except OSError:
+            pass  # The heading stays usable if an installed asset is unreadable.
+        else:
+            logo_markup = (
+                '<img class="mdscope-mark" alt="Brown Lab logo" '
+                f'src="data:image/png;base64,{encoded}">'
+            )
     st.markdown(header_html.replace("__MDSCOPE_LOGO__", logo_markup), unsafe_allow_html=True)
     st.info("Use Studio to set up your systems, choose analyses, configure statistics and figures, and export a validated YAML configuration. To process trajectories, run MDscope separately using the exported file.")
     state = st.session_state
