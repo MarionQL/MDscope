@@ -185,30 +185,28 @@ def _source(name: str, cfg: dict) -> str:
 
 
 def _inference_design(cfg, reps):
-    """Schema-only exact permutation resolution based on configured replicate labels."""
-    import math
+    """Schema-only permutation resolution based on configured replicate labels."""
     from collections import Counter
+    from .permutation_resolution import permutation_floor
     counts = Counter(rep.system for rep in reps)
     labels = {}
     for rep in reps:
         labels.setdefault(rep.system, set()).add(rep.label)
-    tests = cfg.get("statistics", {}).get("hypothesis_tests", {})
+    tests = cfg.get("statistics", {}).get("hypothesis_tests", {}) or {}
     design = tests.get("design", "independent")
-    exact_limit = int(tests.get("exact_max_assignments", 100000))
-    draws = int(tests.get("permutation_draws", 10000))
     pairs = []
     for index, left in enumerate(counts):
         for right in list(counts)[index + 1:]:
             n = len(labels[left] & labels[right]) if design == "paired" else None
-            total = 2 ** n if design == "paired" else math.comb(counts[left] + counts[right], counts[left])
+            value, kind = permutation_floor(counts[left], counts[right], n_matched=n, tests=tests)
             pairs.append({
                 "system_1": left, "system_2": right,
                 "n_replicates_system_1": counts[left],
                 "n_replicates_system_2": counts[right],
                 "n_matched_pairs": n,
-                "resolution_kind": "exact" if total <= exact_limit else "monte_carlo",
-                "min_attainable_p": (2 / total if total <= exact_limit else None),
-                "monte_carlo_resolution": (None if total <= exact_limit else 1 / (draws + 1)),
+                "resolution_kind": "monte_carlo" if kind == "monte_carlo_resolution" else kind,
+                "min_attainable_p": value if kind == "exact" else None,
+                "monte_carlo_resolution": value if kind == "monte_carlo_resolution" else None,
             })
     return {"design": design, "comparisons": pairs}
 

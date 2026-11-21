@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import math
 from collections import Counter
 from pathlib import Path
 
@@ -11,6 +10,7 @@ import pandas as pd
 from pyarrow.parquet import read_metadata
 
 from ..core.persistence import atomic_parquet, atomic_text
+from ..permutation_resolution import permutation_floor
 from ..statistics.coverage import COLUMNS, SOURCES, _identity, _interval_status
 
 
@@ -107,16 +107,17 @@ def _examples(findings):
     return examples.drop_duplicates("example_group").head(8).index
 
 
-def _replicate_support(statistics_dir):
+def _replicate_support(statistics_dir, family_disabled):
     """Count saved independent replicate identities for each observable.
 
     The manifest lists scheduled inputs; only per-replicate statistics rows
     establish that a particular observable has data in a particular replica.
+    Tables of families the manifest disables are stale and are not read.
     """
     support = {}
     for family, folder, replica_file, _, keys, _ in SOURCES:
         path = statistics_dir / folder / f"{replica_file}.parquet"
-        if not path.is_file():
+        if family_disabled(family) or not path.is_file():
             continue
         columns = ["system", "replicate", *keys]
         try:
@@ -131,27 +132,18 @@ def _replicate_support(statistics_dir):
     # Matched time-series data may reuse the saved ordinary time-series
     # replicate table; do not assign counts from other metric families.
     for (family, observable, system), labels in tuple(support.items()):
-        if family == "time_series":
+        if family == "time_series" and not family_disabled("matched_time_series"):
             support["matched_time_series", observable, system] = labels
     return support
 
 
 def _support_floor(left_labels, right_labels, methods):
     """Resolution for the available replica identities of one observable."""
-    tests = methods.get("hypothesis_tests", {}) or {}
-    design = tests.get("design", "independent")
     if left_labels is None or right_labels is None:
         return float("nan"), "unknown"
-    a, b = len(left_labels), len(right_labels)
-    if not a or not b:
-        return float("nan"), "unknown"
-    total = (2 ** len(left_labels & right_labels) if design == "paired"
-             else math.comb(a + b, a))
-    if total < 2:
-        return float("nan"), "unknown"
-    if total <= int(tests.get("exact_max_assignments", 100000)):
-        return 2 / total, "exact"
-    return 1 / (int(tests.get("permutation_draws", 10000)) + 1), "monte_carlo_resolution"
+    return permutation_floor(len(left_labels), len(right_labels),
+                             n_matched=len(left_labels & right_labels),
+                             tests=methods.get("hypothesis_tests", {}))
 
 
 def _design_resolution(manifest):
@@ -161,31 +153,16 @@ def _design_resolution(manifest):
         parts = Path(entry).parts
         if len(parts) == 2 and ".." not in parts:
             counts[parts[0]] += 1
-    methods = manifest.get("methods", {})
-    tests = methods.get("hypothesis_tests", {}) or {}
-    design = tests.get("design", "independent")
-    limit = int(tests.get("exact_max_assignments", 100000))
-    draws = int(tests.get("permutation_draws", 10000))
+    labels = {}
+    for entry in manifest.get("replicate_paths", []):
+        parts = Path(entry).parts
+        if len(parts) == 2 and ".." not in parts:
+            labels.setdefault(parts[0], set()).add(parts[1])
+    tests = manifest.get("methods", {}).get("hypothesis_tests", {})
     def floor(left, right):
-        na, nb = counts[left], counts[right]
-        if not na or not nb:
-            return float("nan"), "unknown"
-        if design == "paired":
-            # Pair identities are required: count matched labels, not the smaller size.
-            paths = {system: {Path(s).parts[1] for s in manifest.get("replicate_paths", [])
-                              if len(Path(s).parts) == 2 and Path(s).parts[0] == system}
-                     for system in (left, right)}
-            n = len(paths[left] & paths[right])
-            assignments = 2 ** n
-            minimum = 2 / assignments if n else float("nan")
-        else:
-            assignments = math.comb(na + nb, na)
-            minimum = 2 / assignments
-        if assignments > limit:
-            # Monte Carlo's +1 correction has resolution 1/(draws+1);
-            # this is NOT a guaranteed attainable exact p-value.
-            return 1 / (draws + 1), "monte_carlo_resolution"
-        return minimum, "exact"
+        # Pair identities are required: count matched labels, not the smaller size.
+        matched = len(labels.get(left, set()) & labels.get(right, set()))
+        return permutation_floor(counts[left], counts[right], n_matched=matched, tests=tests)
     return counts, floor
 
 
@@ -306,7 +283,7 @@ def generate_report(statistics_dir: Path) -> Path:
         ["family", "system_1", "system_2", "observable", "estimator"], ignore_index=True,
     )
     counts, floor = _design_resolution(manifest)
-    support = _replicate_support(statistics_dir)
+    support = _replicate_support(statistics_dir, facts.family_disabled)
     methods = manifest.get("methods", {})
     for table in (coverage, findings):
         left_sets = [support.get((family, observable, left))

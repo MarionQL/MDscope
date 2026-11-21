@@ -20,7 +20,7 @@ from ..core.persistence import archive_output as _archive_previous_output
 from ..core.validation import validate_selections
 
 from .. import __version__
-from ..errors import ReplicateIndexError
+from ..errors import ConfigError, ReplicateIndexError
 from ..config import (
     analysis_enabled,
     analysis_runs,
@@ -147,7 +147,7 @@ def initialize(config_path: str | Path, cfg: dict):
         except (OSError, yaml.YAMLError) as exc:
             raise RuntimeError(f"Cannot verify saved configuration {resolved}") from exc
         if config_hash(existing) != config_hash(cfg):
-            raise ValueError(
+            raise ConfigError(
                 f"Existing project {root} has config hash {config_hash(existing)}; "
                 f"new run has {config_hash(cfg)}. Use a separate output directory."
             )
