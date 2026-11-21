@@ -274,3 +274,22 @@ Statistics finalization archives previous statistics exports. A changed
 `classes` mapping affects **offline inference and plots**, not the
 per-molecule contact observer. The class grouping is a reporting identity,
 not a pooled interaction cutoff or thermodynamic binding affinity.
+
+
+### SDC4 lipid-region reporting CSVs
+
+Plot-only rerendering reads each replica's saved
+`extensions/sdc4_mechanisms/lipid_region_specificity.parquet` without
+rewriting scientific artifacts under replica directories. The derived display
+summary is published separately at
+`project_summary/reporting_exports/sdc4/<condition>/<replicate>/lipid_region_replicate_summary.csv`.
+It retains the legacy column names, per-replica frame means, non-missing
+observation counts and both legacy and matched-local normalization measures.
+Historical `extensions/sdc4_mechanisms/lipid_region_replicate_summary.csv`
+files are retained untouched for compatibility; rerendering does not update them.
+The reporting CSV is regenerated from saved Parquet rather than treated as a
+primary numerical or inference product.
+
+If a previously reported replica/region has no current `any`-moiety data, its
+old presentation CSV moves to `.archives/project_summary/reporting_exports/`.
+Primary replica files and historical extension CSVs remain untouched.

@@ -268,7 +268,10 @@ def test_corrected_enrichment_figures_and_inventory(tmp_path):
     }).to_parquet(dest / "lipid_region_specificity.parquet")
     paths = {"carb": [tmp_path / "carb/rep1"]}
     plot_sdc4_mechanisms({"analyses": {"sdc4_mechanisms": {"enabled": True}}}, tmp_path, paths)
-    summary = pd.read_csv(dest / "lipid_region_replicate_summary.csv")
+    summary_path = (tmp_path / "project_summary/reporting_exports/sdc4"
+                    / "carb/rep1/lipid_region_replicate_summary.csv")
+    summary = pd.read_csv(summary_path)
+    assert not (dest / "lipid_region_replicate_summary.csv").exists()
     assert summary.mean_matched_local_enrichment.item() == 1.
     assert summary.mean_local_enrichment.item() == 3.
     assert summary.n_matched_enrichment_frames.item() == 1
