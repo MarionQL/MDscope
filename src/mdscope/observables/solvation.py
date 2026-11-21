@@ -113,34 +113,40 @@ def contact_episodes(events, observed_frames):
     return result
 
 
-def _targets(u, spec):
+def _targets(u, spec, *, motifs=None):
     result = []
     seen = set()
     for kind, groups in (spec.get("targets") or {}).items():
         for label, definition in groups.items():
-            motif = definition.get("sequence") if isinstance(definition, dict) else None
-            if motif is not None:
+            reference = definition.get("motif") if isinstance(definition, dict) else None
+            sequence = definition.get("sequence") if isinstance(definition, dict) else None
+            matches = None
+            if reference is not None:
+                from ..core.motifs import resolve_motifs
+                if reference not in (motifs or {}):
+                    raise ValueError(f"solvation target {kind}/{label}: unknown motif {reference!r}")
+                audit = resolve_motifs(u, {reference: motifs[reference]})[reference]
+                matches = {identity: item["resindices"] for identity, item in audit.items()}
+                if not matches:
+                    raise ValueError(f"solvation motif {reference}: no match; unavailable targets cannot be measured as zero")
+            elif sequence is not None:
                 from ..mechanisms.mechanistic_common import sequence_matches
                 import re
-                # Exact protein sequence, not regex: prevent accidental
-                # partial/wildcard matching and verify chain-specific identity.
-                pattern = str(motif).upper()
+                pattern = str(sequence).upper()
                 if not re.fullmatch("[ACDEFGHIKLMNPQRSTVWY]+", pattern):
                     raise ValueError(f"solvation motif {kind}/{label} must be an exact amino-acid sequence")
-                selection = definition.get("selection", "protein and name CA")
-                ca = u.select_atoms(selection)
-                ca = ca.select_atoms("name CA")
+                ca = u.select_atoms(definition.get("selection", "protein and name CA")).select_atoms("name CA")
                 matches = sequence_matches(ca, {label: re.escape(pattern)})
                 if not matches:
                     raise ValueError(f"solvation motif {kind}/{label} sequence {pattern} not found in topology")
+            if matches is not None:
                 for match_id, residues in matches.items():
-                    # Whole heavy-atom sidechains and backbone; not CA-only.
+                    # Whole residues, retaining the configured chemical-site subset.
                     atoms = u.atoms[np.isin(u.atoms.resindices, residues)]
                     atoms = atoms.select_atoms(definition.get("atom_selection", "not name H*"))
                     if not len(atoms):
                         raise ValueError(f"solvation motif {kind}/{label} has no heavy atoms")
-                    overlap = seen.intersection(map(int, atoms.indices))
-                    if overlap:
+                    if seen.intersection(map(int, atoms.indices)):
                         raise ValueError(f"solvation motif {kind}/{label} overlaps another target")
                     seen.update(map(int, atoms.indices))
                     result.append((f"{kind}/{label}/{match_id}", kind, label, atoms))
@@ -267,7 +273,10 @@ class SolvationObserver:
             self.events_on = True
         hs_auto = self.spec.get("hs_auto") or (
             cfg.get("analyses", {}).get("sdc4_mechanisms", {}).get("hs_auto") or {})
-        self.targets = _targets(universe, {**self.spec, "hs_auto": hs_auto})
+        from ..core.motifs import resolve_motifs
+        self.motif_audit = resolve_motifs(universe, cfg.get("selections", {}).get("motifs", {}))
+        self.targets = _targets(universe, {**self.spec, "hs_auto": hs_auto},
+                                motifs=cfg.get("selections", {}).get("motifs", {}))
         self.track_classes = opts.get("track_target_classes")
         if self.track_classes is not None:
             if not isinstance(self.track_classes, (tuple, list)) or not self.track_classes:
@@ -786,6 +795,7 @@ class SolvationObserver:
                                    "bridge_pair_control_summary"), evidence):
                 atomic_parquet(dest / f"{name}.parquet", data)
         atomic_json(dest / "metadata.json", {
+            "motifs": self.motif_audit,
             "preset": self.spec.get("preset", "standard"), "edges_A": self.edges.tolist(),
             "neighbor_method": self.neighbor_method,
             "shell_cutoffs_A": self.shells, "events": self.events_on,

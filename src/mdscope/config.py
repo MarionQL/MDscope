@@ -29,7 +29,7 @@ DEFAULTS = {
         "alignment": "protein and name CA",
         "features": "protein and name CA",
         "ligand": None,
-        "groups": {},
+        "groups": {}, "motifs": {},
     },
     "analyses": {
         "alignment": {"enabled": True, "selection": None},
@@ -149,7 +149,8 @@ DEFAULTS = {
         },
         "potassium_bridge_audit": {"enabled": False},
         "shared_states": {
-            "enabled": False, "features": None,
+            "enabled": False, "features": None, "preset": "sdc4",
+            "feature_sources": {}, "alignment": "exact", "scaling": "standardize",
             "n_states": 3, "seed": 2026, "bootstrap_draws": 300,
             "training_frames_per_replicate": 2000,
             "min_complete_fraction": 0.90, "block_frames": None,
@@ -738,6 +739,8 @@ def validate_config(cfg: dict, base: Path = Path("."), *, check_paths: bool = Tr
     if lipid_hb.get("enabled") and not lipid_hb.get("lipid_selection"):
         raise ValueError("lipid_hydrogen_bonds.lipid_selection is required")
 
+    from .core.motifs import validate_motifs
+    validate_motifs(cfg["selections"].get("motifs", {}))
     solvation = cfg["analyses"].get("solvation", {})
     if solvation.get("enabled"):
         if solvation.get("preset", "standard") not in ("standard", "detailed", "kinetics"):
@@ -753,6 +756,13 @@ def validate_config(cfg: dict, base: Path = Path("."), *, check_paths: bool = Tr
             if not isinstance(groups, dict) or not groups:
                 raise ValueError(f"solvation.targets.{kind} must map labels to sites")
             for label, selection in groups.items():
+                if isinstance(selection, dict) and "motif" in selection:
+                    if (not isinstance(selection["motif"], str)
+                            or selection["motif"] not in cfg["selections"].get("motifs", {})):
+                        raise ValueError(f"solvation target {kind}/{label}: unknown motif reference")
+                    if any(key in selection for key in ("sequence", "selection", "group_by")):
+                        raise ValueError("solvation motif references cannot override sequence, selection or group_by")
+                    continue
                 if isinstance(selection, dict) and "sequence" in selection:
                     import re
                     sequence = selection["sequence"]
@@ -857,9 +867,11 @@ def validate_config(cfg: dict, base: Path = Path("."), *, check_paths: bool = Tr
             raise ValueError("sdc4_mechanisms.local_min_lipids must be >= 8")
         if mechanisms.get("local_order", {}).get("enabled") and not mechanisms["local_order"].get("lipid_selection"):
             raise ValueError("sdc4_mechanisms.local_order.lipid_selection is required")
+    from .state_feature_spec import validate_state_features
     shared = cfg["analyses"].get("shared_states", {})
-    if shared.get("enabled") and not mechanisms.get("enabled"):
-        raise ValueError("shared_states requires sdc4_mechanisms.enabled")
+    validate_state_features(shared)
+    if shared.get("enabled") and shared.get("preset", "sdc4") == "sdc4" and not mechanisms.get("enabled"):
+        raise ValueError("shared_states preset sdc4 requires sdc4_mechanisms.enabled")
     allowed = {"time_series", "profiles", "interactions", "solvation", "sdc4",
                "shared_states", "diffusion", "lipid_enrichment", "lipid_contacts", "other"}
     plots = cfg.get("plots", {})

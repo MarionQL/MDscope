@@ -275,3 +275,13 @@ power-loss transaction.
 and sampling. It uses strict PDF structure/page validation plus the published
 SHA-256 digest; PNG decoding remains separate. PNG-only consumers may request
 `formats=('png',)`. Legacy PDFs lack publication identity and stay unverified.
+
+Shared state fitting lives in `statistics/shared_states.py`; the old
+`mechanisms.shared_states` import remains a compatibility adapter. Explicit
+saved features reuse `statistics/time_series.collect_time_series` through
+`statistics/state_features.py`. SDC4-only downstream conditioning lives in
+`mechanisms/state_outcomes.py` and is constructed only for that preset.
+Saved source paths in `output_paths.SAVED_SCALAR_SOURCE_FILES` are shared by
+the temporal reader and the state-feature catalog in `registry.py`.
+Shared motif membership is resolved by `core/motifs.py` using the existing
+sequence matcher; neither Studio nor the planner assembles a second sequence.

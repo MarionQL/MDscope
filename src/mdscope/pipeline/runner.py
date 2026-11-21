@@ -9,6 +9,8 @@ import glob
 import json
 import shutil
 from time import perf_counter
+from contextlib import ExitStack
+from tempfile import TemporaryDirectory
 from pathlib import Path
 
 import numpy as np
@@ -54,7 +56,7 @@ from ..mechanisms.sdc4_mechanisms import enabled as sdc4_enabled, run_sdc4_mecha
 from ..mechanisms.residue_occlusion import (
     OCCLUSION_FILE, residue_environment_pending,
 )
-from ..mechanisms.shared_states import fit_shared_states
+from ..statistics.shared_states import fit_shared_states, publish_shared_states
 from ..mechanisms.hs_hydration import temporal_hs_hydration_profiles
 from ..registry import fused_output, fused_output_plan, analysis_output_plan, required_artifacts
 from .replica_tasks import specialized_tasks, additional_time_series
@@ -545,16 +547,6 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
             # Even descriptive figures must not read incomplete, stale or
             # corrupted per-replica products.
             _validate_replica_products(cfg, root, replicates)
-    if initialize_after_validation:
-        with stage_progress("Statistics project initialization", enabled=verbose):
-            root, _ = initialize(config_path, cfg)
-    project_summary = root / "project_summary"
-    if phase != "plotting" and project_summary.exists():
-        archived=_archive_previous_output(project_summary,root/".archives"/"project_summary","previous")
-        print(f"Archived previous project summary: {archived}")
-    # Finalization always provides a project summary directory, even when
-    # optional statistics and plots are disabled.
-    ensure_dir(project_summary)
     system_repouts = {
         system: [
             root / rep.system / rep.label
@@ -563,65 +555,86 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
         ]
         for system in cfg["systems"]
     }
-    # Finalization only consumes persisted tables/arrays: no
-    # trajectories are reopened.
-    timings_path = project_summary / "finalization_timings.json"
-    if phase == "plotting" and timings_path.exists():
-        try:
-            finalization_timings = json.loads(timings_path.read_text()).get("stages", [])
-        except (ValueError, OSError):
+    with ExitStack() as preparation:
+        shared_generation = None
+        shared_preparation_seconds = 0.
+        if phase == "statistics" and cfg["analyses"].get("shared_states", {}).get("enabled"):
+            # Prepare the complete model before archiving the live summary.
+            directory = preparation.enter_context(TemporaryDirectory(prefix=".shared-state-preflight-", dir=ensure_dir(root)))
+            started = perf_counter()
+            shared_generation = fit_shared_states(cfg, directory, system_repouts)
+            shared_preparation_seconds = perf_counter() - started
+        if initialize_after_validation:
+            with stage_progress("Statistics project initialization", enabled=verbose):
+                root, _ = initialize(config_path, cfg)
+        project_summary = root / "project_summary"
+        if phase != "plotting" and project_summary.exists():
+            archived=_archive_previous_output(project_summary,root/".archives"/"project_summary","previous")
+            print(f"Archived previous project summary: {archived}")
+        # Finalization always provides a project summary directory, even when
+        # optional statistics and plots are disabled.
+        ensure_dir(project_summary)
+        # Finalization only consumes persisted tables/arrays: no
+        # trajectories are reopened.
+        timings_path = project_summary / "finalization_timings.json"
+        if phase == "plotting" and timings_path.exists():
+            try:
+                finalization_timings = json.loads(timings_path.read_text()).get("stages", [])
+            except (ValueError, OSError):
+                finalization_timings = []
+        else:
             finalization_timings = []
-    else:
-        finalization_timings = []
-    def timed(stage, fn, *args):
-        started = perf_counter()
-        try:
-            # Statistics reports its own active family and heartbeat.
-            with stage_progress(f"Finalize {stage}", enabled=verbose and phase == "statistics"
-                                and stage != "statistics"):
-                return fn(*args)
-        finally:
-            seconds = perf_counter() - started
-            finalization_timings.append({"stage": stage, "seconds": seconds})
-            atomic_json(project_summary / "finalization_timings.json", {
-                "stages": finalization_timings,
-                "total_seconds": sum(row["seconds"] for row in finalization_timings),
-            })
-            print(f"TIMING finalize {stage}: {seconds:.3f} s", flush=True)
+        def timed(stage, fn, *args):
+            started = perf_counter()
+            try:
+                # Statistics reports its own active family and heartbeat.
+                with stage_progress(f"Finalize {stage}", enabled=verbose and phase == "statistics"
+                                    and stage != "statistics"):
+                    return fn(*args)
+            finally:
+                seconds = perf_counter() - started
+                if stage == "shared_states":
+                    seconds += shared_preparation_seconds
+                finalization_timings.append({"stage": stage, "seconds": seconds})
+                atomic_json(project_summary / "finalization_timings.json", {
+                    "stages": finalization_timings,
+                    "total_seconds": sum(row["seconds"] for row in finalization_timings),
+                })
+                print(f"TIMING finalize {stage}: {seconds:.3f} s", flush=True)
 
-    if phase != "plotting":
-        if cfg.get("analyses", {}).get("lipid_enrichment", {}).get("enabled"):
-            with stage_progress("Statistics lipid composition prepass", enabled=verbose):
-                for paths in system_repouts.values():
-                    for repout in paths:
-                        summarize_lipid_composition(repout)
-        timed("statistics", analyze_project, cfg, root, system_repouts)
-        timed("shared_states", fit_shared_states, cfg, root, system_repouts)
-        timed("diffusion_summary", summarize_project_diffusion, root, system_repouts)
-        timed("multi_origin_summary", summarize_project_multi_origin, root, system_repouts, cfg)
-        if cfg.get("statistics", {}).get("enabled", True):
-            from ..reporting.report import generate_report
-            report = timed("findings", generate_report, project_summary / "statistics")
-            print(f"FINDINGS: {report}", flush=True)
+        if phase != "plotting":
+            if cfg.get("analyses", {}).get("lipid_enrichment", {}).get("enabled"):
+                with stage_progress("Statistics lipid composition prepass", enabled=verbose):
+                    for paths in system_repouts.values():
+                        for repout in paths:
+                            summarize_lipid_composition(repout)
+            timed("statistics", analyze_project, cfg, root, system_repouts)
+            timed("shared_states", publish_shared_states, shared_generation, root)
+            timed("diffusion_summary", summarize_project_diffusion, root, system_repouts)
+            timed("multi_origin_summary", summarize_project_multi_origin, root, system_repouts, cfg)
+            if cfg.get("statistics", {}).get("enabled", True):
+                from ..reporting.report import generate_report
+                report = timed("findings", generate_report, project_summary / "statistics")
+                print(f"FINDINGS: {report}", flush=True)
+            return root
+
+        from ..reporting.figure_inventory import figure_snapshot, record_generated_figures
+        from ..reporting.plotting import plot_all
+        from ..reporting.membrane_figures import (
+            plot_lipid_enrichment_matrix, plot_lipid_contacts, plot_project_diffusion,
+        )
+        from ..reporting.sdc4_figures import plot_sdc4_mechanisms
+        from ..reporting.solvation_figures import plot_solvation
+
+        figure_before = figure_snapshot(root, system_repouts)
+        timed("standard_plots", plot_all, cfg, root, system_repouts)
+        timed("lipid_enrichment_plots", plot_lipid_enrichment_matrix, cfg, root)
+        timed("sdc4_plots", plot_sdc4_mechanisms, cfg, root, system_repouts)
+        timed("lipid_contact_plots", plot_lipid_contacts, cfg, root, system_repouts)
+        timed("diffusion_plot", plot_project_diffusion, cfg, root)
+        timed("solvation_plots", plot_solvation, cfg, root, system_repouts)
+        record_generated_figures(cfg, root, system_repouts, figure_before)
         return root
-
-    from ..reporting.figure_inventory import figure_snapshot, record_generated_figures
-    from ..reporting.plotting import plot_all
-    from ..reporting.membrane_figures import (
-        plot_lipid_enrichment_matrix, plot_lipid_contacts, plot_project_diffusion,
-    )
-    from ..reporting.sdc4_figures import plot_sdc4_mechanisms
-    from ..reporting.solvation_figures import plot_solvation
-
-    figure_before = figure_snapshot(root, system_repouts)
-    timed("standard_plots", plot_all, cfg, root, system_repouts)
-    timed("lipid_enrichment_plots", plot_lipid_enrichment_matrix, cfg, root)
-    timed("sdc4_plots", plot_sdc4_mechanisms, cfg, root, system_repouts)
-    timed("lipid_contact_plots", plot_lipid_contacts, cfg, root, system_repouts)
-    timed("diffusion_plot", plot_project_diffusion, cfg, root)
-    timed("solvation_plots", plot_solvation, cfg, root, system_repouts)
-    record_generated_figures(cfg, root, system_repouts, figure_before)
-    return root
 
 
 def run_one(config_path: str | Path, index: int):

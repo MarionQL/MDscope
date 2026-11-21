@@ -34,6 +34,16 @@ def validate_selections(cfg, base=Path("."), *, systems=None, emit=None):
                 f"or named group selections in {topology}: {exc}. "
                 "Check MDAnalysis selection syntax and topology attributes."
             ) from exc
+        from .motifs import resolve_motifs
+        counts["motifs"] = resolve_motifs(universe, cfg.get("selections", {}).get("motifs", {}))
+        for name, matches in counts["motifs"].items():
+            emit(f"    motif {name}: {matches}")
+        if cfg["analyses"].get("solvation", {}).get("enabled"):
+            from ..observables.solvation import _targets
+            solvation = cfg["analyses"]["solvation"]
+            hs_auto = solvation.get("hs_auto") or cfg["analyses"].get("sdc4_mechanisms", {}).get("hs_auto") or {}
+            _targets(universe, {**solvation, "hs_auto": hs_auto},
+                     motifs=cfg.get("selections", {}).get("motifs", {}))
         resolved[system] = counts
         emit(
             f"  {system}: protein={counts['protein']}, "

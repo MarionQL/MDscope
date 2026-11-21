@@ -554,3 +554,53 @@ def density_output_contracts(cfg):
                     output["row_grain"] = "conditional on nonempty target/group intersection; one spatial bin per replicate"
                     outputs.append(output)
     return outputs
+
+
+def state_feature_catalog(cfg):
+    """Available static identities plus explicit saved-only discovery contracts.
+
+    Topology-dependent molecule/bridge identities are templates until the common
+    scalar reader discovers saved rows; they are never advertised as measured.
+    """
+    from .output_paths import SAVED_SCALAR_SOURCE_FILES
+    candidates = []
+    for scalar in scalar_contracts(cfg):
+        if scalar["path_within_replica"].startswith("summary/"):
+            candidates.append({"source": "summary", "group": scalar["group"],
+                "metric": scalar["metric"], "units": scalar["units"][scalar["metric"]],
+                "analysis": scalar["analysis"], "availability": "conditional_on_saved_data"})
+    solvation = cfg["analyses"].get("solvation", {})
+    if solvation.get("enabled"):
+        solvents = (["water"] if solvation.get("water_selection") else [])
+        solvents += ["ions/" + name for name in (solvation.get("ion_selections") or {})]
+        if solvation.get("ion_selection"):
+            solvents.append("ions")
+        for kind, targets in (solvation.get("targets") or {}).items():
+            for label in targets:
+                for solvent in solvents:
+                    for metric, units in (("mean_n_solvent", "molecules"), ("hydrated_fraction", "fraction")):
+                        candidates.append({"source": "solvation",
+                            "group": f"solvation/{solvent}/{kind}/{label}", "metric": metric,
+                            "units": units, "analysis": "solvation",
+                            "availability": "conditional_on_saved_data"})
+    sources = {
+        "summary": {"group": "null or shared group", "metrics": "numerical saved columns",
+                    "prerequisite": "Saved frame-wise global/group summary with selected numerical columns"},
+        "solvation": {"group": "solvation/<solvent>/<target_class>/<site_class>",
+                      "metrics": ["mean_n_solvent", "hydrated_fraction"],
+                      "prerequisite": "Saved per-frame solvent/site aggregates; requested motif targets must match topology"},
+        "hydration": {"group": "hydration/<compartment>/<level>/<label>",
+                      "metrics": ["unique_water_count", "unique_water_per_site"],
+                      "prerequisite": "Saved aggregate hydration counts with topology-resolved group identities"},
+        "solvation_bridges": {"group": "solvation_bridges/<JSON [solvent,target_a,target_b]>",
+                      "metrics": ["bridge_entity_count", "bridge_present_fraction", "observed_minus_spatial_bridge_fraction"],
+                      "prerequisite": "Saved bridge-pair traces; spatial contrast requires its optional reference"},
+        "lipid_contacts": {"group": "lipid_contacts/<leaflet>/<species_a>/<species_b>",
+                      "metrics": ["neighbors_per_molecule", "enrichment"],
+                      "prerequisite": "Saved species/leaflet matrix; unavailable enrichment remains nonfinite"},
+    }
+    for name, source in sources.items():
+        source["paths_within_replica"] = list(SAVED_SCALAR_SOURCE_FILES[name])
+        source["identity_status"] = "template_until_saved_product_validation"
+    return {"candidates": candidates, "sources": sources,
+            "time_requirement": "Exact common time grid within each replicate; complete feature vectors only"}

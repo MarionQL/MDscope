@@ -36,7 +36,7 @@ def _plot_shared_state_figures(cfg, root):
                 ax.set_xticks(np.arange(len(states)), [f"State {s}" for s in states])
                 ax.set_ylabel("Fraction of analyzed frames")
                 ax.set_ylim(0, 1)
-                ax.set_title("Shared-state populations (points = independent replicates)")
+                ax.set_title("Shared-state populations\n(points = independent replicates)")
                 ax.legend()
                 fig.tight_layout()
                 fig.savefig(state_dir / "state_populations.png",
@@ -61,9 +61,10 @@ def _plot_shared_state_figures(cfg, root):
 
 
 def plot_sdc4_mechanisms(cfg, root, system_repouts):
-    if not cfg.get('plots',{}).get('enabled',True) or not cfg.get('analyses',{}).get('sdc4_mechanisms',{}).get('enabled',False):
+    if not cfg.get('plots',{}).get('enabled',True):
         return
-    if plot_enabled(cfg, 'sdc4'):
-        plot_sdc4_condition_figures(cfg,root,system_repouts)
     if plot_enabled(cfg, 'shared_states'):
         _plot_shared_state_figures(cfg,root)
+    if (cfg.get('analyses',{}).get('sdc4_mechanisms',{}).get('enabled',False)
+            and plot_enabled(cfg, 'sdc4')):
+        plot_sdc4_condition_figures(cfg,root,system_repouts)

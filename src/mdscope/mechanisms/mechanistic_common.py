@@ -73,6 +73,23 @@ def orientation_vector(atoms):
     return unit(axis)
 
 
+def sequence_chain_label(atom):
+    """Use a nonblank chainID, otherwise a nonblank segment label."""
+    try:
+        chain = str(getattr(atom, "chainID", "") or "").strip()
+    except NoDataError:
+        chain = ""
+    try:
+        segid = str(getattr(atom, "segid", "") or "").strip()
+    except NoDataError:
+        segid = ""
+    if not chain:
+        chain = segid
+    if not chain:
+        raise ValueError("Motif matching requires chainID or segid")
+    return chain
+
+
 def sequence_matches(ca_atoms, patterns, *, allow_overlaps=True):
     """Match protein motifs within contiguous topology-ordered chain fragments.
 
@@ -87,18 +104,7 @@ def sequence_matches(ca_atoms, patterns, *, allow_overlaps=True):
     for atom in ca_atoms:
         if str(getattr(atom, "name", "CA")) != "CA":
             raise ValueError("Motif matching requires CA-only protein atoms")
-        try:
-            chain = str(getattr(atom, "chainID", "") or "").strip()
-        except NoDataError:
-            chain = ""
-        try:
-            segid = str(getattr(atom, "segid", "") or "").strip()
-        except NoDataError:
-            segid = ""
-        if not chain:
-            chain = segid
-        if not chain:
-            raise ValueError("Motif matching requires chainID or segid")
+        chain = sequence_chain_label(atom)
         group_id = (int(getattr(atom, "segindex", 0)), chain)
         groups.setdefault(group_id, []).append(atom)
 
@@ -128,13 +134,16 @@ def sequence_matches(ca_atoms, patterns, *, allow_overlaps=True):
                     compiled = re.compile(str(pattern))
                 except re.error as exc:
                     raise ValueError(f"Invalid motif regex {motif}: {pattern}") from exc
-                # Lookaheads provide overlapping hits; a normal finditer
-                # provides nonoverlapping hits. Both must consume residues.
-                expression = re.compile(f"(?=({pattern}))") if allow_overlaps else compiled
-                for hit in expression.finditer(seq):
-                    start = hit.start()
-                    end = start + len(hit.group(1)) if allow_overlaps else hit.end()
-                    if end <= start or "X" in seq[start:end]:
+                # Match the original expression at each start: wrapping a
+                # capture would break backreferences and inline flags.
+                hits = (compiled.match(seq, start) for start in range(len(seq))) if allow_overlaps else compiled.finditer(seq)
+                for hit in hits:
+                    if hit is None:
+                        continue
+                    start, end = hit.span()
+                    if end <= start:
+                        raise ValueError(f"Motif pattern {motif} must consume residues")
+                    if "X" in seq[start:end]:
                         continue
                     ordinal[motif] += 1
                     key = f"{motif}_{label}_{ordinal[motif]}"

@@ -64,7 +64,11 @@ def option_schema(defaults):
               "label": None, "linestyle": None}
     }
 
+    schema["selections"]["motifs"] = {"*": dict.fromkeys(
+        ("sequence", "pattern", "selection", "chains", "overlap", "missing"))}
     analyses = schema["analyses"]
+    analyses["shared_states"]["feature_sources"] = {"*": dict.fromkeys(
+        ("source", "group", "metric", "units"))}
     for name in analyses:
         analyses[name]["label"] = None
 
@@ -142,7 +146,7 @@ def option_schema(defaults):
     solvation["shell_cutoffs_A"] = {"*": None}
     solvation["targets"] = {
         "*": {"*": {
-            "selection": None, "sequence": None,
+            "selection": None, "sequence": None, "motif": None,
             "atom_selection": None, "group_by": None,
         }}
     }

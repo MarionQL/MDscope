@@ -79,7 +79,7 @@ Other lipid outputs: `extensions/bilayer_normal/`, `extensions/lipid_footprint/`
 
 ## Syndecan-4 (SDC4) mechanisms
 
-`analyses.sdc4_mechanisms` joins the **shared source-coordinate pass**. `analyses.shared_states` fits **one** model across saved replicas during offline finalization. Validate topology selections before running.
+`analyses.sdc4_mechanisms` joins the **shared source-coordinate pass**. `analyses.shared_states` fits **one** model across saved replicas during offline finalization. Its default `sdc4` preset retains the legacy geometry model; `preset: null` selects explicit generic saved scalar features without SDC4 (see [configuration](configuration.md#shared-motifs-and-saved-feature-states)). Validate topology selections before running.
 
 | Endpoint | Reported quantities | Interpret with care |
 |---|---|---|
