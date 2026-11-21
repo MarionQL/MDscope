@@ -1,8 +1,8 @@
 """Expected, user-correctable failures reported by the CLI without a traceback.
 
 Raise these only at input boundaries (config loading, topology/selection
-preflight, CLI arguments). Each subclass keeps its builtin base so library
-callers that catch ``ValueError``/``FileNotFoundError``/``IndexError`` still work.
+preflight, optional-backend imports, CLI arguments). Each subclass keeps its builtin base so library
+callers that catch ``ValueError``/``FileNotFoundError``/``IndexError``/``RuntimeError`` still work.
 """
 
 
@@ -20,3 +20,7 @@ class InputPathError(UserInputError, FileNotFoundError):
 
 class ReplicateIndexError(UserInputError, IndexError):
     """A replicate index is outside the configured system x replicate list."""
+
+
+class MissingBackendError(UserInputError, RuntimeError):
+    """An enabled analysis needs an optional package that is not importable."""
