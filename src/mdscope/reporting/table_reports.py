@@ -23,6 +23,7 @@ class TableReports:
         self.root = Path(root)
         self.open_reports = {}
         self.pending = {}
+        self.pages = {}
 
     def add(self, fig, figure_path: Path):
         directory = Path(figure_path).parent
@@ -37,7 +38,10 @@ class TableReports:
                 "Creator": "MDscope",
             })
             self.pending[report] = pending
+            self.pages[report] = []
         self.open_reports[report].savefig(fig, bbox_inches="tight")
+        from .plot_ids import id_from_figure_path
+        self.pages[report].append(id_from_figure_path(figure_path) or str(figure_path.name))
 
     def close(self, success: bool):
         """Publish complete PDFs only; archive reports with no pages in this run.
@@ -67,9 +71,22 @@ class TableReports:
                     if ".archives" in report.parts or report in active:
                         continue
                     self._archive_obsolete_pdf(report)
+                self._record_published_pages()
         finally:
             for pending in self.pending.values():
                 pending.unlink(missing_ok=True)
+
+    def _record_published_pages(self):
+        """Keep report page identities associated with the current PDF set."""
+        from ..config import atomic_json
+        dest = self.root / "project_summary/figures/table_pdf_pages.json"
+        if not self.pending and not dest.exists():
+            return
+        pages = {
+            str(report.relative_to(self.root)): self.pages[report]
+            for report in sorted(self.pending)
+        }
+        atomic_json(dest, pages)
 
     def _archive_obsolete_pdf(self, report: Path):
         relative = report.relative_to(self.root)
@@ -84,7 +101,8 @@ class TableReports:
         try:
             os.replace(report, archive)
         finally:
-            archive.unlink(missing_ok=True) if report.exists() else None
+            if report.exists():
+                archive.unlink(missing_ok=True)
 
     def _archive_old_pngs(self, directory: Path):
         old = sorted(set(directory.glob("*__bootstrap_table.png"))
@@ -102,7 +120,10 @@ class TableReports:
 @contextmanager
 def table_report_session(root: Path, *, enabled: bool):
     if not enabled:
+        # A successful plot-only rerun with PDF export disabled supersedes
+        # previously published table PDFs, without touching numerical data.
         yield
+        TableReports(root).close(success=True)
         return
     session = TableReports(root)
     token = _ACTIVE.set(session)
