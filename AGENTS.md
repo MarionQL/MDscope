@@ -11,6 +11,7 @@ Read only the guides relevant to the change; do not duplicate them here.
 | Which checks to run and when | [Check policy](docs/developer/check-policy.md) |
 | Test effectiveness, remaining coverage | [Validation gaps](docs/developer/validation-gaps.md) |
 | SDC4-specific reference cases | [SDC4 fixtures](docs/developer/sdc4-fixtures.md) |
+| Generalizing analyses while preserving system-specific choices | [YAML generalization contract](docs/configuration.md#yaml-contract-for-generalization) |
 | YAML, observable options, workflows | [Configuration](docs/configuration.md) · [Analyses](docs/analyses.md) · [Workflows](docs/workflows.md) |
 
 ## Avoid

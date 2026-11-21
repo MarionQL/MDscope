@@ -109,3 +109,7 @@ Both graph scripts succeeded; Graphviz generated execution, recovery and import 
 No pytest suite, GROMACS/trajectory run, benchmark or Studio browser session was executed. This shell lacks pytest, pyarrow and MDAnalysis; probes used installed NumPy/pandas/Matplotlib and lightweight modules. They do not establish full entry-point behavior, convergence or speed. Follow [check policy](check-policy.md) when implementing a selected candidate.
 
 **Recommended first milestone:** candidate 1 closes a reproduced gap in a recently changed reporting path, needs no scientific-kernel changes and can be verified with saved-data rendering fixtures. Candidate 2 is a separate follow-up; defer candidate 3 until its policy differences are resolved.
+
+## Issue tracking
+
+Follow-ups: [#215](https://github.com/MarionQL/MDscope/issues/215) (report publication), [#216](https://github.com/MarionQL/MDscope/issues/216) (manifest interpretation), [#202](https://github.com/MarionQL/MDscope/issues/202) (existing saved-result readiness issue), and [#217](https://github.com/MarionQL/MDscope/issues/217) (rendering/export ownership). See the [backlog review](backlog-review-2026-11-20.md) for current priorities, superseded claims and YAML generalization requirements; [#218](https://github.com/MarionQL/MDscope/issues/218) tracks explicit residue-response YAML control.
