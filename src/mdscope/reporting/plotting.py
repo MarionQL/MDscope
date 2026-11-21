@@ -19,6 +19,7 @@ from ..interactions import interaction_tables
 from ..statistics import collect_time_series, finite
 from .figure_inventory import current_statistics
 from .plot_ids import id_from_figure_path, figure_dpi, safe_plot_stem as _safe
+from .table_reports import add_table_page, table_report_session
 
 
 from .labels import METRIC_LABELS, _metric_meta
@@ -118,7 +119,10 @@ def _table_figure(title: str, dataframe: pd.DataFrame, path: Path, cfg: dict,
     table.auto_set_font_size(False)
     table.set_fontsize(9)
     table.scale(1, 1.25)
-    _save(fig, path, cfg)
+    if add_table_page(fig, path):
+        plt.close(fig)
+    else:
+        _save(fig, path, cfg)
 
 
 def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
@@ -904,13 +908,14 @@ def plot_all(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
     if not cfg.get("plots", {}).get("enabled", True):
         return
     configure_plot_style(cfg)
-    if plot_enabled(cfg, "time_series"):
-        plot_time_series(cfg, root, system_repouts)
-    if plot_enabled(cfg, "profiles"):
-        plot_profiles(cfg, root, system_repouts)
-        _plot_residue_distance_heatmaps(cfg, root, system_repouts)
-        from .residue_response import plot_residue_response
-        plot_residue_response(cfg, root)
-    if plot_enabled(cfg, "interactions"):
-        plot_interactions(cfg, root, system_repouts)
+    with table_report_session(root, enabled=cfg.get("plots", {}).get("table_reports_pdf", False)):
+        if plot_enabled(cfg, "time_series"):
+            plot_time_series(cfg, root, system_repouts)
+        if plot_enabled(cfg, "profiles"):
+            plot_profiles(cfg, root, system_repouts)
+            _plot_residue_distance_heatmaps(cfg, root, system_repouts)
+            from .residue_response import plot_residue_response
+            plot_residue_response(cfg, root)
+        if plot_enabled(cfg, "interactions"):
+            plot_interactions(cfg, root, system_repouts)
 
