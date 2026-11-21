@@ -3,7 +3,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mdscope.config import DEFAULTS, resolve_config
+from copy import deepcopy
+from mdscope.config import DEFAULTS
 from mdscope.reporting.plotting import rolling_time_mean
 
 
@@ -33,10 +34,19 @@ def test_rolling_window_requires_valid_time_grid():
         rolling_time_mean([0., 10.], [1.], 100)
 
 
+def _valid_cfg():
+    cfg = deepcopy(DEFAULTS)
+    cfg["systems"] = {"demo": {
+        "topology": "topology.pdb",
+        "replicates": [{"label": "rep1", "trajectory": "trajectory.xtc"}],
+    }}
+    return cfg
+
+
 @pytest.mark.parametrize("window", [0, -1, float("inf"), float("nan"), True, "100"])
 def test_plot_rolling_window_rejects_invalid_config(window):
-    cfg = {**DEFAULTS, "plots": {**DEFAULTS["plots"],
-                                "time_series_rolling_window_ns": window}}
+    cfg = _valid_cfg()
+    cfg["plots"]["time_series_rolling_window_ns"] = window
     # Config validation should reject the display option before opening files.
     from mdscope.config import validate_config
     with pytest.raises(ValueError, match="plots.time_series_rolling_window_ns"):
@@ -46,13 +56,9 @@ def test_plot_rolling_window_rejects_invalid_config(window):
 def test_window_config_accepts_null_and_100_ns():
     from mdscope.config import validate_config
     for window in (None, 100, 12.5):
-        cfg = {**DEFAULTS, "plots": {**DEFAULTS["plots"],
-                                    "time_series_rolling_window_ns": window}}
-        # No systems defined in defaults: errors after plots validation are fine.
-        try:
-            validate_config(cfg, check_paths=False)
-        except ValueError as exc:
-            assert "plots.time_series_rolling_window_ns" not in str(exc)
+        cfg = _valid_cfg()
+        cfg["plots"]["time_series_rolling_window_ns"] = window
+        validate_config(cfg, check_paths=False)
 
 
 def test_renderer_uses_rolling_mean_only_for_trace(tmp_path, monkeypatch):
