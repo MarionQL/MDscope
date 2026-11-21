@@ -84,7 +84,7 @@ Previews call the **production** figure renderers using deterministic fake saved
 - **Performance:** minimize trajectory traversals, memory, I/O and dense atom-pair materialization. Preserve fused and sparse processing.
 - **Testing:** use independent numerical oracles for mathematical claims; check integration through the actual entry point. A successful run or two agreeing implementations may share the same bug.
 - **Failure safety:** test invalid inputs and checkpoint corruption without destroying valid existing outputs. Verify artifact identity, integrity, completeness and provenance—not just existence.
-- **Validation:** run relevant targeted tests and applicable Python 3.11/3.13 CI; run real GROMACS checks for affected behavior. Distinguish passed, failed, skipped and unavailable checks.
+- **Validation:** run relevant targeted tests and applicable Python 3.11–3.13 CI; run real GROMACS checks for affected behavior. Distinguish passed, failed, skipped and unavailable checks.
 - **Documentation:** one authoritative location per concept. Prefer short tables and bullets; remove stale guides and avoid mass formatting.
 
 See [Scientific contracts](scientific-contracts.md), [Scientific audit](scientific-audit.md) and [Validation gaps](validation-gaps.md) for the detailed acceptance criteria.
