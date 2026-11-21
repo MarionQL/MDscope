@@ -94,6 +94,6 @@ def test_lipid_labels_use_residue_codes_or_short_class_names():
     assert lipid_display_label("POPC", level="species") == "POPC"
     assert lipid_display_label("GM1a", level="species") == "GM1a"
     assert lipid_display_label("phosphatidylcholine", level="class") == "PC"
-    assert lipid_display_label("phosphatidylethanolamine", level="class") == "PE"
-    assert lipid_display_label("sphingomyelin", level="class") == "SM"
+    assert lipid_display_label("phosphatidylethanolamine", level="class") == "POPE"
+    assert lipid_display_label("sphingomyelin", level="class") == "PSM"
     assert lipid_display_label("unknown_class", level="class") == "unknown_class"
