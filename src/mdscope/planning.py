@@ -558,7 +558,7 @@ def inspect_saved_statistics(root: str | Path, *, max_identities: int = 256) -> 
     if max_identities < 1:
         raise ValueError("max_identities must be positive")
     dest = Path(root) / "project_summary" / "statistics"
-    from .statistics.manifest_reader import read_statistics_manifest
+    from .statistics_manifest import read_statistics_manifest
     manifest_file = dest / "manifest.json"
     facts = read_statistics_manifest(manifest_file)
     if facts.state == "missing":
@@ -570,6 +570,10 @@ def inspect_saved_statistics(root: str | Path, *, max_identities: int = 256) -> 
     result = {}
     for family, (identity_file, columns) in SAVED_STATISTICS_IDENTITY.items():
         folder = dest / STATISTICS_DIRS[family]
+        if facts.family_disabled(family):
+            result[family] = {'status':'disabled','files':{},'identities':[],
+                              'identities_truncated':False}
+            continue
         files = {}
         for path in sorted(folder.glob("*.parquet")):
             info = pq.ParquetFile(path)
@@ -721,13 +725,13 @@ def inspect_saved_plot_ids(cfg: dict, root: str | Path, config_path: str | Path,
 
     stats_root = root / "project_summary" / "statistics"
     manifest_file = stats_root / "manifest.json"
-    from .statistics.manifest_reader import read_statistics_manifest
+    from .statistics_manifest import read_statistics_manifest
     facts = read_statistics_manifest(manifest_file)
     if facts.state == "invalid":
         raise ValueError(f"Invalid saved statistics manifest {manifest_file}: {facts.error}")
     if facts.complete:
         profile_path = stats_root / "profiles" / "replicate_profiles.parquet"
-        if profile_path.is_file():
+        if not facts.family_disabled('profiles') and profile_path.is_file():
             source = pq.ParquetFile(profile_path)
             if "profile" not in source.schema_arrow.names:
                 raise ValueError(f"Saved profile table lacks profile column: {profile_path}")
@@ -743,7 +747,7 @@ def inspect_saved_plot_ids(cfg: dict, root: str | Path, config_path: str | Path,
             ("system_interaction_comparisons.parquet", "comparison_table"),
         ):
             path = interactions_dir / filename
-            if not path.is_file():
+            if facts.family_disabled('interactions') or not path.is_file():
                 continue
             source = pq.ParquetFile(path)
             fields = ("interaction_type", "metric")
@@ -773,6 +777,12 @@ def inspect_saved_plot_ids(cfg: dict, root: str | Path, config_path: str | Path,
             "conditional_on_saved_data" if plot_enabled(cfg, meta["family"])
             else "disabled_by_configuration"
         )
+        if meta['requires_statistics']:
+            family = {'solvation':'solvation_rdfs'}.get(meta['family'], meta['family'])
+            if facts.family_disabled(family):
+                meta['availability'] = 'unavailable_disabled_statistics_family'
+            elif not facts.complete:
+                meta['availability'] = 'unavailable_' + facts.state + '_statistics'
         candidates.append(meta)
     missing = [] if chosen is None else sorted(
         set(chosen) - found - set(STATIC_IDS)

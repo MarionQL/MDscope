@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from mdscope.statistics.manifest_reader import read_statistics_manifest
+from mdscope.statistics_manifest import read_statistics_manifest
 from mdscope.reporting.figure_inventory import statistics_status
 from mdscope.reporting.report import generate_report
 from mdscope.planning import inspect_saved_statistics
@@ -73,3 +73,25 @@ def test_completed_manifest_keeps_legacy_render_read_without_methods(tmp_path):
     assert facts.complete
     assert not facts.methods_present
     assert statistics_status({"statistics": {}}, tmp_path, "time_series") == "legacy_unverified"
+
+
+def test_manifest_import_does_not_load_estimator_package():
+    import subprocess,sys
+    subprocess.run([sys.executable,'-c',
+                    'import sys; import mdscope.statistics_manifest; assert "mdscope.statistics" not in sys.modules'],check=True)
+
+
+def test_disabled_families_hide_stale_catalog_and_findings(tmp_path):
+    import pandas as pd
+    from mdscope.statistics.coverage import COLUMNS
+    root=tmp_path/'project_summary/statistics'
+    (root/'time_series').mkdir(parents=True); (root/'coverage').mkdir()
+    (root/'manifest.json').write_text(json.dumps({'status':'complete','methods':{},'families':{'time_series':'disabled'},'replicate_paths':[]}))
+    pd.DataFrame({'group':[None],'metric':['stale_metric']}).to_parquet(root/'time_series/replicate_statistics.parquet')
+    result=inspect_saved_statistics(tmp_path)['families']['time_series']
+    assert result['status']=='disabled' and result['identities']==[]
+    pd.DataFrame([dict(family='time_series',observable='{"metric":"stale_metric"}',status='above_zero',
+                       difference_system2_minus_system1=1.,ci_low=.5,ci_high=1.5,
+                       source_table='time_series/system_comparisons.parquet')],columns=COLUMNS).to_parquet(root/'coverage/contrast_coverage.parquet')
+    generate_report(root)
+    assert pd.read_parquet(root/'findings.parquet').empty

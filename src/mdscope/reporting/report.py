@@ -61,7 +61,7 @@ def _inventory(statistics_dir, manifest, comparison_sources):
              statistics_dir.parent / "diffusion", statistics_dir.parent / "coupling"]
     if statistics_dir.name == "statistics" and statistics_dir.parent.name == "project_summary":
         project = statistics_dir.parent.parent
-        for entry in manifest["replicate_paths"]:
+        for entry in manifest.get("replicate_paths", []):
             rel = Path(entry)
             if not rel.is_absolute() and len(rel.parts) == 2 and ".." not in rel.parts:
                 roots.extend(project / rel / folder for folder in (
@@ -154,7 +154,7 @@ def _markdown(coverage, findings, inventory):
 def generate_report(statistics_dir: Path) -> Path:
     """Build a findings review without loading trajectories or rendering figures."""
     statistics_dir = Path(statistics_dir)
-    from ..statistics.manifest_reader import read_statistics_manifest
+    from ..statistics_manifest import read_statistics_manifest
     manifest_path = statistics_dir / "manifest.json"
     facts = read_statistics_manifest(manifest_path)
     if facts.state == "missing":
@@ -180,6 +180,7 @@ def generate_report(statistics_dir: Path) -> Path:
             "Complete statistics before generating findings."
         )
     coverage = pd.read_parquet(coverage_path)
+    coverage = coverage.loc[~coverage.family.map(facts.family_disabled)].copy()
     extra = _shared_state_coverage(statistics_dir)
     if extra:
         coverage = pd.concat([coverage, *extra], ignore_index=True)

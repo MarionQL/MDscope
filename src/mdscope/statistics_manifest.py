@@ -47,10 +47,12 @@ def read_statistics_manifest(path: str | Path) -> StatisticsManifest:
     if not isinstance(payload, dict):
         return StatisticsManifest(path, "invalid", error="expected a JSON object")
     families = payload.get("families", {})
-    if not isinstance(families, dict):
+    if not isinstance(families, dict) or any(value not in ('enabled', 'disabled') for value in families.values()):
         return StatisticsManifest(path, "invalid", error="families must be an object")
     if "methods" in payload and not isinstance(payload["methods"], dict):
         return StatisticsManifest(path, "invalid", error="methods must be an object")
+    if "status" in payload and not isinstance(payload['status'], str):
+        return StatisticsManifest(path, "invalid", error="status must be a string")
     if "status" not in payload:
         return StatisticsManifest(path, "legacy", payload=payload)
     return StatisticsManifest(

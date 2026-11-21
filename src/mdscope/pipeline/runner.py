@@ -521,7 +521,7 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
             # Legacy family-wide plotting can dispatch statistical figures.
             requires_statistics = True
         if requires_statistics:
-            from ..statistics.manifest_reader import read_statistics_manifest
+            from ..statistics_manifest import read_statistics_manifest
             manifest = root / "project_summary/statistics/manifest.json"
             facts = read_statistics_manifest(manifest)
             if facts.state == "missing":

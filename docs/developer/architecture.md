@@ -247,7 +247,7 @@ settings/completion. It consumes saved profiles/contrasts, not trajectories.
 
 ### Statistics manifest lifecycle
 
-`statistics/manifest_reader.py` owns read-only parsing, object-shape checks,
+`statistics_manifest.py` owns read-only parsing, object-shape checks,
 completion state and family-disabled facts for persisted
 `project_summary/statistics/manifest.json`. The statistics producer retains
 publication ownership: it writes `running` before inference and `complete`
@@ -259,3 +259,6 @@ historical missing-status/methods manifests as `legacy_unverified`, never as
 newly verified complete results. Malformed objects are rejected; caller-facing
 errors retain entry-point context. No content-hash requirement or additional
 trajectory read is implied by this shared reader.
+
+Disabled saved statistics families are not catalogued or promoted to findings
+from stale tables. The manifest reader imports no estimator package.
