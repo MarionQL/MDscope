@@ -109,6 +109,21 @@ has been written successfully. Other PNG figures and the full-precision
 Parquet statistics are retained. `plots.include` and disabled families
 continue to control which tables appear. The PDF is for reading and
 sharing; it is not a substitute for numerical data exports.
+### Suppressing uninformative lipid-footprint traces
+
+A lipid-footprint metric whose available sampled values are **all exactly
+zero** across every configured condition and replicate produces no descriptive
+time-series, distribution or autocorrelation PNG. This avoids empty-looking
+flat-line figures (for example, an unobserved BGAL leaflet/region), including
+after applying the trailing rolling window. A metric with any nonzero finite
+observation is still plotted, and non-footprint metrics retain their zero-valued
+traces. Missing values are not interpreted as zeros.
+
+Previously generated PNGs for the suppressed metric are moved into
+`<project_output>/.archives/zero_only_footprint_figures/`, not deleted.
+Full-precision numerical statistics, Parquet outputs and bootstrap/comparison
+table reports remain available regardless of figure suppression.
+
 ### Time-series rolling averages
 
 The standard per-replica time-series traces can show a trailing, time-based
