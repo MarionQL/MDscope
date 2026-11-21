@@ -7,11 +7,21 @@ from ..observables.residue_membrane_distance import _without_hydrogens
 from ..mechanisms.hs_topology import discover_covalent_hs
 from ..mechanisms.mechanistic_common import sequence_matches
 from .alignment import resolved_selection_counts
-from ..observables.sasa import sasa_instances
+from ..observables.sasa import import_freesasa, sasa_instances
+
+
+def require_optional_backends(cfg):
+    """Fail before topology/trajectory work if an enabled analysis lacks its backend.
+
+    Environment check only: schema-only planning deliberately does not call it.
+    """
+    if analysis_runs(cfg, "sasa"):
+        import_freesasa()
 
 
 def validate_selections(cfg, base=Path("."), *, systems=None, emit=None):
     emit = emit or (lambda *args, **kwargs: None)
+    require_optional_backends(cfg)
     base = Path(base)
     resolved = {}
     for system, spec in cfg["systems"].items():

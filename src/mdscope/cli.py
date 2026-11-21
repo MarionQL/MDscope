@@ -21,6 +21,15 @@ def interactive_init(output="analysis.yaml"):
     ]
     ligand = input("Ligand MDAnalysis selection (blank for none): ").strip() or None
     reps = [{"trajectory": path, "label": f"rep{i}"} for i, path in enumerate(trajectories, 1)]
+    from .observables.sasa import FREESASA_INSTALL_HINT, import_freesasa
+    try:
+        import_freesasa()
+        sasa_available = True
+    except RuntimeError:
+        sasa_available = False
+        print("WARNING: FreeSASA is not installed, so analyses.sasa is disabled. "
+              f"To enable it, run `{FREESASA_INSTALL_HINT}` and set "
+              "analyses.sasa.enabled: true.")
     cfg = {
         "project": {"name": name, "output": "results"},
         "trajectory": {"stride": 10, "chunk_frames": 1000},
@@ -37,7 +46,7 @@ def interactive_init(output="analysis.yaml"):
             "radius_of_gyration": True,
             "dssp": True,
             "salt_bridges": True,
-            "sasa": {"enabled": True}
+            "sasa": {"enabled": sasa_available}
         },
     }
     if ligand:
