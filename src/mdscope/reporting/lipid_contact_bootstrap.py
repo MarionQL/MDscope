@@ -30,14 +30,18 @@ def _draw(cfg, dest: Path, table: pd.DataFrame, *, ordered: list[str],
     matrix = values.to_numpy(float)
     if not np.isfinite(matrix).any():
         return
-    size = max(7, min(15, 3 + .74 * len(ordered)))
-    fig, ax = plt.subplots(figsize=(size, size - .2))
+    # Preserve room for long class names rather than enlarging data cells alone.
+    longest = max(map(len, ordered), default=0)
+    size = max(7, min(17, 3 + .68 * len(ordered)))
+    fig, ax = plt.subplots(figsize=(size + min(5, .085 * longest),
+                                    size + min(2, .035 * longest)))
     cmap = plt.get_cmap("RdBu_r" if comparison else "viridis").copy()
     cmap.set_bad("#e0e0e0")
     limits = dict(vmin=-limit, vmax=limit) if comparison else dict(vmin=0, vmax=limit)
     image = ax.imshow(np.ma.masked_invalid(matrix), cmap=cmap, **limits)
     ax.set_xticks(range(len(ordered)), ordered, rotation=55, ha="right")
     ax.set_yticks(range(len(ordered)), ordered)
+    ax.tick_params(axis="both", labelsize=max(7, min(11, 13 - .18 * len(ordered))))
     ax.set_xlabel("Lipid " + ("class" if stem.startswith("lipid_contact_class_") else "species") + " B")
     ax.set_ylabel("Reference lipid " + ("class" if "class_" in stem else "species") + " A")
     ax.set_title(title + "\n" + metric.replace("_", " "))
@@ -54,7 +58,9 @@ def _draw(cfg, dest: Path, table: pd.DataFrame, *, ordered: list[str],
                       "not corrected for multiple testing" if comparison
                       else "Equal-replica mean; grey cells have unavailable population or support"),
              ha="center", fontsize=8)
-    fig.tight_layout(rect=(0, .025, 1, 1))
+    fig.subplots_adjust(left=min(.38, max(.18, .085 + .009 * longest)),
+                        bottom=min(.35, max(.17, .10 + .008 * longest)),
+                        right=.88, top=.89)
     fig.savefig(dest / f"{stem}.png",
                 dpi=figure_dpi(cfg, plot_id, int(cfg.get("plots", {}).get("dpi", 200))),
                 bbox_inches="tight")

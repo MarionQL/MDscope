@@ -183,6 +183,13 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
         if selected is not None and not any(
                 identifier.startswith(f"time_series:{stem}:") for identifier in selected):
             continue
+        # A registered metric may have no finite observations in any replica.
+        if not any(
+            len(finite(table["value"]))
+            for system in systems for repout in system_repouts[system]
+            if (table := cache[(system, repout.name)].get((group_id, metric))) is not None
+        ):
+            continue
         fig, axes = _subplot_grid(len(systems))
         distribution_values, distribution_labels, distribution_colors = [], [], []
         for ax, system in zip(axes, systems):
@@ -191,6 +198,9 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
                 table = cache[(system, repout.name)].get((group_id, metric))
                 if table is None:
                     continue
+                values = finite(table["value"])
+                if not len(values):
+                    continue
                 ax.plot(
                     table["time_ps"] / 1000.0,
                     table["value"],
@@ -198,18 +208,20 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
                     color=colors.get(repout.name),
                     label=replicate_label(cfg, system, repout.name)
                 )
-                values = finite(table["value"])
-                if len(values):
-                    distribution_values.append(values)
-                    distribution_labels.append(
-                        f"{system_label(cfg, system)}\n"
-                        f"{replicate_label(cfg, system, repout.name)}"
-                    )
-                    distribution_colors.append(colors.get(repout.name))
+                distribution_values.append(values)
+                distribution_labels.append(
+                    f"{system_label(cfg, system)}\n"
+                    f"{replicate_label(cfg, system, repout.name)}"
+                )
+                distribution_colors.append(colors.get(repout.name))
             ax.set_title(system_label(cfg, system))
             ax.set_xlabel("Time (ns)")
             ax.set_ylabel(ylabel)
-            ax.legend(frameon=False)
+            if ax.has_data():
+                ax.legend(frameon=False)
+            else:
+                ax.text(.5, .5, "No finite data", ha="center", va="center",
+                        transform=ax.transAxes, color="0.45")
         for ax in axes[len(systems):]:
             ax.remove()
         fig.suptitle(title + (f" - {group_id}" if group_id is not None else ""))
@@ -265,7 +277,8 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
                 acf = pd.read_parquet(acf_path)
                 mask = (acf.metric == metric) & (acf.group.fillna("") == (group_id or ""))
                 subset = acf[mask]
-                if not subset.empty:
+                if not subset.empty and np.isfinite(
+                        subset["autocorrelation"].to_numpy(float)).any():
                     fig, axes = _subplot_grid(len(systems))
                     for ax, system in zip(axes, systems):
                         colors = _replicate_colors(cfg, system)
@@ -284,7 +297,9 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
                         ax.set_title(system_label(cfg, system))
                         ax.set_xlabel("Lag (ns)")
                         ax.set_ylabel("Autocorrelation")
-                        ax.legend(frameon=False)
+                        if ax.lines and any(
+                                np.isfinite(line.get_ydata()).any() for line in ax.lines):
+                            ax.legend(frameon=False)
                     for ax in axes[len(systems):]:
                         ax.remove()
                     fig.suptitle(f"{title} autocorrelation")
@@ -417,6 +432,10 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
             continue
         data = reps[reps.profile == profile_id]
         sysdata = systems_df[systems_df.profile == profile_id]
+        if not (np.isfinite(pd.to_numeric(data["value"], errors="coerce")).any()
+                or (not sysdata.empty and np.isfinite(
+                    pd.to_numeric(sysdata["mean"], errors="coerce")).any())):
+            continue
         xlabel, ylabel, profile_title = _profile_meta(str(profile_id))
         stem = _safe(profile_id)
         fig, axes = _subplot_grid(len(systems))
@@ -425,6 +444,8 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
             colors = _replicate_colors(cfg, system)
             for rep_id, subset in data[data.system == system].groupby("replicate", sort=False):
                 subset = subset.sort_values("position")
+                if not np.isfinite(pd.to_numeric(subset.value, errors="coerce")).any():
+                    continue
                 ax.plot(
                     subset.position,
                     subset.value,
@@ -442,7 +463,8 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
                     )
                     colors_list.append(colors.get(str(rep_id)))
             mean = sysdata[sysdata.system == system].sort_values("position")
-            if not mean.empty:
+            if not mean.empty and np.isfinite(
+                    pd.to_numeric(mean["mean"], errors="coerce")).any():
                 base = _system_colors(cfg)[system]
                 ax.plot(mean.position, mean["mean"], lw=2.0, color=base, label="System mean")
                 ax.fill_between(
@@ -455,7 +477,11 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
             ax.set_title(system_label(cfg, system))
             ax.set_xlabel(xlabel)
             ax.set_ylabel(ylabel)
-            ax.legend(frameon=False)
+            if ax.has_data():
+                ax.legend(frameon=False)
+            else:
+                ax.text(.5, .5, "No finite data", ha="center", va="center",
+                        transform=ax.transAxes, color="0.45")
         for ax in axes[len(systems):]:
             ax.remove()
         fig.suptitle(profile_title)
@@ -477,10 +503,15 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
                 comparisons.profile == profile_id
             ] if not comparisons.empty else pd.DataFrame()
         )
-        if not comp.empty:
+        if not comp.empty and np.isfinite(pd.to_numeric(
+                comp["difference_system2_minus_system1"], errors="coerce")).any():
             fig, ax = plt.subplots(figsize=(10, 5))
             for (s1, s2), subset in comp.groupby(["system_1", "system_2"], sort=False):
                 subset = subset.sort_values("position")
+                if not np.isfinite(pd.to_numeric(
+                        subset.difference_system2_minus_system1,
+                        errors="coerce")).any():
+                    continue
                 ax.plot(
                     subset.position,
                     subset.difference_system2_minus_system1,

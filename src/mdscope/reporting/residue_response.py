@@ -37,13 +37,15 @@ def plot_residue_response(cfg: dict, root: Path) -> None:
         values = values.reindex(sorted(values.columns), axis=1)
         if values.empty or values.shape[1] < 2:
             continue
+        matrix = values.to_numpy(float)
+        if not np.isfinite(matrix).any():
+            continue
         supported = group.pivot(index="profile", columns="resid",
                                 values="ci_excludes_zero").reindex(
                                     index=values.index, columns=values.columns)
-        figure_width = max(10., min(26., 5. + .055 * len(values.columns)))
-        figure_height = max(4., min(18., 1. + .30 * len(values.index)))
+        figure_width = max(11., min(30., 6. + .08 * len(values.columns)))
+        figure_height = max(4.5, min(24., 2. + .45 * len(values.index)))
         fig, ax = plt.subplots(figsize=(figure_width, figure_height))
-        matrix = values.to_numpy(float)
         image = ax.imshow(np.ma.masked_invalid(np.clip(matrix, -3, 3)),
                           interpolation="nearest", aspect="auto", cmap="RdBu_r",
                           norm=TwoSlopeNorm(vmin=-3, vcenter=0, vmax=3))
@@ -59,6 +61,7 @@ def plot_residue_response(cfg: dict, root: Path) -> None:
                                 len(x)-1])
         ax.set_xticks(ticks, [str(values.columns[i]) for i in ticks], rotation=45)
         ax.set_yticks(y, values.index)
+        ax.tick_params(axis="y", labelsize=max(7, min(11, 12 - .07 * len(y))))
         ax.set_xlabel("Residue number (within chain)")
         ax.set_ylabel("Residue-resolved observable")
         ax.set_title(f"{chain}: {right} minus {left}\n"
@@ -74,7 +77,11 @@ def plot_residue_response(cfg: dict, root: Path) -> None:
         fig.colorbar(image, ax=ax, label="Standardized condition difference (clipped ±3)")
         fig.text(.5, .005, "Exploratory, data-selected regions; CI dots are pointwise, not region significance.",
                  ha="center", fontsize=8)
-        fig.tight_layout(rect=(0, .025, 1, 1))
+        # Long observable names need an explicit left margin; tight_layout
+        # alone can shrink the heatmap until values are unreadable.
+        longest = max(map(len, values.index.astype(str)), default=0)
+        fig.subplots_adjust(left=min(.38, max(.16, .09 + .004 * longest)),
+                            right=.89, top=.89, bottom=.13)
         stem = safe_plot_stem(f"{left}__{right}__{chain}")
         fig.savefig(dest / f"{stem}__heatmap.png",
                     dpi=int(cfg.get("plots", {}).get("dpi", 250)), bbox_inches="tight")
