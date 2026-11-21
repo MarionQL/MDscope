@@ -243,3 +243,19 @@ saved source configuration are preserved.
 Residue-response discovery remains in `statistics.residue_response`; the shared
 YAML schema owns its selections/parameters and a derived-product manifest owns
 settings/completion. It consumes saved profiles/contrasts, not trajectories.
+
+
+### Statistics manifest lifecycle
+
+`statistics/manifest_reader.py` owns read-only parsing, object-shape checks,
+completion state and family-disabled facts for persisted
+`project_summary/statistics/manifest.json`. The statistics producer retains
+publication ownership: it writes `running` before inference and `complete`
+only after input verification and successful output publication.
+
+Planning catalog, plotting preflight and findings publication require an
+**explicit completed** manifest. Figure inventory may display missing or
+historical missing-status/methods manifests as `legacy_unverified`, never as
+newly verified complete results. Malformed objects are rejected; caller-facing
+errors retain entry-point context. No content-hash requirement or additional
+trajectory read is implied by this shared reader.
