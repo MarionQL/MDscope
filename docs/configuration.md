@@ -93,6 +93,32 @@ Per-figure `plots.options.<plot ID>.dpi` is supported for resolution overrides (
 
 Plot IDs are matched exactly, not by wildcard or substring. Unrecognized figure IDs fail YAML validation. An enabled ID does **not** generate missing statistical inputs; source data and the corresponding family prerequisites remain necessary. The plot ID format is checked during YAML validation; data-dependent metrics, run IDs, species and systems are verified only when persisted inputs exist. An unknown data-derived identifier cannot be rejected merely from its syntax. When selecting solvation by an explicit ID, no separate `plots.families.solvation` opt-in is needed. `plots.include: []` disables all figures.
 
+### Compact statistics-table PDFs
+
+Enable `plots.table_reports_pdf: true` to collect existing bootstrap and
+between-condition comparison tables into one multipage
+`statistics_tables.pdf` **per figure directory** (time_series, profiles,
+and each interaction type). When `plots.bootstrap_tables: true`, bootstrap
+pages are included; comparison pages still depend on available statistics.
+
+The report replaces individual `*__bootstrap_table.png` and
+`*__comparison_table.png` outputs. Previously generated PNG tables in
+the same directories are moved to
+`<project_output>/.archives/figure_tables/` only after the new PDF
+has been written successfully. Other PNG figures and the full-precision
+Parquet statistics are retained. `plots.include` and disabled families
+continue to control which tables appear. The PDF is for reading and
+sharing; it is not a substitute for numerical data exports.
+
+```yaml
+plots:
+  enabled: true
+  bootstrap_tables: true
+  table_reports_pdf: true
+```
+
+`table_reports_pdf: false` (default) preserves individual table PNGs.
+
 ## Plot and statistics controls
 
 ```yaml
