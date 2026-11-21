@@ -20,6 +20,7 @@ from ..statistics import collect_time_series, finite
 from .figure_inventory import current_statistics
 from .plot_ids import id_from_figure_path, figure_dpi, safe_plot_stem as _safe
 from .table_reports import add_table_page, table_report_session
+from .shared_scales import synchronize_y_axes
 
 
 from .labels import METRIC_LABELS, _metric_meta
@@ -254,6 +255,7 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
             else:
                 ax.text(.5, .5, "No finite data", ha="center", va="center",
                         transform=ax.transAxes, color="0.45")
+        synchronize_y_axes(axes[:len(systems)])
         for ax in axes[len(systems):]:
             ax.remove()
         fig.suptitle(title + (f" - {group_id}" if group_id is not None else "")
@@ -333,6 +335,7 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
                         if ax.lines and any(
                                 np.isfinite(line.get_ydata()).any() for line in ax.lines):
                             ax.legend(frameon=False)
+                    synchronize_y_axes(axes[:len(systems)], symmetric=True)
                     for ax in axes[len(systems):]:
                         ax.remove()
                     fig.suptitle(f"{title} autocorrelation")
@@ -515,6 +518,7 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
             else:
                 ax.text(.5, .5, "No finite data", ha="center", va="center",
                         transform=ax.transAxes, color="0.45")
+        synchronize_y_axes(axes[:len(systems)])
         for ax in axes[len(systems):]:
             ax.remove()
         fig.suptitle(profile_title)
