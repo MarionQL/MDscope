@@ -55,6 +55,7 @@ def analyze_project(cfg, root, system_repouts):
             for name in families
         },
         "methods": cfg.get("statistics", {}),
+        "input_analyses": cfg.get("analyses", {}),
         "status": "running",
         "replicate_paths": [os.path.relpath(rep, root)
                             for reps in system_repouts.values() for rep in reps],
