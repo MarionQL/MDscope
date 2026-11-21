@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import plot_enabled, figure_enabled, ensure_dir, replicate_label, replicate_specs, system_label
+from ..core.persistence import archive_output
 from ..interactions import interaction_tables
 from ..statistics import collect_time_series, finite
 from .figure_inventory import current_statistics
@@ -150,6 +151,28 @@ def rolling_time_mean(time_ps, values, window_ns: float):
     np.divide(totals[1:] - totals[lower], n, out=result, where=n > 0)
     return result
 
+def _all_zero_lipid_footprint(metric, tables):
+    """Suppress descriptive footprint plots only if every finite sample is zero.
+
+    Missing values never count as measured zeros. Keep statistical tables and
+    saved Parquet inputs even when descriptive plots are not informative.
+    """
+    if not str(metric).startswith("lipid_footprint_"):
+        return False
+    measured = [finite(table["value"]) for table in tables if table is not None]
+    measured = [values for values in measured if len(values)]
+    return bool(measured) and all(np.all(values == 0) for values in measured)
+
+
+def _archive_suppressed_footprint_plots(root, folder, stem):
+    """Preserve old zero-only PNGs outside the active figure inventory."""
+    archive_root = root / ".archives" / "zero_only_footprint_figures"
+    for variant in ("timeseries", "distribution", "autocorrelation"):
+        path = folder / f"{stem}__{variant}.png"
+        if path.is_file():
+            archive_output(path, archive_root, path.name)
+
+
 def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
     if not plot_enabled(cfg, 'time_series'):
         return
@@ -220,126 +243,135 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
             if (table := cache[(system, repout.name)].get((group_id, metric))) is not None
         ):
             continue
-        fig, axes = _subplot_grid(len(systems))
-        distribution_values, distribution_labels, distribution_colors = [], [], []
-        for ax, system in zip(axes, systems):
-            colors = _replicate_colors(cfg, system)
-            for repout in system_repouts[system]:
-                table = cache[(system, repout.name)].get((group_id, metric))
-                if table is None:
-                    continue
-                values = finite(table["value"])
-                if not len(values):
-                    continue
-                plotted = (rolling_time_mean(table["time_ps"], table["value"], rolling_ns)
-                           if rolling_ns is not None else table["value"])
-                if np.isfinite(np.asarray(plotted, dtype=float)).any():
-                    ax.plot(
-                        table["time_ps"] / 1000.0,
-                        plotted,
-                        lw=1.1,
-                        color=colors.get(repout.name),
-                        label=replicate_label(cfg, system, repout.name)
+        suppress_zero = _all_zero_lipid_footprint(
+            metric, (
+                cache[(system, repout.name)].get((group_id, metric))
+                for system in systems for repout in system_repouts[system]
+            ),
+        )
+        if suppress_zero:
+            _archive_suppressed_footprint_plots(root, out, stem)
+        else:
+            fig, axes = _subplot_grid(len(systems))
+            distribution_values, distribution_labels, distribution_colors = [], [], []
+            for ax, system in zip(axes, systems):
+                colors = _replicate_colors(cfg, system)
+                for repout in system_repouts[system]:
+                    table = cache[(system, repout.name)].get((group_id, metric))
+                    if table is None:
+                        continue
+                    values = finite(table["value"])
+                    if not len(values):
+                        continue
+                    plotted = (rolling_time_mean(table["time_ps"], table["value"], rolling_ns)
+                               if rolling_ns is not None else table["value"])
+                    if np.isfinite(np.asarray(plotted, dtype=float)).any():
+                        ax.plot(
+                            table["time_ps"] / 1000.0,
+                            plotted,
+                            lw=1.1,
+                            color=colors.get(repout.name),
+                            label=replicate_label(cfg, system, repout.name)
+                        )
+                    distribution_values.append(values)
+                    distribution_labels.append(
+                        f"{system_label(cfg, system)}\n"
+                        f"{replicate_label(cfg, system, repout.name)}"
                     )
-                distribution_values.append(values)
-                distribution_labels.append(
-                    f"{system_label(cfg, system)}\n"
-                    f"{replicate_label(cfg, system, repout.name)}"
-                )
-                distribution_colors.append(colors.get(repout.name))
-            ax.set_title(system_label(cfg, system))
-            ax.set_xlabel("Time (ns)")
-            ax.set_ylabel(ylabel)
-            if ax.has_data():
-                ax.legend(frameon=False)
-            else:
-                ax.text(.5, .5, "No finite data", ha="center", va="center",
-                        transform=ax.transAxes, color="0.45")
-        synchronize_y_axes(axes[:len(systems)])
-        for ax in axes[len(systems):]:
-            ax.remove()
-        fig.suptitle(title + (f" - {group_id}" if group_id is not None else "")
-                     + (f" · trailing {rolling_ns:g} ns mean" if rolling_ns is not None else ""))
-        _save_selected(fig, out / f"{stem}__timeseries.png", cfg, f"time_series:{stem}:timeseries")
+                    distribution_colors.append(colors.get(repout.name))
+                ax.set_title(system_label(cfg, system))
+                ax.set_xlabel("Time (ns)")
+                ax.set_ylabel(ylabel)
+                if ax.has_data():
+                    ax.legend(frameon=False)
+                else:
+                    ax.text(.5, .5, "No finite data", ha="center", va="center",
+                            transform=ax.transAxes, color="0.45")
+            synchronize_y_axes(axes[:len(systems)])
+            for ax in axes[len(systems):]:
+                ax.remove()
+            fig.suptitle(title + (f" - {group_id}" if group_id is not None else "")
+                         + (f" · trailing {rolling_ns:g} ns mean" if rolling_ns is not None else ""))
+            _save_selected(fig, out / f"{stem}__timeseries.png", cfg, f"time_series:{stem}:timeseries")
 
-        if cfg.get("plots", {}).get("distributions", True) and distribution_values:
-            fig, (
-                ax_hist,
-                ax_violin,
-            ) = plt.subplots(
-                2,
-                1,
-                figsize=(max(8, 1.1 * len(distribution_values)), 7),
-                gridspec_kw={"height_ratios": [2.2, 1]}
-            )
-            pooled = np.concatenate(distribution_values)
-            bins = np.histogram_bin_edges(pooled, bins="fd") if len(pooled) > 2 else 10
-            for values, label, color in zip(
-                distribution_values,
-                distribution_labels,
-                distribution_colors
-            ):
-                ax_hist.hist(
-                    values,
-                    bins=bins,
-                    density=True,
-                    histtype="step",
-                    linewidth=1.3,
-                    color=color,
-                    label=label.replace("\n", " / ")
+            if cfg.get("plots", {}).get("distributions", True) and distribution_values:
+                fig, (
+                    ax_hist,
+                    ax_violin,
+                ) = plt.subplots(
+                    2,
+                    1,
+                    figsize=(max(8, 1.1 * len(distribution_values)), 7),
+                    gridspec_kw={"height_ratios": [2.2, 1]}
                 )
-            ax_hist.set_ylabel("Density")
-            ax_hist.legend(frameon=False, ncol=2)
-            parts = ax_violin.violinplot(distribution_values, showmeans=False, showmedians=True)
-            for body, color in zip(parts["bodies"], distribution_colors):
-                body.set_facecolor(color)
-                body.set_alpha(0.6)
-            ax_violin.set_xticks(
-                np.arange(1, len(distribution_labels) + 1),
-                distribution_labels,
-                rotation=25,
-                ha="right"
-            )
-            ax_violin.set_ylabel(ylabel)
-            fig.suptitle(f"{title} distribution")
-            _save_selected(fig, out / f"{stem}__distribution.png", cfg, f"time_series:{stem}:distribution")
+                pooled = np.concatenate(distribution_values)
+                bins = np.histogram_bin_edges(pooled, bins="fd") if len(pooled) > 2 else 10
+                for values, label, color in zip(
+                    distribution_values,
+                    distribution_labels,
+                    distribution_colors
+                ):
+                    ax_hist.hist(
+                        values,
+                        bins=bins,
+                        density=True,
+                        histtype="step",
+                        linewidth=1.3,
+                        color=color,
+                        label=label.replace("\n", " / ")
+                    )
+                ax_hist.set_ylabel("Density")
+                ax_hist.legend(frameon=False, ncol=2)
+                parts = ax_violin.violinplot(distribution_values, showmeans=False, showmedians=True)
+                for body, color in zip(parts["bodies"], distribution_colors):
+                    body.set_facecolor(color)
+                    body.set_alpha(0.6)
+                ax_violin.set_xticks(
+                    np.arange(1, len(distribution_labels) + 1),
+                    distribution_labels,
+                    rotation=25,
+                    ha="right"
+                )
+                ax_violin.set_ylabel(ylabel)
+                fig.suptitle(f"{title} distribution")
+                _save_selected(fig, out / f"{stem}__distribution.png", cfg, f"time_series:{stem}:distribution")
 
-        if cfg.get("plots", {}).get("autocorrelation", True) and not rep_stats.empty:
-            acf_path = (
-                root / "project_summary" / "statistics" / "time_series" / "autocorrelation.parquet"
-            )
-            if acf_path.exists() and stats_allowed:
-                acf = pd.read_parquet(acf_path)
-                mask = (acf.metric == metric) & (acf.group.fillna("") == (group_id or ""))
-                subset = acf[mask]
-                if not subset.empty and np.isfinite(
-                        subset["autocorrelation"].to_numpy(float)).any():
-                    fig, axes = _subplot_grid(len(systems))
-                    for ax, system in zip(axes, systems):
-                        colors = _replicate_colors(cfg, system)
-                        for rep_id, data in subset[subset.system == system].groupby(
-                            "replicate",
-                            sort=False
-                        ):
-                            ax.plot(
-                                data.lag_ps / 1000.0,
-                                data.autocorrelation,
-                                color=colors.get(str(rep_id)),
-                                lw=1.2,
-                                label=replicate_label(cfg, system, str(rep_id))
-                            )
-                        ax.axhline(0, lw=0.8, color="0.5")
-                        ax.set_title(system_label(cfg, system))
-                        ax.set_xlabel("Lag (ns)")
-                        ax.set_ylabel("Autocorrelation")
-                        if ax.lines and any(
-                                np.isfinite(line.get_ydata()).any() for line in ax.lines):
-                            ax.legend(frameon=False)
-                    synchronize_y_axes(axes[:len(systems)], symmetric=True)
-                    for ax in axes[len(systems):]:
-                        ax.remove()
-                    fig.suptitle(f"{title} autocorrelation")
-                    _save_selected(fig, out / f"{stem}__autocorrelation.png", cfg, f"time_series:{stem}:autocorrelation")
+            if cfg.get("plots", {}).get("autocorrelation", True) and not rep_stats.empty:
+                acf_path = (
+                    root / "project_summary" / "statistics" / "time_series" / "autocorrelation.parquet"
+                )
+                if acf_path.exists() and stats_allowed:
+                    acf = pd.read_parquet(acf_path)
+                    mask = (acf.metric == metric) & (acf.group.fillna("") == (group_id or ""))
+                    subset = acf[mask]
+                    if not subset.empty and np.isfinite(
+                            subset["autocorrelation"].to_numpy(float)).any():
+                        fig, axes = _subplot_grid(len(systems))
+                        for ax, system in zip(axes, systems):
+                            colors = _replicate_colors(cfg, system)
+                            for rep_id, data in subset[subset.system == system].groupby(
+                                "replicate",
+                                sort=False
+                            ):
+                                ax.plot(
+                                    data.lag_ps / 1000.0,
+                                    data.autocorrelation,
+                                    color=colors.get(str(rep_id)),
+                                    lw=1.2,
+                                    label=replicate_label(cfg, system, str(rep_id))
+                                )
+                            ax.axhline(0, lw=0.8, color="0.5")
+                            ax.set_title(system_label(cfg, system))
+                            ax.set_xlabel("Lag (ns)")
+                            ax.set_ylabel("Autocorrelation")
+                            if ax.lines and any(
+                                    np.isfinite(line.get_ydata()).any() for line in ax.lines):
+                                ax.legend(frameon=False)
+                        synchronize_y_axes(axes[:len(systems)], symmetric=True)
+                        for ax in axes[len(systems):]:
+                            ax.remove()
+                        fig.suptitle(f"{title} autocorrelation")
+                        _save_selected(fig, out / f"{stem}__autocorrelation.png", cfg, f"time_series:{stem}:autocorrelation")
 
         if cfg.get("plots", {}).get("bootstrap_tables", True) and not rep_stats.empty:
             r = (
