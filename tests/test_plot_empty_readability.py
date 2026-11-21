@@ -116,3 +116,83 @@ def test_solvation_timeseries_skips_all_missing_counts(tmp_path):
                        mean_n_solvent=np.nan)]).to_parquet(
                            path / "species_timeseries.parquet")
     assert solvation_timeseries_figure({"control": [rep]}) is None
+
+def test_all_zero_lipid_footprint_is_suppressed_and_old_figure_archived(tmp_path, monkeypatch):
+    from mdscope.reporting import plotting
+
+    metric = "lipid_footprint_BGAL_lower_5_10A_fold_available_fraction"
+    cfg = {
+        "plots": {"enabled": True, "distributions": False,
+                  "autocorrelation": False, "bootstrap_tables": False,
+                  "time_series_rolling_window_ns": 100},
+        "systems": {
+            "synd4_glycolipids": {"replicates": [{"label": f"rep{i}"} for i in (1, 2, 3)]},
+            "synd4_no_glycolipids": {"replicates": [{"label": f"rep{i}"} for i in (1, 2, 3)]},
+        },
+    }
+    reps = {name: [tmp_path / name / f"rep{i}" for i in (1, 2, 3)]
+            for name in cfg["systems"]}
+    def collect(*args, **kwargs):
+        return {(None, metric): pd.DataFrame({
+            "time_ps": [0., 100_000., 200_000.],
+            "value": [0., 0., 0.],
+        })}
+    monkeypatch.setattr(plotting, "collect_time_series", collect)
+    dest = tmp_path / "project_summary/figures/time_series"
+    dest.mkdir(parents=True)
+    stale = dest / f"{metric}__timeseries.png"
+    stale.write_bytes(b"older rendered figure")
+    plotting.plot_time_series(cfg, tmp_path, reps)
+    assert not stale.exists()
+    archived = list((tmp_path / ".archives/zero_only_footprint_figures").glob(
+        f"{metric}__timeseries*.png"))
+    assert len(archived) == 1
+    assert archived[0].read_bytes() == b"older rendered figure"
+
+
+def test_lipid_footprint_one_nonzero_replica_keeps_figure(tmp_path, monkeypatch):
+    from mdscope.reporting import plotting
+
+    metric = "lipid_footprint_POPC_lower_5_10A_fold_available_fraction"
+    cfg = {"plots": {"enabled": True, "distributions": False,
+                     "autocorrelation": False, "bootstrap_tables": False},
+           "systems": {"control": {"replicates": [{"label": "rep1"}, {"label": "rep2"}]}}}
+    def collect(repout, **kwargs):
+        values = [0., 0., 1.] if repout.name == "rep2" else [0., 0., 0.]
+        return {(None, metric): pd.DataFrame({
+            "time_ps": [0., 100., 200.], "value": values,
+        })}
+    monkeypatch.setattr(plotting, "collect_time_series", collect)
+    reps = {"control": [tmp_path / "control/rep1", tmp_path / "control/rep2"]}
+    plotting.plot_time_series(cfg, tmp_path, reps)
+    assert (tmp_path / "project_summary/figures/time_series"
+            / f"{metric}__timeseries.png").is_file()
+
+
+def test_zero_only_non_footprint_metric_remains_eligible(tmp_path, monkeypatch):
+    from mdscope.reporting import plotting
+
+    monkeypatch.setattr(plotting, "collect_time_series", lambda *a, **k: {
+        (None, "coordination_count"): pd.DataFrame(
+            {"time_ps": [0., 100.], "value": [0., 0.]})
+    })
+    cfg = {"plots": {"enabled": True, "distributions": False,
+                     "autocorrelation": False, "bootstrap_tables": False},
+           "systems": {"control": {"replicates": [{"label": "rep1"}]}}}
+    plotting.plot_time_series(cfg, tmp_path,
+                              {"control": [tmp_path / "control/rep1"]})
+    assert (tmp_path / "project_summary/figures/time_series"
+            / "coordination_count__timeseries.png").is_file()
+
+
+def test_zero_footprint_filter_preserves_missing_vs_zero_semantics():
+    from mdscope.reporting.plotting import _all_zero_lipid_footprint
+
+    metric = "lipid_footprint_BGAL_lower_5_10A_fold_available_fraction"
+    zero = pd.DataFrame({"value": [0., 0.]})
+    missing = pd.DataFrame({"value": [np.nan]})
+    positive = pd.DataFrame({"value": [0., 0.002]})
+    assert _all_zero_lipid_footprint(metric, [zero, missing])
+    assert not _all_zero_lipid_footprint(metric, [positive, zero])
+    assert not _all_zero_lipid_footprint(metric, [missing])
+    assert not _all_zero_lipid_footprint("rmsd_A", [zero])
