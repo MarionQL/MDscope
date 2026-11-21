@@ -7,6 +7,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from .shared_scales import synchronize_y_axes
+
 
 def solvation_rdf_figure(root, system_repouts, *, max_panels=6, dpi=150):
     path=Path(root)/"project_summary"/"statistics"/"solvation"/"system_rdf.parquet"
@@ -44,6 +46,7 @@ def solvation_rdf_figure(root, system_repouts, *, max_panels=6, dpi=150):
         ax.set_ylabel("g(r); solid: full-cell reference")
         if ax.get_legend_handles_labels()[0]:
             ax.legend(fontsize=7,frameon=False)
+    synchronize_y_axes(axes)
     axes[-1,0].set_xlabel("Distance (Å)")
     fig.tight_layout()
     buf=BytesIO()
@@ -84,6 +87,7 @@ def solvation_timeseries_figure(system_repouts, *, max_panels=4, dpi=150):
         ax.set_title(" / ".join(map(str,key)),fontsize=9)
         ax.set_ylabel("Mean solvent count")
         ax.legend(fontsize=6,frameon=False,ncol=2)
+    synchronize_y_axes(axes)
     axes[-1,0].set_xlabel("Time (ns)")
     fig.tight_layout()
     buf=BytesIO()
