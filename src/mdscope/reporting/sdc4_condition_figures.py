@@ -20,6 +20,7 @@ from ..config import figure_enabled, system_label
 from ..core.persistence import archive_output
 from .plot_ids import figure_dpi
 from .shared_scales import synchronize_y_axes
+from .sdc4_exports import export_region_replica_summaries
 
 
 REGION_METRICS = {
@@ -57,35 +58,6 @@ def _tables(reps, filename):
     return tables
 
 
-def _write_region_replica_summaries(reps, tables):
-    """Keep the established CSV numeric contract despite moving PNGs."""
-    for rep in reps:
-        repname = Path(rep).name
-        frame = tables.get(repname)
-        if frame is None or "moiety" not in frame:
-            continue
-        contacts = frame.loc[frame.moiety.eq("any")].copy()
-        if contacts.empty:
-            continue
-        for column in ("matched_local_contact_fraction",
-                       "matched_local_composition_enrichment"):
-            if column not in contacts:
-                contacts[column] = np.nan
-        summary = contacts.groupby(
-            ["region", "species", "leaflet"], as_index=False
-        ).agg(
-            mean_contact_fraction=("contact_fraction", "mean"),
-            mean_local_enrichment=("local_composition_enrichment", "mean"),
-            mean_matched_local_contact_fraction=("matched_local_contact_fraction", "mean"),
-            mean_matched_local_enrichment=("matched_local_composition_enrichment", "mean"),
-            n_matched_local_frames=("matched_local_contact_fraction", "count"),
-            n_matched_enrichment_frames=("matched_local_composition_enrichment", "count"),
-            n_frames_with_species=("contact_fraction", "count"),
-        )
-        destination = Path(rep) / "extensions/sdc4_mechanisms/lipid_region_replicate_summary.csv"
-        summary.to_csv(destination, index=False)
-
-
 def _region_label(region: str) -> str:
     """Short display names; saved region identifiers are never altered."""
     if region in {"TM_A", "TM_B"}:
@@ -118,7 +90,7 @@ def _region_figures(cfg, system, reps, out):
     tables = _tables(reps, "lipid_region_specificity.parquet")
     if not tables:
         return
-    _write_region_replica_summaries(reps, tables)
+    export_region_replica_summaries(out.parents[3], system, reps, tables)
     names = [Path(rep).name for rep in reps]
     for stem in stems:
         moieties = ("glycan", "ceramide_head", "ceramide_tail") if stem == MOIETY_STEM else ("any",)
