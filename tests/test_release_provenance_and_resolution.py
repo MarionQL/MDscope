@@ -112,3 +112,27 @@ def test_source_identity_dirty_checkout_and_foreign_cwd(monkeypatch, tmp_path):
     assert provenance._source_identity()["git_dirty"] is False
     module.write_text("changed")
     assert provenance._source_identity()["git_dirty"] is True
+
+
+def test_findings_support_counts_only_replicas_with_metric_rows(tmp_path):
+    import pandas as pd
+    from mdscope.reporting.report import _replicate_support, _support_floor
+    from mdscope.statistics.coverage import _identity
+    path = tmp_path / "time_series"
+    path.mkdir()
+    table = pd.DataFrame([
+        {"system": "a", "replicate": "r1", "group": "", "metric": "rmsd"},
+        {"system": "a", "replicate": "r2", "group": "", "metric": "rmsd"},
+        {"system": "b", "replicate": "r1", "group": "", "metric": "rmsd"},
+        {"system": "a", "replicate": "r3", "group": "", "metric": "rg"},
+    ])
+    table.to_parquet(path / "replicate_statistics.parquet")
+    identity = _identity(table.iloc[:1], ("group", "metric"))[0]
+    support = _replicate_support(tmp_path)
+    a = support["time_series", identity, "a"]
+    b = support["time_series", identity, "b"]
+    assert a == {"r1", "r2"}
+    assert b == {"r1"}
+    minimum, kind = _support_floor(a, b, {"hypothesis_tests": {"design": "independent"}})
+    assert minimum == pytest.approx(2 / 3)
+    assert kind == "exact"
