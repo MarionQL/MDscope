@@ -207,6 +207,7 @@ DEFAULTS = {
         "options": {},
         "min_occupancy": 0.05,
         "time_series": True,
+        "time_series_rolling_window_ns": None,
         "distributions": False,
         "autocorrelation": False,
         "bootstrap_tables": False,
@@ -859,6 +860,12 @@ def validate_config(cfg: dict, base: Path = Path("."), *, check_paths: bool = Tr
     allowed = {"time_series", "profiles", "interactions", "solvation", "sdc4",
                "shared_states", "diffusion", "lipid_enrichment", "lipid_contacts", "other"}
     plots = cfg.get("plots", {})
+    window_ns = plots.get("time_series_rolling_window_ns")
+    if window_ns is not None and (
+        type(window_ns) not in (int, float)
+        or not math.isfinite(window_ns) or window_ns <= 0
+    ):
+        raise ValueError("plots.time_series_rolling_window_ns must be null or a positive finite number")
     families = plots.get("families", {})
     if (not isinstance(families, dict) or set(families) - allowed
             or any(not isinstance(value, bool) for value in families.values())):
