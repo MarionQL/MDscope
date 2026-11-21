@@ -8,6 +8,7 @@
 #SBATCH -A bevanlab
 #SBATCH --output=slurm-out/mdscope/%x-%j.out
 #SBATCH --error=slurm-out/mdscope/%x-%j.err
+# ARC defaults; override on the sbatch command line (docs/workflows.md#slurm-jobs).
 
 set -euo pipefail
 
@@ -23,10 +24,11 @@ fi
 
 # Finalization reads completed replicate outputs and generates the
 # cross-replicate statistics and findings; it does not rerun trajectories.
-source /apps/common/software/Miniconda3/24.7.1-0/etc/profile.d/conda.sh
-conda activate mdanalysis
 export PYTHONUNBUFFERED=1
-python -m pip install --no-deps -e "${ROOT}"
+# shellcheck source=scripts/slurm_job_env.sh
+source "${ROOT}/scripts/slurm_job_env.sh"
+mdscope_activate_env
+mdscope_preflight
 
 echo "============================================================"
 echo "MDscope finalize"

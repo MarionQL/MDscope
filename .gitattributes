@@ -1,0 +1,2 @@
+# Slurm rejects batch scripts with DOS line endings.
+*.sh text eol=lf

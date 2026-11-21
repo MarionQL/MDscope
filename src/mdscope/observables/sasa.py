@@ -6,11 +6,25 @@ import pandas as pd
 from ..core.profiling import _residue_label
 from ..pipeline.progress import track
 from ..config import ensure_dir,atomic_parquet,time_ps
-def _freesasa_structure(atoms):
+from ..errors import MissingBackendError
+FREESASA_INSTALL_HINT = "python -m pip install 'mdscope[sasa]'"
+
+
+def import_freesasa():
+    """Import the optional FreeSASA backend required by enabled SASA runs."""
     try:
         import freesasa
     except ImportError as exc:
-        raise RuntimeError("SASA requires FreeSASA (`pip install freesasa`).") from exc
+        raise MissingBackendError(
+            "analyses.sasa is enabled but the optional FreeSASA backend is not "
+            f"importable ({exc}). Install it with: {FREESASA_INSTALL_HINT} "
+            "(or: python -m pip install freesasa), or disable analyses.sasa."
+        ) from exc
+    return freesasa
+
+
+def _freesasa_structure(atoms):
+    freesasa = import_freesasa()
     structure = freesasa.Structure()
     for atom in atoms:
         x, y, z = map(float, atom.position)
@@ -36,12 +50,7 @@ ELEMENT_RADII_A = {"H": 1.20, "C": 1.70, "N": 1.55, "O": 1.52,
 def sasa_instances(universe, cfg, *, validate_only=False):
     """Build independent target/occluder SASA selections from one Universe."""
     from ..config import analysis_runs
-    freesasa = None
-    if not validate_only:
-        try:
-            import freesasa
-        except ImportError as exc:
-            raise RuntimeError("SASA requires freesasa") from exc
+    freesasa = None if validate_only else import_freesasa()
     instances = {}
     for run in analysis_runs(cfg, "sasa"):
         spec = run.spec

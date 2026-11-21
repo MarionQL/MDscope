@@ -5,7 +5,10 @@ scientific expectations or introduce a production dependency on test data.
 """
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
+import types
 from pathlib import Path
 
 import MDAnalysis as mda
@@ -107,11 +110,13 @@ def solvation_universe():
     return u
 
 
-def invoke_cli(tmp_path: Path, *args: str, stdin: str | None = None, ok: bool = True):
+def invoke_cli(tmp_path: Path, *args: str, stdin: str | None = None, ok: bool = True,
+               env: dict[str, str] | None = None):
     command = ["mdscope", *map(str, args)]
     result = subprocess.run(
         command, input=stdin, text=True, capture_output=True,
         cwd=tmp_path, timeout=150, check=False,
+        env=None if env is None else {**os.environ, **env},
     )
     if ok:
         assert result.returncode == 0, (
@@ -121,6 +126,23 @@ def invoke_cli(tmp_path: Path, *args: str, stdin: str | None = None, ok: bool = 
     else:
         assert result.returncode != 0, f"{command!r} unexpectedly succeeded"
     return result
+
+
+def freesasa_backend(monkeypatch, tmp_path: Path, *, available: bool):
+    """Make the optional FreeSASA import succeed or fail regardless of the host.
+
+    Applies in-process and to spawned CLI subprocesses (through PYTHONPATH).
+    The available stub has no SASA algorithm and only satisfies preflight.
+    """
+    stub = tmp_path / "freesasa_stub" / "freesasa"
+    stub.mkdir(parents=True, exist_ok=True)
+    (stub / "__init__.py").write_text(
+        "" if available else 'raise ImportError("No module named freesasa (simulated)")\n'
+    )
+    paths = [str(stub.parent), os.environ.get("PYTHONPATH", "")]
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join(filter(None, paths)))
+    monkeypatch.setitem(sys.modules, "freesasa",
+                        types.ModuleType("freesasa") if available else None)
 
 
 def tiny_cli_project(tmp_path):

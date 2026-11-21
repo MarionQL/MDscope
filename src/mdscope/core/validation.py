@@ -3,15 +3,42 @@ from pathlib import Path
 import MDAnalysis as mda
 from MDAnalysis.exceptions import SelectionError
 from ..config import analysis_runs
+from ..errors import ConfigError
 from ..observables.residue_membrane_distance import _without_hydrogens
 from ..mechanisms.hs_topology import discover_covalent_hs
 from ..mechanisms.mechanistic_common import sequence_matches
 from .alignment import resolved_selection_counts
-from ..observables.sasa import sasa_instances
+from ..observables.sasa import import_freesasa, sasa_instances
+
+
+def require_optional_backends(cfg):
+    """Fail before topology/trajectory work if an enabled analysis lacks its backend.
+
+    Environment check only: schema-only planning deliberately does not call it.
+    """
+    if analysis_runs(cfg, "sasa"):
+        import_freesasa()
 
 
 def validate_selections(cfg, base=Path("."), *, systems=None, emit=None):
+    """Check topology against configured selections; mismatches raise ``ConfigError``.
+
+    Preflight reads topologies only, so its ``ValueError``/``SelectionError``
+    failures describe user inputs rather than numerical faults.
+    """
+    try:
+        return _validate_selections(cfg, base, systems=systems, emit=emit)
+    except ConfigError:  # already contextual; keep its original cause
+        raise
+    except SelectionError as exc:
+        raise ConfigError(f"Invalid MDAnalysis selection: {exc}") from exc
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
+
+
+def _validate_selections(cfg, base, *, systems, emit):
     emit = emit or (lambda *args, **kwargs: None)
+    require_optional_backends(cfg)
     base = Path(base)
     resolved = {}
     for system, spec in cfg["systems"].items():
@@ -22,14 +49,14 @@ def validate_selections(cfg, base=Path("."), *, systems=None, emit=None):
         try:
             universe = mda.Universe(str(topology))
         except (OSError, ValueError) as exc:
-            raise ValueError(
+            raise ConfigError(
                 f"System {system!r}: cannot read topology {topology}: {exc}. "
                 "Verify the topology file and format before running analyses."
             ) from exc
         try:
             counts = resolved_selection_counts(universe, cfg)
         except (SelectionError, ValueError, AttributeError) as exc:
-            raise ValueError(
+            raise ConfigError(
                 f"System {system!r}: cannot resolve protein, feature, alignment "
                 f"or named group selections in {topology}: {exc}. "
                 "Check MDAnalysis selection syntax and topology attributes."

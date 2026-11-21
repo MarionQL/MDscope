@@ -1,7 +1,8 @@
-"""Generate and verify the shared, synthetic YAML validation project.
+"""Generate synthetic MDscope projects: the validation oracle and the quickstart.
 
 The molecular geometry is specified in docs/developer/sdc4-fixtures.md.
-No production trajectories or force-field resources are required.
+No production trajectories or force-field resources are required. Outputs are
+software fixtures, not molecular dynamics evidence.
 """
 from copy import deepcopy
 from pathlib import Path
@@ -18,13 +19,18 @@ from mdscope.config import DEFAULTS, Replicate
 from test_sdc4_geometry_references import _fixture
 
 
-def make_project(tmp_path, chunk):
+def _write_topology(pdb):
     u, partial = _fixture()
     u.atoms.chainIDs = ["H" if c == "HS" else c for c in u.atoms.chainIDs]
     # Adjacent identical PDB residue IDs are one residue on re-read.
     u.residues.resids = np.arange(1, len(u.residues)+1)
-    pdb, dcd = tmp_path/"mixed.pdb", tmp_path/"mixed.dcd"
     u.atoms.write(str(pdb))
+    return u, partial
+
+
+def make_project(tmp_path, chunk):
+    pdb, dcd = tmp_path/"mixed.pdb", tmp_path/"mixed.dcd"
+    u, partial = _write_topology(pdb)
     initial = u.atoms.positions.copy()
     with mda.Writer(str(dcd), n_atoms=len(u.atoms)) as writer:
         for i in range(8):
@@ -82,6 +88,50 @@ def write_project(directory: Path):
     return directory/"validation.yaml"
 
 
+QUICKSTART_CONDITIONS = {"synthetic_reference": 0., "synthetic_displaced": 1.}
+
+
+def write_quickstart(directory: Path):
+    """Two synthetic conditions x three replicas for the documented quickstart.
+
+    Chain B is translated along x away from chain A by the condition offset
+    (Angstrom) plus seeded per-frame jitter in [0, 0.2) Angstrom. The displaced
+    condition therefore has a larger radius of gyration by construction.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    if any(directory.iterdir()):
+        raise FileExistsError(f"Use a fresh quickstart directory: {directory}")
+    u, _ = _write_topology(directory/"synthetic.pdb")
+    initial = u.atoms.positions.copy()
+    rng = np.random.default_rng(2026)
+    systems = {}
+    for condition, offset in QUICKSTART_CONDITIONS.items():
+        replicates = []
+        for replica in (1, 2, 3):
+            name = f"{condition}_rep{replica}.dcd"
+            with mda.Writer(str(directory/name), n_atoms=len(u.atoms)) as writer:
+                for jitter in rng.uniform(0., .2, size=20):
+                    xyz = initial.copy()
+                    xyz[:12, 0] += offset + jitter
+                    u.atoms.positions = xyz
+                    writer.write(u.atoms)
+            replicates.append({"trajectory": name, "label": f"rep{replica}"})
+        systems[condition] = {"topology": "synthetic.pdb", "replicates": replicates}
+    analyses = {name: {"enabled": False} for name in DEFAULTS["analyses"]}
+    for name in ("alignment", "rmsd", "rmsf", "radius_of_gyration"):
+        analyses[name]["enabled"] = True
+    cfg = {
+        "project": {"name": "synthetic_quickstart_fixture", "output": "results"},
+        "progress": {"enabled": False},
+        "systems": systems,
+        "analyses": analyses,
+        "plots": {"enabled": False},
+    }
+    path = directory/"quickstart.yaml"
+    path.write_text(yaml.safe_dump(cfg, sort_keys=False))
+    return path
+
+
 def verify_project(directory: Path):
     reference = json.loads((directory/"reference.json").read_text())
     root = directory/"results/test/rep1"
@@ -103,10 +153,12 @@ def verify_project(directory: Path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("create", "verify"))
+    parser.add_argument("action", choices=("create", "verify", "quickstart"))
     parser.add_argument("directory", type=Path)
     args = parser.parse_args()
     if args.action == "create":
         print(write_project(args.directory.resolve()))
+    elif args.action == "quickstart":
+        print(write_quickstart(args.directory.resolve()))
     else:
         print(f"Verified {verify_project(args.directory.resolve())} independent reference products")

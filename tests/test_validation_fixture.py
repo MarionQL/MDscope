@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from mdscope_test_support import invoke_cli as invoke
-from validation_fixture import write_project, verify_project
+from validation_fixture import write_project, write_quickstart, verify_project
 
 
 def test_portable_yaml_run_and_independent_references(tmp_path, monkeypatch):
@@ -36,3 +36,11 @@ def test_fixture_creation_preserves_existing_inputs(tmp_path):
         write_project(tmp_path)
     assert sentinel.read_text() == 'existing input'
     assert not (tmp_path/'mixed.dcd').exists()
+
+
+def test_quickstart_creation_preserves_existing_inputs(tmp_path):
+    sentinel = tmp_path/'notes.txt'
+    sentinel.write_text('existing input')
+    with pytest.raises(FileExistsError, match='fresh quickstart directory'):
+        write_quickstart(tmp_path)
+    assert [path.name for path in tmp_path.iterdir()] == ['notes.txt']
