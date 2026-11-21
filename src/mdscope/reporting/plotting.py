@@ -20,7 +20,7 @@ from ..interactions import interaction_tables
 from ..statistics import collect_time_series, finite
 from .figure_inventory import current_statistics
 from .plot_ids import id_from_figure_path, figure_dpi, safe_plot_stem as _safe
-from .table_reports import add_table_page, table_report_session
+from .table_reports import add_table_page, table_report_session, table_page_enabled
 from .shared_scales import synchronize_y_axes
 
 
@@ -97,16 +97,20 @@ def _table_figure(title: str, dataframe: pd.DataFrame, path: Path, cfg: dict,
     identifier = plot_id or id_from_figure_path(path)
     if (cfg.get("plots", {}).get("include") is not None and identifier is None):
         return
-    if identifier is not None and not figure_enabled(cfg, identifier):
+    if identifier is not None and not table_page_enabled(cfg, identifier):
         return
     # Statistical tables are figures on purpose: they travel with the
     # plot set and are easy to drop directly into slides/manuscripts.
     if dataframe.empty:
         return
     shown = dataframe.head(max_rows).copy()
+    from numbers import Real
+    def display(value):
+        if pd.isna(value):
+            return ''
+        return f'{value:.3g}' if isinstance(value, Real) and not isinstance(value, bool) else str(value)
     for col in shown.columns:
-        if pd.api.types.is_float_dtype(shown[col]):
-            shown[col] = shown[col].map(lambda x: "" if pd.isna(x) else f"{x:.3g}")
+        shown[col] = shown[col].map(display)
     fig_height = max(2.8, 0.38 * (len(shown) + 2))
     fig, ax = plt.subplots(figsize=(max(8, 1.45 * len(shown.columns)), fig_height))
     ax.axis("off")
@@ -121,7 +125,8 @@ def _table_figure(title: str, dataframe: pd.DataFrame, path: Path, cfg: dict,
     table.auto_set_font_size(False)
     table.set_fontsize(9)
     table.scale(1, 1.25)
-    if add_table_page(fig, path):
+    table.auto_set_column_width(list(range(len(shown.columns))))
+    if add_table_page(fig, path, identifier=identifier):
         plt.close(fig)
     else:
         _save(fig, path, cfg)
@@ -986,7 +991,7 @@ def plot_all(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
     if not cfg.get("plots", {}).get("enabled", True):
         return
     configure_plot_style(cfg)
-    with table_report_session(root, enabled=cfg.get("plots", {}).get("table_reports_pdf", False)):
+    with table_report_session(root, enabled=cfg.get("plots", {}).get("table_reports_pdf", False), cfg=cfg):
         if plot_enabled(cfg, "time_series"):
             plot_time_series(cfg, root, system_repouts)
         if plot_enabled(cfg, "profiles"):

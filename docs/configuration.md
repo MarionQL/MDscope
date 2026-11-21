@@ -150,6 +150,19 @@ Parquet statistics are retained. `plots.include` and disabled families
 continue to control which tables appear. The PDF is for reading and
 sharing; it is not a substitute for numerical data exports. `table_reports_pdf: false`
 (default) preserves individual table PNGs.
+
+Each PDF has a `statistics_tables.manifest.json` with ordered page identities,
+page count, completion state and integrity digest. Inventory includes PNG and
+PDF products; `formats=('png',)` retains PNG-only callers. Comparison pages
+remain eligible when bootstrap-table display is disabled.
+
+Successful rerenders archive superseded PDFs and metadata under
+`.archives/figure_tables/pdf_reports/`. Empty, unselected or disabled report
+sessions archive prior PDFs rather than advertising stale reports; rejected
+inventory records expose the reason. Rendering/publication failures preserve
+the prior committed PDF and metadata. Only one table-report writer per project
+is supported; do not overlap plotting sessions. The master `plots.enabled: false`
+performs no rendering, and inventory treats its products as disabled.
 ### Suppressing uninformative lipid-footprint traces
 
 A lipid-footprint metric whose available sampled values are **all exactly

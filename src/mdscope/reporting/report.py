@@ -61,7 +61,7 @@ def _inventory(statistics_dir, manifest, comparison_sources):
              statistics_dir.parent / "diffusion", statistics_dir.parent / "coupling"]
     if statistics_dir.name == "statistics" and statistics_dir.parent.name == "project_summary":
         project = statistics_dir.parent.parent
-        for entry in manifest["replicate_paths"]:
+        for entry in manifest.get("replicate_paths", []):
             rel = Path(entry)
             if not rel.is_absolute() and len(rel.parts) == 2 and ".." not in rel.parts:
                 roots.extend(project / rel / folder for folder in (
@@ -154,24 +154,25 @@ def _markdown(coverage, findings, inventory):
 def generate_report(statistics_dir: Path) -> Path:
     """Build a findings review without loading trajectories or rendering figures."""
     statistics_dir = Path(statistics_dir)
+    from ..statistics_manifest import read_statistics_manifest
     manifest_path = statistics_dir / "manifest.json"
-    if not manifest_path.is_file():
+    facts = read_statistics_manifest(manifest_path)
+    if facts.state == "missing":
         raise FileNotFoundError(
             f"The findings report requires completed statistics: missing {manifest_path}. "
             "Run 'mdscope statistics' before generating the report."
         )
-    try:
-        manifest = json.loads(manifest_path.read_text())
-    except (OSError, json.JSONDecodeError) as exc:
+    if facts.state == "invalid":
         raise ValueError(
             f"The findings report requires completed statistics: invalid {manifest_path}. "
             "Inspect the saved manifest before retrying."
-        ) from exc
-    if not isinstance(manifest, dict) or manifest.get("status") != "complete":
+        )
+    if not facts.complete:
         raise ValueError(
             f"The findings report requires completed statistics: "
             f"{manifest_path} has no complete status."
         )
+    manifest = facts.payload
     coverage_path = statistics_dir / "coverage/contrast_coverage.parquet"
     if not coverage_path.is_file():
         raise FileNotFoundError(
@@ -179,6 +180,7 @@ def generate_report(statistics_dir: Path) -> Path:
             "Complete statistics before generating findings."
         )
     coverage = pd.read_parquet(coverage_path)
+    coverage = coverage.loc[~coverage.family.map(facts.family_disabled)].copy()
     extra = _shared_state_coverage(statistics_dir)
     if extra:
         coverage = pd.concat([coverage, *extra], ignore_index=True)

@@ -24,23 +24,20 @@ SUPPLEMENT_SUFFIXES = (
 )
 
 
-def figure_inventory(root, system_repouts, cfg=None, include_rejected=False):
-    """List generated PNGs and published table PDFs with their provenance."""
+def figure_inventory(root, system_repouts, cfg=None, include_rejected=False, *, formats=("png", "pdf")):
+    """List reporting products; formats=('png',) retains PNG-only consumers."""
     from filecmp import cmp
     root=Path(root)
-    paths = _published_paths(root, system_repouts)
+    paths = [path for path in _figure_paths(root, system_repouts) if path.suffix[1:] in formats]
     import json
     provenance = Path(root)/'project_summary/figures/figure_provenance.json'
     records = json.loads(provenance.read_text()) if cfg is not None and provenance.exists() else {}
-    pages_file = root/'project_summary/figures/table_pdf_pages.json'
-    pages = json.loads(pages_file.read_text()) if pages_file.exists() else {}
     rows=[]
     seen_png = {}
     for path in sorted(set(paths)):
         name=path.name
-        kind=("table_report" if path.suffix == ".pdf" else
-              "primary" if name.startswith("lipid_contact_matrix_") or name.endswith(PRIMARY_SUFFIXES) else
-              "supplement" if name.endswith(SUPPLEMENT_SUFFIXES) else "other")
+        kind=("primary" if name.startswith("lipid_contact_matrix_") or name.endswith(PRIMARY_SUFFIXES) else
+              "table_report" if path.suffix == '.pdf' else "supplement" if name.endswith(SUPPLEMENT_SUFFIXES) else "other")
         status = figure_status(path,cfg,root,system_repouts,records=records) if cfg is not None else 'unverified'
         if path.suffix == '.png' and status in {'valid', 'legacy_unverified'}:
             peers = seen_png.setdefault(path.stat().st_size, [])
@@ -51,7 +48,15 @@ def figure_inventory(root, system_repouts, cfg=None, include_rejected=False):
         if cfg is not None and status not in {'valid', 'legacy_unverified'} and not include_rejected:
             continue
         record = records.get(str(path.relative_to(root)),{})
-        rows.append({"figure_id":str(path.relative_to(root)),
+        from .table_reports import report_manifest
+        try:
+            report = report_manifest(path) if path.suffix == '.pdf' else None
+        except (OSError, ValueError, TypeError):
+            report = None
+        pages = report.get('pages', []) if report else []
+        rows.append({"format":path.suffix[1:], "page_count":report.get('page_count') if report else None,
+                     "page_ids":json.dumps([page.get('figure_id') for page in pages if isinstance(page, dict)]),
+                     "figure_id":str(path.relative_to(root)),
                      "display_label":record.get('display_label', path.stem.replace('_',' ')),
                      "source_metric":record.get('source_metric'),"units":record.get('units'),
                      "generated_at":record.get('generated_at'),
@@ -59,10 +64,23 @@ def figure_inventory(root, system_repouts, cfg=None, include_rejected=False):
                      "sampling":json.dumps(record.get('sampling',[])),
                      "status":status,"family":figure_family(path),"figure":str(path.relative_to(root)),
                      "section":str(path.parent.relative_to(root)),
-                     "kind":kind,"bytes":path.stat().st_size,
-                     "format":path.suffix.lstrip("."),
-                     "page_ids":json.dumps(pages.get(str(path.relative_to(root)), []))})
-    return pd.DataFrame(rows,columns=["figure","figure_id","display_label","section","kind","bytes","family","status","source_metric","units","generated_at","source_files","sampling","format","page_ids"])
+                     "kind":kind,"bytes":path.stat().st_size})
+    if include_rejected and 'pdf' in formats:
+        from .table_reports import report_manifest, REPORT_NAME, MANIFEST_NAME
+        for sidecar in (root/'project_summary/figures').rglob(MANIFEST_NAME):
+            path = sidecar.with_name(REPORT_NAME)
+            if path.exists():
+                continue
+            try:
+                report = report_manifest(path)
+                status = report.get('status', 'invalid_manifest')
+            except (OSError, ValueError, TypeError):
+                status = 'invalid_manifest'
+            rows.append(dict(figure=str(path.relative_to(root)), figure_id=str(path.relative_to(root)),
+                             format='pdf', page_count=0, page_ids='[]', bytes=0,
+                             family=figure_family(path), status=status, kind='supplement',
+                             section=str(path.parent.relative_to(root))))
+    return pd.DataFrame(rows,columns=["figure","figure_id","display_label","section","kind","bytes","family","status","source_metric","units","generated_at","source_files","sampling","format","page_count","page_ids"])
 
 
 def figure_family(path):
@@ -83,21 +101,13 @@ def _figure_paths(root, system_repouts):
         for rep in reps:
             paths += list((Path(rep)/'extensions').rglob('*.png'))
             paths += list((Path(rep)/'figures').rglob('*.png'))
-    return sorted(set(paths))
-
-
-def _report_paths(root):
-    """Discover committed PDFs, not pending files or archived versions."""
-    return sorted((Path(root) / 'project_summary' / 'figures').rglob('statistics_tables.pdf'))
-
-
-def _published_paths(root, system_repouts):
-    return sorted(set(_figure_paths(root, system_repouts) + _report_paths(root)))
+    paths += list((Path(root)/'project_summary').rglob('*.pdf'))
+    return sorted({path for path in paths if not path.name.startswith('.')})
 
 
 def figure_snapshot(root, system_repouts):
     return {str(p.relative_to(root)): (p.stat().st_mtime_ns,p.stat().st_size)
-            for p in _published_paths(root, system_repouts)}
+            for p in _figure_paths(root, system_repouts)}
 
 
 def _source_files(root, system_repouts, family):
@@ -144,7 +154,7 @@ def record_generated_figures(cfg, root, system_repouts, before):
                                      frames=len(times), first_ps=float(times.min()),
                                      last_ps=float(times.max())))
     sources = {}
-    for path in _published_paths(root,system_repouts):
+    for path in _figure_paths(root,system_repouts):
         name = str(path.relative_to(root))
         if before.get(name) == (path.stat().st_mtime_ns,path.stat().st_size):
             continue
@@ -155,13 +165,19 @@ def record_generated_figures(cfg, root, system_repouts, before):
         from .labels import _metric_meta
         metric = path.stem.split('__')[0]
         label, units = _metric_meta(metric)
-        if path.suffix == '.pdf':
-            label, units = 'Statistics tables', 'See constituent pages'
         if units == metric:
             units = 'see figure axes/source schema'
         records[name] = dict(source_metric=metric,units=units,display_label=label,
             family=family, source_files=[str(p.relative_to(root)) for p in files],
-            generated_at=datetime.now(timezone.utc).isoformat(), sampling=sampling)
+            generated_at=datetime.now(timezone.utc).isoformat(), sampling=sampling,
+            format=path.suffix[1:])
+        if path.suffix == '.pdf':
+            from .table_reports import report_manifest
+            report = report_manifest(path)
+            if report is not None:
+                records[name].update(page_count=report['page_count'], pages=report['pages'],
+                                     sha256=report['sha256'],
+                                     page_ids=[page['figure_id'] for page in report['pages']])
     atomic_json(dest,records)
 
 
@@ -205,43 +221,31 @@ def figure_status(path, cfg, root, system_repouts, records=None):
     if not plot_enabled(cfg, family):
         return 'disabled'
     if path.suffix == '.pdf':
+        from .table_reports import report_manifest, pdf_digest, table_page_enabled
         if not cfg.get('plots', {}).get('table_reports_pdf', False):
             return 'disabled'
-        if cfg.get('plots', {}).get('include') is not None:
-            page_manifest = root/'project_summary/figures/table_pdf_pages.json'
-            try:
-                pages = json.loads(page_manifest.read_text())
-                selected = pages.get(str(path.relative_to(root)))
-                if not isinstance(selected, list) or not selected:
-                    return 'unverified_selection'
-                if any(not isinstance(identifier, str) for identifier in selected):
-                    return 'invalid_manifest'
-                if any(not figure_enabled(cfg, identifier) for identifier in selected):
-                    return 'disabled'
-            except (OSError, ValueError, TypeError, AttributeError):
-                return 'unverified_selection'
         try:
-            with path.open('rb') as stream:
-                if stream.read(5) != b'%PDF-':
-                    return 'invalid_figure'
-                stream.seek(max(0, path.stat().st_size - 1024))
-                if b'%%EOF' not in stream.read():
-                    return 'invalid_figure'
-        except OSError:
-            return 'invalid_figure'
-        if records is None:
-            provenance = root/'project_summary/figures/figure_provenance.json'
-            records = json.loads(provenance.read_text()) if provenance.exists() else {}
-        record = records.get(str(path.relative_to(root)))
-        if not isinstance(record, dict):
-            return 'legacy_unverified'
-        sources = record.get('source_files', [])
-        if not isinstance(sources, list) or any(not isinstance(source, str) for source in sources):
+            report = report_manifest(path)
+        except (OSError, ValueError, TypeError):
             return 'invalid_manifest'
-        if sources and any(not (root / source).is_file() for source in sources):
-            return 'missing_source'
-        return 'valid' if sources else 'legacy_unverified'
-    if cfg.get("plots", {}).get("include") is not None:
+        try:
+            digest = pdf_digest(path)
+            if report is None:
+                return 'legacy_unverified' if cfg.get('plots', {}).get('include') is None else 'unknown_identity'
+            if report.get('status') != 'complete':
+                return report.get('status', 'invalid_manifest')
+            pages = report['pages']
+            if (not pages or report.get('page_count') != len(pages) or
+                    [page.get('page') for page in pages] != list(range(1, len(pages)+1)) or
+                    any(not isinstance(page.get('figure_id'), str) for page in pages)):
+                return 'invalid_manifest'
+            if any(not table_page_enabled(cfg, page['figure_id']) for page in pages):
+                return 'disabled'
+            if digest != report.get('sha256'):
+                return 'invalid_figure'
+        except (OSError, ValueError, TypeError, KeyError, AttributeError):
+            return 'invalid_figure'
+    if path.suffix != '.pdf' and cfg.get("plots", {}).get("include") is not None:
         identifier = id_from_figure_path(path)
         if identifier is None or not figure_enabled(cfg, identifier):
             return 'disabled'
@@ -253,11 +257,12 @@ def figure_status(path, cfg, root, system_repouts, records=None):
     if records is None:
         provenance = root/'project_summary/figures/figure_provenance.json'
         records = json.loads(provenance.read_text()) if provenance.exists() else {}
-    try:
-        with Image.open(path, formats=["PNG"]) as image:
-            image.verify()
-    except (OSError, SyntaxError, ValueError):
-        return 'invalid_figure'
+    if path.suffix != '.pdf':
+        try:
+            with Image.open(path, formats=["PNG"]) as image:
+                image.verify()
+        except (OSError, SyntaxError, ValueError):
+            return 'invalid_figure'
     record = records.get(str(path.relative_to(root)))
     if not record:
         return 'legacy_unverified'
@@ -270,25 +275,24 @@ def figure_status(path, cfg, root, system_repouts, records=None):
 
 
 def statistics_status(cfg, root, family):
-    """Explain eligibility, preserving explicitly identified legacy exports."""
-    import json
+    """Explain eligibility with explicit legacy and publication policies."""
+    from ..statistics_manifest import read_statistics_manifest
     stats = cfg.get('statistics', {})
     option = stats.get('families', {}).get(family, True)
-    if not stats.get('enabled', True) or option is False or (isinstance(option, dict) and not option.get('enabled', True)):
+    if (not stats.get('enabled', True) or option is False or
+            (isinstance(option, dict) and not option.get('enabled', True))):
         return 'disabled'
-    manifest = Path(root)/'project_summary/statistics/manifest.json'
-    if not manifest.exists():
+    facts = read_statistics_manifest(Path(root)/'project_summary/statistics/manifest.json')
+    if facts.state == 'missing':
         return 'legacy_unverified'
-    try:
-        record = json.loads(manifest.read_text())
-        if record.get('status', 'complete') != 'complete':
-            return 'incomplete'
-        if record.get('families', {}).get(family) == 'disabled':
-            return 'unavailable'
-        if 'methods' not in record:
-            return 'legacy_unverified'
-    except (ValueError, TypeError, KeyError, AttributeError, OSError):
+    if facts.state == 'invalid':
         return 'invalid_manifest'
+    if facts.state == 'incomplete':
+        return 'incomplete'
+    if facts.family_disabled(family):
+        return 'unavailable'
+    if facts.state == 'legacy' or not facts.methods_present:
+        return 'legacy_unverified'
     return 'valid'
 
 
