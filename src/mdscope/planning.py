@@ -558,11 +558,14 @@ def inspect_saved_statistics(root: str | Path, *, max_identities: int = 256) -> 
     if max_identities < 1:
         raise ValueError("max_identities must be positive")
     dest = Path(root) / "project_summary" / "statistics"
+    from .statistics.manifest_reader import read_statistics_manifest
     manifest_file = dest / "manifest.json"
-    if not manifest_file.is_file():
+    facts = read_statistics_manifest(manifest_file)
+    if facts.state == "missing":
         raise FileNotFoundError(f"No saved statistics manifest: {manifest_file}")
-    manifest = json.loads(manifest_file.read_text())
-    if manifest.get("status") != "complete":
+    if facts.state == "invalid":
+        raise ValueError(f"Invalid saved statistics manifest {manifest_file}: {facts.error}")
+    if not facts.complete:
         raise ValueError("Statistics are incomplete; cannot claim an output catalog")
     result = {}
     for family, (identity_file, columns) in SAVED_STATISTICS_IDENTITY.items():
@@ -718,7 +721,8 @@ def inspect_saved_plot_ids(cfg: dict, root: str | Path, config_path: str | Path,
 
     stats_root = root / "project_summary" / "statistics"
     manifest_file = stats_root / "manifest.json"
-    if manifest_file.is_file() and json.loads(manifest_file.read_text()).get("status") == "complete":
+    from .statistics.manifest_reader import read_statistics_manifest
+    if read_statistics_manifest(manifest_file).complete:
         profile_path = stats_root / "profiles" / "replicate_profiles.parquet"
         if profile_path.is_file():
             source = pq.ParquetFile(profile_path)
