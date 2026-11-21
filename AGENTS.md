@@ -27,10 +27,13 @@ Use **GitHub Flow** and the issue title/acceptance conventions in [Contributing]
 
 When choosing a development workflow, consult the
 [skill-routing catalog](docs/developer/agent-skill-routing.md) for exact skill
-names, task triggers and invocation modes. Use only its active routes;
-excluded entries are retained solely as audit history.
+names, task triggers and invocation modes. Its canonical instruction source is
+[MarionQL/skills](https://github.com/MarionQL/skills), fetched from GitHub
+at use time; use only applicable routes. Exclusions are audit history.
 
-Load the selected skill's actual instructions in the current environment.
+Read the selected `SKILL.md` from the GitHub fork, plus required references,
+using the GitHub connector or an authenticated checkout. Verify file access
+before applying a skill.
 Match automatic helpers to the task; enter request-only workflows when the
 user asks for them by name or clear intent. Load dependencies that the chosen
 workflow requires. If a capability is missing, continue using repository
@@ -39,7 +42,9 @@ guidance where possible and identify any manual adaptation accurately.
 Use the catalog's common routes for bugs, implementation, architecture,
 planning and agent-policy edits. Keep scientific semantics, saved-artifact
 compatibility and validation governed by the authoritative guides above.
-Availability is session-specific; this repository does not install skills.
+Reading a repository skill does not install it or provide missing tools,
+subagents, shell commands or background execution. Apply the readable procedure
+with available capabilities and label adaptations honestly.
 
 ## Before merging
 
