@@ -36,6 +36,19 @@ Use **GitHub Flow**: `main` is the integration branch; each issue or focused cha
 | `output_paths.py`, `registry.py` | Shared output path constants, persisted artifact schemas and required companions |
 | `pipeline/replica_tasks.py` | Specialized executable task dispatch and saved scalar inputs |
 
+## Comparable subplot scales
+
+Within one figure, panels showing the same y-axis observable and units
+must have identical y-axis limits. Derive the common range from measured
+panels after drawing all series and uncertainty bands; text-only missing
+panels do not influence the limits but inherit them. Center signed
+autocorrelation/contrast axes symmetrically around zero when applicable.
+Do not synchronize different observables or units. Multi-panel heatmaps
+of one quantity must share color limits and colorbar; axis coordinates
+remain in their documented units. Use
+`reporting.shared_scales.synchronize_y_axes` rather than separate
+per-renderer scaling formulas.
+
 ## Visual review for plotting changes
 
 ```bash

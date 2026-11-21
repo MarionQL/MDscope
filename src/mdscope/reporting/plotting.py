@@ -20,6 +20,7 @@ from ..statistics import collect_time_series, finite
 from .figure_inventory import current_statistics
 from .plot_ids import id_from_figure_path, figure_dpi, safe_plot_stem as _safe
 from .table_reports import add_table_page, table_report_session
+from .shared_scales import synchronize_y_axes
 
 
 from .labels import METRIC_LABELS, _metric_meta
@@ -254,6 +255,7 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
             else:
                 ax.text(.5, .5, "No finite data", ha="center", va="center",
                         transform=ax.transAxes, color="0.45")
+        synchronize_y_axes(axes[:len(systems)])
         for ax in axes[len(systems):]:
             ax.remove()
         fig.suptitle(title + (f" - {group_id}" if group_id is not None else "")
@@ -333,6 +335,7 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
                         if ax.lines and any(
                                 np.isfinite(line.get_ydata()).any() for line in ax.lines):
                             ax.legend(frameon=False)
+                    synchronize_y_axes(axes[:len(systems)], symmetric=True)
                     for ax in axes[len(systems):]:
                         ax.remove()
                     fig.suptitle(f"{title} autocorrelation")
@@ -515,6 +518,7 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
             else:
                 ax.text(.5, .5, "No finite data", ha="center", va="center",
                         transform=ax.transAxes, color="0.45")
+        synchronize_y_axes(axes[:len(systems)])
         for ax in axes[len(systems):]:
             ax.remove()
         fig.suptitle(profile_title)
@@ -664,19 +668,31 @@ def _plot_residue_distance_heatmaps(cfg: dict, root: Path, system_repouts: dict[
                 figsize=(12, max(4, 3.6 * len(available))),
                 squeeze=False
             )
+            # Each replicate measures the same membrane distance. Use one
+            # color scale and one y/time range for interpretable comparisons.
+            configured_vmax = run.spec.get("heatmap_max_A")
+            if configured_vmax is None:
+                maxima = []
+                for _, matrix_path, _, _ in available:
+                    matrix_data = np.load(matrix_path, mmap_mode="r")
+                    finite = np.isfinite(matrix_data)
+                    if finite.any():
+                        maxima.append(float(np.nanmax(matrix_data)))
+                shared_vmax = max(maxima) if maxima else None
+            else:
+                shared_vmax = float(configured_vmax)
             image = None
             for ax, (repout, matrix_path, time_path, residue_path) in zip(axes.ravel(), available):
                 matrix = np.load(matrix_path, mmap_mode="r")
                 times = np.load(time_path) / 1000.0
                 residues = pd.read_parquet(residue_path)
-                vmax = run.spec.get("heatmap_max_A")
                 image = ax.imshow(
                     matrix,
                     aspect="auto",
                     origin="lower",
                     extent=[0, matrix.shape[1], float(times[0]), float(times[-1])],
                     vmin=0,
-                    vmax=float(vmax) if vmax is not None else None,
+                    vmax=shared_vmax,
                     cmap="viridis"
                 )
                 step = max(1, matrix.shape[1] // 15)
@@ -685,6 +701,7 @@ def _plot_residue_distance_heatmaps(cfg: dict, root: Path, system_repouts: dict[
                 ax.set_xticks(ticks + 0.5, labels, rotation=45, ha="right")
                 ax.set_ylabel("Time (ns)")
                 ax.set_title(replicate_label(cfg, system, repout.name))
+            synchronize_y_axes(axes)
             axes.ravel()[-1].set_xlabel("Residue")
             if image is not None:
                 fig.colorbar(
