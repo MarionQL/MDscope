@@ -93,6 +93,27 @@ Per-figure `plots.options.<plot ID>.dpi` is supported for resolution overrides (
 
 Plot IDs are matched exactly, not by wildcard or substring. Unrecognized figure IDs fail YAML validation. An enabled ID does **not** generate missing statistical inputs; source data and the corresponding family prerequisites remain necessary. The plot ID format is checked during YAML validation; data-dependent metrics, run IDs, species and systems are verified only when persisted inputs exist. An unknown data-derived identifier cannot be rejected merely from its syntax. When selecting solvation by an explicit ID, no separate `plots.families.solvation` opt-in is needed. `plots.include: []` disables all figures.
 
+### Time-series rolling averages
+
+The standard per-replica time-series traces can show a trailing, time-based
+rolling mean. The window is measured using the saved `time_ps` timestamps,
+not a fixed frame count, so irregular sampling does not change its duration.
+
+```yaml
+plots:
+  enabled: true
+  time_series: true
+  time_series_rolling_window_ns: 100
+```
+
+`null` (default) plots the unsmoothed values. A positive finite number
+enables the trailing average over `(t - window, t]`; the initial part of
+each trace uses the available samples. Missing/nonfinite observations do
+not contribute to the mean; an entirely missing window is not plotted.
+Each replicate is smoothed separately. This is **display-only**:
+distributions, autocorrelation, bootstrap statistics, CIs and saved
+trajectory-derived quantities remain unchanged.
+
 ## Plot and statistics controls
 
 ```yaml
