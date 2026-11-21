@@ -128,3 +128,33 @@ def test_pdf_inventory_honors_explicit_empty_include(tmp_path):
     report = directory / "statistics_tables.pdf"
     cfg = {"plots": {"table_reports_pdf": True, "include": []}}
     assert figure_status(report, cfg, tmp_path, {}) == "disabled"
+
+
+def test_second_report_replace_failure_rolls_back_first(tmp_path, monkeypatch):
+    import mdscope.reporting.table_reports as publication
+    one = tmp_path / "project_summary/figures/time_series"
+    two = tmp_path / "project_summary/figures/profiles"
+    for directory in (one, two):
+        directory.mkdir(parents=True)
+        (directory / "statistics_tables.pdf").write_bytes(
+            f"previous {directory.name}".encode())
+    real_replace = publication.os.replace
+    failed = False
+
+    def fail_second(source, destination):
+        nonlocal failed
+        if (not failed and Path(destination) == two / "statistics_tables.pdf"
+                and str(source).endswith(".pending.pdf")):
+            failed = True
+            raise OSError("simulated second report publication failure")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(publication.os, "replace", fail_second)
+    with pytest.raises(OSError, match="second report"):
+        with table_report_session(tmp_path, enabled=True):
+            _page(one / "density__comparison_table.png")
+            _page(two / "height__bootstrap_table.png")
+    assert (one / "statistics_tables.pdf").read_bytes() == b"previous time_series"
+    assert (two / "statistics_tables.pdf").read_bytes() == b"previous profiles"
+    assert not list(tmp_path.rglob("*.pending.pdf"))
+    assert not list(tmp_path.rglob("*.backup.pdf"))
