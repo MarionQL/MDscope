@@ -91,7 +91,7 @@ def _region_label(region: str) -> str:
     if region in {"TM_A", "TM_B"}:
         return region.replace("_", " ")
     motif = re.fullmatch(
-        r"motif_(NxIP|acidic_patch|proline_hydrophobic)_(PRO[AB])_(\\d+)",
+        r"motif_(NxIP|acidic_patch|proline_hydrophobic)_(PRO[AB])_(\d+)",
         str(region),
     )
     if motif:
@@ -99,7 +99,7 @@ def _region_label(region: str) -> str:
         title = {"NxIP": "NxIP", "acidic_patch": "Acidic",
                  "proline_hydrophobic": "Proline"}[name]
         return f"{title} {chain[-1]} · {occurrence}"
-    return "\\n".join(textwrap.wrap(str(region).replace("_", " "), 17))
+    return "\n".join(textwrap.wrap(str(region).replace("_", " "), 17))
 
 
 def _archive_uninformative_region_figure(out: Path, stem: str) -> None:
