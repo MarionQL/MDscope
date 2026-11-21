@@ -1,6 +1,6 @@
 # Agent skill routing for MDscope
 
-This is a **task-to-skill decision guide**, not a declaration that any skill is installed or callable. The 36 names below come from the user-provided installed-skills screenshot (2026-11-20). **Availability is per execution environment**: discover the named skill, read its actual instructions, and only then invoke it. The ChatGPT skill registry inspected on 2026-11-20 exposed **none of these 36 skills as individually readable** in this chat. This observation does not establish whether Claude Code, another session, or a future environment can read them.
+This is a **task-to-skill decision guide**, not a declaration that any skill is installed or callable. The 40 names below come from the user-provided installed-skills screenshot (2026-11-20). **Availability is per execution environment**: discover the named skill, read its actual instructions, and only then invoke it. The ChatGPT skill registry inspected on 2026-11-20 exposed **none of these 40 skills as individually readable** in this chat. This observation does not establish whether Claude Code, another session, or a future environment can read them.
 
 ## Invariants and selection policy
 
