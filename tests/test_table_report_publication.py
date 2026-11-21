@@ -82,3 +82,49 @@ def test_archives_only_reports_not_regenerated(tmp_path):
         _page(active / "metric__comparison_table.png")
     assert not old.exists()
     assert (active / "statistics_tables.pdf").exists()
+
+
+def test_pdf_inventory_and_snapshot_include_published_report(tmp_path):
+    from mdscope.reporting.figure_inventory import figure_inventory, figure_snapshot
+    directory = tmp_path / "project_summary" / "figures" / "time_series"
+    with table_report_session(tmp_path, enabled=True):
+        _page(directory / "density__comparison_table.png")
+    snapshot = figure_snapshot(tmp_path, {})
+    relative = "project_summary/figures/time_series/statistics_tables.pdf"
+    assert relative in snapshot
+    inventory = figure_inventory(tmp_path, {})
+    row = inventory.loc[inventory["figure_id"] == relative].iloc[0]
+    assert row["format"] == "pdf"
+    assert row["kind"] == "table_report"
+    assert "time_series:density:comparison_table" in row["page_ids"]
+
+
+def test_disabled_pdf_mode_archives_old_reports(tmp_path):
+    directory = tmp_path / "project_summary" / "figures" / "profiles"
+    directory.mkdir(parents=True)
+    report = directory / "statistics_tables.pdf"
+    report.write_bytes(b"obsolete")
+    with table_report_session(tmp_path, enabled=False):
+        pass
+    assert not report.exists()
+
+
+def test_pdf_inventory_rejects_corruption(tmp_path):
+    from mdscope.reporting.figure_inventory import figure_status
+    directory = tmp_path / "project_summary" / "figures" / "time_series"
+    with table_report_session(tmp_path, enabled=True):
+        _page(directory / "density__comparison_table.png")
+    report = directory / "statistics_tables.pdf"
+    report.write_bytes(b"%PDF-1.4\ntruncated")
+    cfg = {"plots": {"table_reports_pdf": True}}
+    assert figure_status(report, cfg, tmp_path, {}) == "invalid_figure"
+
+
+def test_pdf_inventory_honors_explicit_empty_include(tmp_path):
+    from mdscope.reporting.figure_inventory import figure_status
+    directory = tmp_path / "project_summary" / "figures" / "time_series"
+    with table_report_session(tmp_path, enabled=True):
+        _page(directory / "density__comparison_table.png")
+    report = directory / "statistics_tables.pdf"
+    cfg = {"plots": {"table_reports_pdf": True, "include": []}}
+    assert figure_status(report, cfg, tmp_path, {}) == "disabled"
