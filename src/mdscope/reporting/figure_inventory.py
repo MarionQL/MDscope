@@ -207,6 +207,19 @@ def figure_status(path, cfg, root, system_repouts, records=None):
     if path.suffix == '.pdf':
         if not cfg.get('plots', {}).get('table_reports_pdf', False):
             return 'disabled'
+        if cfg.get('plots', {}).get('include') is not None:
+            page_manifest = root/'project_summary/figures/table_pdf_pages.json'
+            try:
+                pages = json.loads(page_manifest.read_text())
+                selected = pages.get(str(path.relative_to(root)))
+                if not isinstance(selected, list) or not selected:
+                    return 'unverified_selection'
+                if any(not isinstance(identifier, str) for identifier in selected):
+                    return 'invalid_manifest'
+                if any(not figure_enabled(cfg, identifier) for identifier in selected):
+                    return 'disabled'
+            except (OSError, ValueError, TypeError, AttributeError):
+                return 'unverified_selection'
         try:
             with path.open('rb') as stream:
                 if stream.read(5) != b'%PDF-':
