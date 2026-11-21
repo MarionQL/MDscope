@@ -211,6 +211,7 @@ DEFAULTS = {
         "distributions": False,
         "autocorrelation": False,
         "bootstrap_tables": False,
+        "table_reports_pdf": False,
         "profiles": True,
         "interactions": True,
         "replicate_lightness_range": [0.28, 0.72],
@@ -860,6 +861,8 @@ def validate_config(cfg: dict, base: Path = Path("."), *, check_paths: bool = Tr
     allowed = {"time_series", "profiles", "interactions", "solvation", "sdc4",
                "shared_states", "diffusion", "lipid_enrichment", "lipid_contacts", "other"}
     plots = cfg.get("plots", {})
+    if not isinstance(plots.get("table_reports_pdf", False), bool):
+        raise ValueError("plots.table_reports_pdf must be boolean")
     window_ns = plots.get("time_series_rolling_window_ns")
     if window_ns is not None and (
         type(window_ns) not in (int, float)

@@ -12,6 +12,23 @@ from .figure_inventory import current_statistics
 from .plot_ids import figure_dpi
 
 
+# Short display names only. Statistical identities remain the original
+# class or lipid-species keys (e.g., POPC, DOPC, GM1a).
+_CLASS_LABELS = {
+    "phosphatidylcholine": "PC",
+    "phosphatidylethanolamine": "POPE",
+    "anionic_phospholipids": "Anionic PL",
+    "sphingomyelin": "PSM",
+    "cholesterol": "CHL1",
+    "glycosphingolipids": "GSL",
+    "ceramide": "CER160",
+}
+
+
+def lipid_display_label(name: str, *, level: str) -> str:
+    return _CLASS_LABELS.get(name, name) if level == "class" else name
+
+
 _UNITS = {
     "pair_count_undirected": "Unique contacting molecule pairs / frame",
     "neighbors_per_molecule": "Neighbor molecules / reference molecule",
@@ -31,7 +48,9 @@ def _draw(cfg, dest: Path, table: pd.DataFrame, *, ordered: list[str],
     if not np.isfinite(matrix).any():
         return
     # Preserve room for long class names rather than enlarging data cells alone.
-    longest = max(map(len, ordered), default=0)
+    level = "class" if stem.startswith("lipid_contact_class_") else "species"
+    labels = [lipid_display_label(name, level=level) for name in ordered]
+    longest = max(map(len, labels), default=0)
     size = max(7, min(17, 3 + .68 * len(ordered)))
     fig, ax = plt.subplots(figsize=(size + min(5, .085 * longest),
                                     size + min(2, .035 * longest)))
@@ -39,8 +58,8 @@ def _draw(cfg, dest: Path, table: pd.DataFrame, *, ordered: list[str],
     cmap.set_bad("#e0e0e0")
     limits = dict(vmin=-limit, vmax=limit) if comparison else dict(vmin=0, vmax=limit)
     image = ax.imshow(np.ma.masked_invalid(matrix), cmap=cmap, **limits)
-    ax.set_xticks(range(len(ordered)), ordered, rotation=55, ha="right")
-    ax.set_yticks(range(len(ordered)), ordered)
+    ax.set_xticks(range(len(ordered)), labels, rotation=55, ha="right")
+    ax.set_yticks(range(len(ordered)), labels)
     ax.tick_params(axis="both", labelsize=max(7, min(11, 13 - .18 * len(ordered))))
     ax.set_xlabel("Lipid " + ("class" if stem.startswith("lipid_contact_class_") else "species") + " B")
     ax.set_ylabel("Reference lipid " + ("class" if "class_" in stem else "species") + " A")
