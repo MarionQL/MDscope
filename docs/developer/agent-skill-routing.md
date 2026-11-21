@@ -2,11 +2,20 @@
 
 Read this guide when choosing a development skill. It records actual instruction review, task triggers and limits; it is not an installation manifest.
 
-## Availability and evidence
+## Canonical skill source and availability
 
-On **2026-11-20 (America/New_York)**, all **40 catalog entries** were readable in this ChatGPT Work session: **39 personal skills plus the platform/plugin skill-creator**. Each main `SKILL.md` was read through the skill reader with no continuation outstanding. This supersedes the earlier screenshot-only / none-readable assessment in this PR. There are **no missing main instruction files among these 40**.
+**Skill source precedence:** First use the applicable skill installed and readable in the current chat/session. If that skill is unavailable, retrieve its `SKILL.md` and supporting files from [MarionQL/skills](https://github.com/MarionQL/skills) (the user's fork of Matt Pocock's skills). The fork is the durable fallback and editable repository reference, not a replacement for working installed skills. Fetch from the fork's `main` branch when needed. For reproducible or audited workflows, record the actual installed skill version when known or the fork's exact commit SHA; do not assume a floating branch matches a prior run.
 
-The audit covered main instructions, not every linked template, script or reference, and did not execute all 40 workflows. Read the branch-specific supporting resources when actually running a skill. Readability does not prove a CLI, background worker, tracker operation or external service is usable. Other sessions must discover their own capabilities; repository text does not expose or install a skill.
+- Discover whether the requested skill is actually installed and readable in this session before falling back; do not assume a prior-session installation still exists.
+- Engineering fallback path: `skills/engineering/<skill-name>/SKILL.md`.
+- Productivity fallback path: `skills/productivity/<skill-name>/SKILL.md`.
+- Read a skill's local reference files relative to its skill directory when needed. Use GitHub connector file access or an authenticated git checkout; a URL in this document is not a locally installed executable.
+- For GitHub fallback, check that the named skill and referenced resources exist in the fork. If the fork changes, update this task-specific catalog. If neither installed instructions nor GitHub fallback can be read, use MDscope's own guidance and report the limitation.
+- Respect the skill frontmatter's invocation rules, but **user-invoked** and **model-invoked** describe permitted intent, not the presence of automatic runtime hooks in this chat. Read instructions for an applicable auto route when relevant, without claiming the platform invoked an installed package.
+- Executing a workflow requires its actual prerequisites (agents, shell, trackers, browser, jobs). If unavailable, implement the supported portions and report manual adaptation. Do not claim independent subagent review or full skill execution without those capabilities.
+- MDscope scientific contracts, YAML configuration and check policy override generic advice when they conflict.
+
+**Historical audit, not an availability guarantee:** On November 20, 2026, a prior ChatGPT Work session could read 40 installed skill instruction files (39 personal and one platform skill creator). That finding applies only to that session and does not establish their availability here. This catalog's routing and exclusions remain task-based and require fresh verification.
 
 ## Selection and repository integration
 
@@ -21,7 +30,7 @@ For TDD and spec synthesis, confirm proposed test interfaces when they have not 
 
 ## Active skill routes
 
-Names below are exact callable names; display names in the UI may use title case. The 34 active entries have readable main instructions and apply to this Python/Codex setting; conditional workflows still check their own resources before execution.
+Names below identify workflow skills to locate in the current session first, then in the GitHub fork; names do not guarantee callable commands. The 34 active routes are candidate workflows for MDscope; verify their present files, prerequisites and task relevance before use.
 
 | Skill | Mode | Trigger in MDscope | Actual behavior and limits |
 |---|---|---|---|
@@ -78,7 +87,7 @@ These are choices by task, not a mandatory chain. Request-only workflows retain 
 
 ## Excluded from active routing
 
-These six instruction files were readable, but their required runtime or project type is absent in this session/checkout. They are audit records, not workflow recommendations. Reconsider only if a future task explicitly introduces the matching runtime or subproject; do not install a toolchain merely to use a skill.
+These six workflows are excluded from ordinary MDscope routing because their required runtime or project type was absent in the audited environment/checkout. They are audit records, not workflow recommendations. Reconsider only if a future task explicitly introduces the matching runtime or subproject; do not install a toolchain merely to use a skill.
 
 | Skill | Reason excluded |
 |---|---|
@@ -91,4 +100,4 @@ These six instruction files were readable, but their required runtime or project
 
 ## Reporting
 
-Keep evidence distinct: **instructions read**, **workflow executed**, **manual adaptation**, **tests run**, **CI observed**, and **PR updated**. Record actual commands, commits or links for verification. Read this catalog on demand; load only the chosen skill and resources needed for the current phase.
+Keep evidence distinct: **installed skill/version or fork URL/revision read**, **workflow executed**, **manual adaptation**, **tests run**, **CI observed**, and **PR updated**. Record actual commands, commits or links for verification. Read this catalog on demand; load only the chosen skill and resources needed for the current phase.
