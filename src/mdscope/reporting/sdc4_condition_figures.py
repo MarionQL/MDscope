@@ -88,9 +88,9 @@ def _region_figures(cfg, system, reps, out):
     if not stems:
         return
     tables = _tables(reps, "lipid_region_specificity.parquet")
+    export_region_replica_summaries(out.parents[3], system, reps, tables)
     if not tables:
         return
-    export_region_replica_summaries(out.parents[3], system, reps, tables)
     names = [Path(rep).name for rep in reps]
     for stem in stems:
         moieties = ("glycan", "ceramide_head", "ceramide_tail") if stem == MOIETY_STEM else ("any",)

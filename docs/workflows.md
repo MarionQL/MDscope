@@ -289,3 +289,7 @@ Historical `extensions/sdc4_mechanisms/lipid_region_replicate_summary.csv`
 files are retained untouched for compatibility; rerendering does not update them.
 The reporting CSV is regenerated from saved Parquet rather than treated as a
 primary numerical or inference product.
+
+If a previously reported replica/region has no current `any`-moiety data, its
+old presentation CSV moves to `.archives/project_summary/reporting_exports/`.
+Primary replica files and historical extension CSVs remain untouched.

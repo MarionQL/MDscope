@@ -112,9 +112,15 @@ def test_plot_only_rerender_never_rewrites_legacy_replica_csvs(tmp_path):
         csv = rep / "extensions/sdc4_mechanisms/lipid_region_replicate_summary.csv"
         csv.write_bytes(b"previous-scientific-output")
         originals[csv] = (csv.read_bytes(), csv.stat().st_mtime_ns)
-    out = tmp_path / "project_summary/figures/sdc4/control"
+    numerical = {path: (path.read_bytes(), path.stat().st_mtime_ns)
+                 for rep in reps for path in rep.rglob('*') if path.is_file()}
+    from mdscope.reporting.sdc4_figures import plot_sdc4_mechanisms
+    cfg = _config()
+    cfg['analyses'] = {'sdc4_mechanisms': {'enabled': True}}
     for _ in range(2):
-        _region_figures(_config(), "control", reps, out)
+        plot_sdc4_mechanisms(cfg, tmp_path, {'control': reps})
+    assert {path: (path.read_bytes(), path.stat().st_mtime_ns)
+            for rep in reps for path in rep.rglob('*') if path.is_file()} == numerical
     for csv, state in originals.items():
         assert (csv.read_bytes(), csv.stat().st_mtime_ns) == state
     export = tmp_path / "project_summary/reporting_exports/sdc4/control/rep1/lipid_region_replicate_summary.csv"
@@ -160,3 +166,27 @@ def test_reporting_summary_preserves_missing_matched_fields(tmp_path):
     assert row.n_frames_with_species == 2
     assert row.n_matched_local_frames == 0
     assert pd.isna(row.mean_matched_local_contact_fraction)
+
+
+@pytest.mark.parametrize('missing', [True, False])
+def test_empty_reporting_export_archives_previous_presentation_csv(tmp_path, missing):
+    from mdscope.reporting.sdc4_exports import export_region_replica_summaries
+    rep=tmp_path/'control/rep1'
+    output=tmp_path/'project_summary/reporting_exports/sdc4/control/rep1/lipid_region_replicate_summary.csv'
+    output.parent.mkdir(parents=True); output.write_bytes(b'previous presentation summary')
+    tables={} if missing else {rep.name: pd.DataFrame({'moiety':['glycan']})}
+    export_region_replica_summaries(tmp_path,'control',[rep],tables)
+    assert not output.exists()
+    archived=list((tmp_path/'.archives').rglob('*.csv'))
+    assert len(archived)==1 and archived[0].read_bytes()==b'previous presentation summary'
+
+
+def test_all_missing_replicas_archive_stale_export_through_production_renderer(tmp_path):
+    from mdscope.reporting.sdc4_figures import plot_sdc4_mechanisms
+    rep=tmp_path/'control/rep1'
+    export=tmp_path/'project_summary/reporting_exports/sdc4/control/rep1/lipid_region_replicate_summary.csv'
+    export.parent.mkdir(parents=True); export.write_bytes(b'old presentation summary')
+    cfg=_config(); cfg['analyses']={'sdc4_mechanisms':{'enabled':True}}
+    plot_sdc4_mechanisms(cfg,tmp_path,{'control':[rep]})
+    assert not export.exists()
+    assert next((tmp_path/'.archives').rglob('*.csv')).read_bytes()==b'old presentation summary'

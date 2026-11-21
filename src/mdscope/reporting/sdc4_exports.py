@@ -6,12 +6,11 @@ Historical extension CSVs are intentionally left untouched.
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
-import tempfile
 
 import numpy as np
 import pandas as pd
+from ..core.persistence import archive_output, atomic_text
 
 
 def export_region_replica_summaries(root, system, reps, tables):
@@ -21,10 +20,13 @@ def export_region_replica_summaries(root, system, reps, tables):
     for rep in reps:
         repname = Path(rep).name
         frame = tables.get(repname)
+        destination = output_root / repname / "lipid_region_replicate_summary.csv"
         if frame is None or "moiety" not in frame:
+            _archive_unavailable_export(root, destination)
             continue
         contacts = frame.loc[frame.moiety.eq("any")].copy()
         if contacts.empty:
+            _archive_unavailable_export(root, destination)
             continue
         for column in ("matched_local_contact_fraction",
                        "matched_local_composition_enrichment"):
@@ -41,14 +43,11 @@ def export_region_replica_summaries(root, system, reps, tables):
             n_matched_enrichment_frames=("matched_local_composition_enrichment", "count"),
             n_frames_with_species=("contact_fraction", "count"),
         )
-        destination = output_root / repname / "lipid_region_replicate_summary.csv"
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(
-                prefix=".lipid_region_replicate_summary.", suffix=".tmp.csv",
-                dir=destination.parent, delete=False) as temporary:
-            pending = Path(temporary.name)
-        try:
-            summary.to_csv(pending, index=False)
-            os.replace(pending, destination)
-        finally:
-            pending.unlink(missing_ok=True)
+        atomic_text(destination, summary.to_csv(index=False))
+
+
+def _archive_unavailable_export(root, destination):
+    """Keep an older presentation summary out of current empty/missing results."""
+    if destination.is_file():
+        archive = Path(root) / '.archives' / destination.parent.relative_to(root)
+        archive_output(destination, archive, destination.name)
