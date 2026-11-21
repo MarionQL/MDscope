@@ -49,6 +49,23 @@ remain in their documented units. Use
 `reporting.shared_scales.synchronize_y_axes` rather than separate
 per-renderer scaling formulas.
 
+## Dense multi-replica categorical figures
+
+For saved-data small multiples (e.g., SDC4 lipid-region specificity),
+pre-aggregate each replicate independently, keep the same region ordering
+and y-axis scale across comparable panels, and avoid subplot-local
+legends. Reserve a figure-level legend outside the data area and display
+short region names while retaining full names in the source tables.
+Repeated axes should show categorical tick labels on the final row only,
+with a shared y-axis title instead of three overlapping copies.
+
+Do not draw every all-zero lipid/leaflet series on top of one another;
+keep those zero values in the CSV/Parquet outputs and record how many
+zero-only series were omitted from a mixed-value figure. If every
+series in a region figure is zero, omit the figure and archive a stale
+PNG instead of leaving an uninformative blank plot in active results.
+Test representative high-cardinality figures with the production renderer.
+
 ## Visual review for plotting changes
 
 ```bash
