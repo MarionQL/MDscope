@@ -7,6 +7,8 @@ bootstrap uncertainty occurs here. Missing replicas remain visibly missing.
 from __future__ import annotations
 
 from pathlib import Path
+import re
+import textwrap
 
 import numpy as np
 import pandas as pd
@@ -14,7 +16,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from ..config import figure_enabled
+from ..config import figure_enabled, system_label
+from ..core.persistence import archive_output
 from .plot_ids import figure_dpi
 from .shared_scales import synchronize_y_axes
 
@@ -83,6 +86,30 @@ def _write_region_replica_summaries(reps, tables):
         summary.to_csv(destination, index=False)
 
 
+def _region_label(region: str) -> str:
+    """Short display names; saved region identifiers are never altered."""
+    if region in {"TM_A", "TM_B"}:
+        return region.replace("_", " ")
+    motif = re.fullmatch(
+        r"motif_(NxIP|acidic_patch|proline_hydrophobic)_(PRO[AB])_(\d+)",
+        str(region),
+    )
+    if motif:
+        name, chain, occurrence = motif.groups()
+        title = {"NxIP": "NxIP", "acidic_patch": "Acidic",
+                 "proline_hydrophobic": "Proline"}[name]
+        return f"{title} {chain[-1]} · {occurrence}"
+    return "\n".join(textwrap.wrap(str(region).replace("_", " "), 17))
+
+
+def _archive_uninformative_region_figure(out: Path, stem: str) -> None:
+    """Keep old PNGs outside the active project-summary figure inventory."""
+    previous = out / f"{stem}.png"
+    if previous.is_file():
+        archive_output(previous, out.parents[3] / ".archives" /
+                       "uninformative_sdc4_region_figures", f"{out.name}_{stem}.png")
+
+
 def _region_figures(cfg, system, reps, out):
     stems = [name for name in (*REGION_METRICS, MOIETY_STEM)
              if figure_enabled(cfg, f"sdc4:{system}:{name}")]
@@ -92,61 +119,117 @@ def _region_figures(cfg, system, reps, out):
     if not tables:
         return
     _write_region_replica_summaries(reps, tables)
-    n_expected, names = len(reps), [Path(rep).name for rep in reps]
+    names = [Path(rep).name for rep in reps]
     for stem in stems:
         moieties = ("glycan", "ceramide_head", "ceramide_tail") if stem == MOIETY_STEM else ("any",)
         column, ylabel = (("contact_fraction", "Contact fraction")
                           if stem == MOIETY_STEM else REGION_METRICS[stem])
-        fig, axes = plt.subplots(n_expected, len(moieties),
-                                 figsize=(max(7, 4.5 * len(moieties)),
-                                          max(3.5, 2.9 * n_expected)),
-                                 squeeze=False)
-        has_values = False
-        for i, repname in enumerate(names):
+
+        # Calculate displayed replicate means once; never pool frames/replicas.
+        panels = {}
+        regions = set()
+        active_series = set()
+        omitted_zero_series = 0
+        for repname in names:
             tab = tables.get(repname)
-            for j, moiety in enumerate(moieties):
-                ax = axes[i, j]
-                ax.set_title(f"{repname} / {moiety}")
-                ax.set_ylabel(ylabel)
-                if tab is None or column not in tab or not {
-                        "region", "species", "leaflet", "moiety"}.issubset(tab):
-                    ax.text(.5, .5, "Not measured", transform=ax.transAxes,
-                            ha="center", va="center")
-                    continue
-                panel = tab.loc[tab.moiety.eq(moiety)]
-                panel = panel.loc[np.isfinite(pd.to_numeric(
-                    panel[column], errors="coerce"))]
+            if tab is None or column not in tab or not {
+                    "region", "species", "leaflet", "moiety"}.issubset(tab):
+                continue
+            for moiety in moieties:
+                panel = tab.loc[tab.moiety.eq(moiety)].copy()
+                panel[column] = pd.to_numeric(panel[column], errors="coerce")
+                panel = panel.loc[np.isfinite(panel[column])]
                 if panel.empty:
-                    ax.text(.5, .5, "No available measurements", transform=ax.transAxes,
-                            ha="center", va="center")
                     continue
-                # Descriptive mean within *this* replicate only. Never pool
-                # molecular frames or treat residues as independent replicas.
                 grouped = panel.groupby(
                     ["region", "species", "leaflet"], as_index=False
                 ).agg(value=(column, "mean"))
-                regions = sorted(grouped.region.astype(str).unique())
-                by_region = {name: k for k, name in enumerate(regions)}
+                panels[(repname, moiety)] = grouped
                 for (species, leaflet), series in grouped.groupby(
                         ["species", "leaflet"], sort=True):
-                    positions = [by_region[str(name)] for name in series.region]
-                    ax.plot(positions, series.value, ".-", ms=5, lw=1,
-                            label=f"{species} / {leaflet}")
-                ax.set_xticks(range(len(regions)), regions, rotation=35, ha="right")
-                if column.endswith("fraction"):
-                    ax.set_ylim(-.03, 1.03)
+                    if np.any(series.value.to_numpy(float) != 0):
+                        active_series.add((str(species), str(leaflet)))
+                        regions.update(series.region.astype(str))
+                    else:
+                        omitted_zero_series += 1
+
+        # The all-zero region example is uninformative visually but remains
+        # fully available in persisted Parquet and per-replica summary CSV.
+        if not active_series:
+            _archive_uninformative_region_figure(out, stem)
+            continue
+
+        region_order = sorted(regions)
+        positions = {region: i for i, region in enumerate(region_order)}
+        series_order = sorted(active_series)
+        palette = plt.get_cmap("tab20")
+        colors = {key: palette(i % 20) for i, key in enumerate(series_order)}
+        # One readable legend for the entire condition; none inside panels.
+        # Separate label space from data space instead of tight_layout's
+        # repeated legend/tick compression.
+        nrows, ncols = len(names), len(moieties)
+        width = 16.5 if ncols == 1 else max(19., 5.0 * ncols + 5.)
+        height = max(5.5, 3.2 * nrows + 1.6)
+        fig, axes = plt.subplots(nrows, ncols, figsize=(width, height),
+                                 squeeze=False, sharex=True, sharey=True)
+        for i, repname in enumerate(names):
+            for j, moiety in enumerate(moieties):
+                ax = axes[i, j]
+                ax.set_title(f"{repname} / {moiety}", fontsize=11, pad=8)
+                grouped = panels.get((repname, moiety))
+                if grouped is None:
+                    ax.text(.5, .5, "Not measured", transform=ax.transAxes,
+                            ha="center", va="center", color="0.45")
+                    continue
+                shown = False
+                for (species, leaflet), series in grouped.groupby(
+                        ["species", "leaflet"], sort=True):
+                    key = (str(species), str(leaflet))
+                    if key not in active_series or not np.any(
+                            series.value.to_numpy(float) != 0):
+                        continue
+                    x = [positions[str(region)] for region in series.region]
+                    ax.plot(x, series.value.to_numpy(float), ".-", ms=4,
+                            lw=1.25, color=colors[key])
+                    shown = True
+                if not shown:
+                    ax.text(.5, .5, "Only zero-valued series", transform=ax.transAxes,
+                            ha="center", va="center", color="0.45")
                 if "enrichment" in column:
                     ax.axhline(1, color="0.5", lw=.8, ls="--")
-                ax.legend(fontsize=7, frameon=False, ncol=2)
-                has_values = True
-        if has_values:
-            synchronize_y_axes(axes)
-            found = sum(repname in tables for repname in names)
-            fig.suptitle(f"{system}: {stem.replace('_', ' ')} — independent replicas ({found}/{n_expected} with source)")
-            fig.tight_layout(rect=(0, 0, 1, .95))
-            _save(fig, cfg, out, system, stem)
+                ax.grid(axis="y", alpha=.2, lw=.6)
+
+        for ax in axes.flat:
+            ax.set_xlim(-.35, len(region_order) - .65 if len(region_order) > 1 else .35)
+            ax.set_xticks(range(len(region_order)))
+        for ax in axes[-1]:
+            ax.set_xticklabels([_region_label(region) for region in region_order],
+                               fontsize=9, rotation=0)
+            ax.set_xlabel("Protein region", labelpad=10)
+        if column.endswith("fraction"):
+            for ax in axes.flat:
+                ax.set_ylim(-.03, 1.03)
         else:
-            plt.close(fig)
+            synchronize_y_axes(axes)
+
+        fig.supylabel(ylabel, x=.015, fontsize=12)
+        found = sum(name in tables for name in names)
+        title = stem.removeprefix("lipid_region_").replace("_", " ")
+        fig.suptitle(f"{system_label(cfg, system)} · lipid region {title}"
+                     f" ({found}/{nrows} replicas)", fontsize=16, y=.97)
+        from matplotlib.lines import Line2D
+        handles = [Line2D([], [], color=colors[key], marker=".", lw=1.3,
+                          label=f"{key[0]} / {key[1]}") for key in series_order]
+        fig.legend(handles=handles, loc="center left",
+                   bbox_to_anchor=(.78, .53), fontsize=9, ncol=2,
+                   title="Lipid / leaflet", title_fontsize=10, frameon=False)
+        if omitted_zero_series:
+            fig.text(.5, .025,
+                     f"{omitted_zero_series} zero-only replicate series omitted from display; "
+                     "saved numerical products retained", ha="center", fontsize=9)
+        fig.subplots_adjust(left=.09, right=.76, top=.88, bottom=.12,
+                            hspace=.42, wspace=.22)
+        _save(fig, cfg, out, system, stem)
 
 
 def _map_figures(cfg, system, reps, out):
