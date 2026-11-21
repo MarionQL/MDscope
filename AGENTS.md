@@ -22,6 +22,33 @@ Read only the guides relevant to the change; do not duplicate them here.
 
 Use **GitHub Flow** and the issue title/acceptance conventions in [Contributing](docs/developer/contributing.md). Keep changes on a focused issue branch and PR, not directly on `main`.
 
+## Optional development skills
+
+Use an installed skill **only when its instructions are available in the
+current agent environment** and the task calls for it. Names below are
+workflow cues, not a replacement for this repository's authoritative docs.
+If the named skill cannot be read, follow the equivalent repository process
+and say it was not invoked. Do not block work on a missing skill.
+
+| Task | Prefer skill | Repository contract |
+|---|---|---|
+| Reproduce a failure, find its cause | **Diagnosing Bugs** | [Validation gaps](docs/developer/validation-gaps.md) and affected entry-point tests |
+| Change numerical semantics or fix a regression | **TDD** | [Scientific contracts](docs/developer/scientific-contracts.md) and [Check policy](docs/developer/check-policy.md) |
+| Complex feature or cross-module change | **To Spec** → **Implement Spec** | [Contributing](docs/developer/contributing.md); explicit acceptance criteria |
+| Review dependencies and module ownership | **Improve Codebase Architecture** / **Codebase Design** | [Architecture](docs/developer/architecture.md), generated dependency graphs and measured evidence |
+| Review a PR for science, recovery and maintainability | **Code Review** | [Contributing](docs/developer/contributing.md), [Check policy](docs/developer/check-policy.md) |
+| Prepare change summary and evidence | **PR** | GitHub Flow, actual checks, and review status |
+| Prioritize multiple bugs/issues | **Triage** | Issue scope/acceptance criteria in [Contributing](docs/developer/contributing.md) |
+| Challenge an architectural proposal | **Grill with Docs** | Compare against real producers, saved contracts and developer docs |
+| Repeat a class of failures | **Retro** | Record one actionable prevention rule in the canonical guide |
+| Establish local commit-time checks | **Setup Pre-Commit** | Add only lightweight, reproducible checks; keep CI authoritative |
+
+For code changes, a good default is **Diagnosing Bugs → TDD →
+Code Review → PR**, using **To Spec / Implement Spec** for larger work.
+Architecture reviews should recommend bounded changes with evidence before
+moving modules. Skills never authorize changing a scientific estimator,
+discarding saved outputs, weakening tests, or bypassing review gates.
+
 ## Before merging
 
 1. Identify intended behavior, inputs/outputs, units, populations, provenance and failure outcomes. Separate **numerical correctness** from **physical interpretation**.
