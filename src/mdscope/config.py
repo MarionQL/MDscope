@@ -16,6 +16,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from .errors import ConfigError, InputPathError
+
 DEFAULT_INSTANCE_ID = "default"
 MULTI_RUN_ANALYSES = {"density_1d", "residue_membrane_distance", "sasa"}
 
@@ -416,9 +418,18 @@ def time_ps(ts, frame_index: int, cfg: dict) -> float:
 
 
 def load_config(path: str | Path, *, check_paths: bool = True) -> dict[str, Any]:
-    with open(path) as handle:
-        raw = yaml.safe_load(handle) or {}
-    return resolve_config(raw, base=Path(path).resolve().parent, check_paths=check_paths)
+    """Load a user YAML file; any parse or validation failure is a ``ConfigError``."""
+    try:
+        with open(path) as handle:
+            raw = yaml.safe_load(handle) or {}
+    except FileNotFoundError as exc:
+        raise InputPathError(f"Configuration file does not exist: {path}") from exc
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"{path}: invalid YAML: {exc}") from exc
+    try:
+        return resolve_config(raw, base=Path(path).resolve().parent, check_paths=check_paths)
+    except ValueError as exc:
+        raise ConfigError(f"{path}: {exc}") from exc
 
 
 def resolve_config(raw: dict, *, base: Path = Path("."),
@@ -516,7 +527,7 @@ def validate_config(cfg: dict, base: Path = Path("."), *, check_paths: bool = Tr
         top = Path(spec["topology"])
         top = top if top.is_absolute() else (base / top).resolve()
         if check_paths and not top.is_file():
-            raise FileNotFoundError(top)
+            raise InputPathError(f"System {name!r} topology does not exist: {top}")
         labels = []
         for index, rep in enumerate(spec["replicates"], 1):
             if isinstance(rep, dict):
@@ -537,13 +548,15 @@ def validate_config(cfg: dict, base: Path = Path("."), *, check_paths: bool = Tr
             traj = Path(trajectory_value)
             traj = traj if traj.is_absolute() else (base / traj).resolve()
             if check_paths and not traj.is_file():
-                raise FileNotFoundError(traj)
+                raise InputPathError(
+                    f"System {name!r} replicate {label!r} trajectory does not exist: {traj}"
+                )
             if isinstance(rep, dict) and rep.get("msd_trajectory"):
                 msd_path = Path(rep["msd_trajectory"])
                 if not msd_path.is_absolute():
                     msd_path = (base / msd_path).resolve()
                 if check_paths and not msd_path.is_file():
-                    raise FileNotFoundError(
+                    raise InputPathError(
                         f"Unmodified membrane MSD trajectory does not exist: {msd_path}"
                     )
         duplicates = sorted({label for label in labels if labels.count(label) > 1})

@@ -6,11 +6,13 @@ finalizing MDscope.
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 import yaml
 
 from .config import iter_replicates, load_config
+from .errors import UserInputError
 
 def interactive_init(output="analysis.yaml"):
     print("MDscope configuration generator (analysis runs themselves are non-interactive).")
@@ -21,6 +23,15 @@ def interactive_init(output="analysis.yaml"):
     ]
     ligand = input("Ligand MDAnalysis selection (blank for none): ").strip() or None
     reps = [{"trajectory": path, "label": f"rep{i}"} for i, path in enumerate(trajectories, 1)]
+    from .observables.sasa import FREESASA_INSTALL_HINT, import_freesasa
+    try:
+        import_freesasa()
+        sasa_available = True
+    except RuntimeError:
+        sasa_available = False
+        print("WARNING: FreeSASA is not installed, so analyses.sasa is disabled. "
+              f"To enable it, run `{FREESASA_INSTALL_HINT}` and set "
+              "analyses.sasa.enabled: true.")
     cfg = {
         "project": {"name": name, "output": "results"},
         "trajectory": {"stride": 10, "chunk_frames": 1000},
@@ -37,13 +48,23 @@ def interactive_init(output="analysis.yaml"):
             "radius_of_gyration": True,
             "dssp": True,
             "salt_bridges": True,
-            "sasa": {"enabled": True}
+            "sasa": {"enabled": sasa_available}
         },
     }
     if ligand:
         cfg["analyses"]["ligand_contacts"] = {"enabled": True, "cutoff_A": 4.0}
     Path(output).write_text(yaml.safe_dump(cfg, sort_keys=False))
     return Path(output)
+
+
+def cmd_init(args):
+    try:
+        print(interactive_init(args.output))
+    except EOFError as exc:
+        raise UserInputError(
+            "init reads one answer per prompt from stdin, which ended early; "
+            "run it in a terminal or pipe all answers"
+        ) from exc
 
 
 def cmd_validate(args):
@@ -126,10 +147,12 @@ def cmd_scan_residue_regions(args):
 
 def main():
     parser = argparse.ArgumentParser(prog="mdscope")
+    parser.add_argument("--debug", action="store_true",
+                        help="Show tracebacks for expected input errors (or set MDSCOPE_DEBUG=1)")
     sub = parser.add_subparsers(required=True)
     p = sub.add_parser("init")
     p.add_argument("--output", default="analysis.yaml")
-    p.set_defaults(func=lambda a: print(interactive_init(a.output)))
+    p.set_defaults(func=cmd_init)
     p = sub.add_parser("validate")
     p.add_argument("config")
     p.set_defaults(func=cmd_validate)
@@ -166,7 +189,12 @@ def main():
     p.add_argument("statistics_dir", type=Path)
     p.set_defaults(func=cmd_report)
     args = parser.parse_args()
-    args.func(args)
+    try:
+        args.func(args)
+    except UserInputError as exc:
+        if args.debug or os.environ.get("MDSCOPE_DEBUG") == "1":
+            raise
+        parser.exit(2, f"{parser.prog}: error: {exc}\n")
 
 
 if __name__ == "__main__":

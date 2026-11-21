@@ -37,6 +37,14 @@ where = ["src"]
 include = ["mdscope*"]
 namespaces = false
 
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+# Blocking in CI: syntax errors and undefined names only. The full pyflakes
+# set (F) runs as advisory annotations until existing findings are cleaned up.
+select = ["E9", "F63", "F7", "F82"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-m 'not benchmark'"

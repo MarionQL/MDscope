@@ -16,6 +16,7 @@ mdscope validate analysis.yaml
 mdscope run analysis.yaml
 ```
 
+- **No trajectories yet?** The [synthetic quickstart](docs/quickstart.md) reaches `findings.md` in six commands from a checkout.
 - Example configuration: [`synd4_baseline.yaml`](synd4_baseline.yaml); full SDC4 setup: [`synd4_full_mechanisms.yaml`](synd4_full_mechanisms.yaml).
 - **First result to read:** `<output>/project_summary/statistics/findings.md`; inspect the adjacent Parquet tables and individual replicates before drawing conclusions.
 - Restart, Slurm, offline statistics: [Workflows](docs/workflows.md).

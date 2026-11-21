@@ -1,6 +1,6 @@
 # Documentation
 
-**Start:** [Installation and CLI](../README.md) · [Full SDC4 YAML](../synd4_full_mechanisms.yaml)
+**Start:** [Installation and CLI](../README.md) · [Synthetic quickstart](quickstart.md) · [Full SDC4 YAML](../synd4_full_mechanisms.yaml)
 
 | Goal | Read |
 |---|---|

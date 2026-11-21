@@ -33,4 +33,6 @@ def test_slurm_launcher_routes_progress_to_stdout_and_loads_checkout():
     assert 'MDSCOPE_PROFILE' in script
     assert "synd4_full_mechanisms.yaml" in script
     assert "python -u -m mdscope.cli replicate" in script
-    assert "MDscope commit:" in script
+    assert 'source "${ROOT}/scripts/slurm_job_env.sh"' in script
+    helper = (Path(__file__).resolve().parents[1] / "scripts" / "slurm_job_env.sh").read_text()
+    assert "MDscope commit:" in helper

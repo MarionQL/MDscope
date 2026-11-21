@@ -46,12 +46,13 @@ def atomic_json(path: str | Path, obj: Any) -> None:
 
 def atomic_text(path: str | Path, text: str) -> None:
     # Atomic replacement matters because resolved configuration is also
-    # used to audit/restart long runs.
+    # used to audit/restart long runs. UTF-8 keeps reports (e.g. findings.md)
+    # identical across platforms instead of using the locale code page.
     path = Path(path)
     ensure_dir(path.parent)
     fd, tmp = tempfile.mkstemp(prefix=path.name, dir=path.parent)
     try:
-        with os.fdopen(fd, "w") as handle:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(text)
         os.replace(tmp, path)
     finally:

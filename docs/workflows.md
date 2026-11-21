@@ -17,7 +17,26 @@ mdscope statistics synd4_full_mechanisms.yaml
 mdscope plotting synd4_full_mechanisms.yaml
 ```
 
-Use `run_mdscope.sh`, `statistics_mdscope.sh`, `plotting_mdscope.sh` and `finalize_mdscope.sh` with your validated YAML on Slurm. `run` performs replica processing **and** numerical finalization; `replicate --index N` processes one replica without project finalization.
+`run` performs replica processing **and** numerical finalization; `replicate --index N` processes one replica without project finalization.
+
+## Slurm jobs
+
+Submit `run_mdscope.sh`, `finalize_mdscope.sh`, `statistics_mdscope.sh` and `plotting_mdscope.sh` from the MDscope checkout (they source `scripts/slurm_job_env.sh`) with your validated YAML. Jobs **never install** MDscope: install it once, before submitting, into the environment the jobs activate (`python -m pip install -e '.[sasa]'`). Each job first checks that `python` imports MDscope, logs its version, source directory and commit, and otherwise exits with setup instructions.
+
+| Setting | ARC example (script default) | Other sites |
+|---|---|---|
+| Account, partition | `#SBATCH -A bevanlab`, `-p normal_q` | `sbatch -A ACCOUNT -p PARTITION ...`; command-line flags override `#SBATCH` lines |
+| Environment | Miniconda env `mdanalysis` | `MDSCOPE_ENV_SETUP=/path/setup.sh` (bash file sourced by the job) or `MDSCOPE_ENV_SETUP=none` (keep the environment exported by `sbatch`) |
+| Replica array | `--array=0-5` (six replicas of `synd4_full_mechanisms.yaml`) | `--array=0-<N-1>`, N from the schema-only plan |
+
+`run_mdscope.sh` runs one task per YAML replicate, indexed in plan order; the plan reads no topology or trajectory:
+
+```bash
+N=$(mdscope plan CONFIG.yaml --format json | python -c 'import json,sys; print(len(json.load(sys.stdin)["replicates"]))')
+sbatch -A ACCOUNT -p PARTITION --array=0-$((N-1)) run_mdscope.sh CONFIG.yaml
+```
+
+Every task repeats this derivation and exits before analysis, printing the expected `--array` range, unless the submitted array is exactly `0..N-1` (`SLURM_ARRAY_TASK_MIN/MAX/COUNT`). Reprocess one failed replica with `mdscope replicate CONFIG.yaml --index I` in its own job, not with a partial array.
 
 The statistics job reports its current stage and elapsed time in `slurm-out/mdscope/mdscope_statistics-<jobid>.out`. Long stages print a heartbeat every minute. Set `progress.enabled: false` to suppress progress messages.
 

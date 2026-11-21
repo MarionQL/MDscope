@@ -11,7 +11,8 @@ from pathlib import Path
 from PIL import Image, ImageChops
 
 
-def build_gallery(base: Path, head: Path, output: Path, *, only_name: str | None = None):
+def build_gallery(base: Path, head: Path, output: Path, *, only_name: str | None = None,
+                  revisions: str | None = None):
     base, head, output = Path(base).resolve(), Path(head).resolve(), Path(output).resolve()
     for label, directory in (("base", base), ("head", head)):
         if not (directory / "preview_manifest.json").is_file():
@@ -78,6 +79,7 @@ def build_gallery(base: Path, head: Path, output: Path, *, only_name: str | None
         rows.append(f'<section><h2>{escape(name)}</h2>{metadata}<div class="row">'
                     f'{"".join(panels)}{diff}</div></section>')
 
+    revision_note = (f'<strong>Compared: {escape(revisions)}.</strong>' if revisions else '')
     html = '''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>MDscope figure review</title>
 <style>
@@ -91,7 +93,8 @@ section{border-top:1px solid #bbb;padding:18px 0}.row{display:flex;gap:15px;alig
 </style></head><body><h1>MDscope developer review — previous vs updated code</h1>
 <p class="notice">SYNTHETIC EXAMPLES — NOT MOLECULAR DYNAMICS RESULTS.</p>
 <p><strong>This compares source-code versions, not condition A against condition B or replica 1 against replica 2.</strong>
-"Previous code" is the pull request's base revision; "Updated code" is the proposed revision.
+"Previous code" is the comparison base revision; "Updated code" is the proposed revision.
+''' + revision_note + '''
 Both receive the same deterministic synthetic Parquet inputs. When no rendering code
 changed, the images will intentionally look identical. Pixel differences are diagnostic,
 not scientific validation. Inspect axes, labels, units and legends.</p>
@@ -107,8 +110,10 @@ def main():
     parser.add_argument("--head", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--only-name", help="For selection reviews, show only the requested figure")
+    parser.add_argument("--revisions", help="Text naming the compared base and head commits")
     args = parser.parse_args()
-    number = build_gallery(args.base, args.head, args.output, only_name=args.only_name)
+    number = build_gallery(args.base, args.head, args.output, only_name=args.only_name,
+                           revisions=args.revisions)
     print(f"Wrote {number} figure comparison panels: {args.output}")
 
 

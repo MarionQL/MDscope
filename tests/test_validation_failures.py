@@ -8,7 +8,7 @@ import yaml
 from mdscope.config import load_config
 from mdscope.core.validation import validate_selections
 from mdscope.pipeline.runner import run_one
-from mdscope_test_support import invoke_cli as invoke
+from mdscope_test_support import freesasa_backend, invoke_cli as invoke
 
 
 def _set(cfg, keys, value):
@@ -88,6 +88,7 @@ def _bad_selection(cfg, case):
 @pytest.mark.parametrize("case,diagnostic", [("protein","zero-atom"),("alignment","alignment"),("group","zero atoms"),
         ("species","matched no atoms"),("overlapping_anchors","overlap"),("sasa_reference","reference_run"),("sasa_occluder","every target")])
 def test_selection_preflight_and_run_share_errors_and_preserve_outputs(tmp_path, project, monkeypatch, case, diagnostic):
+    freesasa_backend(monkeypatch, tmp_path, available=True)
     path, root = project("selection")
     raw = yaml.safe_load(path.read_text()); _bad_selection(raw,case); path.write_text(yaml.safe_dump(raw))
     cfg = load_config(path)
@@ -102,13 +103,16 @@ def test_selection_preflight_and_run_share_errors_and_preserve_outputs(tmp_path,
     assert list(root.iterdir()) == [sentinel] and sentinel.read_bytes() == b"unchanged results"
 
 
-@pytest.mark.parametrize("case", ["protein", "alignment", "sasa_reference", "overlapping_anchors"])
-def test_cli_failures_return_nonzero_without_replacing_existing_outputs(tmp_path, project, case):
+@pytest.mark.parametrize("case,diagnostic", [("protein","zero-atom"),("alignment","alignment"),
+        ("sasa_reference","reference_run"),("overlapping_anchors","overlap")])
+def test_cli_failures_return_nonzero_without_replacing_existing_outputs(tmp_path, project, monkeypatch, case, diagnostic):
+    freesasa_backend(monkeypatch, tmp_path, available=True)
     path, root = project("cli_bad")
     cfg = yaml.safe_load(path.read_text()); _bad_selection(cfg,case); path.write_text(yaml.safe_dump(cfg))
     root.mkdir(); sentinel = root/"keep.txt"; sentinel.write_bytes(b"saved report")
     result = invoke(tmp_path,"replicate",path,"--index","0",ok=False)
-    assert "ValueError" in result.stderr
+    assert result.returncode == 2 and result.stderr.startswith("mdscope: error: ")
+    assert diagnostic in result.stderr and "Traceback" not in result.stderr
     assert list(root.iterdir()) == [sentinel] and sentinel.read_bytes() == b"saved report"
 
 

@@ -20,6 +20,7 @@ from ..core.persistence import archive_output as _archive_previous_output
 from ..core.validation import validate_selections
 
 from .. import __version__
+from ..errors import ReplicateIndexError
 from ..config import (
     analysis_enabled,
     analysis_runs,
@@ -645,7 +646,9 @@ def run_one(config_path: str | Path, index: int):
     cfg = load_config(config_path)
     replicates = list(iter_replicates(cfg, config_path))
     if index < 0 or index >= len(replicates):
-        raise IndexError(f"replicate index {index} is out of range 0..{len(replicates) - 1}")
+        raise ReplicateIndexError(
+            f"replicate index {index} is out of range 0..{len(replicates) - 1}"
+        )
     rep = replicates[index]
     validate_selections(cfg, Path(config_path).resolve().parent, systems={rep.system})
     root, state = initialize(config_path, cfg)

@@ -86,6 +86,9 @@ def test_html_gallery_displays_before_after_and_no_scientific_claims(tmp_path):
     assert json.loads((base / "preview_manifest.json").read_text())["plots"] == (
         json.loads((head / "preview_manifest.json").read_text())["plots"]
     )
+    assert "Compared:" not in text
+    gallery["build_gallery"](base, head, output, revisions="base <abc1234> vs head def5678")
+    assert "Compared: base &lt;abc1234&gt; vs head def5678." in output.read_text()
 
 
 def test_csv_samples_include_every_column_but_only_bounded_rows(tmp_path):
