@@ -184,6 +184,35 @@ def _source(name: str, cfg: dict) -> str:
     return "source"
 
 
+def _inference_design(cfg, reps):
+    """Schema-only exact permutation resolution based on configured replicate labels."""
+    import math
+    from collections import Counter
+    counts = Counter(rep.system for rep in reps)
+    labels = {}
+    for rep in reps:
+        labels.setdefault(rep.system, set()).add(rep.label)
+    tests = cfg.get("statistics", {}).get("hypothesis_tests", {})
+    design = tests.get("design", "independent")
+    exact_limit = int(tests.get("exact_max_assignments", 100000))
+    draws = int(tests.get("permutation_draws", 10000))
+    pairs = []
+    for index, left in enumerate(counts):
+        for right in list(counts)[index + 1:]:
+            n = len(labels[left] & labels[right]) if design == "paired" else None
+            total = 2 ** n if design == "paired" else math.comb(counts[left] + counts[right], counts[left])
+            pairs.append({
+                "system_1": left, "system_2": right,
+                "n_replicates_system_1": counts[left],
+                "n_replicates_system_2": counts[right],
+                "n_matched_pairs": n,
+                "resolution_kind": "exact" if total <= exact_limit else "monte_carlo",
+                "min_attainable_p": (2 / total if total <= exact_limit else None),
+                "monte_carlo_resolution": (None if total <= exact_limit else 1 / (draws + 1)),
+            })
+    return {"design": design, "comparisons": pairs}
+
+
 def build_plan(cfg: dict, config_path: str | Path, *,
                validation_mode: str = "schema_only",
                topology_counts: dict | None = None) -> dict[str, Any]:
@@ -470,6 +499,7 @@ def build_plan(cfg: dict, config_path: str | Path, *,
             "manifest": "project_summary/statistics/profiles/residue_response_manifest.json",
         },
         "schema_version": 1,
+        "inference_design": _inference_design(cfg, reps),
         "validation": {
             "mode": validation_mode,
             "topology_checked": topology_counts is not None,

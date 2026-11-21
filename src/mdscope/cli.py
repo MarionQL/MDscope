@@ -78,6 +78,14 @@ def cmd_plan(args):
         return
     print(f"MDscope plan ({mode}): {len(plan['systems'])} systems, "
           f"{len(plan['replicates'])} replicas")
+    for pair in plan["inference_design"]["comparisons"]:
+        if pair["resolution_kind"] == "exact":
+            print(f"  Exact two-sided p floor for {pair['system_1']} vs "
+                  f"{pair['system_2']}: {pair['min_attainable_p']:.4g}")
+        else:
+            print(f"  Monte Carlo p resolution for {pair['system_1']} vs "
+                  f"{pair['system_2']}: {pair['monte_carlo_resolution']:.4g} "
+                  "(not the exact design floor)")
     for item in plan["analyses"]:
         print(f"  {item['analysis']}[{item['run_id']}] "
               f"source={item['coordinate_source']} "

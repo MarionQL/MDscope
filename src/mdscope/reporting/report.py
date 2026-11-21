@@ -154,7 +154,10 @@ def _markdown(coverage, findings, inventory, *, design=None, alpha=.05):
     ]
     if design is not None:
         _, floor = design
-        comparisons = sorted(set(zip(coverage.system_1.dropna(), coverage.system_2.dropna())))
+        comparisons = sorted({
+            (left, right) for left, right in zip(coverage.system_1, coverage.system_2)
+            if isinstance(left, str) and isinstance(right, str)
+        })
         warnings = []
         for left, right in comparisons:
             value, method = floor(left, right)
