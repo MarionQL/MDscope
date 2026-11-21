@@ -722,7 +722,10 @@ def inspect_saved_plot_ids(cfg: dict, root: str | Path, config_path: str | Path,
     stats_root = root / "project_summary" / "statistics"
     manifest_file = stats_root / "manifest.json"
     from .statistics.manifest_reader import read_statistics_manifest
-    if read_statistics_manifest(manifest_file).complete:
+    facts = read_statistics_manifest(manifest_file)
+    if facts.state == "invalid":
+        raise ValueError(f"Invalid saved statistics manifest {manifest_file}: {facts.error}")
+    if facts.complete:
         profile_path = stats_root / "profiles" / "replicate_profiles.parquet"
         if profile_path.is_file():
             source = pq.ParquetFile(profile_path)
