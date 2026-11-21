@@ -83,8 +83,10 @@ def test_three_replicas_and_many_lipids_use_one_external_legend(tmp_path, monkey
     _region_figures(_config(), "control", reps,
                     tmp_path / "project_summary/figures/sdc4/control")
     assert captured == ["lipid_region_mean_contact_fraction"]
-    assert all((rep / "extensions/sdc4_mechanisms/"
-                "lipid_region_replicate_summary.csv").exists() for rep in reps)
+    assert all((tmp_path / "project_summary/reporting_exports/sdc4/control" /
+                rep.name / "lipid_region_replicate_summary.csv").exists() for rep in reps)
+    assert all(not (rep / "extensions/sdc4_mechanisms/"
+                    "lipid_region_replicate_summary.csv").exists() for rep in reps)
 
 
 def test_all_zero_region_plot_is_not_rendered_and_old_png_is_archived(tmp_path):
@@ -99,5 +101,62 @@ def test_all_zero_region_plot_is_not_rendered_and_old_png_is_archived(tmp_path):
     moved = list(archive.glob("control_lipid_region_mean_contact_fraction*.png"))
     assert len(moved) == 1
     assert moved[0].read_bytes() == b"previous flat-line png"
-    assert (reps[0] / "extensions/sdc4_mechanisms/"
-            "lipid_region_replicate_summary.csv").is_file()
+    assert (tmp_path / "project_summary/reporting_exports/sdc4/control" /
+            reps[0].name / "lipid_region_replicate_summary.csv").is_file()
+
+
+def test_plot_only_rerender_never_rewrites_legacy_replica_csvs(tmp_path):
+    reps = _saved_reps(tmp_path, many=False)
+    originals = {}
+    for rep in reps:
+        csv = rep / "extensions/sdc4_mechanisms/lipid_region_replicate_summary.csv"
+        csv.write_bytes(b"previous-scientific-output")
+        originals[csv] = (csv.read_bytes(), csv.stat().st_mtime_ns)
+    out = tmp_path / "project_summary/figures/sdc4/control"
+    for _ in range(2):
+        _region_figures(_config(), "control", reps, out)
+    for csv, state in originals.items():
+        assert (csv.read_bytes(), csv.stat().st_mtime_ns) == state
+    export = tmp_path / "project_summary/reporting_exports/sdc4/control/rep1/lipid_region_replicate_summary.csv"
+    frame = pd.read_csv(export)
+    assert frame.columns.tolist() == [
+        "region", "species", "leaflet", "mean_contact_fraction",
+        "mean_local_enrichment", "mean_matched_local_contact_fraction",
+        "mean_matched_local_enrichment", "n_matched_local_frames",
+        "n_matched_enrichment_frames", "n_frames_with_species",
+    ]
+    value = frame.loc[(frame.region == "TM_A") &
+                      (frame.species == "CER160") &
+                      (frame.leaflet == "upper"), "mean_contact_fraction"]
+    assert value.iloc[0] == pytest.approx(.06)
+
+
+def test_missing_or_empty_saved_regions_do_not_write_replica_csvs(tmp_path):
+    from mdscope.reporting.sdc4_exports import export_region_replica_summaries
+    rep = tmp_path / "control/rep1"
+    rep.mkdir(parents=True)
+    export_region_replica_summaries(tmp_path, "control", [rep], {})
+    export_region_replica_summaries(tmp_path, "control", [rep], {
+        rep.name: pd.DataFrame({"moiety": ["glycan"], "region": ["TM_A"]})
+    })
+    assert not list((tmp_path / "project_summary").rglob("*.csv"))
+
+
+def test_reporting_summary_preserves_missing_matched_fields(tmp_path):
+    from mdscope.reporting.sdc4_exports import export_region_replica_summaries
+    rep = tmp_path / "control/rep1"
+    rep.mkdir(parents=True)
+    tab = pd.DataFrame({
+        "moiety": ["any", "any"], "region": ["TM_A", "TM_A"],
+        "species": ["POPC", "POPC"], "leaflet": ["upper", "upper"],
+        "contact_fraction": [.2, .4],
+        "local_composition_enrichment": [1.0, 2.0],
+    })
+    export_region_replica_summaries(tmp_path, "control", [rep], {rep.name: tab})
+    export = tmp_path / "project_summary/reporting_exports/sdc4/control/rep1/lipid_region_replicate_summary.csv"
+    row = pd.read_csv(export).iloc[0]
+    assert row.mean_contact_fraction == pytest.approx(.3)
+    assert row.mean_local_enrichment == pytest.approx(1.5)
+    assert row.n_frames_with_species == 2
+    assert row.n_matched_local_frames == 0
+    assert pd.isna(row.mean_matched_local_contact_fraction)
