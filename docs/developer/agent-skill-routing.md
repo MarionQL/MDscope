@@ -4,12 +4,13 @@ Read this guide when choosing a development skill. It records actual instruction
 
 ## Canonical skill source and availability
 
-**Canonical source:** [MarionQL/skills](https://github.com/MarionQL/skills) (the user's fork of Matt Pocock's skills). This is the instruction source for MDscope agents, independent of skills installed in a ChatGPT session. Fetch the relevant `SKILL.md` from the fork's `main` branch at use time. For reproducible or audited workflows, resolve and record the precise commit SHA; do not assume a floating branch matches a prior run.
+**Skill source precedence:** First use the applicable skill installed and readable in the current chat/session. If that skill is unavailable, retrieve its `SKILL.md` and supporting files from [MarionQL/skills](https://github.com/MarionQL/skills) (the user's fork of Matt Pocock's skills). The fork is the durable fallback and editable repository reference, not a replacement for working installed skills. Fetch from the fork's `main` branch when needed. For reproducible or audited workflows, record the actual installed skill version when known or the fork's exact commit SHA; do not assume a floating branch matches a prior run.
 
-- Engineering skill: `skills/engineering/<skill-name>/SKILL.md`.
-- Productivity skill: `skills/productivity/<skill-name>/SKILL.md`.
+- Discover whether the requested skill is actually installed and readable in this session before falling back; do not assume a prior-session installation still exists.
+- Engineering fallback path: `skills/engineering/<skill-name>/SKILL.md`.
+- Productivity fallback path: `skills/productivity/<skill-name>/SKILL.md`.
 - Read a skill's local reference files relative to its skill directory when needed. Use GitHub connector file access or an authenticated git checkout; a URL in this document is not a locally installed executable.
-- Check that the named skill and referenced resources exist in the fork. If the fork changes, update this task-specific catalog. Failing to fetch is a source-access limitation; use MDscope's own guidance as fallback.
+- For GitHub fallback, check that the named skill and referenced resources exist in the fork. If the fork changes, update this task-specific catalog. If neither installed instructions nor GitHub fallback can be read, use MDscope's own guidance and report the limitation.
 - Respect the skill frontmatter's invocation rules, but **user-invoked** and **model-invoked** describe permitted intent, not the presence of automatic runtime hooks in this chat. Read instructions for an applicable auto route when relevant, without claiming the platform invoked an installed package.
 - Executing a workflow requires its actual prerequisites (agents, shell, trackers, browser, jobs). If unavailable, implement the supported portions and report manual adaptation. Do not claim independent subagent review or full skill execution without those capabilities.
 - MDscope scientific contracts, YAML configuration and check policy override generic advice when they conflict.
@@ -29,7 +30,7 @@ For TDD and spec synthesis, confirm proposed test interfaces when they have not 
 
 ## Active skill routes
 
-Names below identify skill directories in the GitHub fork, not automatically callable commands. The 34 active routes are candidate workflows for MDscope; verify their present files, prerequisites and task relevance before use.
+Names below identify workflow skills to locate in the current session first, then in the GitHub fork; names do not guarantee callable commands. The 34 active routes are candidate workflows for MDscope; verify their present files, prerequisites and task relevance before use.
 
 | Skill | Mode | Trigger in MDscope | Actual behavior and limits |
 |---|---|---|---|
@@ -99,4 +100,4 @@ These six workflows are excluded from ordinary MDscope routing because their req
 
 ## Reporting
 
-Keep evidence distinct: **fork URL and revision read**, **workflow executed**, **manual adaptation**, **tests run**, **CI observed**, and **PR updated**. Record actual commands, commits or links for verification. Read this catalog on demand; load only the chosen skill and resources needed for the current phase.
+Keep evidence distinct: **installed skill/version or fork URL/revision read**, **workflow executed**, **manual adaptation**, **tests run**, **CI observed**, and **PR updated**. Record actual commands, commits or links for verification. Read this catalog on demand; load only the chosen skill and resources needed for the current phase.
