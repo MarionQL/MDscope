@@ -25,7 +25,7 @@ Use **GitHub Flow** and the issue title/acceptance conventions in [Contributing]
 ## Optional development skills
 
 The [agent skill-routing catalog](docs/developer/agent-skill-routing.md) maps
-all 36 user-listed development/writing skills to MDscope tasks, including
+all 40 user-listed development/writing skills to MDscope tasks, including
 **positive triggers, exclusions, multi-phase routes, and fallback behavior**.
 Read the relevant row when selecting a workflow; do **not** assume this repo
 or the user's installed-skills screenshot makes a skill callable.
