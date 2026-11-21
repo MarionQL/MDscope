@@ -19,9 +19,9 @@ The audit covered main instructions, not every linked template, script or refere
 
 For TDD and spec synthesis, confirm proposed test interfaces when they have not already been agreed. Use the existing check policy for when to broaden runs; generic requests for frequent/full checks do not add heavy dispatches to docs or small authoring edits.
 
-## Skill-by-skill matrix
+## Active skill routes
 
-Names below are exact callable names; display names in the UI may use title case. All rows have main instructions **readable/read** in the dated audit.
+Names below are exact callable names; display names in the UI may use title case. The 34 active entries have readable main instructions and apply to this Python/Codex setting; conditional workflows still check their own resources before execution.
 
 | Skill | Mode | Trigger in MDscope | Actual behavior and limits |
 |---|---|---|---|
@@ -46,17 +46,11 @@ Names below are exact callable names; display names in the UI may use title case
 | `wayfinder` | Request | Chart an initiative whose unresolved decisions exceed one session. | Issue-backed decision map; research/prototype/grilling/task tickets, claims and dependencies. Planning by default, one non-research decision ticket per session; hand off to a spec once clear. Not an implementation milestone loop. |
 | `wizard` | Auto | Guide steps only the human can perform, such as third-party credentials or manual cutover. | Generate an interactive bash procedure using the supplied template, ordered stages, captured values and hidden secret entry. Confirm stages; not a Studio first-run UI builder or agent-runnable setup substitute. |
 | `chief-of-staff` | Request | Coordinate a sustained strategic goal through delegated work and durable knowledge. | All work in fresh subagents; maintain dated, sourced wiki claims and consider useful schedules. Agree a new wiki location. Ordinary milestone tracking does not warrant this whole operating model. |
-| `claude-handoff` | Request | Transfer work immediately to an actual Claude background worker. | Writes a redacted summary and launches claude --bg with a descriptive name. Readable here, but execution requires that CLI, authentication and background-worker support; generic Codex agents are not proof it ran. |
 | `loop-me` | Request | Design a reusable workflow for a recurring pattern in the user's work. | Stateful grilling producing workflows/*.md and contextual notes. Defines trigger, checkpoints and deliverables where needed; does not install a skill, execute the workflow or create a schedule. |
-| `setup-ts-deep-modules` | Request | Enforce private implementation imports in an actual TypeScript subproject. | Installs dependency-cruiser, documents entry points and proves pass/fail/pass on a forbidden import. Inapplicable to Python MDscope by default. |
 | `software-factory` | Request | Design an agent system that turns tracker/git events into reviewed code. | Shared vocabulary for tasks, runs, runners and external service slots; explicitly design triggers, deduplication, brakes and human re-entry. A reference/design skill, not an end-to-end build executor. |
 | `writing-beats` | Request | Turn fixed raw writing material into a chosen journey of beats. | Set audience prerequisites; offer alternatives and append only the selected beat. Interactive article composition, not an ordinary PR summary. |
 | `writing-fragments` | Request | Explore ideas for an article by collecting raw fragments. | Interview and append unstructured fragments to one file; reread before writes and preserve user edits. Intentionally does not organize an article. |
 | `writing-shape` | Request | Shape supplied raw material into a separate article block by block. | Read input in full, settle prerequisites and opening, append agreed blocks. Preserve raw source; user chooses completion. Not a generic automatic documentation formatter. |
-| `git-guardrails-claude-code` | Auto | Explicitly configure Claude Code hooks against dangerous git operations. | Project/global scope choice, merge hook settings, test blocking. Blocks every git push as well as destructive commands; discuss that consequence. Does not protect GitHub connector writes. |
-| `migrate-to-shoehorn` | Auto | Requested TypeScript test-data migration from as assertions. | Use @total-typescript/shoehorn only in TS tests; verify typecheck. Does not apply to pytest or production scientific calculations. |
-| `setup-pre-commit` | Auto | Requested Husky/lint-staged/Prettier setup in a Node project. | Adds Node dependencies and commit-time typecheck/test scripts, potentially full suites. Not Python pre-commit guidance; use MDscope-native tooling for Python and keep check-policy cadence. |
-| `scaffold-exercises` | Auto | Requested course exercise scaffolding in a compatible ai-hero course workspace. | Specific numbered problem/solution/explainer layout, main.ts convention and pnpm ai-hero-cli linter. Not a generic Python tutorial generator; do not add that toolchain to MDscope. |
 | `grill-me` | Request | Stress-test a plan without retaining repository domain docs. | Stateless wrapper around grilling. For repository design that should retain terms/decisions, prefer grill-with-docs when requested. |
 | `grilling` | Auto | User asks to stress-test a decision through an interview. | Ask independent frontier questions in rounds with recommendations, wait for decisions and look up facts through agents. Not routine PR review or an instruction to interrogate already-specified work. |
 | `handoff` | Request | Move work to another harness, directory, colleague or separate session. | Portable redacted state summary with suggested skills and pointers to existing artifacts. Writes a document; launches no worker. |
@@ -81,7 +75,19 @@ These are choices by task, not a mandatory chain. Request-only workflows retain 
 | Huge unresolved initiative | wayfinder when requested | to-spec once decisions are clear; not direct implementation of a decision map |
 | Agent policy change | writing-for-agents | Keep detailed routing in this document; AGENTS.md holds a short pointer |
 | Unclear explanation | wait-what when requested | Re-explain the same work with necessary context |
-| Python developer hooks | Existing Python tooling and check policy | setup-pre-commit applies only to a separately scoped Node/Husky setup |
+
+## Excluded from active routing
+
+These six instruction files were readable, but their required runtime or project type is absent in this session/checkout. They are audit records, not workflow recommendations. Reconsider only if a future task explicitly introduces the matching runtime or subproject; do not install a toolchain merely to use a skill.
+
+| Skill | Reason excluded |
+|---|---|
+| `claude-handoff` | Requires the absent Claude CLI and its background-worker runtime. Use the portable handoff document or available Codex agents instead. |
+| `git-guardrails-claude-code` | Targets Claude Code PreToolUse hooks, which do not execute in this ChatGPT/Codex session or protect connector writes. |
+| `setup-ts-deep-modules` | Requires a TypeScript package and dependency-cruiser; MDscope has no package.json or TS subproject. |
+| `migrate-to-shoehorn` | Migrates TypeScript test assertions; MDscope uses Python/pytest. |
+| `setup-pre-commit` | Installs Husky/lint-staged/Prettier in a Node project; MDscope has no package.json. Use existing Python developer tooling. |
+| `scaffold-exercises` | Requires the ai-hero TypeScript course layout and linter, absent from MDscope. |
 
 ## Reporting
 

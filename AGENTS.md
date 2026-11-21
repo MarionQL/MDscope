@@ -26,7 +26,8 @@ Use **GitHub Flow** and the issue title/acceptance conventions in [Contributing]
 
 When choosing a development workflow, consult the
 [skill-routing catalog](docs/developer/agent-skill-routing.md) for exact skill
-names, task triggers, invocation modes and runtime limits.
+names, task triggers and invocation modes. Use only its active routes;
+excluded entries are retained solely as audit history.
 
 Load the selected skill's actual instructions in the current environment.
 Match automatic helpers to the task; enter request-only workflows when the
