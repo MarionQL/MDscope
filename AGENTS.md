@@ -23,27 +23,6 @@ Read only the guides relevant to the change; do not duplicate them here.
 
 Use **GitHub Flow** and the issue title/acceptance conventions in [Contributing](docs/developer/contributing.md). Keep changes on a focused issue branch and PR, not directly on `main`.
 
-## Optional development skills
-
-When choosing a development workflow, consult the
-[skill-routing catalog](docs/developer/agent-skill-routing.md) for exact skill
-names, task triggers and invocation modes. Prefer the applicable skill **installed and readable in the current chat**.
-If unavailable, read its `SKILL.md` and required references from
-[MarionQL/skills](https://github.com/MarionQL/skills) through GitHub or an
-authenticated checkout. Verify access before applying either source; use only
-applicable routes. Exclusions are audit history.
-Match automatic helpers to the task; enter request-only workflows when the
-user asks for them by name or clear intent. Load dependencies that the chosen
-workflow requires. If a capability is missing, continue using repository
-guidance where possible and identify any manual adaptation accurately.
-
-Use the catalog's common routes for bugs, implementation, architecture,
-planning and agent-policy edits. Keep scientific semantics, saved-artifact
-compatibility and validation governed by the authoritative guides above.
-Reading a GitHub-hosted skill does not install it or provide missing tools,
-subagents, shell commands or background execution. Apply the readable procedure
-with available capabilities and label adaptations honestly.
-
 ## Before merging
 
 1. Identify intended behavior, inputs/outputs, units, populations, provenance and failure outcomes. Separate **numerical correctness** from **physical interpretation**.
