@@ -109,6 +109,11 @@ has been written successfully. Other PNG figures and the full-precision
 Parquet statistics are retained. `plots.include` and disabled families
 continue to control which tables appear. The PDF is for reading and
 sharing; it is not a substitute for numerical data exports.
+### Time-series rolling averages
+
+The standard per-replica time-series traces can show a trailing, time-based
+rolling mean. The window is measured using the saved `time_ps` timestamps,
+not a fixed frame count, so irregular sampling does not change its duration.
 
 ```yaml
 plots:
@@ -118,6 +123,17 @@ plots:
 ```
 
 `table_reports_pdf: false` (default) preserves individual table PNGs.
+  time_series: true
+  time_series_rolling_window_ns: 100
+```
+
+`null` (default) plots the unsmoothed values. A positive finite number
+enables the trailing average over `(t - window, t]`; the initial part of
+each trace uses the available samples. Missing/nonfinite observations do
+not contribute to the mean; an entirely missing window is not plotted.
+Each replicate is smoothed separately. This is **display-only**:
+distributions, autocorrelation, bootstrap statistics, CIs and saved
+trajectory-derived quantities remain unchanged.
 
 ## Plot and statistics controls
 
