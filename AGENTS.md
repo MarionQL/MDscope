@@ -24,44 +24,20 @@ Use **GitHub Flow** and the issue title/acceptance conventions in [Contributing]
 
 ## Optional development skills
 
-The [agent skill-routing catalog](docs/developer/agent-skill-routing.md) maps
-all 40 user-listed development/writing skills to MDscope tasks, including
-**positive triggers, exclusions, multi-phase routes, and fallback behavior**.
-Read the relevant row when selecting a workflow; do **not** assume this repo
-or the user's installed-skills screenshot makes a skill callable.
+When choosing a development workflow, consult the
+[skill-routing catalog](docs/developer/agent-skill-routing.md) for exact skill
+names, task triggers, invocation modes and runtime limits.
 
-**Availability gate:** inspect the *current agent environment*, find the
-actual skill and read its complete instructions before invoking it. Skills
-visible in another application may not be exposed here. If unavailable,
-perform the equivalent work using the authoritative repository documents
-above, explicitly state that the skill was **not invoked**, and never block
-progress merely because its instructions are missing. Skill names in the
-routing catalog are workflow cues, not verified copies of their instructions.
+Load the selected skill's actual instructions in the current environment.
+Match automatic helpers to the task; enter request-only workflows when the
+user asks for them by name or clear intent. Load dependencies that the chosen
+workflow requires. If a capability is missing, continue using repository
+guidance where possible and identify any manual adaptation accurately.
 
-**Default routing, by task (not a mandatory chain):**
-
-- Unexpected behavior, failed checks, regression: **Diagnosing Bugs**;
-  add **TDD** for a behavior-changing fix, then **Code Review** and **PR**
-  when relevant.
-- New cross-module behavior or scientific output: **To Spec** if contracts
-  need clarification; **Domain Modeling** if entities/invariants are unclear;
-  **Implement Spec** or **Implement**, backed by scientific tests.
-- Structural changes: **Improve Codebase Architecture**, optionally
-  **Grill with Docs**; use measured graphs and a bounded refactor rather
-  than splitting modules based solely on length.
-- Uncertain Studio interaction: **Prototype** or **Wizard** before production
-  implementation if a disposable UX spike would reduce risk.
-- Multiple issues: **Triage**, then **Wayfinder**/**To Tickets** only if
-  sequencing and independent deliverables justify them.
-- Agent instructions: **Writing for Agents**; recurring process failure:
-  **Retro**. Use **Research** for external technical/scientific evidence.
-
-Select one primary skill per phase rather than invoking every possibly
-related skill. Python MDscope development does not automatically call
-TypeScript, educational, editorial, migration, or Claude-only skills.
-No skill can override [scientific contracts](docs/developer/scientific-contracts.md),
-[check policy](docs/developer/check-policy.md), saved-artifact compatibility,
-review requirements, or the actual capabilities of the active environment.
+Use the catalog's common routes for bugs, implementation, architecture,
+planning and agent-policy edits. Keep scientific semantics, saved-artifact
+compatibility and validation governed by the authoritative guides above.
+Availability is session-specific; this repository does not install skills.
 
 ## Before merging
 
