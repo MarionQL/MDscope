@@ -521,30 +521,24 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
             # Legacy family-wide plotting can dispatch statistical figures.
             requires_statistics = True
         if requires_statistics:
+            from ..statistics.manifest_reader import read_statistics_manifest
             manifest = root / "project_summary/statistics/manifest.json"
-            if not manifest.is_file():
+            facts = read_statistics_manifest(manifest)
+            if facts.state == "missing":
                 raise RuntimeError(
                     f"Plotting requires completed statistics for selected statistical figures: "
                     f"missing {manifest}. Run 'mdscope statistics' first; existing plots were preserved."
                 )
-            try:
-                payload = json.loads(manifest.read_text())
-            except (OSError, json.JSONDecodeError) as exc:
+            if facts.state == "invalid":
                 raise RuntimeError(
                     f"Plotting requires completed statistics for selected statistical figures: "
-                    f"invalid {manifest} ({exc}). Inspect the saved statistics manifest "
+                    f"invalid {manifest} ({facts.error}). Inspect the saved statistics manifest "
                     "before retrying; existing plots were preserved."
-                ) from exc
-            if not isinstance(payload, dict):
-                raise RuntimeError(
-                    f"Plotting requires completed statistics for selected statistical figures: "
-                    f"invalid {manifest}: expected a JSON object. Existing plots were preserved."
                 )
-            status = payload.get("status")
-            if status != "complete":
+            if not facts.complete:
                 raise RuntimeError(
                     f"Plotting requires completed statistics for selected statistical figures: "
-                    f"{manifest} has status {status!r}. Finish statistics first; "
+                    f"{manifest} has status {facts.status!r}. Finish statistics first; "
                     "existing plots were preserved."
                 )
         else:
