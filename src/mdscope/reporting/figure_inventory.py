@@ -25,21 +25,24 @@ SUPPLEMENT_SUFFIXES = (
 
 
 def figure_inventory(root, system_repouts, cfg=None, include_rejected=False):
-    """List every generated PNG with its origin and preferred presentation."""
+    """List generated PNGs and published table PDFs with their provenance."""
     from filecmp import cmp
     root=Path(root)
-    paths = _figure_paths(root, system_repouts)
+    paths = _published_paths(root, system_repouts)
     import json
     provenance = Path(root)/'project_summary/figures/figure_provenance.json'
     records = json.loads(provenance.read_text()) if cfg is not None and provenance.exists() else {}
+    pages_file = root/'project_summary/figures/table_pdf_pages.json'
+    pages = json.loads(pages_file.read_text()) if pages_file.exists() else {}
     rows=[]
     seen_png = {}
     for path in sorted(set(paths)):
         name=path.name
-        kind=("primary" if name.startswith("lipid_contact_matrix_") or name.endswith(PRIMARY_SUFFIXES) else
+        kind=("table_report" if path.suffix == ".pdf" else
+              "primary" if name.startswith("lipid_contact_matrix_") or name.endswith(PRIMARY_SUFFIXES) else
               "supplement" if name.endswith(SUPPLEMENT_SUFFIXES) else "other")
         status = figure_status(path,cfg,root,system_repouts,records=records) if cfg is not None else 'unverified'
-        if status in {'valid', 'legacy_unverified'}:
+        if path.suffix == '.png' and status in {'valid', 'legacy_unverified'}:
             peers = seen_png.setdefault(path.stat().st_size, [])
             if any(cmp(path, peer, shallow=False) for peer in peers):
                 status = 'duplicate_figure'
@@ -56,8 +59,10 @@ def figure_inventory(root, system_repouts, cfg=None, include_rejected=False):
                      "sampling":json.dumps(record.get('sampling',[])),
                      "status":status,"family":figure_family(path),"figure":str(path.relative_to(root)),
                      "section":str(path.parent.relative_to(root)),
-                     "kind":kind,"bytes":path.stat().st_size})
-    return pd.DataFrame(rows,columns=["figure","figure_id","display_label","section","kind","bytes","family","status","source_metric","units","generated_at","source_files","sampling"])
+                     "kind":kind,"bytes":path.stat().st_size,
+                     "format":path.suffix.lstrip("."),
+                     "page_ids":json.dumps(pages.get(str(path.relative_to(root)), []))})
+    return pd.DataFrame(rows,columns=["figure","figure_id","display_label","section","kind","bytes","family","status","source_metric","units","generated_at","source_files","sampling","format","page_ids"])
 
 
 def figure_family(path):
@@ -81,9 +86,18 @@ def _figure_paths(root, system_repouts):
     return sorted(set(paths))
 
 
+def _report_paths(root):
+    """Discover committed PDFs, not pending files or archived versions."""
+    return sorted((Path(root) / 'project_summary' / 'figures').rglob('statistics_tables.pdf'))
+
+
+def _published_paths(root, system_repouts):
+    return sorted(set(_figure_paths(root, system_repouts) + _report_paths(root)))
+
+
 def figure_snapshot(root, system_repouts):
     return {str(p.relative_to(root)): (p.stat().st_mtime_ns,p.stat().st_size)
-            for p in _figure_paths(root, system_repouts)}
+            for p in _published_paths(root, system_repouts)}
 
 
 def _source_files(root, system_repouts, family):
@@ -130,7 +144,7 @@ def record_generated_figures(cfg, root, system_repouts, before):
                                      frames=len(times), first_ps=float(times.min()),
                                      last_ps=float(times.max())))
     sources = {}
-    for path in _figure_paths(root,system_repouts):
+    for path in _published_paths(root,system_repouts):
         name = str(path.relative_to(root))
         if before.get(name) == (path.stat().st_mtime_ns,path.stat().st_size):
             continue
@@ -141,6 +155,8 @@ def record_generated_figures(cfg, root, system_repouts, before):
         from .labels import _metric_meta
         metric = path.stem.split('__')[0]
         label, units = _metric_meta(metric)
+        if path.suffix == '.pdf':
+            label, units = 'Statistics tables', 'See constituent pages'
         if units == metric:
             units = 'see figure axes/source schema'
         records[name] = dict(source_metric=metric,units=units,display_label=label,
@@ -188,6 +204,30 @@ def figure_status(path, cfg, root, system_repouts, records=None):
         return 'disabled'
     if not plot_enabled(cfg, family):
         return 'disabled'
+    if path.suffix == '.pdf':
+        if not cfg.get('plots', {}).get('table_reports_pdf', False):
+            return 'disabled'
+        try:
+            with path.open('rb') as stream:
+                if stream.read(5) != b'%PDF-':
+                    return 'invalid_figure'
+                stream.seek(max(0, path.stat().st_size - 1024))
+                if b'%%EOF' not in stream.read():
+                    return 'invalid_figure'
+        except OSError:
+            return 'invalid_figure'
+        if records is None:
+            provenance = root/'project_summary/figures/figure_provenance.json'
+            records = json.loads(provenance.read_text()) if provenance.exists() else {}
+        record = records.get(str(path.relative_to(root)))
+        if not isinstance(record, dict):
+            return 'legacy_unverified'
+        sources = record.get('source_files', [])
+        if not isinstance(sources, list) or any(not isinstance(source, str) for source in sources):
+            return 'invalid_manifest'
+        if sources and any(not (root / source).is_file() for source in sources):
+            return 'missing_source'
+        return 'valid' if sources else 'legacy_unverified'
     if cfg.get("plots", {}).get("include") is not None:
         identifier = id_from_figure_path(path)
         if identifier is None or not figure_enabled(cfg, identifier):
