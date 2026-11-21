@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 
 from ..config import figure_enabled
 from .plot_ids import figure_dpi
+from .shared_scales import synchronize_y_axes
 
 
 REGION_METRICS = {
@@ -139,6 +140,7 @@ def _region_figures(cfg, system, reps, out):
                 ax.legend(fontsize=7, frameon=False, ncol=2)
                 has_values = True
         if has_values:
+            synchronize_y_axes(axes)
             found = sum(repname in tables for repname in names)
             fig.suptitle(f"{system}: {stem.replace('_', ' ')} — independent replicas ({found}/{n_expected} with source)")
             fig.tight_layout(rect=(0, 0, 1, .95))
