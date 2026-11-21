@@ -8,7 +8,7 @@ from mdscope.config import load_config
 from mdscope.core.validation import validate_selections
 from mdscope.pipeline.runner import run_one
 from mdscope.studio.model import new_document
-from mdscope_test_support import membrane_universe
+from mdscope_test_support import freesasa_backend, membrane_universe
 
 
 def lipid_project(tmp_path):
@@ -62,7 +62,8 @@ def test_required_structural_selection_still_rejects_bad_defaults(tmp_path, anal
 
 
 @pytest.mark.parametrize("analysis", ["sasa", "radius_of_gyration", "rmsd"])
-def test_required_default_protein_cannot_be_empty(tmp_path, analysis):
+def test_required_default_protein_cannot_be_empty(tmp_path, monkeypatch, analysis):
+    freesasa_backend(monkeypatch, tmp_path, available=True)
     path, doc = lipid_project(tmp_path)
     doc["selections"].update(protein="protein", features="all")
     doc["analyses"][analysis]["enabled"] = True
