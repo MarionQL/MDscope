@@ -11,6 +11,7 @@ Read only the guides relevant to the change; do not duplicate them here.
 | Which checks to run and when | [Check policy](docs/developer/check-policy.md) |
 | Test effectiveness, remaining coverage | [Validation gaps](docs/developer/validation-gaps.md) |
 | SDC4-specific reference cases | [SDC4 fixtures](docs/developer/sdc4-fixtures.md) |
+| Generalizing analyses while preserving system-specific choices | [YAML generalization contract](docs/configuration.md#yaml-contract-for-generalization) |
 | YAML, observable options, workflows | [Configuration](docs/configuration.md) · [Analyses](docs/analyses.md) · [Workflows](docs/workflows.md) |
 
 ## Avoid
@@ -21,6 +22,24 @@ Read only the guides relevant to the change; do not duplicate them here.
 - Redundant prose; retain concise scientific contracts and non-obvious rationale.
 
 Use **GitHub Flow** and the issue title/acceptance conventions in [Contributing](docs/developer/contributing.md). Keep changes on a focused issue branch and PR, not directly on `main`.
+
+## Optional development skills
+
+When choosing a development workflow, consult the
+[skill-routing catalog](docs/developer/agent-skill-routing.md) for exact skill
+names, task triggers and invocation modes. Use only its active routes;
+excluded entries are retained solely as audit history.
+
+Load the selected skill's actual instructions in the current environment.
+Match automatic helpers to the task; enter request-only workflows when the
+user asks for them by name or clear intent. Load dependencies that the chosen
+workflow requires. If a capability is missing, continue using repository
+guidance where possible and identify any manual adaptation accurately.
+
+Use the catalog's common routes for bugs, implementation, architecture,
+planning and agent-policy edits. Keep scientific semantics, saved-artifact
+compatibility and validation governed by the authoritative guides above.
+Availability is session-specific; this repository does not install skills.
 
 ## Before merging
 

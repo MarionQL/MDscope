@@ -19,6 +19,7 @@ Use **GitHub Flow**: `main` is the integration branch; each issue or focused cha
 - **Error handling:** validate at boundaries and propagate scientific failures; catch expected exceptions when adding actionable context or preserving recoverable state. Avoid silent fallbacks.
 - **Duplication:** reuse existing utilities where semantics agree; allow small adapters and independent test oracles when they verify different contracts.
 - **Dependencies:** prefer existing capabilities when suitable; add a maintained dependency if it materially improves correctness or maintainability.
+- **Generalization:** implement user-selectable scientific choices in the shared validated YAML/CLI, preserve SDC4 configurations and explicit overrides, and verify non-SDC4 plus applicable SDC4 parity. See [YAML contract](../configuration.md#yaml-contract-for-generalization).
 - **Scope and docs:** do not add unrequested features, configuration options, wrappers, or lengthy commentary. Update the authoritative short guide and delete obsolete wording.
 
 ## Where code belongs
