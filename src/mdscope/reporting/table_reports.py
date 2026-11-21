@@ -58,9 +58,11 @@ class TableReports:
                 # Closing all writers first avoids replacing a previous report
                 # when a later PdfPages writer cannot finish.
                 for pending in self.pending.values():
-                    data = pending.read_bytes()
-                    if not (data.startswith(b"%PDF-") and
-                            b"%%EOF" in data[-1024:]):
+                    with pending.open("rb") as stream:
+                        header = stream.read(5)
+                        stream.seek(max(0, pending.stat().st_size - 1024))
+                        trailer = stream.read()
+                    if header != b"%PDF-" or b"%%EOF" not in trailer:
                         raise ValueError(f"Invalid generated PDF: {pending}")
                 # Backup prior publications in their own directories. If the
                 # second replacement fails, restore the first as well.
