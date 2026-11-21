@@ -24,30 +24,44 @@ Use **GitHub Flow** and the issue title/acceptance conventions in [Contributing]
 
 ## Optional development skills
 
-Use an installed skill **only when its instructions are available in the
-current agent environment** and the task calls for it. Names below are
-workflow cues, not a replacement for this repository's authoritative docs.
-If the named skill cannot be read, follow the equivalent repository process
-and say it was not invoked. Do not block work on a missing skill.
+The [agent skill-routing catalog](docs/developer/agent-skill-routing.md) maps
+all 36 user-listed development/writing skills to MDscope tasks, including
+**positive triggers, exclusions, multi-phase routes, and fallback behavior**.
+Read the relevant row when selecting a workflow; do **not** assume this repo
+or the user's installed-skills screenshot makes a skill callable.
 
-| Task | Prefer skill | Repository contract |
-|---|---|---|
-| Reproduce a failure, find its cause | **Diagnosing Bugs** | [Validation gaps](docs/developer/validation-gaps.md) and affected entry-point tests |
-| Change numerical semantics or fix a regression | **TDD** | [Scientific contracts](docs/developer/scientific-contracts.md) and [Check policy](docs/developer/check-policy.md) |
-| Complex feature or cross-module change | **To Spec** → **Implement Spec** | [Contributing](docs/developer/contributing.md); explicit acceptance criteria |
-| Review dependencies and module ownership | **Improve Codebase Architecture** / **Codebase Design** | [Architecture](docs/developer/architecture.md), generated dependency graphs and measured evidence |
-| Review a PR for science, recovery and maintainability | **Code Review** | [Contributing](docs/developer/contributing.md), [Check policy](docs/developer/check-policy.md) |
-| Prepare change summary and evidence | **PR** | GitHub Flow, actual checks, and review status |
-| Prioritize multiple bugs/issues | **Triage** | Issue scope/acceptance criteria in [Contributing](docs/developer/contributing.md) |
-| Challenge an architectural proposal | **Grill with Docs** | Compare against real producers, saved contracts and developer docs |
-| Repeat a class of failures | **Retro** | Record one actionable prevention rule in the canonical guide |
-| Establish local commit-time checks | **Setup Pre-Commit** | Add only lightweight, reproducible checks; keep CI authoritative |
+**Availability gate:** inspect the *current agent environment*, find the
+actual skill and read its complete instructions before invoking it. Skills
+visible in another application may not be exposed here. If unavailable,
+perform the equivalent work using the authoritative repository documents
+above, explicitly state that the skill was **not invoked**, and never block
+progress merely because its instructions are missing. Skill names in the
+routing catalog are workflow cues, not verified copies of their instructions.
 
-For code changes, a good default is **Diagnosing Bugs → TDD →
-Code Review → PR**, using **To Spec / Implement Spec** for larger work.
-Architecture reviews should recommend bounded changes with evidence before
-moving modules. Skills never authorize changing a scientific estimator,
-discarding saved outputs, weakening tests, or bypassing review gates.
+**Default routing, by task (not a mandatory chain):**
+
+- Unexpected behavior, failed checks, regression: **Diagnosing Bugs**;
+  add **TDD** for a behavior-changing fix, then **Code Review** and **PR**
+  when relevant.
+- New cross-module behavior or scientific output: **To Spec** if contracts
+  need clarification; **Domain Modeling** if entities/invariants are unclear;
+  **Implement Spec** or **Implement**, backed by scientific tests.
+- Structural changes: **Improve Codebase Architecture**, optionally
+  **Grill with Docs**; use measured graphs and a bounded refactor rather
+  than splitting modules based solely on length.
+- Uncertain Studio interaction: **Prototype** or **Wizard** before production
+  implementation if a disposable UX spike would reduce risk.
+- Multiple issues: **Triage**, then **Wayfinder**/**To Tickets** only if
+  sequencing and independent deliverables justify them.
+- Agent instructions: **Writing for Agents**; recurring process failure:
+  **Retro**. Use **Research** for external technical/scientific evidence.
+
+Select one primary skill per phase rather than invoking every possibly
+related skill. Python MDscope development does not automatically call
+TypeScript, educational, editorial, migration, or Claude-only skills.
+No skill can override [scientific contracts](docs/developer/scientific-contracts.md),
+[check policy](docs/developer/check-policy.md), saved-artifact compatibility,
+review requirements, or the actual capabilities of the active environment.
 
 ## Before merging
 
