@@ -10,6 +10,7 @@ from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 import os
+import tempfile
 
 from matplotlib.backends.backend_pdf import PdfPages
 
@@ -28,7 +29,9 @@ class TableReports:
         report = directory / "statistics_tables.pdf"
         if report not in self.open_reports:
             directory.mkdir(parents=True, exist_ok=True)
-            pending = directory / ".statistics_tables.pending.pdf"
+            with tempfile.NamedTemporaryFile(prefix=".statistics_tables.", suffix=".pending.pdf",
+                                         dir=directory, delete=False) as temporary:
+                pending = Path(temporary.name)
             self.open_reports[report] = PdfPages(pending, metadata={
                 "Title": f"MDscope statistics tables - {directory.name}",
                 "Creator": "MDscope",
@@ -37,17 +40,51 @@ class TableReports:
         self.open_reports[report].savefig(fig, bbox_inches="tight")
 
     def close(self, success: bool):
+        """Publish complete PDFs only; archive reports with no pages in this run.
+
+        A reporting session is the sole writer for its output root. Unique
+        temporary paths isolate independent sessions; they do not grant
+        concurrent sessions permission to publish the same destination.
+        """
         try:
             for writer in self.open_reports.values():
                 writer.close()
             if success:
+                # Closing all writers first avoids replacing a previous report
+                # when a later PdfPages writer cannot finish.
+                for pending in self.pending.values():
+                    data = pending.read_bytes()
+                    if not (data.startswith(b"%PDF-") and
+                            b"%%EOF" in data[-1024:]):
+                        raise ValueError(f"Invalid generated PDF: {pending}")
                 for report, pending in self.pending.items():
                     os.replace(pending, report)
                     self._archive_old_pngs(report.parent)
+                # Selection and available data may change between runs. A
+                # report absent from a completed session must not remain active.
+                active = set(self.pending)
+                for report in sorted(self.root.rglob("statistics_tables.pdf")):
+                    if ".archives" in report.parts or report in active:
+                        continue
+                    self._archive_obsolete_pdf(report)
         finally:
-            if not success:
-                for pending in self.pending.values():
-                    pending.unlink(missing_ok=True)
+            for pending in self.pending.values():
+                pending.unlink(missing_ok=True)
+
+    def _archive_obsolete_pdf(self, report: Path):
+        relative = report.relative_to(self.root)
+        dest = self.root / ".archives" / "figure_tables" / "pdf_reports" / relative.parent
+        dest.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        # The random suffix prevents a same-microsecond archive collision.
+        with tempfile.NamedTemporaryFile(prefix=report.stem + "_" + stamp + "_",
+                                         suffix=report.suffix, dir=dest,
+                                         delete=False) as temporary:
+            archive = Path(temporary.name)
+        try:
+            os.replace(report, archive)
+        finally:
+            archive.unlink(missing_ok=True) if report.exists() else None
 
     def _archive_old_pngs(self, directory: Path):
         old = sorted(set(directory.glob("*__bootstrap_table.png"))
