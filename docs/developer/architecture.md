@@ -262,3 +262,16 @@ trajectory read is implied by this shared reader.
 
 Disabled saved statistics families are not catalogued or promoted to findings
 from stale tables. The manifest reader imports no estimator package.
+
+`reporting.table_reports` stages PDF pages and per-report identity/digest sidecars
+before replacing committed products. Publication exceptions roll back PDF,
+metadata and archival moves together. One writer per project is supported;
+overlapping sessions fail before rendering. Unique temporary files prevent path
+collisions; a stale `.table_reports.lock` after a stopped process must only be
+removed after verifying no writer is active. This is exception rollback, not a
+power-loss transaction.
+
+`figure_inventory` lists each PDF once with page IDs/count, format, source files
+and sampling. It uses strict PDF structure/page validation plus the published
+SHA-256 digest; PNG decoding remains separate. PNG-only consumers may request
+`formats=('png',)`. Legacy PDFs lack publication identity and stay unverified.
