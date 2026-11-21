@@ -73,3 +73,16 @@ depend on topology and configuration. Array previews give axes and keys, without
 inventing dimensions. JSON audit objects retain explicitly variable metadata keys.
 Dynamic statistics identities can be entered in the exact-selector tables;
 unavailable saved identities are rejected by the statistics backend at execution.
+
+
+Saved-result inspection is read-only and uses the same persisted-input owner as
+execution. Statistics and Figures expose replica coverage and validation reasons.
+Scheduled work is distinct from verified existing products; incomplete products,
+scientific configuration mismatches and unknown provenance cannot authorize reuse.
+Changing the draft or results path invalidates the inspection until it is refreshed.
+A saved-only source does not turn on its trajectory analysis in exported YAML.
+
+Static RMSF figures can use a verified raw RMSF table. Temporal RMSF statistics
+also require matching feature-atom metadata and the complete aligned-coordinate
+cache. Studio reports that additional capability separately; exact inference
+requests are revalidated before finalization can replace any existing outputs.

@@ -1044,6 +1044,11 @@ def residue_response_settings(cfg):
                 any(not isinstance(v, str) or not v.strip() for v in values) or
                 len(set(values)) != len(values)):
             raise ValueError(f"statistics.residue_response.{key} must be null or distinct nonempty strings")
+    from .statistics_contracts import RESIDUE_RESPONSE_PROFILE
+    unsupported = [name for name in settings["profiles"] or []
+                   if not RESIDUE_RESPONSE_PROFILE.match(name)]
+    if unsupported:
+        raise ValueError(f"Unsupported statistics.residue_response profiles: {unsupported}")
     length = settings["min_length"]
     if type(length) is not int or length < 2:
         raise ValueError("statistics.residue_response.min_length must be an integer >= 2")

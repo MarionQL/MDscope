@@ -11,13 +11,7 @@ import re
 import numpy as np
 import pandas as pd
 
-# Only residue-resolved protein observables with comparable labels.
-_RESIDUE_PROFILE = re.compile(
-    r"^(?:rmsf$|dssp_(?:helix|sheet|coil)_occupancy$|"
-    r"sasa_mean(?:__|$)|sasa_buried_nm2__|"
-    r"residue_occlusion__|residue_water_coordination__all$|"
-    r"residue_membrane_distance__(?!.*__group_))"
-)
+from ..statistics_contracts import RESIDUE_RESPONSE_PROFILE
 _RESIDUE_LABEL = re.compile(r"^(?P<chain>[^:]+):[A-Za-z]+(?P<resid>-?\d+)$")
 _KEYS = ["system_1", "system_2", "profile", "position_label"]
 
@@ -49,13 +43,13 @@ def residue_response_screen(replicates: pd.DataFrame, contrasts: pd.DataFrame,
     if not required_rep.issubset(replicates) or not required_cmp.issubset(contrasts):
         raise ValueError("Residue response requires saved replica profiles and bootstrap contrasts")
     if profiles is not None:
-        unsupported = [name for name in profiles if not _RESIDUE_PROFILE.match(name)]
+        unsupported = [name for name in profiles if not RESIDUE_RESPONSE_PROFILE.match(name)]
         if unsupported:
             raise ValueError(f"Unsupported residue-response profiles: {unsupported}")
         replicates = replicates.loc[replicates.profile.isin(profiles)]
         contrasts = contrasts.loc[contrasts.profile.isin(profiles)]
-    r = replicates.loc[replicates.profile.astype(str).str.match(_RESIDUE_PROFILE)].copy()
-    c = contrasts.loc[contrasts.profile.astype(str).str.match(_RESIDUE_PROFILE)].copy()
+    r = replicates.loc[replicates.profile.astype(str).str.match(RESIDUE_RESPONSE_PROFILE)].copy()
+    c = contrasts.loc[contrasts.profile.astype(str).str.match(RESIDUE_RESPONSE_PROFILE)].copy()
     if r.empty or c.empty:
         return pd.DataFrame(columns=columns), pd.DataFrame(columns=region_columns)
     for frame, identity in ((r, ["system", "replicate", "profile", "position_label"]),

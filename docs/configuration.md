@@ -14,6 +14,46 @@ Use [`synd4_full_mechanisms.yaml`](../synd4_full_mechanisms.yaml) for the comple
 | Matched analysis window | `statistics.matched_window_ps` | Additional matched-time statistics |
 | Automatic HS identification | `analyses.sdc4_mechanisms.hs_auto` | Requires covalent bond topology |
 
+## YAML contract for generalization
+
+Every new user-selectable scientific choice must be expressible in the validated
+YAML and runnable from the CLI. Studio authors that same configuration. Optional
+presets supply tested defaults; explicit supported selections and overrides remain
+available. Internal module extraction alone does not require new configuration.
+
+For generalization PRs:
+
+- Define supported enable/disable controls and scientific choices in the existing
+  defaults/schema/semantic validation, with units and valid ranges. Preserve
+  omitted versus explicit-empty selections; reject unsupported options clearly.
+- Configure target/fit/environment selections, motif/chain scope, lipid naming,
+  glycan attachments and validated reference models through appropriate existing
+  fields or explicitly implemented extensions. Prefer named runs only for analyses
+  that support them. Keep biological interpretation distinct from generic kernels.
+- Preserve chosen SDC4 analyses and their current CLI/YAML/output contracts.
+  Generalization makes those analyses reusable; it does not remove SDC4-specific
+  measurements or silently replace configured motifs, PROA/PROB domains, HS
+  attachment identities, lipid anchors/classes or physical references.
+- Resolve presets and overrides once through the existing loader. Expose effective
+  choices, prerequisites and provenance in planning/saved results; preserve them
+  through Studio import, no-op export and subsequent edits. Selecting a group or
+  preset must not silently enable unrelated analyses, statistics or figures.
+- Verify a non-SDC4 configuration and applicable SDC4 numerical references. Keep
+  `synd4_baseline.yaml`, `synd4_full_mechanisms.yaml` and
+  `synd4_full_mechanisms_finalize_fast.yaml` resolving and round-tripping; if a real
+  migration is necessary, document it and demonstrate equivalent requested work.
+  Schema validation alone does not establish topology chemistry or numerical parity.
+- Include runnable YAML examples only after their keys are implemented. Keep
+  unsupported reference geometries/chemistries explicit; naming presets do not
+  validate new physics.
+
+Existing controls include `selections.groups`, supported analysis-specific
+selection fields, `membrane_order.tails`/`lipid_overrides`, SDC4 TM/ectodomain,
+HS/motif/lipid definitions, `statistics.metric_selection` and exact `plots.include`.
+These are not universal keys accepted by every analysis. Generic state-feature sources still have open implementation work (#163).
+Residue-response discovery is controlled by `statistics.residue_response`; see
+the validated options below. Do not advertise proposed fields as supported.
+
 ### Groups vs named runs
 
 ```yaml
@@ -108,7 +148,8 @@ the same directories are moved to
 has been written successfully. Other PNG figures and the full-precision
 Parquet statistics are retained. `plots.include` and disabled families
 continue to control which tables appear. The PDF is for reading and
-sharing; it is not a substitute for numerical data exports.
+sharing; it is not a substitute for numerical data exports. `table_reports_pdf: false`
+(default) preserves individual table PNGs.
 ### Suppressing uninformative lipid-footprint traces
 
 A lipid-footprint metric whose available sampled values are **all exactly
@@ -133,11 +174,6 @@ not a fixed frame count, so irregular sampling does not change its duration.
 ```yaml
 plots:
   enabled: true
-  bootstrap_tables: true
-  table_reports_pdf: true
-```
-
-`table_reports_pdf: false` (default) preserves individual table PNGs.
   time_series: true
   time_series_rolling_window_ns: 100
 ```

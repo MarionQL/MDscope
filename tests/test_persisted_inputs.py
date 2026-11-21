@@ -93,6 +93,15 @@ def test_missing_saved_replica_is_reported_instead_of_breaking_inventory(tmp_pat
     assert any(r["condition"] == "other" and r["status"] == "missing" for r in rows)
 
 
+def test_complete_products_without_saved_configuration_have_unknown_provenance(tmp_path):
+    doc, _, root, _, _ = saved_project(tmp_path)
+    (root / "resolved_config.yaml").unlink()
+    row = _row(doc, tmp_path, root)
+    assert row["status"] == "unknown"
+    assert not row["statistics_ready"]
+    assert "configuration" in row["reason"]
+
+
 def test_saved_only_source_can_feed_offline_statistics_without_changing_yaml(tmp_path, monkeypatch):
     from mdscope.pipeline import runner
     doc, cfg, root, rep, summary = saved_project(tmp_path)
@@ -166,3 +175,157 @@ def test_default_finalization_failure_does_not_rewrite_saved_configuration(tmp_p
         finalize_project(tmp_path / "analysis.yaml", cfg=cfg)
     assert (root / "resolved_config.yaml").read_bytes() == saved
     assert not (root / "project_summary").exists()
+
+
+def test_streamed_scalar_reuse_tracks_alignment_provenance(tmp_path, project):
+    from mdscope.pipeline.runner import run_one
+    path, root = project("saved_scalar")
+    run_one(path, 0)
+    doc = yaml.safe_load(path.read_text())
+    rows = inspect_results_directory(doc, path.parent, root)
+    assert next(r for r in rows if r["analysis"] == "rmsd")["status"] == "verified_existing"
+    changed = deepcopy(doc)
+    changed["analyses"]["alignment"] = {"enabled": False}
+    row = next(r for r in inspect_results_directory(changed, path.parent, root)
+               if r["analysis"] == "rmsd")
+    assert row["status"] == "incompatible"
+    assert "alignment" in row["reason"]
+    doc["analyses"]["rmsd"] = {"enabled": False}
+    assert next(r for r in inspect_results_directory(doc, path.parent, root)
+                if r["analysis"] == "rmsd")["status"] == "verified_existing"
+
+
+@pytest.mark.parametrize("names", [("A", "Z"), ("Z", "A")])
+@pytest.mark.parametrize("enabled", [True, False])
+def test_saved_only_sibling_retains_its_effective_settings_regardless_of_order(tmp_path, names, enabled):
+    from mdscope.pipeline.persisted_inputs import configuration_with_saved_sources
+    from mdscope.config import analysis_runs
+    saved_only, current_name = names
+    doc, cfg, root, rep, summary = saved_project(tmp_path)
+    doc["analyses"]["sasa"] = {"enabled": True, "probe_radius_A": 1.4,
+                               "runs": {saved_only: {}, current_name: {"probe_radius_A": 2.0}}}
+    saved = resolve_config(doc, base=tmp_path)
+    for entry in analysis_output_plan(saved, summary.parent.parent):
+        entry.path.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame({"time_ps": [0., 1., 2.], "topology_residue_index": [0, 0, 0],
+                      "sasa_nm2": [1., 2., 3.]}).to_parquet(entry.path)
+        (root / ".state" / (_replicate_state_prefix(rep) + "-" + entry.checkpoint_key + ".json")).write_text('{"status":"complete"}')
+    (root / "resolved_config.yaml").write_text(yaml.safe_dump(saved))
+    doc["analyses"]["sasa"] = {"enabled": enabled, "probe_radius_A": 2.0,
+                               "runs": {current_name: {}}}
+    current = resolve_config(doc, base=tmp_path)
+    before = deepcopy(current)
+    rows = inspect_results_directory(doc, tmp_path, root)
+    effective = configuration_with_saved_sources(current, rows)
+    runs = {r.run_id: r.spec for r in analysis_runs(effective, "sasa")}
+    assert set(runs) == set(names)
+    assert runs[saved_only]["probe_radius_A"] == 1.4
+    assert runs[current_name]["probe_radius_A"] == 2.0
+    assert current == before
+
+
+def test_streamed_scalar_inventory_rejects_missing_metric_without_mutation(tmp_path, project):
+    from mdscope.config import load_config
+    from mdscope.pipeline.runner import run_one
+    path, root = project("missing_scalar")
+    run_one(path, 0)
+    cfg = load_config(path)
+    rep = next(iter(iter_replicates(cfg, path)))
+    summary = root / rep.system / rep.label / "summary/timeseries.parquet"
+    table = pd.read_parquet(summary).drop(columns=["rmsd_A"])
+    table.to_parquet(summary)
+    before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    row = next(r for r in inspect_results_directory(cfg, path.parent, root) if r["analysis"] == "rmsd")
+    assert row["status"] == "incompatible"
+    with pytest.raises(RuntimeError, match="rmsd"):
+        finalize_project(path, cfg=cfg, results_dir=root)
+    assert all(p.read_bytes() == value for p, value in before.items())
+
+
+def test_saved_rmsf_static_readiness_is_separate_from_temporal_statistics(tmp_path, monkeypatch):
+    from mdscope.studio.model import saved_source_catalog, review, unavailable_exact_statistics
+    from mdscope.pipeline.persisted_inputs import unavailable_saved_statistics
+    doc = new_document()
+    doc["analyses"]["rmsf"]["enabled"] = True
+    cfg = resolve_config(doc, base=tmp_path)
+    rep = next(iter(iter_replicates(cfg, tmp_path / "analysis.yaml")))
+    root = tmp_path / "saved"
+    repout = root / rep.system / rep.label
+    (repout / "summary").mkdir(parents=True)
+    (repout / "raw").mkdir()
+    pd.DataFrame({"time_ps": [0., 1., 2.]}).to_parquet(repout / "summary/timeseries.parquet")
+    atoms = pd.DataFrame({"atom_index": [0], "topology_residue_index": [0],
+                          "residue": ["A:ALA1"], "atom_name": ["CA"], "rmsf_A": [1.],
+                          "equivalent_bfactor_A2": [1.]})
+    atoms.to_parquet(repout / "raw/rmsf.parquet")
+    (root / "resolved_config.yaml").write_text(yaml.safe_dump(cfg))
+    (root / ".state").mkdir()
+    (root / ".state" / (_replicate_state_prefix(rep) + "-summary.json")).write_text('{"status":"complete"}')
+    doc["analyses"]["rmsf"]["enabled"] = False
+    doc["statistics"].update(enabled=True, metric_selection={"profiles": [{"profile": "rmsf"}]})
+    rows = inspect_results_directory(doc, tmp_path, root)
+    row = next(r for r in rows if r["analysis"] == "rmsf")
+    assert row["status"] == "verified_existing"
+    assert not row["statistics_ready"]
+    assert "cache" in row["statistics_reason"]
+    _, plan = review(doc, tmp_path)
+    assert unavailable_exact_statistics(doc, plan, rows) == ["profiles"]
+    assert "rmsf" not in {p["profile"] for p in saved_source_catalog(doc, tmp_path, rows)["profiles"]}
+    before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    with pytest.raises(RuntimeError, match="temporal RMSF"):
+        finalize_project(tmp_path / "analysis.yaml", cfg=resolve_config(doc), results_dir=root)
+    assert {p: p.read_bytes() for p in root.rglob("*") if p.is_file()} == before
+    default_root = resolve_config(doc)
+    default_root["project"]["output"] = str(root)
+    with pytest.raises(RuntimeError, match="Temporal RMSF"):
+        finalize_project(tmp_path / "analysis.yaml", cfg=default_root)
+    assert {p: p.read_bytes() for p in root.rglob("*") if p.is_file()} == before
+    disabled = resolve_config(doc)
+    disabled["statistics"].setdefault("families", {})["profiles"] = False
+    assert unavailable_saved_statistics(disabled, rows, allow_scheduled=False) == []
+    cache = repout / "cache"
+    cache.mkdir()
+    atoms.to_parquet(cache / "feature_atoms.parquet")
+    np.savez(cache / "aligned-part-00000.npz", time_ps=[0., 1., 2.], xyz=np.zeros((3, 1, 3)))
+    with np.load(cache / "aligned-part-00000.npz") as part:
+        archive_type = type(part)
+    original_getitem = archive_type.__getitem__
+    def bounded_read(archive, key):
+        assert key != "xyz", "Browsing must inspect coordinate headers, not load coordinates"
+        return original_getitem(archive, key)
+    with monkeypatch.context() as bounded:
+        bounded.setattr(archive_type, "__getitem__", bounded_read)
+        ready = inspect_results_directory(doc, tmp_path, root)
+    assert next(r for r in ready if r["analysis"] == "rmsf")["statistics_ready"]
+    assert unavailable_exact_statistics(doc, plan, ready) == []
+    assert "rmsf" in {p["profile"] for p in saved_source_catalog(doc, tmp_path, ready)["profiles"]}
+    np.savez(cache / "aligned-part-00000.npz", time_ps=[0., 1., 9.], xyz=np.zeros((3, 1, 3)))
+    stale = inspect_results_directory(doc, tmp_path, root)
+    assert next(r for r in stale if r["analysis"] == "rmsf")["status"] == "verified_existing"
+    assert unavailable_saved_statistics(resolve_config(doc), stale, allow_scheduled=False) == ["profiles"]
+
+
+def test_temporal_rmsf_rejects_corruption_beyond_header_buffer(tmp_path):
+    from zipfile import ZipFile
+    from mdscope.observables.rmsf import temporal_rmsf_readiness
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (tmp_path / "raw").mkdir()
+    atoms = pd.DataFrame({"atom_index": np.arange(100), "residue": ["A:ALA1"] * 100})
+    atoms.to_parquet(cache / "feature_atoms.parquet")
+    atoms.to_parquet(tmp_path / "raw/rmsf.parquet")
+    times = np.arange(1000.)
+    path = cache / "aligned-part-00000.npz"
+    np.savez(path, time_ps=times, xyz=np.zeros((1000, 100, 3)))
+    assert temporal_rmsf_readiness(tmp_path, times)[0]
+    with ZipFile(path) as archive:
+        info = archive.getinfo("xyz.npy")
+        offset = info.header_offset + 30 + len(info.filename) + len(info.extra) + info.compress_size - 1
+    with path.open("r+b") as handle:
+        handle.seek(offset)
+        value = handle.read(1)
+        handle.seek(offset)
+        handle.write(bytes([value[0] ^ 1]))
+    ready, reason = temporal_rmsf_readiness(tmp_path, times)
+    assert not ready
+    assert "CRC" in reason

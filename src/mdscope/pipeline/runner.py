@@ -463,12 +463,12 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
         # Derive expected coverage from the current configuration, not the
         # inventory itself: a missing inventory row must never become an
         # implicitly successful preflight.
-        from ..registry import analysis_output_plan
+        from ..registry import saved_output_plan
         replicates_for_preflight = list(iter_replicates(cfg, config_path))
         expected = {
             (entry.name, entry.run_id or "default", rep.system, rep.label)
             for rep in replicates_for_preflight
-            for entry in analysis_output_plan(
+            for entry in saved_output_plan(
                 cfg, root / rep.system / rep.label)
         }
         by_key = {
@@ -482,12 +482,20 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
         ]
         if invalid:
             raise RuntimeError(
+                "Cannot finalize: required persisted replica data are missing or invalid. "
                 "Existing results are not verified for every scheduled analysis/run/"
                 "condition/replica; refusing downstream finalization: " +
                 "; ".join("/".join(map(str, row)) +
                           (": " + by_key[row[:4]].get("reason", "") if row[:4] in by_key else "")
                           for row in invalid[:20]))
-        cfg = configuration_with_saved_sources(cfg, inventory)
+        if phase == "statistics":
+            from .persisted_inputs import unavailable_saved_statistics
+            if unavailable_saved_statistics(cfg, inventory, allow_scheduled=False):
+                raise RuntimeError(
+                    "Existing results lack the saved coordinate cache required for exact "
+                    "temporal RMSF statistics. Existing outputs were preserved; restore "
+                    "the saved cache or remove the unavailable exact request.")
+        cfg = configuration_with_saved_sources(cfg, inventory, statistics=phase == "statistics")
     initialize_after_validation = root is None and phase == "statistics"
     if root is None:
         root = project_root(cfg, config_path)

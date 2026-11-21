@@ -229,7 +229,10 @@ and the [user guide](../studio.md) for coverage and explicit remaining gaps.
 
 `pipeline.persisted_inputs` owns read-only artifact/schema checks, summary time
 grids, checkpoint identity/counts, scientific configuration compatibility and
-registered saved-result inventory. Runner imports these operations; Studio
+registered saved-result inventory. `registry.saved_output_plan` adds core streamed
+products from the existing scalar/profile contracts without changing the fused
+trajectory schedule. Core reuse compares alignment provenance and saved columns/
+time grids. Runner imports these operations; Studio
 adapts the same owner rather than importing trajectory orchestration. Browsing
 requires provenance/markers; direct legacy finalization preserves its structural
 validation policy. Expected coverage is derived independently from the current

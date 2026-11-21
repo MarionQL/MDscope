@@ -282,6 +282,30 @@ def analysis_output_plan(cfg: dict, repout: Path) -> tuple[FusedOutput, ...]:
     return tuple(entries)
 
 
+def saved_output_plan(cfg: dict, repout: Path) -> tuple[FusedOutput, ...]:
+    """Readiness contracts, including products written by the core stream.
+
+    Paths come from the same contracts used by authoring and statistics; this
+    does not add work to the executable fused schedule.
+    """
+    entries = list(analysis_output_plan(cfg, repout))
+    names = {entry.name for entry in entries}
+    for contract in scalar_contracts(cfg) + structural_profile_contracts(cfg):
+        name = contract["analysis"]
+        if name not in names:
+            entries.append(FusedOutput(name, Path(repout) / contract["path_within_replica"]))
+            names.add(name)
+    return tuple(entries)
+
+
+def core_saved_contracts(cfg, name):
+    """Core stream companions and columns, from the public output contracts."""
+    if name in FUSED_OUTPUTS:
+        return []
+    return [item for item in scalar_contracts(cfg) + structural_profile_contracts(cfg)
+            if item["analysis"] == name]
+
+
 def required_artifacts(entry: FusedOutput, cfg: dict) -> tuple[Path, ...]:
     """Required companions, without opening trajectories or inventing a manifest.
 
@@ -289,6 +313,11 @@ def required_artifacts(entry: FusedOutput, cfg: dict) -> tuple[Path, ...]:
     required. Large numerical tables are checked by the caller using metadata.
     """
     directory, name = entry.path.parent, entry.name
+    core = core_saved_contracts(cfg, name)
+    if core:
+        # Core primaries are one directory below the replica root.
+        return tuple(dict.fromkeys(entry.path.parent.parent / item["path_within_replica"]
+                                   for item in core))
     companions = {
         'lipid_contacts': ('matrix.parquet', 'selection_audit.json'),
         'lipid_enrichment': ('counts.parquet', 'selection_audit.parquet', 'reference.json'),

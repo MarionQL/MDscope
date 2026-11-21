@@ -243,7 +243,7 @@ def review(document, base, choices=None, *, inventory=None):
         else:
             authoring_cfg = cfg
         catalog = authoring_catalog(authoring_cfg, include_inactive=True)
-        active = authoring_catalog(authoring_cfg)
+        active = _saved_source_catalog(cfg, inventory) if inventory else authoring_catalog(authoring_cfg)
         variables = active["scalars"]
         active_scalars = {(var["metric"], var["group"]) for var in variables}
         known_scalars = {(var["metric"], var["group"]) for var in catalog["scalars"]}
@@ -319,10 +319,20 @@ def inspect_results_directory(document, base, results_directory):
 
 def saved_source_catalog(document, base, inventory):
     """Describe saved-only choices without changing the editable YAML switches."""
+    cfg = resolve_config(document, base=Path(base))
+    return _saved_source_catalog(cfg, inventory)
+
+
+def _saved_source_catalog(cfg, inventory):
+    """Retain static figures while exposing only supported saved inference."""
     from ..pipeline.persisted_inputs import configuration_with_saved_sources
     from ..planning import authoring_catalog
-    cfg = resolve_config(document, base=Path(base))
-    return authoring_catalog(configuration_with_saved_sources(cfg, inventory))
+    catalog = authoring_catalog(configuration_with_saved_sources(cfg, inventory))
+    statistical = authoring_catalog(configuration_with_saved_sources(cfg, inventory, statistics=True))
+    for key in ("scalars", "profiles"):
+        catalog[key] = statistical[key]
+    catalog["figures"]["statistics"] = statistical["figures"].get("statistics", [])
+    return catalog
 
 
 def results_coverage(inventory):
@@ -364,7 +374,9 @@ def statistics_source_status(plan, inventory=None):
     """Expose planned producers and verified saved coverage without conflation."""
     from ..planning import ANALYSIS_METADATA
     scheduled = planned_statistics_sources(plan)
-    coverage = results_coverage(inventory or [])
+    coverage = results_coverage([
+        {**row, "status": row["status"] if row.get("statistics_ready", True) else "incompatible"}
+        for row in inventory or []])
     return {
         family["family"]: {
             "status": "scheduled" if scheduled.get(family["family"]) else
@@ -398,11 +410,12 @@ def unavailable_exact_statistics(document, plan, inventory=None):
     if not document.get("statistics", {}).get("enabled", False):
         return []
     status = statistics_source_status(plan, inventory)
-    return [
+    from ..pipeline.persisted_inputs import unavailable_saved_statistics
+    return sorted(set(unavailable_saved_statistics(document, inventory)) | {
         family for family, info in status.items()
         if info["status"] == "unavailable"
         and statistics_family_mode(document, family) == "exact"
-    ]
+    })
 
 
 def statistics_family_mode(document, family):

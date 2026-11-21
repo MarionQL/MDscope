@@ -26,7 +26,7 @@ def test_discovery_yaml_survives_studio_round_trip_and_plan(tmp_path):
 
 
 @pytest.mark.parametrize("settings", [
-    {"enabled": "yes"}, {"profiles": "rmsf"}, {"profiles": ["rmsf", "rmsf"]},
+    {"enabled": "yes"}, {"profiles": ["density_1d"]}, {"profiles": "rmsf"}, {"profiles": ["rmsf", "rmsf"]},
     {"chains": [""]}, {"min_length": True}, {"min_length": 2.5},
     {"min_length": 0}, {"minimum_cosine": float("nan")},
     {"minimum_cosine": 1.1}, {"unknown_option": True},

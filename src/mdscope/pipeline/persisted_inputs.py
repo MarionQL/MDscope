@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import config_hash, analysis_runs
-from ..registry import analysis_output_plan, required_artifacts
+from ..registry import analysis_output_plan, saved_output_plan, required_artifacts, core_saved_contracts
 from ..mechanisms.residue_occlusion import (
     OCCLUSION_FILE, IDENTITY_COLUMNS, FRACTION_COLUMNS, WATER_COLUMNS,
     residue_environment_pending,
@@ -144,6 +144,17 @@ def validate_replica_summary(repout, rep):
 
 def validate_saved_analysis(entry, cfg, times):
     """Check registered products and their applicable saved-data prerequisites."""
+    core = core_saved_contracts(cfg, entry.name)
+    if core:
+        for item in core:
+            path = entry.path.parent.parent / item["path_within_replica"]
+            check_artifact(path)
+            table = pd.read_parquet(path, columns=item["columns"])
+            if "time_ps" in table:
+                selected = table.loc[table["group"] == item["group"]] if item.get("group") is not None else table
+                if not np.array_equal(selected["time_ps"].to_numpy(float), times):
+                    raise ValueError(f"{path}: time grid or group coverage disagrees with summary")
+        return
     validate_analysis_output(entry, cfg)
     if entry.name == "lipid_enrichment" and footprint_pending(
             entry.path, cfg["analyses"]["lipid_enrichment"]):
@@ -179,10 +190,15 @@ def validate_replica_products(cfg, root, replicates):
             for entry in analysis_output_plan(cfg, repout):
                 validate_saved_analysis(entry, cfg, times)
             validate_additional_products(repout, cfg, times)
+            if requires_temporal_rmsf_statistics(cfg):
+                from ..observables.rmsf import temporal_rmsf_readiness
+                ready, reason = temporal_rmsf_readiness(repout, times)
+                if not ready:
+                    raise ValueError(reason)
         except (OSError, ValueError, KeyError, ImportError, EOFError, TypeError, IndexError, BadZipFile, RuntimeError) as exc:
             missing.append(
-                f"{rep.system}/{rep.label}: invalid persisted inputs under {repout} "
-                f"({exc}); inspect the affected saved artifact before retrying"
+                f"{rep.system}/{rep.label}: {exc}; invalid persisted inputs under {repout}; "
+                "inspect the affected saved artifact before retrying"
             )
     if missing:
         raise RuntimeError(
@@ -218,6 +234,9 @@ def _verified_saved_configuration(current, saved, system, replica, analysis, run
                 for i, item in enumerate(cfg["systems"][system]["replicates"], 1)}
     if replica not in by_label(saved) or by_label(current)[replica] != by_label(saved)[replica]:
         return False, "replicate input identity differs"
+    if analysis in {"rmsd", "rmsf"} and (
+            current.get("analyses", {}).get("alignment") != saved.get("analyses", {}).get("alignment")):
+        return False, "alignment configuration differs"
     active = {r.run_id: r.spec for r in analysis_runs(current, analysis)}
     previous = {r.run_id: r.spec for r in analysis_runs(saved, analysis)}
     if run_id in active:
@@ -236,7 +255,7 @@ def inspect_results_directory(document, base, results_directory):
     facts, not evidence of chemical validity or sampling convergence.
     """
     from ..config import iter_replicates, resolve_config
-    from ..registry import analysis_output_plan, required_artifacts
+    from ..registry import analysis_output_plan, saved_output_plan, required_artifacts, core_saved_contracts
 
     root = Path(results_directory).expanduser()
     if not root.is_absolute():
@@ -262,11 +281,11 @@ def inspect_results_directory(document, base, results_directory):
             summary_error = None
         except (OSError, ValueError, KeyError, TypeError, EOFError, BadZipFile, RuntimeError) as exc:
             times, summary_error = None, str(exc)
-        current_entries = list(analysis_output_plan(cfg, replica_root))
+        current_entries = list(saved_output_plan(cfg, replica_root))
         saved_entries = []
         if saved is not None:
             try:
-                saved_entries = list(analysis_output_plan(saved, replica_root))
+                saved_entries = list(saved_output_plan(saved, replica_root))
             except (KeyError, ValueError, TypeError):
                 pass
         entries = {entry.checkpoint_key: (entry, cfg) for entry in current_entries}
@@ -284,6 +303,13 @@ def inspect_results_directory(document, base, results_directory):
 
             verified = False
             reason = "Missing or unreadable saved resolved configuration"
+            provenance_unknown = saved is None
+            if saved is None and len(present) == len(required):
+                try:
+                    for path in required:
+                        check_artifact(path)
+                except (RuntimeError, OSError, ValueError, KeyError, TypeError) as exc:
+                    reason, provenance_unknown = str(exc), False
             if saved is not None:
                 try:
                     compatible, reason = _verified_saved_configuration(
@@ -291,7 +317,8 @@ def inspect_results_directory(document, base, results_directory):
                     if compatible and len(present) == len(required):
                         import json
                         key = (replicate_state_prefix(replica) + "-" +
-                               entry.checkpoint_key)
+                               ("summary" if core_saved_contracts(source_cfg, entry.name)
+                                else entry.checkpoint_key))
                         marker = root / ".state" / f"{key}.json"
                         try:
                             completed = json.loads(marker.read_text()).get("status") == "complete"
@@ -307,10 +334,19 @@ def inspect_results_directory(document, base, results_directory):
                             reason = "Validated stage marker, saved configuration, summary and registered artifacts"
                 except (RuntimeError, OSError, ValueError, KeyError, TypeError) as exc:
                     reason = str(exc)
+            statistics_ready, statistics_reason = verified, reason
+            if verified and entry.name == "rmsf":
+                from ..observables.rmsf import temporal_rmsf_readiness
+                statistics_ready, statistics_reason = temporal_rmsf_readiness(replica_root, times)
             inventory.append({
                 "reason": reason,
+                "statistics_ready": statistics_ready,
+                "statistics_reason": statistics_reason,
                 "summary_valid": summary_error is None,
-                "source_spec": deepcopy(source_cfg["analyses"].get(entry.name, {})),
+                "source_spec": deepcopy(next(
+                    (run.spec for run in analysis_runs(source_cfg, entry.name)
+                     if run.run_id == (entry.run_id or "default")),
+                    source_cfg["analyses"].get(entry.name, {}))),
                 "expected_replicates": [r.label for r in iter_replicates(cfg, Path(base) / "analysis.yaml")
                                         if r.system == replica.system],
                 "scheduled": entry.checkpoint_key in {item.checkpoint_key for item in current_entries},
@@ -321,6 +357,7 @@ def inspect_results_directory(document, base, results_directory):
                 "present": len(present),
                 "required": len(required),
                 "status": ("verified_existing" if verified else
+                           "unknown" if provenance_unknown and len(present) == len(required) else
                            "incompatible" if len(present) == len(required) else
                            "partial" if present else "missing"),
                 "missing": [str(path.relative_to(root)) for path in required
@@ -331,7 +368,36 @@ def inspect_results_directory(document, base, results_directory):
 
 
 
-def configuration_with_saved_sources(cfg, inventory):
+def requires_temporal_rmsf_statistics(cfg):
+    """An exact request is stronger than legacy family-wide skip semantics."""
+    from ..config import statistics_family_config
+    if statistics_family_config(cfg, "profiles") is None:
+        return False
+    profiles = cfg.get("statistics", {}).get("metric_selection", {}).get("profiles") if isinstance(
+        cfg.get("statistics", {}).get("metric_selection"), dict) else None
+    return bool(cfg.get("statistics", {}).get("enabled", False) and profiles and
+                any(item["profile"] == "rmsf" or item["profile"].startswith("rmsf__group_")
+                    for item in profiles))
+
+
+def unavailable_saved_statistics(cfg, inventory, *, allow_scheduled=True):
+    """Exact temporal RMSF needs more persisted inputs than a static raw plot."""
+    from ..config import analysis_enabled
+    if not requires_temporal_rmsf_statistics(cfg):
+        return []
+    if allow_scheduled and analysis_enabled(cfg, "rmsf"):
+        return []
+    from ..config import iter_replicates
+    rows = {(row["condition"], row["replica"]): row for row in inventory or []
+            if row["analysis"] == "rmsf"}
+    for rep in iter_replicates(cfg, Path("analysis.yaml")):
+        row = rows.get((rep.system, rep.label))
+        if not row or row["status"] != "verified_existing" or not row.get("statistics_ready", False):
+            return ["profiles"]
+    return []
+
+
+def configuration_with_saved_sources(cfg, inventory, *, statistics=False):
     """Use fully verified saved-only sources in downstream readers, never scheduling.
 
     Returns a detached resolved configuration. The user's enable switches and
@@ -346,19 +412,21 @@ def configuration_with_saved_sources(cfg, inventory):
     for analysis, run_id in sorted({(r["analysis"], r["run_id"]) for r in inventory}):
         rows = [by_key.get((analysis, run_id, rep.system, rep.label)) for rep in replicas]
         if rows and all(row and row["status"] == "verified_existing" and "source_spec" in row
+                        and (not statistics or row.get("statistics_ready", True))
                         for row in rows):
             ready.setdefault(analysis, {})[run_id] = rows[0]["source_spec"]
     for analysis, runs in ready.items():
         current = result["analyses"].get(analysis, {})
-        source = deepcopy(next(iter(runs.values())))
         if not current.get("enabled", False):
+            source = deepcopy(next(iter(runs.values())))
             source["enabled"] = True
-            if source.get("runs") is not None:
-                source["runs"] = {name: {**deepcopy(source["runs"][name]), "enabled": True}
-                                  for name in runs if name in source["runs"]}
+            if "default" not in runs:
+                source["runs"] = deepcopy(runs)
             result["analyses"][analysis] = source
         elif current.get("runs") is not None:
-            for name in runs:
-                if name not in current["runs"] and name in source.get("runs", {}):
-                    current["runs"][name] = deepcopy(source["runs"][name])
+            active_runs = {run.run_id for run in analysis_runs(result, analysis)}
+            for name, spec in runs.items():
+                if name != "default" and name not in active_runs:
+                    # Saved run specs already include their original base values.
+                    current["runs"][name] = deepcopy(spec)
     return result

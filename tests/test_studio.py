@@ -1291,6 +1291,36 @@ def test_exact_statistics_without_producer_blocks_export_but_unrestricted_does_n
     assert unavailable_exact_statistics(doc, plan) == []
 
 
+def test_app_exports_exact_saved_only_statistics_until_inventory_is_stale(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+    from mdscope.studio import app
+    monkeypatch.chdir(tmp_path)
+    doc = new_document()
+    doc["statistics"]["enabled"] = True
+    doc["statistics"]["metric_selection"] = {"profiles": [{"profile": "sasa_mean"}]}
+    results_dir = str(tmp_path / doc["project"]["output"])
+    at = AppTest.from_file(app.__file__)
+    at.session_state["document"] = deepcopy(doc)
+    at.run()
+    at.session_state["studio:results_inventory"] = [{
+        "analysis": "sasa", "run_id": "default", "condition": "condition1",
+        "replica": "rep1", "status": "verified_existing", "expected_replicates": ["rep1"],
+        "source_spec": {"enabled": True},
+    }]
+    at.session_state["studio:results_inventory_path"] = results_dir
+    at.session_state["studio:results_inventory_config"] = yaml.safe_dump(
+        at.session_state["document"], sort_keys=True)
+    at.run()
+    assert not at.exception
+    assert not at.get("download_button")[0].proto.disabled
+    exported = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
+    assert not exported["analyses"]["sasa"]["enabled"]
+    at.text_input(key="studio:results_dir").set_value(str(tmp_path / "different")).run()
+    assert not at.exception
+    assert at.get("download_button")[0].proto.disabled
+
+
 def test_results_coverage_does_not_collapse_named_runs_or_replicas():
     from mdscope.studio.model import results_coverage
     rows = [
