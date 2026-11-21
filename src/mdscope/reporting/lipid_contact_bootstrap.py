@@ -16,12 +16,12 @@ from .plot_ids import figure_dpi
 # class or lipid-species keys (e.g., POPC, DOPC, GM1a).
 _CLASS_LABELS = {
     "phosphatidylcholine": "PC",
-    "phosphatidylethanolamine": "PE",
+    "phosphatidylethanolamine": "POPE",
     "anionic_phospholipids": "Anionic PL",
-    "sphingomyelin": "SM",
-    "cholesterol": "CHOL",
+    "sphingomyelin": "PSM",
+    "cholesterol": "CHL1",
     "glycosphingolipids": "GSL",
-    "ceramide": "CER",
+    "ceramide": "CER160",
 }
 
 
