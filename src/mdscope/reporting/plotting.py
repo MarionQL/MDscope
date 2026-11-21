@@ -121,12 +121,37 @@ def _table_figure(title: str, dataframe: pd.DataFrame, path: Path, cfg: dict,
     _save(fig, path, cfg)
 
 
+
+def rolling_time_mean(time_ps, values, window_ns: float):
+    """Trailing time-weighted-by-observation mean; do not alter saved values.
+
+    A sample contributes if its timestamp is within (t-window, t].
+    Nonfinite measurements are excluded, not interpreted as zero.
+    """
+    times = np.asarray(time_ps, dtype=float)
+    y = np.asarray(values, dtype=float)
+    if times.ndim != 1 or y.shape != times.shape:
+        raise ValueError("Rolling time series requires matching one-dimensional times and values")
+    if not np.isfinite(times).all() or np.any(np.diff(times) <= 0):
+        raise ValueError("Rolling time series requires finite, strictly increasing timestamps")
+    if not len(times):
+        return np.empty(0, dtype=float)
+    lower = np.searchsorted(times, times - window_ns * 1000., side="right")
+    valid = np.isfinite(y)
+    counts = np.r_[0, np.cumsum(valid, dtype=np.int64)]
+    totals = np.r_[0., np.cumsum(np.where(valid, y, 0.), dtype=float)]
+    n = counts[1:] - counts[lower]
+    result = np.full(len(times), np.nan)
+    np.divide(totals[1:] - totals[lower], n, out=result, where=n > 0)
+    return result
+
 def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
     if not plot_enabled(cfg, 'time_series'):
         return
     if not cfg.get("plots", {}).get("enabled", True):
         return
     stats_allowed = current_statistics(cfg, root, 'time_series')
+    rolling_ns = cfg.get("plots", {}).get("time_series_rolling_window_ns")
     out = ensure_dir(root / "project_summary" / "figures" / "time_series")
     systems = list(system_repouts)
     keys = set()
@@ -201,13 +226,16 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
                 values = finite(table["value"])
                 if not len(values):
                     continue
-                ax.plot(
-                    table["time_ps"] / 1000.0,
-                    table["value"],
-                    lw=1.1,
-                    color=colors.get(repout.name),
-                    label=replicate_label(cfg, system, repout.name)
-                )
+                plotted = (rolling_time_mean(table["time_ps"], table["value"], rolling_ns)
+                           if rolling_ns is not None else table["value"])
+                if np.isfinite(np.asarray(plotted, dtype=float)).any():
+                    ax.plot(
+                        table["time_ps"] / 1000.0,
+                        plotted,
+                        lw=1.1,
+                        color=colors.get(repout.name),
+                        label=replicate_label(cfg, system, repout.name)
+                    )
                 distribution_values.append(values)
                 distribution_labels.append(
                     f"{system_label(cfg, system)}\n"
@@ -224,7 +252,8 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
                         transform=ax.transAxes, color="0.45")
         for ax in axes[len(systems):]:
             ax.remove()
-        fig.suptitle(title + (f" - {group_id}" if group_id is not None else ""))
+        fig.suptitle(title + (f" - {group_id}" if group_id is not None else "")
+                     + (f" · trailing {rolling_ns:g} ns mean" if rolling_ns is not None else ""))
         _save_selected(fig, out / f"{stem}__timeseries.png", cfg, f"time_series:{stem}:timeseries")
 
         if cfg.get("plots", {}).get("distributions", True) and distribution_values:
