@@ -677,7 +677,7 @@ def _plot_residue_distance_heatmaps(cfg: dict, root: Path, system_repouts: dict[
                     matrix_data = np.load(matrix_path, mmap_mode="r")
                     finite = np.isfinite(matrix_data)
                     if finite.any():
-                        maxima.append(float(np.max(matrix_data[finite])))
+                        maxima.append(float(np.nanmax(matrix_data)))
                 shared_vmax = max(maxima) if maxima else None
             else:
                 shared_vmax = float(configured_vmax)
