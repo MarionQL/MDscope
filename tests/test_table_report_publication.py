@@ -158,3 +158,35 @@ def test_second_report_replace_failure_rolls_back_first(tmp_path, monkeypatch):
     assert (two / "statistics_tables.pdf").read_bytes() == b"previous profiles"
     assert not list(tmp_path.rglob("*.pending.pdf"))
     assert not list(tmp_path.rglob("*.backup.pdf"))
+
+
+def test_production_provenance_records_pdf_page_sources_and_sampling(tmp_path):
+    import pandas as pd
+    import json
+    from mdscope.reporting.figure_inventory import (
+        figure_snapshot, figure_inventory, record_generated_figures,
+    )
+    rep = tmp_path / "control/rep1"
+    (rep / "summary").mkdir(parents=True)
+    pd.DataFrame({"time_ps": [0.0, 10.0]}).to_parquet(
+        rep / "summary/timeseries.parquet")
+    stats = tmp_path / "project_summary/statistics/time_series"
+    stats.mkdir(parents=True)
+    pd.DataFrame({"metric": ["density"]}).to_parquet(
+        stats / "replicate_statistics.parquet")
+    reps = {"control": [rep]}
+    before = figure_snapshot(tmp_path, reps)
+    folder = tmp_path / "project_summary/figures/time_series"
+    with table_report_session(tmp_path, enabled=True):
+        _page(folder / "density__comparison_table.png")
+    cfg = {"plots": {"enabled": True, "table_reports_pdf": True}}
+    record_generated_figures(cfg, tmp_path, reps, before)
+    inventory = figure_inventory(tmp_path, reps, cfg=cfg)
+    report = inventory.loc[inventory["format"] == "pdf"].iloc[0]
+    assert report["status"] == "valid"
+    assert "replicate_statistics.parquet" in report["source_files"]
+    assert "rep1" in report["sampling"]
+    assert "time_series:density:comparison_table" in report["page_ids"]
+    provenance = json.loads((
+        tmp_path / "project_summary/figures/figure_provenance.json").read_text())
+    assert report["figure_id"] in provenance
