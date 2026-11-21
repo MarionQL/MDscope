@@ -27,7 +27,9 @@ def test_environment_preflight_reports_missing_freesasa_and_fails(
     path, root = project("missing_backend")
     _with_sasa(path, {"enabled": True})
     result = invoke_cli(tmp_path, command[0], path, *command[1:], ok=False)
+    assert result.returncode == 2 and result.stderr.startswith("mdscope: error: ")
     assert "FreeSASA" in result.stderr and HINT in result.stderr
+    assert "Traceback" not in result.stderr
     assert not root.exists()
 
 

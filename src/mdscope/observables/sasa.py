@@ -6,6 +6,7 @@ import pandas as pd
 from ..core.profiling import _residue_label
 from ..pipeline.progress import track
 from ..config import ensure_dir,atomic_parquet,time_ps
+from ..errors import MissingBackendError
 FREESASA_INSTALL_HINT = "python -m pip install 'mdscope[sasa]'"
 
 
@@ -14,7 +15,7 @@ def import_freesasa():
     try:
         import freesasa
     except ImportError as exc:
-        raise RuntimeError(
+        raise MissingBackendError(
             "analyses.sasa is enabled but the optional FreeSASA backend is not "
             f"importable ({exc}). Install it with: {FREESASA_INSTALL_HINT} "
             "(or: python -m pip install freesasa), or disable analyses.sasa."

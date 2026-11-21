@@ -277,6 +277,8 @@ pytest -q -s -m benchmark tests/test_performance_benchmarks.py
 
 Preflight first confirms optional backends required by enabled analyses (FreeSASA for `sasa`: `python -m pip install 'mdscope[sasa]'`) and exits nonzero with that install hint before reading a topology. It then checks topology selections, group/alignment sizes, lipid-anchor ownership, SASA references, paths, run IDs, valid frame ranges and paired replica labels **before** replacing outputs. Overlapping protein groups are allowed; competing lipid species anchors are not.
 
+Expected input mistakes (YAML syntax/options, missing config/topology/trajectory files, missing optional backends, topology-selection preflight, out-of-range `--index`, and `mdscope init` stdin ending before all prompts are answered) print `mdscope: error: ...` to stderr and exit 2. Any other exception is a fault and keeps its traceback. `mdscope --debug <command>` or `MDSCOPE_DEBUG=1` shows the traceback for expected errors too.
+
 `mdscope report STATISTICS_DIR` requires a **complete** manifest and contrast coverage table. Block settings live under `statistics.block.*`; retired aliases and `analyses.autocorrelation` / `analyses.distribution_statistics` must not be used.
 
 [Scientific estimators](analyses.md) · [Workflow and restart](workflows.md) · [Scientific contracts](developer/scientific-contracts.md)
