@@ -533,5 +533,6 @@ plots:
   interactions: true
   distributions: false
   autocorrelation: false
-  bootstrap_tables: false
+  bootstrap_tables: true
+  table_reports_pdf: true  # multipage statistics_tables.pdf per figure folder
   dpi: 200
