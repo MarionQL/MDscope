@@ -11,6 +11,19 @@ RESIDUE_RESPONSE_PROFILE = re.compile(
 )
 
 
+# Every statistics family and its directory under project_summary/statistics/.
+# The one family list for YAML validation, the dispatcher and read-only planning.
+STATISTICS_FAMILIES = {
+    "time_series": "time_series",
+    "profiles": "profiles",
+    "interactions": "interactions",
+    "solvation_rdfs": "solvation",
+    "diffusion": "diffusion",
+    "coupling": "coupling",
+    "lipid_contacts": "lipid_contacts",
+}
+
+
 SIMPLE_FAMILY_KEYS = {
     "profiles": ("profile",),
     "solvation_rdfs": ("solvent", "target_class", "site_class"),

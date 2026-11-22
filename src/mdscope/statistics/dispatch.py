@@ -1,6 +1,6 @@
 """Replicate-aware MDscope statistics with explicit functional ownership."""
 from ..core.progress import stage_progress
-from .families import STATISTICS_FAMILIES
+from ..contracts.metric_selection import STATISTICS_FAMILIES
 from .common import finite as finite  # re-exported for reporting.plotting
 from .coupling import analyze_coupling
 from .coverage import write_contrast_coverage
@@ -75,15 +75,16 @@ def analyze_project(cfg, root, system_repouts):
             "input_inventory", _input_snapshot, root, manifest["replicate_paths"]
         )
         atomic_json(dest / "manifest.json", manifest)
-    for family, folder, analyze in (
-        ("time_series", "time_series", analyze_time_series),
-        ("profiles", "profiles", analyze_profiles),
-        ("interactions", "interactions", analyze_interactions),
-        ("solvation_rdfs", "solvation", analyze_solvation_rdfs),
-        ("diffusion", "diffusion", analyze_multi_origin_diffusion),
-        ("coupling", "coupling", analyze_coupling),
-        ("lipid_contacts", "lipid_contacts", analyze_lipid_contacts),
+    for family, analyze in (
+        ("time_series", analyze_time_series),
+        ("profiles", analyze_profiles),
+        ("interactions", analyze_interactions),
+        ("solvation_rdfs", analyze_solvation_rdfs),
+        ("diffusion", analyze_multi_origin_diffusion),
+        ("coupling", analyze_coupling),
+        ("lipid_contacts", analyze_lipid_contacts),
     ):
+        folder = STATISTICS_FAMILIES[family]
         if (dest / folder).exists():
             archive_output(dest / folder, Path(root) / ".archives/statistics" / folder,
                            "previous")

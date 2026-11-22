@@ -1,4 +1,9 @@
 """Dependency-free plot ID and options contract."""
+# Figure families accepted by plots.families and catalogued by planning.
+FIGURE_FAMILIES = (
+    "time_series", "profiles", "interactions", "solvation", "sdc4",
+    "shared_states", "diffusion", "lipid_enrichment", "lipid_contacts", "other",
+)
 DYNAMIC_VARIANTS = {
     "time_series": frozenset({
         "timeseries", "distribution", "autocorrelation",

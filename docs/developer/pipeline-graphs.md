@@ -152,7 +152,7 @@ flowchart TD
     CLI["cli"] -.-> RUN["pipeline.runner"]
     CLI -.-> PLAN["planning"]
     PLAN --> REG["registry + output_paths"]
-    PLAN --> FAM["statistics_families"]
+    PLAN --> FAM["contracts (statistics + figure families)"]
     RUN --> STREAM["pipeline.streaming"]
     RUN --> FONLY["pipeline.fused_all"]
     RUN --> TASK["pipeline.replica_tasks"]

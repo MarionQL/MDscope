@@ -3,8 +3,8 @@ import math
 
 
 def validate_plots(cfg):
-    allowed = {"time_series", "profiles", "interactions", "solvation", "sdc4",
-               "shared_states", "diffusion", "lipid_enrichment", "lipid_contacts", "other"}
+    from ...contracts.plot_validation import FIGURE_FAMILIES
+    allowed = set(FIGURE_FAMILIES)
     plots = cfg.get("plots", {})
     if not isinstance(plots.get("table_reports_pdf", False), bool):
         raise ValueError("plots.table_reports_pdf must be boolean")

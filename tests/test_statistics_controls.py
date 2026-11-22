@@ -79,6 +79,20 @@ def test_invalid_statistics_controls_fail_before_processing(tmp_path, bad):
         validate_config(cfg)
 
 
+
+def test_every_statistics_and_figure_family_is_configurable(tmp_path):
+    """lipid_contacts statistics were dispatched but rejected by validation."""
+    from mdscope.contracts.metric_selection import STATISTICS_FAMILIES
+    from mdscope.contracts.plot_validation import FIGURE_FAMILIES
+    cfg = deepcopy(DEFAULTS)
+    top = tmp_path/'a.pdb'; top.touch()
+    traj = tmp_path/'a.xtc'; traj.touch()
+    cfg['systems'] = {'x': {'topology': str(top), 'replicates': [str(traj)]}}
+    cfg['statistics']['families'] = {name: False for name in STATISTICS_FAMILIES}
+    cfg['plots']['families'] = {name: False for name in FIGURE_FAMILIES}
+    validate_config(cfg)
+    assert statistics_family_config(cfg, 'lipid_contacts') is None
+
 def test_gapped_scalar_series_keeps_means_but_not_temporal_intervals(tmp_path):
     paths = {'x': []}
     for i in range(2):
