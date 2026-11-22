@@ -100,7 +100,7 @@ def test_invalid_state_choices_fail_at_yaml_boundary(change):
 @pytest.mark.parametrize("change", [{"source": "arbitrary_file"}, {"units": ""},
                                    {"group": "wrong_identity"}, {"metric": ""}])
 def test_invalid_feature_identity_is_rejected(change):
-    from mdscope.state_feature_spec import validate_state_features
+    from mdscope.statistics.state_feature_spec import validate_state_features
     spec = _spec()
     spec["feature_sources"]["water"].update(change)
     with pytest.raises(ValueError, match="feature water"):

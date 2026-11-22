@@ -8,7 +8,7 @@ import pandas as pd
 
 from ..config import statistics_family_config
 from ..core.persistence import atomic_parquet, ensure_dir
-from ..statistics_selection import metric_estimator_enabled, simple_family_selection
+from .selection import metric_estimator_enabled, simple_family_selection
 from .replicate_contrasts import replicate_mean_contrasts
 
 RDF_KEYS = ["solvent", "target_class", "site_class", "r_inner_A", "r_outer_A"]

@@ -7,7 +7,7 @@ import pandas as pd
 from ..config import statistics_family_config
 from ..core.persistence import atomic_parquet
 from ..observables.multi_origin_msd import fit_multi_origin_curve
-from ..statistics_selection import metric_estimator_enabled, simple_family_selection
+from .selection import metric_estimator_enabled, simple_family_selection
 from .replicate_contrasts import replicate_mean_contrasts
 
 

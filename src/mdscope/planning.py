@@ -34,9 +34,9 @@ from .reporting.plot_ids import (
     describe_plot,
     safe_plot_stem,
 )
-from .state_feature_spec import SDC4_FEATURES
-from .statistics_families import STATISTICS_FAMILIES
-from .statistics_selection import ESTIMATOR_FLAGS
+from .statistics.state_feature_spec import SDC4_FEATURES
+from .statistics.families import STATISTICS_FAMILIES
+from .statistics.selection import ESTIMATOR_FLAGS
 
 # Interpretation of coordinates, not a claim about PBC or bulk density.
 # See docs/developer/scientific-contracts.md for the actual estimator contracts.
@@ -210,7 +210,7 @@ def _inference_design(cfg, reps):
     """Schema-only permutation resolution based on configured replicate labels."""
     from collections import Counter
 
-    from .permutation_resolution import permutation_floor
+    from .statistics.permutation_resolution import permutation_floor
     counts = Counter(rep.system for rep in reps)
     labels = {}
     for rep in reps:
@@ -353,7 +353,7 @@ def build_plan(cfg: dict, config_path: str | Path, *,
             "descriptive_figures": analysis_figure_candidates(cfg, "hydration"),
         })
 
-    from .statistics_contracts import statistics_output_contract
+    from .statistics.contracts import statistics_output_contract
     project_statistics = []
     for family in STATISTICS_FAMILIES:
         project_statistics.append({
@@ -634,7 +634,7 @@ def inspect_saved_statistics(root: str | Path, *, max_identities: int = 256) -> 
     if max_identities < 1:
         raise ValueError("max_identities must be positive")
     dest = Path(root) / "project_summary" / "statistics"
-    from .statistics_manifest import read_statistics_manifest
+    from .statistics.manifest import read_statistics_manifest
     manifest_file = dest / "manifest.json"
     facts = read_statistics_manifest(manifest_file)
     if facts.state == "missing":
@@ -801,7 +801,7 @@ def inspect_saved_plot_ids(cfg: dict, root: str | Path, config_path: str | Path,
 
     stats_root = root / "project_summary" / "statistics"
     manifest_file = stats_root / "manifest.json"
-    from .statistics_manifest import read_statistics_manifest
+    from .statistics.manifest import read_statistics_manifest
     facts = read_statistics_manifest(manifest_file)
     if facts.state == "invalid":
         raise ValueError(f"Invalid saved statistics manifest {manifest_file}: {facts.error}")

@@ -17,7 +17,7 @@ from pathlib import Path
 
 FOCUS = {
     "mdscope.cli", "mdscope.config", "mdscope.planning", "mdscope.registry",
-    "mdscope.output_paths", "mdscope.statistics_families", "mdscope.statistics",
+    "mdscope.output_paths", "mdscope.statistics.families", "mdscope.statistics",
     "mdscope.pipeline.runner", "mdscope.pipeline.streaming",
     "mdscope.pipeline.fused_all", "mdscope.pipeline.fused_membrane",
     "mdscope.pipeline.fused_extensions", "mdscope.pipeline.fused_distance",

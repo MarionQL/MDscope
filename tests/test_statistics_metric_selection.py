@@ -7,7 +7,7 @@ import pytest
 
 from mdscope.config import DEFAULTS, statistics_family_config
 from mdscope.statistics.time_series import analyze_time_series
-from mdscope.statistics_selection import validate_metric_selection
+from mdscope.statistics.selection import validate_metric_selection
 
 
 def _data(root):
@@ -180,7 +180,7 @@ def test_unknown_interaction_identity_fails_before_output_creation(tmp_path):
     [{"kind": "salt_bridges", "unsupported": True}],
 ])
 def test_invalid_interaction_selection_fails_config_validation(invalid):
-    from mdscope.statistics_selection import validate_metric_selection
+    from mdscope.statistics.selection import validate_metric_selection
     with pytest.raises(ValueError, match="metric_selection"):
         validate_metric_selection({"metric_selection": {"interactions": invalid}})
 
@@ -315,7 +315,7 @@ def test_descriptive_only_interaction_has_no_ci_or_p_value(tmp_path):
     ("diffusion", {"metric": "DOPC", "inference": []}),
 ])
 def test_per_metric_inference_flag_must_be_boolean(family, entry):
-    from mdscope.statistics_selection import validate_metric_selection
+    from mdscope.statistics.selection import validate_metric_selection
     with pytest.raises(ValueError, match="metric_selection"):
         validate_metric_selection({"metric_selection": {family: [entry]}})
 
@@ -378,7 +378,7 @@ def test_selected_time_series_estimator_independence(
     ("time_series", {"metric": "rmsd_A", "inference": False, "ci": True}),
 ])
 def test_unsupported_or_contradictory_estimator_flags_rejected(family, entry):
-    from mdscope.statistics_selection import validate_metric_selection
+    from mdscope.statistics.selection import validate_metric_selection
     with pytest.raises(ValueError, match="metric_selection"):
         validate_metric_selection({"metric_selection": {family: [entry]}})
 
@@ -403,7 +403,7 @@ def test_changing_metric_selection_rebuilds_statistics_without_touching_raw_data
     """Re-finalization must not mistake old selected outputs for current ones."""
     import hashlib
 
-    from mdscope.statistics import analyze_project
+    from mdscope.statistics.dispatch import analyze_project
     paths = _data(tmp_path / "inputs")
     raw = {
         source: hashlib.sha256(source.read_bytes()).hexdigest()

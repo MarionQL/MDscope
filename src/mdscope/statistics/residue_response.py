@@ -11,7 +11,7 @@ import re
 import numpy as np
 import pandas as pd
 
-from ..statistics_contracts import RESIDUE_RESPONSE_PROFILE
+from .contracts import RESIDUE_RESPONSE_PROFILE
 
 _RESIDUE_LABEL = re.compile(r"^(?P<chain>[^:]+):[A-Za-z]+(?P<resid>-?\d+)$")
 _KEYS = ["system_1", "system_2", "profile", "position_label"]

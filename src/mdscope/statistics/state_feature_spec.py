@@ -1,7 +1,7 @@
 """Lightweight validation shared by YAML authoring and saved-state execution."""
 import math
 
-from .output_paths import SAVED_SCALAR_SOURCE_FILES
+from ..output_paths import SAVED_SCALAR_SOURCE_FILES
 
 SDC4_FEATURES = [
     "sdc4_ectodomain_A_height_A", "sdc4_ectodomain_B_height_A",

@@ -469,7 +469,7 @@ def validate_config(cfg: dict, base: Path = Path("."), *, check_paths: bool = Tr
             raise ValueError("sdc4_mechanisms.local_min_lipids must be >= 8")
         if mechanisms.get("local_order", {}).get("enabled") and not mechanisms["local_order"].get("lipid_selection"):
             raise ValueError("sdc4_mechanisms.local_order.lipid_selection is required")
-    from ..state_feature_spec import validate_state_features
+    from ..statistics.state_feature_spec import validate_state_features
     shared = cfg["analyses"].get("shared_states", {})
     validate_state_features(shared)
     if shared.get("enabled") and shared.get("preset", "sdc4") == "sdc4" and not mechanisms.get("enabled"):
@@ -497,7 +497,7 @@ def validate_config(cfg: dict, base: Path = Path("."), *, check_paths: bool = Tr
         raise ValueError("plots.interaction_exclude_kinds must be a list")
     stats = cfg.get("statistics", {})
     residue_response_settings(cfg)
-    from ..statistics_selection import validate_metric_selection
+    from ..statistics.selection import validate_metric_selection
     validate_metric_selection(stats)
     for field in ("block", "hypothesis_tests"):
         if stats.get(field) is not None and not isinstance(stats[field], dict):
@@ -641,7 +641,7 @@ def residue_response_settings(cfg):
                 any(not isinstance(v, str) or not v.strip() for v in values) or
                 len(set(values)) != len(values)):
             raise ValueError(f"statistics.residue_response.{key} must be null or distinct nonempty strings")
-    from ..statistics_contracts import RESIDUE_RESPONSE_PROFILE
+    from ..statistics.contracts import RESIDUE_RESPONSE_PROFILE
     unsupported = [name for name in settings["profiles"] or []
                    if not RESIDUE_RESPONSE_PROFILE.match(name)]
     if unsupported:

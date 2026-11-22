@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from mdscope.config import DEFAULTS, statistics_family_config, validate_config
-from mdscope.statistics import analyze_project
+from mdscope.statistics.dispatch import analyze_project
 from mdscope.statistics.common import _block_bootstrap, _permutation
 from mdscope.statistics.time_series import analyze_time_series
 

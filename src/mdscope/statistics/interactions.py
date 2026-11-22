@@ -20,7 +20,7 @@ from ..interactions.interaction_tables import (
     interaction_tables,
     sample_dt,
 )
-from ..statistics_selection import (
+from .selection import (
     interaction_selection,
     metric_estimator_enabled,
     selected_interaction_metrics,

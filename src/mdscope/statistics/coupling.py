@@ -7,7 +7,7 @@ from pyarrow.parquet import read_schema
 
 from ..config import statistics_family_config
 from ..core.persistence import atomic_parquet
-from ..statistics_selection import metric_estimator_enabled, simple_family_selection
+from .selection import metric_estimator_enabled, simple_family_selection
 from .common import _regular_times
 from .replicate_contrasts import replicate_mean_contrasts
 

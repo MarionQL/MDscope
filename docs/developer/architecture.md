@@ -30,7 +30,7 @@ flowchart TD
 | `mdscope plotting X.yaml` | Optional saved-data figures |
 | `mdscope report STATISTICS_DIR` | Regenerate findings from a completed statistics export |
 
-Read-only `cli.py` commands import the runner, statistical estimators, and topology preflight only when their selected command requires them. `statistics_families.py` owns the lightweight family identifier list consumed by planning and the statistics dispatcher.
+Read-only `cli.py` commands import the runner, statistical estimators, and topology preflight only when their selected command requires them. The statistics package initializer is lightweight; `statistics/dispatch.py` owns project inference and imports estimators only when explicitly invoked. Other lightweight schemas and selectors live in `statistics/{contracts,families,manifest,selection,permutation_resolution,state_feature_spec}.py`. `statistics/families.py` owns the lightweight family identifier list consumed by planning and the statistics dispatcher.
 
 Key interfaces: `cli.py`, `config/` (`defaults.py`, `runs.py`, `validation.py`, YAML loading in `__init__.py`), `registry.py` (`analysis_output_plan`, `required_artifacts`), `contracts/outputs.py` (one descriptor per analysis: primary path, named-run support, companions, schema; producer column/path constants), `output_paths.py` (compatibility exports for persisted paths), `pipeline/analysis_selection.py` (shared enabled-analysis predicates), `pipeline/replica_tasks.py` (`specialized_tasks`, `additional_time_series`), `pipeline/runner.py`, `pipeline/streaming.py`.
 
@@ -96,7 +96,7 @@ CI thresholds for edge counts or SCC counts.
 
 | Responsibility | Canonical owner | Avoid |
 |---|---|---|
-| YAML defaults, schema, user selection configuration | `config.py`, `config_schema.py` | Another Studio-only configuration engine |
+| YAML defaults, schema, user selection configuration | `config/`, `config_schema.py` | Another Studio-only configuration engine |
 | Topology/selection checks | `pipeline/preflight.py`, `core/atom_selection.py` | GUI parsing MDAnalysis expressions independently |
 | Atomic writes, archiving, checkpoints | `core/persistence.py`, `core/checkpoints.py` | New output writers inside scientific kernels |
 | Numeric observables and interaction identity | `observables/`, `interactions/interaction_tables.py` | Re-implementing measurements in the planner |
@@ -257,7 +257,7 @@ settings/completion. It consumes saved profiles/contrasts, not trajectories.
 
 ### Statistics manifest lifecycle
 
-`statistics_manifest.py` owns read-only parsing, object-shape checks,
+`statistics/manifest.py` owns read-only parsing, object-shape checks,
 completion state and family-disabled facts for persisted
 `project_summary/statistics/manifest.json`. The statistics producer retains
 publication ownership: it writes `running` before inference and `complete`

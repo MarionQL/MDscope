@@ -10,7 +10,7 @@ import pandas as pd
 from pyarrow.parquet import read_metadata
 
 from ..core.persistence import atomic_parquet, atomic_text
-from ..permutation_resolution import permutation_floor
+from ..statistics.permutation_resolution import permutation_floor
 from ..statistics.coverage import COLUMNS, SOURCES, _identity, _interval_status
 
 _STATE_SOURCES = {
@@ -241,7 +241,7 @@ def _markdown(coverage, findings, inventory, *, design=None, alpha=.05):
 def generate_report(statistics_dir: Path) -> Path:
     """Build a findings review without loading trajectories or rendering figures."""
     statistics_dir = Path(statistics_dir)
-    from ..statistics_manifest import read_statistics_manifest
+    from ..statistics.manifest import read_statistics_manifest
     manifest_path = statistics_dir / "manifest.json"
     facts = read_statistics_manifest(manifest_path)
     if facts.state == "missing":
