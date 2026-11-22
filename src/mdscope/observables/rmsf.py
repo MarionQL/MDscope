@@ -1,9 +1,13 @@
 """RMSF accumulator and profile reader. RMSF is deliberately separate from RMSD."""
 from __future__ import annotations
+
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
+
 import numpy as np
 import pandas as pd
+
+
 class Welford:
     """
     Online coordinate variance used for RMSF without storing every frame

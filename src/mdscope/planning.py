@@ -8,16 +8,35 @@ reported as *unmapped*, rather than guessed from file naming conventions.
 from __future__ import annotations
 
 from pathlib import Path
-from .state_feature_spec import SDC4_FEATURES
-from .core.glycans import glycan_definition
 from typing import Any
 
-from .config import analysis_runs, iter_replicates, plot_enabled, project_root, statistics_family_config
-from .registry import state_feature_catalog, analysis_output_plan, required_artifacts, artifact_schema, scalar_contracts, structural_profile_contracts, density_output_contracts, configured_profile_variables
+from .config import (
+    analysis_runs,
+    iter_replicates,
+    plot_enabled,
+    project_root,
+    statistics_family_config,
+)
+from .core.glycans import glycan_definition
+from .registry import (
+    analysis_output_plan,
+    artifact_schema,
+    configured_profile_variables,
+    density_output_contracts,
+    required_artifacts,
+    scalar_contracts,
+    state_feature_catalog,
+    structural_profile_contracts,
+)
+from .reporting.plot_ids import (
+    SDC4_CONDITION_STEMS,
+    STATIC_IDS,
+    describe_plot,
+    safe_plot_stem,
+)
+from .state_feature_spec import SDC4_FEATURES
 from .statistics_families import STATISTICS_FAMILIES
 from .statistics_selection import ESTIMATOR_FLAGS
-from .reporting.plot_ids import STATIC_IDS, SDC4_CONDITION_STEMS, describe_plot, safe_plot_stem
-
 
 # Interpretation of coordinates, not a claim about PBC or bulk density.
 # See docs/developer/scientific-contracts.md for the actual estimator contracts.
@@ -190,6 +209,7 @@ def _source(name: str, cfg: dict) -> str:
 def _inference_design(cfg, reps):
     """Schema-only permutation resolution based on configured replicate labels."""
     from collections import Counter
+
     from .permutation_resolution import permutation_floor
     counts = Counter(rep.system for rep in reps)
     labels = {}
@@ -608,6 +628,7 @@ def inspect_saved_statistics(root: str | Path, *, max_identities: int = 256) -> 
     GUI column list. Only identity columns are scanned, stopping at the cap.
     """
     import json
+
     import pyarrow.parquet as pq
 
     if max_identities < 1:
@@ -701,6 +722,7 @@ def inspect_saved_plot_ids(cfg: dict, root: str | Path, config_path: str | Path,
     by reporting.plot_ids, not by this inspector.
     """
     import pyarrow.parquet as pq
+
     from .reporting.plot_ids import DYNAMIC_VARIANTS
 
     if max_identities < 1:
@@ -904,7 +926,8 @@ def statistical_figure_candidates(cfg):
 def authoring_catalog(cfg, *, include_inactive=False):
     """One catalog for authoring reconciliation and UI figure eligibility."""
     from copy import deepcopy
-    from .registry import scalar_contracts, configured_profile_variables
+
+    from .registry import configured_profile_variables, scalar_contracts
     from .reporting.plot_ids import DYNAMIC_VARIANTS
     configured = deepcopy(cfg)
     from .config import normalize_analysis_booleans

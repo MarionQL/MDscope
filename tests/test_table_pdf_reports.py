@@ -3,9 +3,9 @@
 import pandas as pd
 import pytest
 
+from mdscope.reporting.lipid_contact_bootstrap import lipid_display_label
 from mdscope.reporting.plotting import _table_figure
 from mdscope.reporting.table_reports import table_report_session
-from mdscope.reporting.lipid_contact_bootstrap import lipid_display_label
 
 
 def _cfg(*, include=None):

@@ -1,11 +1,13 @@
 """End-to-end synthetic PDB/DCD exercising issue #3 and #4 analysis output contracts."""
+import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-import MDAnalysis as mda
+
 from mdscope.config import Replicate
-from mdscope.pipeline.fused_membrane import run_fused_membrane
-from mdscope.observables.bilayer_normal import run_bilayer_normal
 from mdscope.interactions.lipid_hydrogen_bonds import tabulate_events
+from mdscope.observables.bilayer_normal import run_bilayer_normal
+from mdscope.pipeline.fused_membrane import run_fused_membrane
+
 
 def _tiny_lipid_universe(tmp_path):
     u=mda.Universe.empty(9,n_residues=9,atom_resindex=np.arange(9),

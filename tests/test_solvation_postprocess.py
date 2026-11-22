@@ -1,8 +1,12 @@
 """Independent checks for cutoff suggestions, SASA reuse and survival."""
 import numpy as np
 import pandas as pd
+
 from mdscope.observables.solvation_postprocess import (
-    suggest_shell_boundaries, kaplan_meier, join_existing_sasa)
+    join_existing_sasa,
+    kaplan_meier,
+    suggest_shell_boundaries,
+)
 
 
 def test_cutoff_suggestions_are_explicit_not_assumed():
@@ -97,7 +101,9 @@ def test_coordination_aggregation_equal_weight_targets():
 
 def test_chunked_coordination_summary_matches_whole_dataframe(tmp_path):
     from mdscope.observables.solvation_postprocess import (
-        aggregate_coordination, aggregate_coordination_parts)
+        aggregate_coordination,
+        aggregate_coordination_parts,
+    )
     rng = np.random.default_rng(134)
     frames = []
     for step in range(38):
@@ -162,6 +168,7 @@ def test_survival_risk_counts_include_ties_censoring_and_exclude_unknown_origins
 
 def test_survival_plot_uses_the_persisted_duration_axis(tmp_path, monkeypatch):
     import matplotlib.axes
+
     from mdscope.reporting.solvation_figures import solvation_survival_figure
     rep=tmp_path/'condition/rep1';directory=rep/'extensions/solvation'
     directory.mkdir(parents=True)

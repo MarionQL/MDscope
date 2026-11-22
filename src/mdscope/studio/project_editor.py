@@ -1,6 +1,7 @@
 """Guided project inputs; configuration semantics stay in the backend."""
-import streamlit as st
 from pathlib import Path
+
+import streamlit as st
 
 from mdscope.config import DEFAULTS
 from mdscope.studio.model import add_replica, add_system, delete_system, remove_replica

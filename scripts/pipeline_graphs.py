@@ -10,11 +10,10 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import shutil
 import subprocess
 import sys
-
+from pathlib import Path
 
 FOCUS = {
     "mdscope.cli", "mdscope.config", "mdscope.planning", "mdscope.registry",

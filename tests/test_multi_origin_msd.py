@@ -3,7 +3,9 @@ import numpy as np
 import pytest
 
 from mdscope.observables.multi_origin_msd import (
-    multi_origin_msd, multi_origin_diffusion, fit_multi_origin_curve,
+    fit_multi_origin_curve,
+    multi_origin_diffusion,
+    multi_origin_msd,
 )
 
 
@@ -95,6 +97,7 @@ def test_diffusion_fit_screen_flags_poor_support_and_negative_fit():
 def test_project_msd_diagnostics_uses_saved_curves_and_preserves_default(tmp_path, monkeypatch):
     import MDAnalysis as mda
     import pandas as pd
+
     from mdscope.observables.msd import summarize_project_multi_origin
 
     def forbidden(*args, **kwargs):

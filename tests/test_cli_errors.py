@@ -4,7 +4,6 @@ import sys
 
 import pytest
 import yaml
-
 from mdscope_test_support import invoke_cli as invoke
 
 

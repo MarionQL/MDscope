@@ -1,7 +1,11 @@
 """Shared rigid-body frame alignment and selection validation (not an observable)."""
 from __future__ import annotations
+
 import numpy as np
+
 from ..config import analysis_groups
+
+
 def _valid_box(universe):
     dims = np.asarray(
         universe.dimensions,

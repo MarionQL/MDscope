@@ -22,15 +22,19 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import minimize_vectors
 
-from mdscope.observables.bilayer_normal import fit_local_normals
 from mdscope.config import Replicate
-from mdscope.observables.lipid_enrichment import LipidFootprint
 from mdscope.core.lipid_geometry import (
-    aligned_leaflets, anchor_groups, centers, periodic_center,
+    aligned_leaflets,
+    anchor_groups,
+    centers,
+    periodic_center,
 )
 from mdscope.interactions.lipid_hydrogen_bonds import (
-    lipid_molecule_map, run_lipid_hydrogen_bonds,
+    lipid_molecule_map,
+    run_lipid_hydrogen_bonds,
 )
+from mdscope.observables.bilayer_normal import fit_local_normals
+from mdscope.observables.lipid_enrichment import LipidFootprint
 
 # The wrap-invariance oracle is shared with tests/test_pbc_invariance_oracle.py.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

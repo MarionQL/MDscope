@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from MDAnalysis.lib.mdamath import triclinic_vectors
+
 from .geometry import minimum_image_displacements
 
 

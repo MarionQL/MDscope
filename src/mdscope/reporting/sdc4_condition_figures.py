@@ -6,22 +6,22 @@ bootstrap uncertainty occurs here. Missing replicas remain visibly missing.
 """
 from __future__ import annotations
 
-from pathlib import Path
 import re
 import textwrap
+from pathlib import Path
 
+import matplotlib
 import numpy as np
 import pandas as pd
-import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from ..config import figure_enabled, system_label
 from ..core.persistence import archive_output
 from .plot_ids import figure_dpi
-from .shared_scales import synchronize_y_axes
 from .sdc4_exports import export_region_replica_summaries
-
+from .shared_scales import synchronize_y_axes
 
 REGION_METRICS = {
     "lipid_region_mean_contact_fraction": ("contact_fraction",

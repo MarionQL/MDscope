@@ -12,20 +12,20 @@ Run with the test-data-v1 files in examples/data (scripts/run_real_data_checks.s
 from __future__ import annotations
 
 import argparse
-from copy import deepcopy
 import json
 import os
-from pathlib import Path
 import platform
 import resource
+from copy import deepcopy
+from pathlib import Path
 from time import perf_counter
 
 import yaml
+from real_trajectory_smoke import DATA, ROOT, SYSTEMS, build_config, inspect
 
 from mdscope.config import load_config
 from mdscope.pipeline.runner import run_one
 from mdscope.statistics import analyze_project
-from real_trajectory_smoke import DATA, ROOT, SYSTEMS, build_config, inspect
 
 
 def _read(path):

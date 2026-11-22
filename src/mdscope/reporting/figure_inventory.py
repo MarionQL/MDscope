@@ -1,10 +1,10 @@
 """Inventory and provenance for manually generated scientific figures."""
 from __future__ import annotations
 
+from datetime import UTC
 from pathlib import Path
 
 import pandas as pd
-
 
 PRIMARY_SUFFIXES = (
     "__timeseries.png", "__profile.png", "__system_difference.png",
@@ -71,7 +71,7 @@ def figure_inventory(root, system_repouts, cfg=None, include_rejected=False, *, 
                      "section":_relative(path.parent, root),
                      "kind":kind,"bytes":path.stat().st_size,"archive":None})
     if include_rejected and 'pdf' in formats:
-        from .table_reports import report_manifest, REPORT_NAME, MANIFEST_NAME
+        from .table_reports import MANIFEST_NAME, REPORT_NAME, report_manifest
         for sidecar in (root/'project_summary/figures').rglob(MANIFEST_NAME):
             path = sidecar.with_name(REPORT_NAME)
             if path.exists():
@@ -144,7 +144,8 @@ def _source_files(root, system_repouts, family):
 def record_generated_figures(cfg, root, system_repouts, before):
     """Record source paths and sampling for figures written in this run."""
     import json
-    from datetime import datetime, timezone
+    from datetime import datetime
+
     from ..config import atomic_json
     root = Path(root)
     dest = root/'project_summary/figures/figure_provenance.json'
@@ -178,7 +179,7 @@ def record_generated_figures(cfg, root, system_repouts, before):
                 units = 'see figure axes/source schema'
         records[name] = dict(source_metric=metric,units=units,display_label=label,
             family=family, source_files=[_relative(p, root) for p in files],
-            generated_at=datetime.now(timezone.utc).isoformat(), sampling=sampling,
+            generated_at=datetime.now(UTC).isoformat(), sampling=sampling,
             format=path.suffix[1:])
         if path.suffix == '.pdf':
             from .table_reports import report_manifest
@@ -193,6 +194,7 @@ def record_generated_figures(cfg, root, system_repouts, before):
 def residue_response_status(cfg, root):
     """Keep previously rendered exploratory regions tied to effective settings."""
     import json
+
     from ..config import residue_response_settings
     settings = residue_response_settings(cfg)
     if (not settings["enabled"] or settings["profiles"] == [] or settings["chains"] == []):
@@ -213,8 +215,10 @@ def residue_response_status(cfg, root):
 
 def figure_status(path, cfg, root, system_repouts, records=None):
     import json
+
     from PIL import Image
-    from ..config import plot_enabled, figure_enabled
+
+    from ..config import figure_enabled, plot_enabled
     from .plot_ids import id_from_figure_path
     root, path = Path(root), Path(path)
     family = figure_family(path)
@@ -230,7 +234,7 @@ def figure_status(path, cfg, root, system_repouts, records=None):
     if not plot_enabled(cfg, family):
         return 'disabled'
     if path.suffix == '.pdf':
-        from .table_reports import report_manifest, pdf_digest, table_page_enabled
+        from .table_reports import pdf_digest, report_manifest, table_page_enabled
         if not cfg.get('plots', {}).get('table_reports_pdf', False):
             return 'disabled'
         try:

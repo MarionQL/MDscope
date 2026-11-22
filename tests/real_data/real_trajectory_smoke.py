@@ -9,21 +9,21 @@ import gc
 import json
 import os
 import traceback
-from pathlib import Path
 from functools import partial
+from pathlib import Path
 
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 import yaml
 
-from mdscope.pipeline.runner import run_one
 from mdscope.config import Replicate, load_config
-from mdscope.observables.membrane_order import run_membrane_order
-from mdscope.observables.bilayer_normal import run_bilayer_normal
-from mdscope.pipeline.fused_membrane import run_fused_membrane
 from mdscope.interactions.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
+from mdscope.observables.bilayer_normal import run_bilayer_normal
+from mdscope.observables.membrane_order import run_membrane_order
 from mdscope.observables.residue_membrane_distance import run_residue_membrane_distance
+from mdscope.pipeline.fused_membrane import run_fused_membrane
+from mdscope.pipeline.runner import run_one
 
 DATA = Path(os.environ.get("MDSCOPE_REAL_DATA", "examples/data")).resolve()
 ROOT = Path(os.environ.get("MDSCOPE_REAL_OUTPUT", "real_test_results")).resolve()

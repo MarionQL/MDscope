@@ -13,7 +13,6 @@ from ..core.persistence import atomic_parquet, atomic_text
 from ..permutation_resolution import permutation_floor
 from ..statistics.coverage import COLUMNS, SOURCES, _identity, _interval_status
 
-
 _STATE_SOURCES = {
     "full_population_comparisons": ("state",),
     "matched_population_comparisons": ("state",),

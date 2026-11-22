@@ -1,9 +1,10 @@
 """Time-based display smoothing must leave source observations and statistics intact."""
+from copy import deepcopy
+
 import numpy as np
 import pandas as pd
 import pytest
 
-from copy import deepcopy
 from mdscope.config import DEFAULTS
 from mdscope.reporting.plotting import rolling_time_mean
 
@@ -63,6 +64,7 @@ def test_window_config_accepts_null_and_100_ns():
 
 def test_renderer_uses_rolling_mean_only_for_trace(tmp_path, monkeypatch):
     import matplotlib.pyplot as plt
+
     import mdscope.reporting.plotting as plotting
 
     source = pd.DataFrame({

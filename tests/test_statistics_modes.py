@@ -1,15 +1,21 @@
 """Point-only modes, incomplete profiles, and non-destructive statistical reruns."""
-import json
 import hashlib
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
-from mdscope.statistics import analyze_project
-from mdscope.statistics.time_series import analyze_time_series
-from mdscope.statistics.profiles import analyze_profiles, _prepare_profile, _common_profile_axis
-from mdscope.statistics.interactions import analyze_interactions
-from mdscope.reporting.figure_inventory import current_statistics
 from test_interaction_statistics_reference import fixture
+
+from mdscope.reporting.figure_inventory import current_statistics
+from mdscope.statistics import analyze_project
+from mdscope.statistics.interactions import analyze_interactions
+from mdscope.statistics.profiles import (
+    _common_profile_axis,
+    _prepare_profile,
+    analyze_profiles,
+)
+from mdscope.statistics.time_series import analyze_time_series
 
 
 def _profiles(paths, incomplete=False):

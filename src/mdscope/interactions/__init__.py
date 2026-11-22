@@ -3,6 +3,7 @@
 Explicit named exports prevent unrelated pandas/NumPy/persistence imports from
 escaping via this package. Scientific implementations live in their own modules.
 """
+from .hydrogen_bonds import run_hydrogen_bonds
 from .interaction_tables import (
     atom_label,
     chain_label,
@@ -17,12 +18,11 @@ from .interaction_tables import (
     sample_dt,
     summarize_interaction_kind,
 )
-from .salt_bridges import initialize_salt_bridges, salt_bridge_events
 from .ligand_contacts import (
     initialize_ligand_contacts,
     ligand_contact_events,
 )
-from .hydrogen_bonds import run_hydrogen_bonds
+from .salt_bridges import initialize_salt_bridges, salt_bridge_events
 
 __all__ = [
     "atom_label",

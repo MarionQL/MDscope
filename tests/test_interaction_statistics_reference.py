@@ -1,8 +1,10 @@
 """Six-replica nonconstant interaction statistics with explicit absent events."""
 from copy import deepcopy
+
 import numpy as np
 import pandas as pd
 import pytest
+
 from mdscope.config import DEFAULTS
 from mdscope.statistics.interactions import analyze_interactions
 

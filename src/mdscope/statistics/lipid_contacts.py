@@ -13,9 +13,15 @@ import pandas as pd
 
 from ..config import statistics_family_config
 from ..core.persistence import atomic_parquet, ensure_dir
-from .common import (_block_bootstrap, _ci, _hierarchical,
-                     _hierarchical_difference, _temporal, _regular_times,
-                     selected_rng)
+from .common import (
+    _block_bootstrap,
+    _ci,
+    _hierarchical,
+    _hierarchical_difference,
+    _regular_times,
+    _temporal,
+    selected_rng,
+)
 
 METRICS = ("pair_count_undirected", "neighbors_per_molecule", "enrichment")
 IDENTITY = ("level", "leaflet", "species_a", "species_b", "metric")

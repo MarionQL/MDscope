@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import argparse
-from collections import defaultdict
 import csv
-from html import escape
 import json
 import os
+from collections import defaultdict
+from html import escape
 from pathlib import Path
-
 
 CSS = """
 body{font:15px/1.5 system-ui,sans-serif;max-width:1380px;margin:2rem auto;padding:0 1.4rem}

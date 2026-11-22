@@ -1,8 +1,8 @@
 """Validate full production YAML selectors against published real TPRs."""
-from pathlib import Path
-from types import SimpleNamespace
 import os
 import tempfile
+from pathlib import Path
+from types import SimpleNamespace
 
 import yaml
 

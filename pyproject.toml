@@ -76,3 +76,9 @@ testpaths = ["tests"]
 addopts = "-m 'not benchmark'"
 markers = ["benchmark: optional numerical profiling, no wall-clock pass thresholds"]
 
+[dependency-groups]
+dev = [
+    "ruff>=0.17.6",
+    "vulture>=2.16",
+]
+

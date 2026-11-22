@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 import yaml
+from mdscope_test_support import invoke_cli
 
 from mdscope.config import load_config, project_root
 from mdscope.planning import build_plan
 from mdscope.registry import analysis_output_plan, required_artifacts
-from mdscope_test_support import invoke_cli
 
 
 def test_schema_only_plan_ignores_missing_inputs_but_checks_yaml(tmp_path, project):
@@ -293,6 +293,7 @@ def test_metric_estimator_flags_validate_through_real_yaml_schema(tmp_path, proj
 
 def test_saved_statistics_catalog_reads_real_parquet_schema_and_bounds_identities(tmp_path):
     import pandas as pd
+
     from mdscope.planning import inspect_saved_statistics
     folder = tmp_path / "project_summary/statistics"
     folder.mkdir(parents=True)
@@ -425,6 +426,7 @@ def test_plot_plan_flags_unknown_named_run_without_claiming_data(tmp_path, proje
 
 def test_saved_figure_discovery_uses_only_persisted_metric_identities(tmp_path, project):
     import pandas as pd
+
     from mdscope.planning import inspect_saved_plot_ids
     path, root = project("discover_saved_plot_ids")
     cfg = load_config(path, check_paths=False)
@@ -458,7 +460,9 @@ def test_saved_figure_discovery_uses_only_persisted_metric_identities(tmp_path, 
 
 def test_saved_figure_discovery_limit_and_profile_manifest_gate(tmp_path, project):
     import json
+
     import pandas as pd
+
     from mdscope.planning import inspect_saved_plot_ids
     path, root = project("discover_profiles")
     cfg = load_config(path, check_paths=False)
@@ -507,7 +511,9 @@ def test_saved_named_run_heatmap_requires_complete_companions(tmp_path, project)
 
 def test_saved_interaction_statistics_expose_exact_metric_figure_ids(tmp_path, project):
     import json
+
     import pandas as pd
+
     from mdscope.planning import inspect_saved_plot_ids
     path, root = project("saved_interaction_figures")
     cfg = load_config(path, check_paths=False)

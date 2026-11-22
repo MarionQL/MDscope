@@ -4,15 +4,15 @@ from copy import deepcopy
 import numpy as np
 import pandas as pd
 import pytest
-
-from mdscope.config import DEFAULTS, statistics_family_config
-from mdscope.statistics_selection import validate_metric_selection
-from mdscope.statistics.profiles import analyze_profiles
-from mdscope.statistics.solvation import analyze_solvation_rdfs
-from mdscope.statistics.diffusion import analyze_multi_origin_diffusion
-from mdscope.statistics.coupling import analyze_coupling
 from test_interaction_statistics_reference import fixture
 from test_statistics_modes import _profiles
+
+from mdscope.config import DEFAULTS, statistics_family_config
+from mdscope.statistics.coupling import analyze_coupling
+from mdscope.statistics.diffusion import analyze_multi_origin_diffusion
+from mdscope.statistics.profiles import analyze_profiles
+from mdscope.statistics.solvation import analyze_solvation_rdfs
+from mdscope.statistics_selection import validate_metric_selection
 
 
 @pytest.mark.parametrize("family,entry", [

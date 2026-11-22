@@ -4,14 +4,16 @@ One anchor residue per bonded molecule defines species and leaflet. Output
 pair counts are undirected, repeated for AB/BA rows to expose directional
 neighbors per A molecule. No atom identities are persisted.
 """
-from pathlib import Path
 import re
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import capped_distance
-from ..core.lipid_geometry import anchor_groups, aligned_leaflets, planar_box
+
+from ..config import atomic_json, atomic_parquet, ensure_dir
 from ..core.atom_selection import select_heavy_atoms
-from ..config import atomic_parquet, atomic_json, ensure_dir
+from ..core.lipid_geometry import aligned_leaflets, anchor_groups, planar_box
 
 
 def contact_matrix(species, upper, molecule_pairs, categories=None):

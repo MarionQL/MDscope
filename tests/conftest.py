@@ -1,7 +1,6 @@
 """Shared pytest fixture registration for CLI integration scenarios."""
 
 import pytest
-
 from mdscope_test_support import tiny_cli_project
 
 

@@ -1,12 +1,17 @@
 """Structural profile dispatcher and shared time-series/profile tables."""
 from __future__ import annotations
+
 from pathlib import Path
+
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
+
 from ..config import analysis_groups, analysis_runs, atomic_parquet, ensure_dir
 from .dssp import _run_dssp
 from .sasa import _run_sasa
+
+
 def run_structure_profiles(rep, cfg: dict, repout: Path):
     if not cfg["analyses"]["dssp"].get(
         "enabled",

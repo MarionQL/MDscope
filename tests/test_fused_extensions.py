@@ -4,11 +4,11 @@ import json
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-from MDAnalysis.coordinates.memory import MemoryReader
 from MDAnalysis.analysis.hydrogenbonds.hbond_analysis import HydrogenBondAnalysis
+from MDAnalysis.coordinates.memory import MemoryReader
 
-from mdscope.pipeline.fused_extensions import FusedExtensions
 from mdscope.interactions.hydrogen_bonds import write_hydrogen_bonds
+from mdscope.pipeline.fused_extensions import FusedExtensions
 
 
 def _universe():
@@ -157,7 +157,8 @@ def test_standalone_local_environment_matches_fused_saved_outputs(tmp_path):
 def test_local_environment_measurement_returns_topology_residue_contacts():
     """Source-frame contact counts are retained without trajectory execution."""
     from mdscope.mechanisms.local_environment import (
-        prepare_local_environment, local_environment_frame,
+        local_environment_frame,
+        prepare_local_environment,
     )
 
     u, cfg = _universe(), _cfg()

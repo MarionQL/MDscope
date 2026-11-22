@@ -3,8 +3,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from pyarrow.parquet import read_schema
 from MDAnalysis.lib.distances import capped_distance, self_capped_distance
+from pyarrow.parquet import read_schema
 
 from ..interactions.interaction_tables import chain_label, residue_label
 

@@ -1,5 +1,6 @@
 """Numerically checked microbenchmarks; timings are reported, not flaky pass gates."""
 import pytest
+
 pytestmark = pytest.mark.benchmark
 
 from time import perf_counter
@@ -7,8 +8,8 @@ from time import perf_counter
 import MDAnalysis as mda
 import numpy as np
 
-from mdscope.observables.msd import _residue_centers
 from mdscope.observables.bilayer_normal import fit_local_normals
+from mdscope.observables.msd import _residue_centers
 
 
 def _time(fn, repeat=4):

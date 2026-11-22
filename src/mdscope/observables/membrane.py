@@ -3,10 +3,14 @@
 One shared frame pass updates this state; no duplicate diffusion/MSD trajectory reader.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass
+
 import numpy as np
-from .msd import initialize_msd,msd_metrics
+
 from ..core.leaflet_partition import median_leaflet_mask
+from .msd import initialize_msd, msd_metrics
+
 AXIS_INDEX = {'x':0,'y':1,'z':2}
 
 

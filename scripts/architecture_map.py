@@ -10,11 +10,10 @@ from __future__ import annotations
 import argparse
 import ast
 import json
-from pathlib import Path
 import platform
 import subprocess
-
 from importlib import metadata
+from pathlib import Path
 
 
 def module_name(path: Path, root: Path) -> str:

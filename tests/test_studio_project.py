@@ -29,6 +29,7 @@ def test_condition_mutations_preserve_shared_choices_and_are_failure_atomic():
 def test_guided_setup_roundtrip_and_mode_switch(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
     monkeypatch.chdir(tmp_path)
     at = AppTest.from_file(app.__file__).run()
@@ -65,7 +66,11 @@ def test_guided_setup_roundtrip_and_mode_switch(tmp_path, monkeypatch):
 
 def test_group_replica_condition_rejections_are_atomic_across_selectors():
     from mdscope.studio.model import (
-        add_group, add_replica, add_system, change_group, delete_system,
+        add_group,
+        add_replica,
+        add_system,
+        change_group,
+        delete_system,
         remove_replica,
     )
 
@@ -110,6 +115,7 @@ def test_group_replica_condition_rejections_are_atomic_across_selectors():
 def test_guided_editor_rejected_condition_add_keeps_hierarchy_and_recovers(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
 
     monkeypatch.chdir(tmp_path)
@@ -151,6 +157,7 @@ def test_topology_identity_hash_streams_large_selection_without_changing_digest(
     import tracemalloc
     from time import perf_counter
     from types import SimpleNamespace
+
     from mdscope.core.alignment import selection_details
 
     class Atoms(list):

@@ -1,11 +1,16 @@
 """Residue secondary structure assignments from DSSP."""
 from __future__ import annotations
+
 from pathlib import Path
+
 import numpy as np
 import pandas as pd
 from MDAnalysis.analysis.dssp import DSSP
+
+from ..config import atomic_parquet, ensure_dir
 from ..core.profiling import _residue_label
-from ..config import ensure_dir,atomic_parquet
+
+
 def _run_dssp(universe, cfg: dict, repout: Path):
     spec, tr = cfg["analyses"]["dssp"], cfg["trajectory"]
     selection = str(spec.get("selection") or cfg["selections"]["protein"])

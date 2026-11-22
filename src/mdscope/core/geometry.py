@@ -5,6 +5,7 @@ shape, dtype and box-validation semantics. This module does not guess a
 membrane normal or silently turn an invalid box into non-periodic geometry.
 """
 from __future__ import annotations
+
 import numpy as np
 from MDAnalysis.lib.distances import minimize_vectors
 

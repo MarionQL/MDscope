@@ -1,12 +1,15 @@
 """Independent brute-image references for bounding-box pruning."""
 import sys
+import unittest
 from itertools import product
 from pathlib import Path
-import unittest
+
 import numpy as np
 from scipy.spatial.distance import cdist
+
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"scripts"))
 from release_box_clearance import image_minimum
+
 
 class ImageMinimumTests(unittest.TestCase):
     def test_random_image_search_exact_and_swapped(self):

@@ -1,7 +1,8 @@
 """Synthetic regression checks for geometry and diffusion without trajectory files."""
 import numpy as np
+
 from mdscope.observables.msd import fit_lateral_diffusion
-from mdscope.statistics.coupling import correlation,block_means
+from mdscope.statistics.coupling import block_means, correlation
 
 
 def test_rmsd_separate_from_rmsf():

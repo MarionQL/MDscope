@@ -1,7 +1,8 @@
 """Minimal checkpoint integrity checks for streamed chunk files."""
 from __future__ import annotations
-from pathlib import Path
+
 import re
+from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
 _PART = re.compile(r"-part-(\d{6})\.(?:parquet|npz)$")

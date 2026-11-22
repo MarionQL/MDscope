@@ -1,8 +1,10 @@
 """No-data preview base columns must exist in actual statistics writer output."""
 from copy import deepcopy
+
 import numpy as np
 import pandas as pd
 import pytest
+
 from mdscope.config import DEFAULTS
 from mdscope.statistics_contracts import statistics_output_contract
 

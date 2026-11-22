@@ -1,6 +1,6 @@
 """Sequence-defined solvation targets must resolve topology identities safely."""
-import pytest
 import MDAnalysis as mda
+import pytest
 
 from mdscope.observables.solvation import _targets
 

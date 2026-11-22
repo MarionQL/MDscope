@@ -4,15 +4,18 @@ Planning and execution both consume these paths, companion artifacts and
 schemas. Executable replica tasks live in pipeline.replica_tasks.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
+
 from .config import analysis_enabled, analysis_runs
 from .output_paths import FUSED_OUTPUTS, RUN_SCOPED_OUTPUTS
+
 
 # Precise schema details live with the artifact registry, not the GUI.
 # A missing column/shape description means the corresponding producer has
 # a dynamic or as-yet-uncataloged contract; it is *not* a zero-length table.
-def artifact_schema(entry: "FusedOutput", path: Path) -> dict:
+def artifact_schema(entry: FusedOutput, path: Path) -> dict:
     """Known persisted fields, shapes and units for a registered artifact."""
     name = Path(path).name
     analysis = entry.name
@@ -248,9 +251,15 @@ def fused_output_plan(cfg: dict, repout: Path) -> tuple[FusedOutput, ...]:
     """Plan enabled fused outputs without creating readers or opening trajectories."""
     # Share production scheduling predicates without importing heavy producers.
     from .pipeline.analysis_selection import (
-        membrane_enabled_names as membrane_enabled,
-        extensions_enabled_names as extensions_enabled,
         distance_enabled_names as distance_enabled,
+    )
+    from .pipeline.analysis_selection import (
+        extensions_enabled_names as extensions_enabled,
+    )
+    from .pipeline.analysis_selection import (
+        membrane_enabled_names as membrane_enabled,
+    )
+    from .pipeline.analysis_selection import (
         sdc4_enabled,
     )
     entries = [fused_output(repout, name) for name in membrane_enabled(cfg)]
@@ -540,7 +549,7 @@ def configured_profile_variables(cfg, *, include_optional=False):
 
 def density_output_contracts(cfg):
     """Mean density tables saved by DensityProfileAccumulator.finalize."""
-    from .config import profile_dir, analysis_groups
+    from .config import analysis_groups, profile_dir
     outputs = []
     for run in analysis_runs(cfg, "density_1d"):
         for key, raw in run.spec.get("selections", {}).items():

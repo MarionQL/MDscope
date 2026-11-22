@@ -1,13 +1,15 @@
 """Family isolation, gapped-time safeguards and finite-replica reference answers."""
 from copy import deepcopy
 from itertools import product
+
 import numpy as np
 import pandas as pd
 import pytest
+
+from mdscope.config import DEFAULTS, statistics_family_config, validate_config
 from mdscope.statistics import analyze_project
 from mdscope.statistics.common import _block_bootstrap, _permutation
 from mdscope.statistics.time_series import analyze_time_series
-from mdscope.config import DEFAULTS, validate_config, statistics_family_config
 
 
 def test_nonconstant_moving_blocks_enumerated_distribution():
@@ -27,10 +29,10 @@ def test_three_vs_three_independent_permutation_resolution():
 
 
 def test_disabled_statistics_families_never_enter_kernels(tmp_path, monkeypatch):
-    import mdscope.statistics.time_series as ts
-    import mdscope.statistics.profiles as profiles
     import mdscope.statistics.interactions as interactions
+    import mdscope.statistics.profiles as profiles
     import mdscope.statistics.solvation as solvation
+    import mdscope.statistics.time_series as ts
     def forbidden(*a, **k):
         raise AssertionError("disabled family entered data collection")
     monkeypatch.setattr(ts, 'collect_time_series', forbidden)

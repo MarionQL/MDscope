@@ -3,10 +3,10 @@ import json
 
 import pytest
 
-from mdscope.statistics_manifest import read_statistics_manifest
+from mdscope.planning import inspect_saved_statistics
 from mdscope.reporting.figure_inventory import statistics_status
 from mdscope.reporting.report import generate_report
-from mdscope.planning import inspect_saved_statistics
+from mdscope.statistics_manifest import read_statistics_manifest
 
 
 @pytest.mark.parametrize("payload,state", [
@@ -76,13 +76,15 @@ def test_completed_manifest_keeps_legacy_render_read_without_methods(tmp_path):
 
 
 def test_manifest_import_does_not_load_estimator_package():
-    import subprocess,sys
+    import subprocess
+    import sys
     subprocess.run([sys.executable,'-c',
                     'import sys; import mdscope.statistics_manifest; assert "mdscope.statistics" not in sys.modules'],check=True)
 
 
 def test_disabled_families_hide_stale_catalog_and_findings(tmp_path):
     import pandas as pd
+
     from mdscope.statistics.coverage import COLUMNS
     root=tmp_path/'project_summary/statistics'
     (root/'time_series').mkdir(parents=True); (root/'coverage').mkdir()

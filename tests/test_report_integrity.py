@@ -1,10 +1,10 @@
 """Preserve the completed-statistics boundary when inputs change."""
 import pandas as pd
 import pytest
+from test_presentation_controls import _fixture
 
 from mdscope.reporting.figure_inventory import statistics_status
 from mdscope.statistics import analyze_project
-from test_presentation_controls import _fixture
 
 
 def test_inputs_changed_during_statistics_leave_an_incomplete_manifest(tmp_path, monkeypatch):

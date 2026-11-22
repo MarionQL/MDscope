@@ -6,10 +6,9 @@ import pandas as pd
 from pyarrow.parquet import read_schema
 
 from ..config import atomic_parquet, statistics_family_config
-from ..statistics_selection import simple_family_selection, metric_estimator_enabled
+from ..statistics_selection import metric_estimator_enabled, simple_family_selection
 from .common import _regular_times
 from .replicate_contrasts import replicate_mean_contrasts
-
 
 PAIRS=[
  ("lipid_proximity","local_hs_lipid_contact_pairs_count","local_protein_lipid_contact_residues_count"),

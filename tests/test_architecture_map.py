@@ -1,10 +1,9 @@
 """The architecture map is derived from Python syntax, never executed MD code."""
-from pathlib import Path
-from runpy import run_path
 import json
 import subprocess
 import sys
-
+from pathlib import Path
+from runpy import run_path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts/architecture_map.py"
@@ -105,7 +104,10 @@ def test_interactions_package_exports_are_explicit_without_changing_named_api():
     """All intended functions remain importable; third-party names do not leak."""
     import mdscope.interactions as package
     from mdscope.interactions.interaction_tables import (
-        event_lifetimes, interaction_key_columns, sample_dt, interaction_tables,
+        event_lifetimes,
+        interaction_key_columns,
+        interaction_tables,
+        sample_dt,
     )
 
     assert package.event_lifetimes is event_lifetimes

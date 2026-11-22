@@ -4,12 +4,16 @@ import pytest
 from MDAnalysis.lib.distances import minimize_vectors
 from MDAnalysis.lib.mdamath import triclinic_vectors
 
+from mdscope.biophysical_common import lateral_distance
 from mdscope.core import alignment as core_alignment
 from mdscope.core import lipid_geometry as core_lipid
 from mdscope.core.geometry import minimum_image_displacements
-from mdscope.core.lipid_geometry import planar_offsets, lateral_distances, periodic_center
+from mdscope.core.lipid_geometry import (
+    lateral_distances,
+    periodic_center,
+    planar_offsets,
+)
 from mdscope.mechanisms.mechanistic_common import planar_distances
-from mdscope.biophysical_common import lateral_distance
 
 BOX = np.array([40., 50., 60., 90., 90., 90.])
 

@@ -4,23 +4,26 @@ Registry owns artifact paths/schemas. This module owns readiness facts; browsing
 requires saved provenance/markers while compatible direct finalization retains
 its existing structural validation policy. No topology/trajectory is opened.
 """
+import json
 from copy import deepcopy
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
-import json
 
 import numpy as np
 import pandas as pd
 
-from ..config import config_hash, analysis_runs
-from ..registry import analysis_output_plan, required_artifacts, core_saved_contracts
+from ..config import analysis_runs, config_hash
+from ..mechanisms.hs_hydration import temporal_hs_hydration_profiles
 from ..mechanisms.residue_occlusion import (
-    OCCLUSION_FILE, IDENTITY_COLUMNS, FRACTION_COLUMNS, WATER_COLUMNS,
+    FRACTION_COLUMNS,
+    IDENTITY_COLUMNS,
+    OCCLUSION_FILE,
+    WATER_COLUMNS,
     residue_environment_pending,
 )
-from ..mechanisms.hs_hydration import temporal_hs_hydration_profiles
 from ..observables.density_1d import missing_membrane_density_runs
 from ..observables.lipid_enrichment import footprint_pending
+from ..registry import analysis_output_plan, core_saved_contracts, required_artifacts
 
 
 def check_artifact(path: Path) -> int:
@@ -255,7 +258,7 @@ def inspect_results_directory(document, base, results_directory):
     facts, not evidence of chemical validity or sampling convergence.
     """
     from ..config import iter_replicates, resolve_config
-    from ..registry import saved_output_plan, required_artifacts, core_saved_contracts
+    from ..registry import core_saved_contracts, required_artifacts, saved_output_plan
 
     root = Path(results_directory).expanduser()
     if not root.is_absolute():

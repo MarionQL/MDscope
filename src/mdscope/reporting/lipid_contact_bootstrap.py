@@ -11,7 +11,6 @@ from ..config import ensure_dir, figure_enabled
 from .figure_inventory import current_statistics
 from .plot_ids import figure_dpi
 
-
 # Short display names only. Statistical identities remain the original
 # class or lipid-species keys (e.g., POPC, DOPC, GM1a).
 _CLASS_LABELS = {

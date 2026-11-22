@@ -104,6 +104,7 @@ def test_monte_carlo_resolution_is_explicitly_not_exact():
 def test_reported_floor_equals_production_permutation_minimum(design, n_1, n_2, expected):
     """Oracle: maximally separated replicas reach the estimator's smallest p."""
     import numpy as np
+
     from mdscope.permutation_resolution import permutation_floor
     from mdscope.statistics.common import _permutation
     tests = {"enabled": True, "design": design}
@@ -154,6 +155,7 @@ def test_source_identity_dirty_checkout_and_foreign_cwd(monkeypatch, tmp_path):
 
 def test_findings_support_counts_only_replicas_with_metric_rows(tmp_path):
     import pandas as pd
+
     from mdscope.reporting.report import _replicate_support, _support_floor
     from mdscope.statistics.coverage import _identity
     path = tmp_path / "time_series"

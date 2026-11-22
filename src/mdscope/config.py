@@ -414,10 +414,12 @@ def profile_dir(repout: Path, analysis: str, run_id: str = DEFAULT_INSTANCE_ID) 
 
 
 # Preserve historical imports for existing extensions and HPC scripts.
-from .core.persistence import (ensure_dir as ensure_dir, atomic_json as atomic_json,
-                               atomic_text as atomic_text, atomic_parquet as atomic_parquet)
-from .core.provenance import (config_hash as config_hash,
-                              environment_metadata as environment_metadata)
+from .core.persistence import atomic_json as atomic_json
+from .core.persistence import atomic_parquet as atomic_parquet
+from .core.persistence import atomic_text as atomic_text
+from .core.persistence import ensure_dir as ensure_dir
+from .core.provenance import config_hash as config_hash
+from .core.provenance import environment_metadata as environment_metadata
 
 
 def time_ps(ts, frame_index: int, cfg: dict) -> float:
@@ -979,7 +981,7 @@ def validate_config(cfg: dict, base: Path = Path("."), *, check_paths: bool = Tr
     if (not isinstance(families, dict) or set(families) - allowed
             or any(not isinstance(value, bool) for value in families.values())):
         raise ValueError("plots.families must map known families to booleans")
-    from .reporting.plot_ids import validate_plot_ids, validate_figure_options
+    from .reporting.plot_ids import validate_figure_options, validate_plot_ids
     validate_plot_ids(plots.get("include"))
     validate_figure_options(plots.get("options", {}))
     excluded = plots.get("interaction_exclude_kinds", [])

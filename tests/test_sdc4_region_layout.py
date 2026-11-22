@@ -1,13 +1,15 @@
 """Syndecan lipid-region saved-data renderer readability regressions."""
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 import pytest
 
 from mdscope.reporting.sdc4_condition_figures import (
-    _region_figures, _region_label,
+    _region_figures,
+    _region_label,
 )
 
 REGIONS = [

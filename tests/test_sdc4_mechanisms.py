@@ -1,6 +1,6 @@
 """Synthetic PBC, output, restart and shared-state regression tests for SDC4."""
-from types import SimpleNamespace
 import json
+from types import SimpleNamespace
 
 import MDAnalysis as mda
 import numpy as np
@@ -8,9 +8,17 @@ import pandas as pd
 import pytest
 from MDAnalysis.coordinates.memory import MemoryReader
 
-from mdscope.mechanisms.sdc4_mechanisms import SDC4Mechanisms, _contacts, _angle, _backbone_axis, _local_surface, _normal_order_setup, _order_by_residue
-from mdscope.mechanisms.shared_states import fit_shared_states
 from mdscope.mechanisms.residue_occlusion import ResidueOcclusion
+from mdscope.mechanisms.sdc4_mechanisms import (
+    SDC4Mechanisms,
+    _angle,
+    _backbone_axis,
+    _contacts,
+    _local_surface,
+    _normal_order_setup,
+    _order_by_residue,
+)
+from mdscope.mechanisms.shared_states import fit_shared_states
 from mdscope.statistics.profiles import collect_temporal_profiles
 
 
@@ -498,7 +506,8 @@ def test_shared_states_exports_replica_conditioned_nxip(tmp_path):
 
 def test_intermittent_lipid_residence_gap_and_censoring():
     from mdscope.mechanisms.motif_residence import (
-        summarize_lipid_residence, summarize_intermittent_residence
+        summarize_intermittent_residence,
+        summarize_lipid_residence,
     )
     times = np.array([0., 10., 20., 30., 40., 50.])
     events = pd.DataFrame({

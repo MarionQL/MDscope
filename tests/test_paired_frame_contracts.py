@@ -1,6 +1,8 @@
 """Synchronization contract for paired primary/MSD coordinate sources."""
 from dataclasses import dataclass
+
 import pytest
+
 from mdscope.core.trajectory_sources import paired_frames
 
 

@@ -1,10 +1,13 @@
 """Verify candidate sampling classification without assuming 'clear' is box approval."""
-import unittest
-import numpy as np
 import sys
+import unittest
 from pathlib import Path
+
+import numpy as np
+
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"scripts"))
-from box_size_sweep import evaluate_candidates,placement_shift
+from box_size_sweep import evaluate_candidates, placement_shift
+
 
 class CandidateSizingTests(unittest.TestCase):
     def test_fragment_reimage_is_whole_cell_shift(self):

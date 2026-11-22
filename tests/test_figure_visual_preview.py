@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 from runpy import run_path
 
-from PIL import Image
 import pytest
+from PIL import Image
 
 
 def _scripts():

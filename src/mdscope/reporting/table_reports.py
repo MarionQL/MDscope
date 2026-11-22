@@ -6,15 +6,18 @@ Rendering failures preserve committed PDFs. Unique staging files plus rollback
 protect publication exceptions; process/power-loss recovery is not transactional.
 """
 from __future__ import annotations
-from contextlib import contextmanager
-from contextvars import ContextVar
-from pathlib import Path
+
 import hashlib
 import json
 import os
 import tempfile
+from contextlib import contextmanager
+from contextvars import ContextVar
+from datetime import UTC
+from pathlib import Path
 
 from matplotlib.backends.backend_pdf import PdfPages
+
 from ..core.persistence import archive_output
 
 _ACTIVE = ContextVar('mdscope_table_reports', default=None)
@@ -130,8 +133,8 @@ class TableReports:
                 raise failure
             if not success:
                 return
-            from datetime import datetime, timezone
-            stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+            from datetime import datetime
+            stamp = datetime.now(UTC).strftime('%Y%m%dT%H%M%S%fZ')
             figures = self.root / 'project_summary/figures'
             existing = set(figures.rglob(REPORT_NAME))
             existing.update(path.with_name(REPORT_NAME) for path in figures.rglob(MANIFEST_NAME))

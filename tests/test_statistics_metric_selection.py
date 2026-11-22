@@ -118,6 +118,7 @@ def test_conditional_availability_can_be_selected_without_raw_metric(tmp_path):
 
 def test_interaction_identity_metric_selector_skips_other_inference(tmp_path, monkeypatch):
     from test_interaction_statistics_reference import fixture
+
     from mdscope.statistics.interactions import analyze_interactions
     cfg, paths = fixture(tmp_path / "input")
     cfg["statistics"]["metric_selection"] = {"interactions": [
@@ -146,8 +147,8 @@ def test_interaction_identity_metric_selector_skips_other_inference(tmp_path, mo
 
 
 def test_empty_interaction_selection_skips_input_loading(tmp_path, monkeypatch):
-    from mdscope.statistics.interactions import analyze_interactions
     import mdscope.statistics.interactions as module
+    from mdscope.statistics.interactions import analyze_interactions
     cfg = deepcopy(DEFAULTS)
     cfg["statistics"]["metric_selection"] = {"interactions": []}
     assert statistics_family_config(cfg, "interactions") is None
@@ -160,6 +161,7 @@ def test_empty_interaction_selection_skips_input_loading(tmp_path, monkeypatch):
 
 def test_unknown_interaction_identity_fails_before_output_creation(tmp_path):
     from test_interaction_statistics_reference import fixture
+
     from mdscope.statistics.interactions import analyze_interactions
     cfg, paths = fixture(tmp_path / "input")
     cfg["statistics"]["metric_selection"] = {"interactions": [
@@ -185,6 +187,7 @@ def test_invalid_interaction_selection_fails_config_validation(invalid):
 
 def test_legacy_interaction_selection_is_unrestricted(tmp_path):
     from test_interaction_statistics_reference import fixture
+
     from mdscope.statistics.interactions import analyze_interactions
     cfg, paths = fixture(tmp_path / "input")
     analyze_interactions(cfg, tmp_path, paths)
@@ -201,6 +204,7 @@ def test_legacy_interaction_selection_is_unrestricted(tmp_path):
 def test_interaction_selected_rng_invariant_to_other_requested_identities(tmp_path):
     """Selecting an unrelated pair cannot perturb an existing pair's CIs."""
     from test_interaction_statistics_reference import fixture
+
     from mdscope.statistics.interactions import analyze_interactions
     cfg, paths = fixture(tmp_path / "input")
     key = "ASP0 | LYS7 | interchain"
@@ -285,6 +289,7 @@ def test_descriptive_only_time_series_retains_points_without_bootstrapping(tmp_p
 
 def test_descriptive_only_interaction_has_no_ci_or_p_value(tmp_path):
     from test_interaction_statistics_reference import fixture
+
     from mdscope.statistics.interactions import analyze_interactions
     cfg, reps = fixture(tmp_path / "inputs")
     cfg["statistics"]["metric_selection"] = {"interactions": [
@@ -397,6 +402,7 @@ def test_mixed_interaction_inference_draw_counts_do_not_share_incompatible_weigh
 def test_changing_metric_selection_rebuilds_statistics_without_touching_raw_data(tmp_path):
     """Re-finalization must not mistake old selected outputs for current ones."""
     import hashlib
+
     from mdscope.statistics import analyze_project
     paths = _data(tmp_path / "inputs")
     raw = {

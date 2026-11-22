@@ -2,9 +2,11 @@
 import numpy as np
 import pandas as pd
 import pytest
-from mdscope.pipeline.fused_membrane import FusedMembrane
+from mdscope_test_support import membrane_config as _cfg
+from mdscope_test_support import membrane_universe as _universe
+
 from mdscope.observables.solvation import SolvationObserver
-from mdscope_test_support import membrane_universe as _universe, membrane_config as _cfg
+from mdscope.pipeline.fused_membrane import FusedMembrane
 
 
 @pytest.mark.parametrize('transform', ['translate_wrap', 'rotate_z'])

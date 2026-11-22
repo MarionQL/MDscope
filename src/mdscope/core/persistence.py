@@ -9,7 +9,9 @@ import os
 import tempfile
 from pathlib import Path
 from typing import Any
+
 import pandas as pd
+
 
 def ensure_dir(path: str | Path) -> Path:
     path = Path(path)

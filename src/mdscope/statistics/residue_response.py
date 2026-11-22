@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from ..statistics_contracts import RESIDUE_RESPONSE_PROFILE
+
 _RESIDUE_LABEL = re.compile(r"^(?P<chain>[^:]+):[A-Za-z]+(?P<resid>-?\d+)$")
 _KEYS = ["system_1", "system_2", "profile", "position_label"]
 
@@ -162,8 +163,9 @@ def write_residue_response(replicates, contrasts, expected_replicates, outdir, c
     Superseded products are archived, including disabling and empty selections.
     """
     from pathlib import Path
+
     from ..config import residue_response_settings
-    from ..core.persistence import atomic_json, atomic_parquet, archive_output
+    from ..core.persistence import archive_output, atomic_json, atomic_parquet
     settings = residue_response_settings(cfg)
     status = ("disabled" if not settings["enabled"] else
               "empty_selection" if settings["profiles"] == [] or settings["chains"] == []

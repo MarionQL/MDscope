@@ -5,12 +5,10 @@ implementations: argparse, packaging, configuration paths and exit codes matter.
 """
 from __future__ import annotations
 
-
 import numpy as np
 import pandas as pd
 import pytest
 import yaml
-
 from mdscope_test_support import invoke_cli as invoke
 
 

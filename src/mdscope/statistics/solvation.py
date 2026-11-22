@@ -6,10 +6,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ..config import statistics_family_config, atomic_parquet, ensure_dir
-from ..statistics_selection import simple_family_selection, metric_estimator_enabled
+from ..config import atomic_parquet, ensure_dir, statistics_family_config
+from ..statistics_selection import metric_estimator_enabled, simple_family_selection
 from .replicate_contrasts import replicate_mean_contrasts
-
 
 RDF_KEYS = ["solvent", "target_class", "site_class", "r_inner_A", "r_outer_A"]
 

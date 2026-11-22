@@ -64,7 +64,9 @@ def test_summary_marker_rejects_missing_secondary_artifact(tmp_path):
 
 def test_finalizer_rejects_missing_standalone_profile_before_archiving(tmp_path):
     from copy import deepcopy
+
     import pytest
+
     from mdscope.config import DEFAULTS
     from mdscope.pipeline.runner import finalize_project
     cfg = deepcopy(DEFAULTS)
@@ -87,8 +89,9 @@ def test_finalizer_rejects_missing_standalone_profile_before_archiving(tmp_path)
 def test_completed_run_detects_missing_companion_without_trajectory_read(tmp_path, monkeypatch):
     import MDAnalysis as mda
     import pytest
-    from mdscope.pipeline import runner
     from validation_fixture import make_project
+
+    from mdscope.pipeline import runner
     rep, cfg = make_project(tmp_path, 3)
     root = tmp_path/'results'
     state = runner.RunState(root)
@@ -110,8 +113,9 @@ import pytest
 @pytest.mark.parametrize('damage', ['json', 'npz', 'schema', 'shape'])
 def test_finalizer_rejects_invalid_companions_before_mutation(tmp_path, damage):
     import numpy as np
-    from mdscope.pipeline import runner
     from validation_fixture import make_project
+
+    from mdscope.pipeline import runner
     rep, cfg = make_project(tmp_path, 3)
     root = tmp_path/'results'
     state = runner.RunState(root)
