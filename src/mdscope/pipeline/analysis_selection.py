@@ -37,6 +37,3 @@ def extensions_enabled_names(cfg):
 def distance_enabled_names(cfg):
     return tuple(run.run_id for run in analysis_runs(cfg, "residue_membrane_distance"))
 
-
-def sdc4_enabled(cfg):
-    return bool(cfg.get("analyses", {}).get("sdc4_mechanisms", {}).get("enabled", False))

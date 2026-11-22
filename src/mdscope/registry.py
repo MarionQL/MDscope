@@ -64,9 +64,7 @@ def fused_output_plan(cfg: dict, repout: Path) -> tuple[FusedOutput, ...]:
     from .pipeline.analysis_selection import (
         membrane_enabled_names as membrane_enabled,
     )
-    from .pipeline.analysis_selection import (
-        sdc4_enabled,
-    )
+    from .config.runs import sdc4_enabled
     entries = [fused_output(repout, name) for name in membrane_enabled(cfg)]
     extensions = extensions_enabled(cfg)
     entries.extend(fused_output(repout, name) for name in extensions

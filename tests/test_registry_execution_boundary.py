@@ -141,8 +141,8 @@ def test_output_plan_uses_lightweight_production_predicates(project):
         distance_enabled_names,
         extensions_enabled_names,
         membrane_enabled_names,
-        sdc4_enabled,
     )
+    from mdscope.config.runs import sdc4_enabled
     from mdscope.pipeline.fused_distance import enabled_names as distance_producer
     from mdscope.pipeline.fused_extensions import enabled_names as extensions_producer
     from mdscope.pipeline.fused_membrane import enabled_names as membrane_producer

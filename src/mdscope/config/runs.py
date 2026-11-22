@@ -92,6 +92,11 @@ def analysis_enabled(cfg: dict, name: str) -> bool:
     return bool(analysis_runs(cfg, name))
 
 
+def sdc4_enabled(cfg: dict) -> bool:
+    """SDC4 feature activation without importing the execution pipeline."""
+    return bool(cfg.get("analyses", {}).get("sdc4_mechanisms", {}).get("enabled", False))
+
+
 def project_root(cfg: dict, config_path: str | Path) -> Path:
     """Resolve project.output relative to the YAML, not the working directory."""
     path = Path(cfg["project"]["output"])
