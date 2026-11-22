@@ -1,7 +1,6 @@
 """Production subplot scaling: consistent units mean comparable visual limits."""
 from __future__ import annotations
 
-from io import BytesIO
 
 import matplotlib
 matplotlib.use("Agg")

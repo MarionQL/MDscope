@@ -1,7 +1,5 @@
 """Per-folder PDF table reports and compact lipid display-label regressions."""
-from pathlib import Path
 
-import matplotlib.pyplot as plt
 import pandas as pd
 import pytest
 

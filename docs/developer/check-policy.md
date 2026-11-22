@@ -17,8 +17,9 @@ Run checks for the behavior changed, not every available workflow.
 - `MDscope checks` stays automatic: Python 3.11/3.12/3.13 regressions and existing
   packaging checks protect cross-module integration. Superseded runs cancel.
   Every job runs `bash -n` on each tracked `*.sh`. The 3.11 job also runs
-  blocking ShellCheck and Ruff fatal rules (`pyproject.toml`), advisory pyflakes
-  annotations, and uploads the `mdscope-coverage` artifact (no minimum).
+  blocking ShellCheck and Ruff syntax/pyflakes rules (`pyproject.toml`; make
+  intentional re-exports explicit with `import name as name`), and uploads the
+  `mdscope-coverage` artifact (no minimum).
 - Workflows default to `contents: read`; external actions are pinned to commit
   SHAs with version comments and updated through Dependabot PRs. Review each
   bump's release notes before merging.

@@ -1,5 +1,7 @@
 # Backlog review — 2026-11-20
 
+> **Historical snapshot (2026-11-20).** Not maintained: code, priorities and issue states have changed since. Current guidance is in the [docs index](../../README.md); current work is tracked in [open issues](https://github.com/MarionQL/MDscope/issues).
+
 Reviewed all **15 open issues** before creating four focused follow-ups. Evidence:
 current issue bodies/comments, merged PR metadata, and source at `dc06153`
 (the production source reviewed in PR #214). Issue state alone is not proof that

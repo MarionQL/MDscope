@@ -27,7 +27,6 @@ def test_module_help():
 """Validate the packaged module structure, not a working-directory alias."""
 from importlib import import_module
 from importlib.resources import files
-from pathlib import Path
 
 def test_source_layout_and_subpackage_discovery():
     root = Path(__file__).resolve().parents[1]

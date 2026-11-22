@@ -93,7 +93,6 @@ def test_html_gallery_displays_before_after_and_no_scientific_claims(tmp_path):
 
 def test_csv_samples_include_every_column_but_only_bounded_rows(tmp_path):
     import csv
-    from runpy import run_path
 
     preview, _ = _scripts()
     root = tmp_path / "preview"

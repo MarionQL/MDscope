@@ -1,5 +1,7 @@
 # MDscope architecture review — 2026-11-20
 
+> **Historical snapshot (2026-11-20).** Not maintained: code, priorities and issue states have changed since. Current guidance is in the [docs index](../../README.md); current work is tracked in [open issues](https://github.com/MarionQL/MDscope/issues).
+
 **Source snapshot:** `935a16c30679b9e93eb1983c46e9798b6bbec0b4`, whose production source matches `main` at `dc0615311b875d9c7361182cdd18fbb5c6f1589a`. This replaces the earlier review with fresh source, dependency, history and targeted execution evidence. Scope: identify bounded improvements; no runtime refactor or scientific calculation.
 
 ## Assessment

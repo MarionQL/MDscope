@@ -1,5 +1,4 @@
 """Solvation statistics use existing bootstrap machinery, not a second estimator."""
-from pathlib import Path
 
 import numpy as np
 import pandas as pd

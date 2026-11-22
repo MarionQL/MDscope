@@ -24,7 +24,7 @@ from .table_reports import add_table_page, table_report_session, table_page_enab
 from .shared_scales import synchronize_y_axes
 
 
-from .labels import METRIC_LABELS, _metric_meta
+from .labels import _metric_meta
 
 
 def configure_plot_style(cfg: dict):

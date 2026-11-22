@@ -1,6 +1,5 @@
 """Entry-point memory regression and independent sampled-episode references."""
 from pathlib import Path
-import numpy as np
 import pandas as pd
 import pytest
 from mdscope.observables.solvation import SolvationObserver, contact_episodes

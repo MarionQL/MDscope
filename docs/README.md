@@ -14,4 +14,4 @@
 | Validate SDC4 fixtures and release evidence | [SDC4 fixtures](developer/sdc4-fixtures.md) · [Release checklist](developer/release-validation.md) |
 | Contribute or refactor | [Contributing](developer/contributing.md) |
 
-Historical implementation discussions belong in Git history and issues, not repeated across guides.
+The table above lists **authoritative, maintained** guides. Dated reviews are [historical snapshots](developer/archive/) kept for provenance only; live priorities are the [open issues](https://github.com/MarionQL/MDscope/issues). Historical implementation discussions belong in Git history and issues, not repeated across guides.

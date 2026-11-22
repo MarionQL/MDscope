@@ -408,7 +408,6 @@ def test_sdc4_condition_figures_keep_replica_traces_separate(tmp_path, monkeypat
 
 
 def test_condition_sdc4_missing_replica_is_visible_not_silently_averaged(tmp_path, monkeypatch):
-    import pandas as pd
     from mdscope.reporting import sdc4_condition_figures as module
     from mdscope.reporting.sdc4_figures import plot_sdc4_mechanisms
 

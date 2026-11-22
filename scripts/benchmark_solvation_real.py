@@ -17,7 +17,6 @@ import tempfile
 import time
 
 import MDAnalysis as mda
-import numpy as np
 
 from mdscope.config import iter_replicates, load_config, time_ps
 from mdscope.observables.solvation import SolvationObserver

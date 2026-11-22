@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mdscope.config import DEFAULTS, statistics_family_config, validate_config
+from mdscope.config import DEFAULTS, statistics_family_config
 from mdscope.statistics.time_series import analyze_time_series
 from mdscope.statistics_selection import validate_metric_selection
 

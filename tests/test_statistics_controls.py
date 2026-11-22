@@ -27,7 +27,6 @@ def test_three_vs_three_independent_permutation_resolution():
 
 
 def test_disabled_statistics_families_never_enter_kernels(tmp_path, monkeypatch):
-    import mdscope.statistics as stats
     import mdscope.statistics.time_series as ts
     import mdscope.statistics.profiles as profiles
     import mdscope.statistics.interactions as interactions

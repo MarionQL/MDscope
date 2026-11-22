@@ -18,18 +18,17 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.analysis.hydrogenbonds.hbond_analysis import HydrogenBondAnalysis
 
-from ..config import analysis_groups, analysis_runs, atomic_parquet, ensure_dir, time_ps
+from ..config import atomic_parquet, ensure_dir, time_ps
 from ..observables.membrane_order import _atomic_npz
 from .progress import track
 from ..interactions.hydrogen_bonds import write_hydrogen_bonds
 from ..interactions.lipid_hydrogen_bonds import (
-    GLYCOLIPID_CHAIN_IDS, lipid_molecule_map, write_lipid_hydrogen_bonds,
+    lipid_molecule_map, write_lipid_hydrogen_bonds,
 )
 from ..observables.sasa import sasa_instances, sasa_residue_rows, write_sasa_burial
 from ..observables.solvation import SolvationObserver
 from ..mechanisms.hs_hydration import HydrationObserver
 from ..core.profiling import _residue_label
-from ..biophysical_common import heavy
 from ..mechanisms.local_environment import prepare_local_environment, local_environment_frame
 
 

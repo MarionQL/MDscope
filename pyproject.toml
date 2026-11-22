@@ -41,9 +41,9 @@ namespaces = false
 target-version = "py311"
 
 [tool.ruff.lint]
-# Blocking in CI: syntax errors and undefined names only. The full pyflakes
-# set (F) runs as advisory annotations until existing findings are cleaned up.
-select = ["E9", "F63", "F7", "F82"]
+# Blocking in CI: syntax errors plus the full pyflakes set (F). Keep
+# intentional re-exports explicit (`import name as name`) instead of ignoring F401.
+select = ["E9", "F"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

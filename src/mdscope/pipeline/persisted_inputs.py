@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import config_hash, analysis_runs
-from ..registry import analysis_output_plan, saved_output_plan, required_artifacts, core_saved_contracts
+from ..registry import analysis_output_plan, required_artifacts, core_saved_contracts
 from ..mechanisms.residue_occlusion import (
     OCCLUSION_FILE, IDENTITY_COLUMNS, FRACTION_COLUMNS, WATER_COLUMNS,
     residue_environment_pending,
@@ -255,7 +255,7 @@ def inspect_results_directory(document, base, results_directory):
     facts, not evidence of chemical validity or sampling convergence.
     """
     from ..config import iter_replicates, resolve_config
-    from ..registry import analysis_output_plan, saved_output_plan, required_artifacts, core_saved_contracts
+    from ..registry import saved_output_plan, required_artifacts, core_saved_contracts
 
     root = Path(results_directory).expanduser()
     if not root.is_absolute():

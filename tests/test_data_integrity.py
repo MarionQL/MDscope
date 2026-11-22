@@ -1,5 +1,4 @@
 """Regressions for provenance, merged outputs, and lipid PBC geometry."""
-from pathlib import Path
 
 import numpy as np
 import pandas as pd

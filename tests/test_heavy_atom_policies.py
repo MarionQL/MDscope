@@ -1,5 +1,4 @@
 """Heavy-atom policy regression tests for alternate topology conventions."""
-import numpy as np
 import pytest
 import MDAnalysis as mda
 
