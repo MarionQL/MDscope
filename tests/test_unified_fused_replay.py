@@ -107,3 +107,44 @@ def test_replay_rejects_mismatched_time_grid_before_publishing(tmp_path, monkeyp
         runner.run_replicate(rep, cfg, root, state)
     assert not target.exists()
     assert sibling.read_bytes() == sibling_bytes
+
+
+@pytest.mark.parametrize("raises", [False, True])
+def test_distance_finalize_preserves_frame_zero_metadata_and_restores_frame(
+        tmp_path, monkeypatch, raises):
+    """Metadata selection uses the old frame-zero semantics, including on error."""
+    from types import SimpleNamespace
+
+    from mdscope.pipeline import fused_distance
+
+    class Timeline:
+        frame = 5
+
+        def __getitem__(self, index):
+            self.frame = index
+            return index
+
+    observer = fused_distance.FusedDistances.__new__(fused_distance.FusedDistances)
+    observer.u = SimpleNamespace(trajectory=Timeline())
+    observer.cfg = {}
+    observer.repout = tmp_path
+    observer.cache = tmp_path / "cache"
+    observer.runs = {"near": {"spec": {}}}
+    observer.frames = 4
+    observer.compute_seconds = 1.
+    called = []
+
+    def finalize_run(*args, **kwargs):
+        called.append(kwargs["_universe"].trajectory.frame)
+        if raises:
+            raise RuntimeError("injected finalization error")
+        return {"frames": 4}
+
+    monkeypatch.setattr(fused_distance, "run_residue_membrane_distance", finalize_run)
+    if raises:
+        with pytest.raises(RuntimeError, match="injected finalization error"):
+            observer.finalize(SimpleNamespace())
+    else:
+        assert observer.finalize(SimpleNamespace()) == {"near": {"frames": 4}}
+    assert called == [0]
+    assert observer.u.trajectory.frame == 5

@@ -126,9 +126,11 @@ of which compatible families are missing.
 These are **control-flow pass counts**, not performance benchmarks.
 The synthetic recovery test counts the actual Universe opens and verifies
 selected numerical products plus an unchanged completed sibling. Distance
-finalization now reuses its already-open Universe for metadata, avoiding one
-additional *constructor* that previously did **not** traverse trajectory
-frames. The shared recovery stage is recorded as `fused-recovery` rather than
+finalization now reuses its already-open Universe for metadata at the
+original frame-zero selection context and restores the observer's frame,
+avoiding one additional *constructor* that previously did **not** traverse
+trajectory frames. This may introduce a pair of targeted frame seeks, so
+wall time and total I/O must be measured rather than inferred. The shared recovery stage is recorded as `fused-recovery` rather than
 assigning the same wall time to multiple families. Historical stage-marker
 `fused_into` values are preserved. Real GROMACS trajectory smoke, memory,
 CPU/I/O and wall-time comparisons are required before merging or claiming a
