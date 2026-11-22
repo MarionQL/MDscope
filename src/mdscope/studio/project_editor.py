@@ -68,14 +68,12 @@ def path_picker(label, value, key, *, directory=False, optional=False, create_on
                         format_func=lambda path: Path(path).name,
                         key=f"{key}:browse_choice",
                     )
-                    if Path(chosen).is_dir():
-                        if st.button("Open folder", key=f"{key}:browse_open"):
-                            st.session_state[f"{key}:pending_dir"] = chosen
-                            st.rerun()
-                    if directory or Path(chosen).is_file():
-                        if st.button("Use selected path", key=f"{key}:browse_use"):
-                            st.session_state[f"{key}:pending_path"] = chosen
-                            st.rerun()
+                    if Path(chosen).is_dir() and st.button("Open folder", key=f"{key}:browse_open"):
+                        st.session_state[f"{key}:pending_dir"] = chosen
+                        st.rerun()
+                    if (directory or Path(chosen).is_file()) and st.button("Use selected path", key=f"{key}:browse_use"):
+                        st.session_state[f"{key}:pending_path"] = chosen
+                        st.rerun()
                 else:
                     st.info("No entries in this directory.")
                 if len(entries) == 200:
