@@ -27,7 +27,9 @@ def test_resolved_config_stays_stable_and_unmodified():
     raw = {
         "systems": {"a": {"topology": "/tmp/example.pdb", "replicates": [
             {"trajectory": "/tmp/example.xtc", "label": "rep1"}]}},
-        "analyses": {"membrane_order": {"enabled": True, "tail_preset": "charmm36"}},
+        "analyses": {"membrane_order": {"enabled": True, "tail_preset": "charmm36",
+                                       "lipid_selection": "resname POPC",
+                                       "leaflet_anchor_selection": "name P"}},
     }
     first = resolve_config(raw, base=Path("/tmp"))
     again = resolve_config(raw, base=Path("/tmp"))
