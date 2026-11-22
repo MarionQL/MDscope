@@ -1,8 +1,8 @@
 """Lower packages must not import higher ones (#256).
 
 Intended order: core -> observables/interactions -> mechanisms ->
-statistics/reporting -> pipeline -> cli/studio. Configuration is now a package and may not import core or higher layers.
-Function-level imports count:
+statistics/reporting -> pipeline -> cli/studio. Root modules such as
+config.py are outside this check (see #259). Function-level imports count:
 they still couple the lower package to the higher one.
 """
 import ast
@@ -11,7 +11,6 @@ from pathlib import Path
 PACKAGE = Path(__file__).resolve().parents[1] / "src" / "mdscope"
 HIGHER = {"mechanisms", "statistics", "reporting", "pipeline", "studio"}
 FORBIDDEN = {
-    "config": {"core", "observables", "interactions", "mechanisms", "statistics", "reporting", "pipeline", "studio"},
     "core": HIGHER | {"observables", "interactions"},
     "observables": HIGHER,
     "interactions": HIGHER,
