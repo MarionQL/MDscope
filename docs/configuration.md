@@ -132,9 +132,11 @@ same `tails`/`lipid_overrides` with its own lipid selection.
   replicate analysis and statistical finalization/plotting in a new output
   directory**. Do not resume or mix files from the prior output directory:
   changing the resolved default/preset changes the configuration hash.
-- Presently the `charmm36` preset on main maps glycerophospholipid tails;
-  CHARMM36 PSM/ceramide sphingoid and N-acyl chains are separately addressed
-  in PR #276, and must not be silently pooled with sn-1/sn-2.
+- The opt-in `charmm36` preset also maps CHARMM36 sphingolipids (PSM, CER*)
+  using `sphingosine: ^C(\d+)S$` and `n_acyl: ^C(\d+)F$` as
+  separate tail identities. Sphingoid and N-acyl carbons are never pooled
+  into glycerophospholipid `sn1`/`sn2` profiles. Pooled scalar observables
+  may change because they include those additional sphingolipid tails.
 - Precedence: `lipid_overrides.<RESNAME>.<tail>` naming > `tails.<tail>` >
   preset tail > default. With a preset, an explicit `tails` entry replaces that
   tail; without one it merges into the default tail (existing behavior).

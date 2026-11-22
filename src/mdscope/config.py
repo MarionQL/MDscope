@@ -22,12 +22,16 @@ MULTI_RUN_ANALYSES = {"density_1d", "residue_membrane_distance", "sasa"}
 
 # Opt-in acyl-tail naming presets (``membrane_order.tail_preset``); never
 # inferred from residue names. CHARMM36 glycerophospholipids: glycerol C3
-# carries the sn-1 chain (C31...), C2 the sn-2 chain (C21...). Sphingolipid
-# chains (CHARMM36 C1S.../C1F...) have no sn-1/sn-2 mapping here.
+# carries the sn-1 chain (C31...), C2 the sn-2 chain (C21...). CHARMM36
+# sphingolipids (PSM, CER*) have no sn positions: the sphingoid base is
+# C1S...C18S from the headgroup carbon, the amide-linked acyl chain C1F
+# (carbonyl)...C16F. They are separate tails, never pooled with sn-1/sn-2.
 TAIL_PRESETS = {
     "charmm36": {
         "sn1": {"carbon_pattern": r"^C3(\d+)$"},
         "sn2": {"carbon_pattern": r"^C2(\d+)$"},
+        "sphingosine": {"carbon_pattern": r"^C(\d+)S$"},
+        "n_acyl": {"carbon_pattern": r"^C(\d+)F$"},
     },
 }
 
