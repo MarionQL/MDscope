@@ -21,6 +21,14 @@ FUSED_OUTPUTS = {
     "potassium_bridge_audit": "extensions/potassium_bridge_audit/topology_audit.json",
 }
 
+# Analyses whose named runs write separate products at <directory>/<run_id>/<file>.
+# SASA's run named "default" keeps the unscoped FUSED_OUTPUTS path; residue
+# distances have no unscoped product, so every instance needs a run ID.
+RUN_SCOPED_OUTPUTS = {
+    "sasa": ("profiles/sasa", "residue_sasa.parquet"),
+    "residue_membrane_distance": ("profiles/residue_membrane_distance", "distance_matrix_A.npy"),
+}
+
 # Scalar readers, state-feature provenance and authoring use the same sources.
 SAVED_SCALAR_SOURCE_FILES = {
     "summary": ("summary/timeseries.parquet", "summary/group_timeseries.parquet"),
