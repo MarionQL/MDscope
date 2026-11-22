@@ -248,7 +248,7 @@ class HydrationObserver:
         self.frames += 1
 
     def flush(self, part):
-        from ..config import ensure_dir
+        from ..core.persistence import ensure_dir
         cache = ensure_dir(self.cache)
         for name, rows, columns in (
             ("counts", self.rows, self.COUNT_COLUMNS),
