@@ -52,15 +52,24 @@ def test_completed_stream_replays_three_missing_families_in_one_pass(tmp_path, m
         entry.path.unlink()
 
     opened = []
+    processed = []
     original = fused_all.mda.Universe
+    original_track = fused_all.track
 
     def counting_universe(*args, **kwargs):
         opened.append(args)
         return original(*args, **kwargs)
 
+    def counting_frames(frames, *args, **kwargs):
+        for ts in original_track(frames, *args, **kwargs):
+            processed.append(int(ts.frame))
+            yield ts
+
     monkeypatch.setattr(fused_all.mda, "Universe", counting_universe)
+    monkeypatch.setattr(fused_all, "track", counting_frames)
     runner.run_replicate(rep, cfg, root, state)
     assert len(opened) == 1, "compatible recovery must share one trajectory"
+    assert processed == list(range(0, 8, 2)), "recovery must traverse the expected slice exactly once"
     assert completed_sibling.read_bytes() == sibling_bytes
     for entry, before in zip(targets, saved):
         assert entry.path.is_file()
@@ -104,7 +113,12 @@ def test_complete_noop_does_not_reopen_trajectory(tmp_path, monkeypatch):
     assert len(verified) == len(analysis_output_plan(cfg, repout)) * 2
 
 
-def test_replay_rejects_mismatched_time_grid_before_publishing(tmp_path, monkeypatch):
+@pytest.mark.parametrize("damage,match", [
+    ("timestamp", "Trajectory times"),
+    ("length", "frame count"),
+])
+def test_replay_rejects_mismatched_time_grid_before_publishing(
+        tmp_path, monkeypatch, damage, match):
     rep, cfg, root, state, repout = _completed(tmp_path)
     target = fused_output(repout, "bilayer_normal").path
     sibling = fused_output(repout, "residue_membrane_distance", run_id="A").path
@@ -112,12 +126,19 @@ def test_replay_rejects_mismatched_time_grid_before_publishing(tmp_path, monkeyp
     target.unlink()
     summary = repout / "summary" / "timeseries.parquet"
     df = pd.read_parquet(summary)
-    df.loc[df.index[-1], "time_ps"] += 1.
+    if damage == "timestamp":
+        df.loc[df.index[-1], "time_ps"] += 1.
+    else:
+        df = df.iloc[:-1].copy()
     df.to_parquet(summary, index=False)
-    with pytest.raises(ValueError, match="Trajectory times"):
+    marker = state.marker(runner._replicate_state_prefix(rep) + "-bilayer_normal")
+    marker_bytes = marker.read_bytes()
+    with pytest.raises(ValueError, match=match):
         runner.run_replicate(rep, cfg, root, state)
     assert not target.exists()
     assert sibling.read_bytes() == sibling_bytes
+    assert marker.read_bytes() == marker_bytes
+    assert not list(repout.glob(".fused-only-*")), "failed replay leaked staging"
 
 
 @pytest.mark.parametrize("raises", [False, True])
@@ -159,3 +180,40 @@ def test_distance_finalize_preserves_frame_zero_metadata_and_restores_frame(
         assert observer.finalize(SimpleNamespace()) == {"near": {"frames": 4}}
     assert called == [0]
     assert observer.u.trajectory.frame == 5
+
+
+def test_observer_only_mixed_families_replay_once_and_then_noop(tmp_path, monkeypatch):
+    """No primary stream: still one fused pass, then no re-open on restart."""
+    rep, cfg = make_project(tmp_path, 2)
+    for name in (
+        "alignment", "rmsd", "rmsf", "radius_of_gyration",
+        "density_1d", "membrane", "salt_bridges", "ligand_contacts",
+    ):
+        cfg["analyses"][name]["enabled"] = False
+    cfg["cache"]["aligned_coordinates"] = False
+    cfg["progress"]["enabled"] = False
+    root = tmp_path / "results"
+    state = runner.RunState(root)
+
+    def unexpected_primary(*args, **kwargs):
+        raise AssertionError("observer-only task invoked primary stream")
+
+    original_universe = fused_all.mda.Universe
+    opened = []
+
+    def counting_universe(*args, **kwargs):
+        opened.append(args)
+        return original_universe(*args, **kwargs)
+
+    monkeypatch.setattr(runner, "run_streaming_pass", unexpected_primary)
+    monkeypatch.setattr(fused_all.mda, "Universe", counting_universe)
+    runner.run_replicate(rep, cfg, root, state)
+    assert len(opened) == 1, "observer-only families must share one reader"
+    repout = root / rep.system / rep.label
+    for name in ("bilayer_normal", "solvation", "sdc4_mechanisms"):
+        assert fused_output(repout, name).path.is_file()
+    assert fused_output(
+        repout, "residue_membrane_distance", run_id="A"
+    ).path.is_file()
+    runner.run_replicate(rep, cfg, root, state)
+    assert len(opened) == 1, "complete observer-only restart must not reopen"

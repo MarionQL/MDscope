@@ -285,9 +285,12 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     })
     _create_once(repout / "run_metadata.json", json.dumps(metadata, indent=2) + "\n")
     stage_timings = []
+    # Resolve the registered inventory once for both preflight and the final
+    # audit: no independent re-selection after the trajectory has run.
+    registered = analysis_output_plan(cfg, repout)
     # Reject damaged existing products before a reader can overwrite them.
     # The new occlusion companion can be calculated independently if absent.
-    for entry in analysis_output_plan(cfg, repout):
+    for entry in registered:
         if entry.name == "lipid_enrichment" and not (entry.path.parent / "reference.json").is_file():
             continue  # An interrupted publication has no committed footprint.
         if entry.path.exists():
@@ -392,7 +395,7 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
             complete_residue_occlusion(rep, cfg, repout)
             stage_timings.append({"stage": "residue-occlusion", "seconds": perf_counter() - t0})
 
-    for entry in analysis_output_plan(cfg, repout):
+    for entry in registered:
         _validate_analysis_output(entry, cfg)
     whole = repout / "summary" / "timeseries.parquet"
     grouped = repout / "summary" / "group_timeseries.parquet"

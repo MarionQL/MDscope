@@ -124,8 +124,11 @@ of which compatible families are missing.
 | Multi-origin MSD, specialized DSSP, potassium, occlusion-only | Separate as needed | Unchanged |
 
 These are **control-flow pass counts**, not performance benchmarks.
-The synthetic recovery test counts the actual Universe opens and verifies
-selected numerical products plus an unchanged completed sibling. Distance
+The synthetic recovery test counts Universe opens **and decoded frame
+iterations** for one three-family replay, verifies selected numerical
+products and preserves an unchanged completed sibling. A separate test checks
+observer-only reuse with zero additional opens; corrupt timestamp and shorter
+saved time grids must fail without rewriting completed artifacts or markers. Distance
 finalization now reuses its already-open Universe for metadata at the
 original frame-zero selection context and restores the observer's frame,
 avoiding one additional *constructor* that previously did **not** traverse
