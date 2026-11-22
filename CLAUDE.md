@@ -34,7 +34,7 @@ MDSCOPE_REAL_DATA=examples/data/stride5 scripts/run_real_data_checks.sh smoke   
 
 ## Architecture
 
-`mdscope` CLI (`cli.py`) → YAML resolved and validated by `config.py` / `config_schema.py` → topology preflight (`core/validation.py`) → `pipeline/runner.py` per replica → **one shared streaming pass** over the trajectory (`pipeline/streaming.py`) feeding fused observers (`pipeline/fused_membrane.py`, `pipeline/fused_extensions.py`, SDC4 mechanisms, core observables) → chunked, checkpointed per-replica products → replicate summary + artifact validation → offline `statistics/` → findings and optional figures (`reporting/`).
+`mdscope` CLI (`cli.py`) → YAML resolved and validated by `config.py` / `config_schema.py` → topology preflight (`pipeline/preflight.py`) → `pipeline/runner.py` per replica → **one shared streaming pass** over the trajectory (`pipeline/streaming.py`) feeding fused observers (`pipeline/fused_membrane.py`, `pipeline/fused_extensions.py`, SDC4 mechanisms, core observables) → chunked, checkpointed per-replica products → replicate summary + artifact validation → offline `statistics/` → findings and optional figures (`reporting/`).
 
 Contracts that span several files:
 
@@ -44,6 +44,7 @@ Contracts that span several files:
 - **Writes are atomic** via `core/persistence.py` / `core/checkpoints.py`; scientific kernels should not write files directly.
 - **Statistics are replica-aware.** Replicas, not frames, are the independent units (`statistics/`).
 - **YAML generalization.** User-selectable scientific choices go in the shared validated YAML (defaults in `config.py`, schema in `config_schema.py`, surfaced by `planning.py` and Studio), while the maintained `synd4_*.yaml` SDC4 configurations must load and reproduce unchanged. See the [YAML contract](docs/configuration.md#yaml-contract-for-generalization).
+- **Package layering.** `core` → `observables`/`interactions` → `mechanisms` → `statistics`/`reporting` → `pipeline` → `cli`/`studio`; lower packages never import higher ones (`tests/test_import_layering.py`). Shared residue-identity and progress helpers live in `core/sequence.py` and `core/progress.py`.
 - **No internal aliases.** Old internal module paths are not kept; CLI/YAML/output compatibility is the public contract.
 - Similar-looking helpers are sometimes deliberately distinct (e.g. `biophysical_common.heavy` vs `mechanistic_common.heavy`); check [architecture](docs/developer/architecture.md) before merging "duplicates".
 
