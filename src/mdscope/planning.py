@@ -855,7 +855,7 @@ def analysis_figure_candidates(cfg, name):
     if name == "solvation":
         identifiers.append("solvation:water_and_ions")
         from .registry import fused_output
-        if any(path.name == "survival.parquet" for path in required_artifacts(fused_output(Path("__replica__"), "solvation"), cfg)):
+        if any(path.name == "survival.parquet" for path in required_artifacts(fused_output(Path(), "solvation"), cfg)):
             identifiers.append("solvation:contact_survival")
     if name == "shared_states":
         identifiers += ["shared_states:state_populations", "shared_states:state_sampling_diagnostics"]

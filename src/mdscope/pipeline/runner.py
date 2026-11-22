@@ -253,6 +253,13 @@ def summarize_replicate(repout: Path, cfg: dict):
     return tuple(written)
 
 
+def _output_pending(entry, cfg: dict) -> bool:
+    """Missing product, or a lipid footprint whose committed reference.json differs."""
+    if entry.name == "lipid_enrichment":
+        return footprint_pending(entry.path, cfg["analyses"]["lipid_enrichment"])
+    return not entry.path.is_file()
+
+
 def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     prefix = _replicate_state_prefix(rep)
     repout = ensure_dir(root / rep.system / rep.label)
@@ -299,11 +306,8 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     # Preserve run IDs: multiple SASA and distance runs have distinct outputs.
     # Lipid footprint needs its committed reference.json as well as a table.
     if not streaming_required:
-        pending = tuple(
-            entry for entry in fused_output_plan(cfg, repout)
-            if (footprint_pending(entry.path, cfg["analyses"]["lipid_enrichment"])
-                if entry.name == "lipid_enrichment" else not entry.path.is_file())
-        )
+        pending = tuple(entry for entry in fused_output_plan(cfg, repout)
+                        if _output_pending(entry, cfg))
         if pending:
             t0 = perf_counter()
             run_fused_only(rep, cfg, repout, only=pending)
@@ -318,11 +322,8 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
         # A completed streaming marker guarantees finalized observer outputs.
         # If outputs are missing (or there was no protein streaming pass),
         # rebuild them with exactly one independent shared pass.
-        pending_names = tuple(
-            name for name in fused_names
-            if (footprint_pending(expected[name].path, cfg["analyses"][name])
-                if name == "lipid_enrichment" else not expected[name].path.is_file())
-        )
+        pending_names = tuple(name for name in fused_names
+                              if _output_pending(expected[name], cfg))
         need_fallback = bool(pending_names)
         if need_fallback:
             t0 = perf_counter()
@@ -343,10 +344,8 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
         if "sasa" in extension_names:
             from ..config import analysis_runs
             for run in analysis_runs(cfg, "sasa"):
-                extension_outputs["sasa" if run.run_id == "default" else f"sasa-{run.run_id}"] = (
-                    fused_output(repout, "sasa") if run.run_id == "default"
-                    else fused_output(repout, "sasa", run_id=run.run_id)
-                )
+                entry = fused_output(repout, "sasa", run_id=run.run_id)
+                extension_outputs[entry.checkpoint_key] = entry
         missing = [entry for entry in extension_outputs.values()
                    if not entry.path.is_file()]
         if missing:

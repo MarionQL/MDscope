@@ -31,6 +31,24 @@ def test_distance_runs_are_identified_independently(tmp_path):
         fused_output(tmp_path, "residue_membrane_distance")
 
 
+def test_named_run_paths_come_from_one_table(tmp_path):
+    # SASA "default" keeps the unscoped legacy product and checkpoint key.
+    default = fused_output(tmp_path, "sasa", run_id="default")
+    assert default == fused_output(tmp_path, "sasa")
+    assert default.checkpoint_key == "sasa"
+    named = fused_output(tmp_path, "sasa", run_id="apo")
+    assert named.path == tmp_path / "profiles/sasa/apo/residue_sasa.parquet"
+    assert named.checkpoint_key == "sasa-apo"
+    # Distances have no unscoped product: "default" is an ordinary run ID.
+    distance = fused_output(tmp_path, "residue_membrane_distance", run_id="default")
+    assert distance.path == tmp_path / "profiles/residue_membrane_distance/default/distance_matrix_A.npy"
+    assert distance.checkpoint_key == "residue_membrane_distance-default"
+    with pytest.raises(ValueError, match="does not yet support independently named runs"):
+        fused_output(tmp_path, "dssp", run_id="alt")
+    with pytest.raises(ValueError, match="run ID"):
+        fused_output(tmp_path, "sasa", run_id="../escape")
+
+
 def test_disabled_catalog_is_empty(tmp_path):
     cfg = deepcopy(DEFAULTS)
     for settings in cfg["analyses"].values():

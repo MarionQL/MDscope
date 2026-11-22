@@ -7,7 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from .config import analysis_enabled, analysis_runs
-from .output_paths import FUSED_OUTPUTS
+from .output_paths import FUSED_OUTPUTS, RUN_SCOPED_OUTPUTS
 
 # Precise schema details live with the artifact registry, not the GUI.
 # A missing column/shape description means the corresponding producer has
@@ -226,24 +226,22 @@ class FusedOutput:
 
 
 def fused_output(repout: Path, name: str, *, run_id: str | None = None) -> FusedOutput:
-    """Return the expected artifact for a named analysis instance."""
-    if name == "sasa" and run_id is not None:
-        from .config import _validate_path_component
-        run_id = _validate_path_component(str(run_id), "sasa run ID")
-        return FusedOutput(name, Path(repout) / "profiles" / "sasa" /
-                           run_id / "residue_sasa.parquet", run_id)
-    if name == "residue_membrane_distance":
-        if run_id is None:
-            raise ValueError("residue_membrane_distance requires a run_id")
-        from .config import _validate_path_component
-        run_id = _validate_path_component(str(run_id), "distance run ID")
-        return FusedOutput(
-            name, Path(repout) / "profiles" / name / run_id / "distance_matrix_A.npy",
-            run_id,
-        )
-    if run_id is not None:
+    """Return the expected artifact for a named analysis instance.
+
+    A run named ``default`` maps to the unscoped product when one exists.
+    """
+    if run_id == "default" and name in FUSED_OUTPUTS:
+        run_id = None
+    if run_id is None:
+        if name not in FUSED_OUTPUTS:
+            raise ValueError(f"{name} requires a run_id")
+        return FusedOutput(name, Path(repout) / FUSED_OUTPUTS[name])
+    if name not in RUN_SCOPED_OUTPUTS:
         raise ValueError(f"{name} does not yet support independently named runs")
-    return FusedOutput(name, Path(repout) / FUSED_OUTPUTS[name])
+    from .config import _validate_path_component
+    run_id = _validate_path_component(str(run_id), f"{name} run ID")
+    directory, filename = RUN_SCOPED_OUTPUTS[name]
+    return FusedOutput(name, Path(repout) / directory / run_id / filename, run_id)
 
 
 def fused_output_plan(cfg: dict, repout: Path) -> tuple[FusedOutput, ...]:
@@ -261,7 +259,6 @@ def fused_output_plan(cfg: dict, repout: Path) -> tuple[FusedOutput, ...]:
                    if name != "sasa")
     if "sasa" in extensions:
         entries.extend(fused_output(repout, "sasa", run_id=run.run_id)
-                       if run.run_id != "default" else fused_output(repout, "sasa")
                        for run in analysis_runs(cfg, "sasa"))
     entries.extend(fused_output(repout, "residue_membrane_distance", run_id=run_id)
                    for run_id in distance_enabled(cfg))
@@ -279,7 +276,6 @@ def analysis_output_plan(cfg: dict, repout: Path) -> tuple[FusedOutput, ...]:
         entries.append(fused_output(repout, 'dssp'))
     if cfg['analyses'].get('sasa', {}).get('enabled') and 'sasa' not in names:
         entries.extend(fused_output(repout, 'sasa', run_id=run.run_id)
-                       if run.run_id != 'default' else fused_output(repout, 'sasa')
                        for run in analysis_runs(cfg, 'sasa'))
     if analysis_enabled(cfg, "potassium_bridge_audit"):
         entries.append(fused_output(repout, "potassium_bridge_audit"))
