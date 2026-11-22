@@ -125,6 +125,27 @@ def distance_enabled_names(cfg):
     return tuple(run.run_id for run in analysis_runs(cfg, "residue_membrane_distance"))
 
 
+def structural_selection_requirements(cfg):
+    """Global structural roles actually consumed by enabled production paths."""
+    analyses = cfg["analyses"]
+    enabled = lambda name: bool(analyses.get(name, {}).get("enabled", False))
+    features = [name for name in ("alignment", "rmsd", "rmsf") if enabled(name)]
+    protein = [name for name in ("rmsd", "rmsf", "dssp", "salt_bridges", "ligand_contacts", "sdc4_mechanisms") if enabled(name)]
+    if enabled("radius_of_gyration") and not analyses["radius_of_gyration"].get("selection"):
+        protein.append("radius_of_gyration")
+    if enabled("hydrogen_bonds") and analyses["hydrogen_bonds"].get("between") is None:
+        protein.append("hydrogen_bonds")
+    for name in ("local_environment", "hydration"):
+        if enabled(name) and not analyses[name].get("protein_selection"):
+            protein.append(name)
+    if any(not (run.spec.get("target_selection") or run.spec.get("selection")) for run in analysis_runs(cfg, "sasa")):
+        protein.append("sasa")
+    if any(not run.spec.get("selection") for run in analysis_runs(cfg, "residue_membrane_distance")):
+        protein.append("residue_membrane_distance")
+    return {"protein": protein, "features": features,
+            "alignment": ["alignment"] if enabled("alignment") else []}
+
+
 def project_root(cfg: dict, config_path: str | Path) -> Path:
     """Resolve project.output relative to the YAML, not the working directory."""
     path = Path(cfg["project"]["output"])

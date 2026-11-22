@@ -242,7 +242,7 @@ def build_plan(cfg: dict, config_path: str | Path, *,
     No disk access and no trajectory or bootstrap computations occur here.
     Topology counts, when supplied, must come from genuine topology preflight.
     """
-    from .core.alignment import structural_selection_requirements
+    from .config.runs import structural_selection_requirements
     config_path = Path(config_path).resolve()
     reps = list(iter_replicates(cfg, config_path))
     template_root = Path("__replica__")

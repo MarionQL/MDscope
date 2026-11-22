@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import analysis_groups, analysis_runs, profile_dir, time_ps
+from ..config.runs import structural_selection_requirements
 from ..core.persistence import atomic_parquet, ensure_dir
 from ..core.alignment import _apply_transform, _fit_transform, _valid_box
 from ..core.checkpoints import (
@@ -217,7 +218,7 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path):
     universe = mda.Universe(str(rep.topology), str(rep.trajectory))
     selections = cfg["selections"]
     from ..core.alignment import resolve_structural_atoms
-    structural, required_by = resolve_structural_atoms(universe, cfg)
+    structural, required_by = resolve_structural_atoms(universe, cfg, structural_selection_requirements(cfg))
     protein = structural["protein"]
     if required_by["protein"] and not len(protein):
         raise ValueError(f"Protein selection matched zero atoms: {selections['protein']}")

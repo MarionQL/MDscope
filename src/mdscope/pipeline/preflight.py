@@ -4,13 +4,48 @@ from pathlib import Path
 import MDAnalysis as mda
 from MDAnalysis.exceptions import SelectionError
 
-from ..config import analysis_runs
-from ..core.alignment import resolved_selection_counts
+from ..config import analysis_groups, analysis_runs
+from ..config.runs import structural_selection_requirements
+from ..core.alignment import resolve_structural_atoms, selection_details
 from ..core.glycans import discover_covalent_glycans, glycan_definition, glycan_sugars
 from ..core.sequence import sequence_matches
 from ..errors import ConfigError
 from ..observables.residue_membrane_distance import _without_hydrogens
 from ..observables.sasa import import_freesasa, sasa_instances
+
+
+def resolved_selection_counts(universe, cfg: dict) -> dict:
+    alignment_spec = cfg["analyses"].get("alignment", {})
+    alignment_enabled = bool(alignment_spec.get("enabled", True))
+    requirements = structural_selection_requirements(cfg)
+    atoms, requirements = resolve_structural_atoms(universe, cfg, requirements)
+    protein, alignment, features = (atoms[role] for role in ("protein", "alignment", "features"))
+    out = {
+        "protein": len(protein) if requirements["protein"] else None,
+        "alignment": len(alignment) if requirements["alignment"] else None,
+        "features": len(features) if requirements["features"] else None,
+        "required_by": requirements,
+        "groups": {},
+        "details": {role: selection_details(atoms[role]) if requirements[role]
+                    else {"status": "not_required"} for role in atoms},
+    }
+    for group_id, group in analysis_groups(cfg).items():
+        atoms = universe.select_atoms(group["selection"])
+        measured = features.intersection(atoms)
+        align_atoms = (
+            universe.select_atoms(group["alignment_selection"]) if alignment_enabled
+            and group.get("alignment_selection") else alignment
+        )
+        out["groups"][group_id] = {
+            "group_atoms": len(atoms),
+            "feature_atoms": len(measured),
+            "feature_status": "required" if requirements["features"] else "not_required",
+            "alignment_atoms": len(align_atoms),
+            "measurement": selection_details(atoms),
+            "features": selection_details(measured),
+            "alignment": selection_details(align_atoms),
+        }
+    return out
 
 
 def require_optional_backends(cfg):
