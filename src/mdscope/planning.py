@@ -185,6 +185,33 @@ def _source(name: str, cfg: dict) -> str:
     return "source"
 
 
+def _inference_design(cfg, reps):
+    """Schema-only permutation resolution based on configured replicate labels."""
+    from collections import Counter
+    from .permutation_resolution import permutation_floor
+    counts = Counter(rep.system for rep in reps)
+    labels = {}
+    for rep in reps:
+        labels.setdefault(rep.system, set()).add(rep.label)
+    tests = cfg.get("statistics", {}).get("hypothesis_tests", {}) or {}
+    design = tests.get("design", "independent")
+    pairs = []
+    for index, left in enumerate(counts):
+        for right in list(counts)[index + 1:]:
+            n = len(labels[left] & labels[right]) if design == "paired" else None
+            value, kind = permutation_floor(counts[left], counts[right], n_matched=n, tests=tests)
+            pairs.append({
+                "system_1": left, "system_2": right,
+                "n_replicates_system_1": counts[left],
+                "n_replicates_system_2": counts[right],
+                "n_matched_pairs": n,
+                "resolution_kind": "monte_carlo" if kind == "monte_carlo_resolution" else kind,
+                "min_attainable_p": value if kind == "exact" else None,
+                "monte_carlo_resolution": value if kind == "monte_carlo_resolution" else None,
+            })
+    return {"design": design, "comparisons": pairs}
+
+
 def build_plan(cfg: dict, config_path: str | Path, *,
                validation_mode: str = "schema_only",
                topology_counts: dict | None = None) -> dict[str, Any]:
@@ -482,6 +509,7 @@ def build_plan(cfg: dict, config_path: str | Path, *,
             "manifest": "project_summary/statistics/profiles/residue_response_manifest.json",
         },
         "schema_version": 1,
+        "inference_design": _inference_design(cfg, reps),
         "validation": {
             "mode": validation_mode,
             "topology_checked": topology_counts is not None,

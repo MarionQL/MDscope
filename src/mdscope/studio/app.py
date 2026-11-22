@@ -14,6 +14,18 @@ from mdscope.studio.model import (
 from mdscope.statistics_selection import ESTIMATOR_FLAGS, studio_metric_selection_defaults
 
 
+def _studio_logo_markup(logo_file: Path) -> str:
+    """Optional header asset; never make Studio unavailable for missing artwork."""
+    try:
+        encoded = base64.b64encode(logo_file.read_bytes()).decode("ascii")
+    except OSError:
+        return ""
+    return (
+        '<img class="mdscope-mark" alt="Brown Lab logo" '
+        f'src="data:image/png;base64,{encoded}">'
+    )
+
+
 def saved_readiness_details(inventory):
     """Use the shared inspection reasons in each downstream selection tree."""
     if not inventory:
@@ -355,11 +367,7 @@ def main():
     </div>
     """
     logo_file = Path(__file__).parent / "assets" / "MM+Lab+Logo.png"
-    encoded = base64.b64encode(logo_file.read_bytes()).decode("ascii")
-    logo_markup = (
-        '<img class="mdscope-mark" alt="Brown Lab logo" '
-        f'src="data:image/png;base64,{encoded}">'
-    )
+    logo_markup = _studio_logo_markup(logo_file)
     st.markdown(header_html.replace("__MDSCOPE_LOGO__", logo_markup), unsafe_allow_html=True)
     st.info("Use Studio to set up your systems, choose analyses, configure statistics and figures, and export a validated YAML configuration. To process trajectories, run MDscope separately using the exported file.")
     state = st.session_state
