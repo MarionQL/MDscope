@@ -402,7 +402,7 @@ class FusedExtensions:
         if self.hydration is not None:
             results['hydration'] = self.hydration.finalize()
         self.timings["finalize"] += time.perf_counter() - start
-        from ..config import atomic_json
+        from ..core.persistence import atomic_json
         atomic_json(self.repout / "fused_extensions_timings.json", {
             "enabled": list(self.names), "frames_processed_this_invocation": self.frames,
             "compute_seconds_by_analysis": dict(self.timings),
