@@ -38,7 +38,7 @@ Before opening a PR or declaring a task complete, audit your changes to remove A
 
 1. **Run deterministic checks:**
    - Run `ruff check --select F,I,C90,SIM,RET,UP .` to remove unused imports/variables, enforce modern Python syntax, and flag overly complex or nested logic.
-   - Run `vulture . --min-confidence 80` to detect unused functions, classes, methods, and variables. Delete dead code rather than commenting it out.
+   - Run `vulture . --exclude ".venv,venv,.git,build,dist" --min-confidence 80` to detect unused functions, classes, methods, and variables. Delete dead code rather than commenting it out.
 2. **Eliminate unnecessary abstractions:**
    - Inline single-use helper functions or wrapper classes unless they isolate complex logic or external I/O.
    - Avoid speculative configuration flags, unused `**kwargs` pass-throughs, or premature base classes.
