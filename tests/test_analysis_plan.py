@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from mdscope.config import load_config
+from mdscope.config import load_config, project_root
 from mdscope.planning import build_plan
 from mdscope.registry import analysis_output_plan, required_artifacts
 from mdscope_test_support import invoke_cli
@@ -21,6 +21,7 @@ def test_schema_only_plan_ignores_missing_inputs_but_checks_yaml(tmp_path, proje
     cfg = load_config(path, check_paths=False)
     plan = build_plan(cfg, path)
     assert plan["validation"]["mode"] == "schema_only"
+    assert plan["resolved_output_directory"] == str(project_root(cfg, path))
     assert not plan["validation"]["topology_checked"]
     assert not plan["validation"]["trajectory_frames_checked"]
     assert plan["systems"][0]["replicates"] == 1
@@ -39,6 +40,7 @@ def test_cli_plan_json_does_not_write_or_read_trajectory(tmp_path, project):
     result = invoke_cli(tmp_path, "plan", path, "--format", "json")
     plan = json.loads(result.stdout)
     assert plan["validation"]["mode"] == "schema_only"
+    assert plan["resolved_output_directory"] == str(root.resolve())
     assert plan["statistics_families"]
     assert plan["replicates"][0]["id"] == "rep1"
     assert not root.exists()
