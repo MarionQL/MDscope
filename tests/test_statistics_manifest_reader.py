@@ -79,7 +79,7 @@ def test_manifest_import_does_not_load_estimator_package():
     import subprocess
     import sys
     subprocess.run([sys.executable,'-c',
-                    'import sys; import mdscope.statistics.manifest; assert "mdscope.statistics" not in sys.modules'],check=True)
+                    'import sys; import mdscope.statistics.manifest; assert "mdscope.statistics.time_series" not in sys.modules; assert "mdscope.statistics.dispatch" not in sys.modules'],check=True)
 
 
 def test_disabled_families_hide_stale_catalog_and_findings(tmp_path):
