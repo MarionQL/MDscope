@@ -20,7 +20,7 @@ from ..observables.membrane_order import temporal_membrane_order_profiles
 from ..observables.residue_membrane_distance import temporal_residue_membrane_profiles
 from ..observables.rmsf import temporal_rmsf_profiles
 from ..observables.structure_profiles import temporal_structure_profiles
-from ..statistics_selection import metric_estimator_enabled, simple_family_selection
+from .selection import metric_estimator_enabled, simple_family_selection
 from .common import (
     _block_bootstrap,
     _block_weights,
