@@ -1,0 +1,23 @@
+# Representative conda environment for MDscope (e.g. on an HPC login node).
+# Floors mirror pyproject.toml [project].dependencies; the exact versions CI
+# tested are the `mdscope-tested-env-*` pip-freeze artifacts of each run.
+#   conda env create -f environment.yml && conda activate mdscope
+#   python -m pip install --no-deps -e .      # from the repository checkout
+name: mdscope
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.11,<3.14
+  - numpy>=1.26
+  - pandas>=2.1
+  - pyarrow>=14
+  - pyyaml>=6.0
+  - matplotlib-base>=3.8
+  - pypdf>=5
+  - mdanalysis>=2.8
+  - scipy>=1.11
+  - pillow>=10.1
+  - pytest
+  - pip
+  - pip:
+      - freesasa  # optional `sasa` extra (PyPI); drop if SASA is not used

@@ -55,7 +55,7 @@ def test_documented_quickstart_reaches_findings(tmp_path):
     np.testing.assert_allclose(findings[["p_value", "q_value"]], [[.1, .2]]*2)
 
     coverage = pd.read_parquet(statistics/"coverage/contrast_coverage.parquet")
-    rmsd = coverage[coverage.observable.str.contains('"rmsd_A"')]
+    rmsd = coverage[coverage.observable.str.contains('"rmsd_A"', na=False)]
     assert len(rmsd) == 2 and (rmsd.status == "includes_zero").all()
     profiles = coverage[coverage.family == "profiles"]
     assert len(profiles) and (profiles.status == "includes_zero").all()

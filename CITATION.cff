@@ -2,6 +2,8 @@ cff-version: 1.2.0
 message: "Cite MDscope with the version and commit used for the analysis."
 type: software
 title: MDscope
+version: 0.12.0
+license: MIT
 authors:
   - name: Marion LoPresti
 repository-code: "https://github.com/MarionQL/MDscope"
