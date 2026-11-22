@@ -39,7 +39,7 @@ def test_streaming_rmsd_rmsf_after_module_split(tmp_path, monkeypatch):
     cfg["analyses"]["radius_of_gyration"]["enabled"]=True
     cfg["cache"]["aligned_coordinates"]=False
     rep=Replicate("test",1,pdb,trj,"rep1")
-    result=run_streaming_pass(rep,cfg,tmp_path/"results","smoke-compat")
+    result=run_streaming_pass(rep,cfg,tmp_path/"results")
     assert result["frames"]==8
     raw=tmp_path/"results"/"test"/"rep1"/"raw"
     tables=sorted(raw.glob("timeseries-part-*.parquet"))

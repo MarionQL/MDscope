@@ -28,7 +28,7 @@ def test_mixed_restart_and_offline_finalization(tmp_path, monkeypatch, chunk, fa
     clean, resumed = tmp_path/"clean", tmp_path/"resumed"
     reference_cfg = deepcopy(cfg)
     reference_cfg["trajectory"]["chunk_frames"] = 3
-    streaming.run_streaming_pass(rep, reference_cfg, clean, "reference")
+    streaming.run_streaming_pass(rep, reference_cfg, clean)
     calls = 0
     target = {"during_frame": "compute_rg", "after_write": "_flush",
               "before_checkpoint": "_checkpoint_payload"}[failure]
@@ -43,9 +43,9 @@ def test_mixed_restart_and_offline_finalization(tmp_path, monkeypatch, chunk, fa
         return result if failure == "after_write" else original(*a, **k)
     monkeypatch.setattr(streaming, target, interrupted)
     with pytest.raises(RuntimeError, match="injected"):
-        streaming.run_streaming_pass(rep, cfg, resumed, "restart")
+        streaming.run_streaming_pass(rep, cfg, resumed)
     monkeypatch.setattr(streaming, target, original)
-    streaming.run_streaming_pass(rep, cfg, resumed, "restart")
+    streaming.run_streaming_pass(rep, cfg, resumed)
 
     # Summary consolidation and the actual project finalizer must be offline.
     rep.topology.unlink(); rep.trajectory.unlink()
@@ -124,7 +124,7 @@ def _bytes_snapshot(root):
 def test_damaged_committed_observer_chunk_fails_before_rewriting_or_pruning(tmp_path, relative, damage):
     rep, cfg = make_project(tmp_path, 2)
     root = tmp_path/"results"
-    streaming.run_streaming_pass(rep, cfg, root, "mixed-integrity")
+    streaming.run_streaming_pass(rep, cfg, root)
     repout = root/"test/rep1"
     path = repout/relative
     assert path.exists()
@@ -141,19 +141,19 @@ def test_damaged_committed_observer_chunk_fails_before_rewriting_or_pruning(tmp_
     orphan.write_bytes(b"uncommitted, preserve on failure")
     before = _bytes_snapshot(repout)
     with pytest.raises(RuntimeError, match="committed artifact"):
-        streaming.run_streaming_pass(rep, cfg, root, "mixed-integrity")
+        streaming.run_streaming_pass(rep, cfg, root)
     assert _bytes_snapshot(repout) == before
 
 
 def test_checkpoint_copied_to_other_replica_is_rejected(tmp_path):
     rep, cfg = make_project(tmp_path, 2)
     root = tmp_path/"results"
-    streaming.run_streaming_pass(rep, cfg, root, "same-project-hash")
+    streaming.run_streaming_pass(rep, cfg, root)
     destination = root/"test/rep2"
     shutil.copytree(root/"test/rep1", destination, copy_function=shutil.copy2)
     before = _bytes_snapshot(destination)
     with pytest.raises(RuntimeError, match="replicate identity"):
-        streaming.run_streaming_pass(replace(rep, label="rep2"), cfg, root, "same-project-hash")
+        streaming.run_streaming_pass(replace(rep, label="rep2"), cfg, root)
     assert _bytes_snapshot(destination) == before
 
 
@@ -162,7 +162,7 @@ def test_checkpoint_copied_to_other_replica_is_rejected(tmp_path):
 def test_checkpoint_integrity_fails_without_rewriting_existing_outputs(tmp_path, damage):
     rep, cfg = make_project(tmp_path, 2)
     root = tmp_path/"results"
-    streaming.run_streaming_pass(rep, cfg, root, "integrity")
+    streaming.run_streaming_pass(rep, cfg, root)
     repout = root/"test/rep1"
     checkpoint = repout/"cache/stream_checkpoint.npz"
     if damage == "duplicate_chunk":
@@ -193,7 +193,7 @@ def test_checkpoint_integrity_fails_without_rewriting_existing_outputs(tmp_path,
         np.savez_compressed(checkpoint, **payload)
     before = _bytes_snapshot(repout)
     with pytest.raises(RuntimeError, match="artifact|Legacy|counter|accumulator"):
-        streaming.run_streaming_pass(rep, cfg, root, "integrity")
+        streaming.run_streaming_pass(rep, cfg, root)
     assert _bytes_snapshot(repout) == before
 
 
@@ -238,7 +238,7 @@ def test_offline_finalization_retains_unequal_replica_lengths_and_missing_values
 def test_finalization_rejects_checkpoint_summary_identity_or_frame_mismatch(tmp_path, damage):
     rep, cfg = make_project(tmp_path, 2)
     root = tmp_path/"results"
-    streaming.run_streaming_pass(rep, cfg, root, "summary-integrity")
+    streaming.run_streaming_pass(rep, cfg, root)
     repout = root/"test/rep1"
     runner.summarize_replicate(repout, cfg)
     if damage == "replicate_swap":

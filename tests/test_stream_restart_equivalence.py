@@ -57,7 +57,7 @@ def test_interrupted_streaming_equals_clean_run(tmp_path, monkeypatch, failure_p
     rep, cfg = _system(tmp_path)
     reference = tmp_path / "reference"
     interrupted = tmp_path / "interrupted"
-    streaming.run_streaming_pass(rep, cfg, reference, "restart-fixture")
+    streaming.run_streaming_pass(rep, cfg, reference)
     original_flush = streaming._flush
     original_rg = streaming.compute_rg
     counts = {"n": 0}
@@ -78,11 +78,11 @@ def test_interrupted_streaming_equals_clean_run(tmp_path, monkeypatch, failure_p
         monkeypatch.setattr(streaming, "_flush", crash_after_write)
 
     with pytest.raises(RuntimeError, match="simulated"):
-        streaming.run_streaming_pass(rep, cfg, interrupted, "restart-fixture")
+        streaming.run_streaming_pass(rep, cfg, interrupted)
     monkeypatch.setattr(streaming, "_flush", original_flush)
     monkeypatch.setattr(streaming, "compute_rg", original_rg)
 
-    streaming.run_streaming_pass(rep, cfg, interrupted, "restart-fixture")
+    streaming.run_streaming_pass(rep, cfg, interrupted)
     actual_t, actual_r = _snapshot(interrupted)
     expected_t, expected_r = _snapshot(reference)
     assert len(actual_t) == len(expected_t) == 8
@@ -103,7 +103,7 @@ def test_unusable_checkpoint_preserves_existing_output(tmp_path):
     persisted.write_bytes(b"committed bytes")
     (cache / "stream_checkpoint.npz").write_bytes(b"corrupt checkpoint")
     with pytest.raises(RuntimeError, match="Invalid streaming checkpoint"):
-        streaming.run_streaming_pass(rep, cfg, output, "restart-fixture")
+        streaming.run_streaming_pass(rep, cfg, output)
     assert persisted.read_bytes() == b"committed bytes"
 
 
@@ -115,19 +115,19 @@ def test_missing_checkpoint_never_deletes_existing_parts(tmp_path):
     part = raw / "timeseries-part-000000.parquet"
     part.write_bytes(b"user output; do not delete")
     with pytest.raises(RuntimeError, match="Unsafe streaming restart"):
-        streaming.run_streaming_pass(rep, cfg, root, "restart-fixture")
+        streaming.run_streaming_pass(rep, cfg, root)
     assert part.read_bytes() == b"user output; do not delete"
 
 
 def test_checkpoint_missing_committed_part_preserves_remaining(tmp_path):
     rep, cfg = _system(tmp_path)
     root = tmp_path / "recover"
-    streaming.run_streaming_pass(rep, cfg, root, "restart-fixture")
+    streaming.run_streaming_pass(rep, cfg, root)
     raw = root / "test" / "rep1" / "raw"
     missing = raw / "timeseries-part-000001.parquet"
     missing.unlink()
     survivor = raw / "timeseries-part-000002.parquet"
     before = survivor.read_bytes()
     with pytest.raises(RuntimeError, match="missing committed timeseries parts"):
-        streaming.run_streaming_pass(rep, cfg, root, "restart-fixture")
+        streaming.run_streaming_pass(rep, cfg, root)
     assert survivor.read_bytes() == before

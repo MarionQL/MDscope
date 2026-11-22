@@ -171,7 +171,7 @@ def validate_stream_inventory(rep, repout: Path, *, completed=False) -> dict:
     return artifacts
 
 
-def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash=None):
+def run_streaming_pass(rep, cfg: dict, outroot: Path):
     # Protein, membrane, density, salt-bridge, and ligand-contact
     # calculations share one trajectory pass.
     # Reading a large XTC once is substantially cheaper than reopening
@@ -181,7 +181,7 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash=None):
     checkpoint = cache / "stream_checkpoint.npz"
     artifacts = {}
     # Validate persisted file identity before constructors, output writes or
-    # orphan pruning. Older callers may still supply the ignored cfg_hash.
+    # orphan pruning.
     if checkpoint.exists():
         artifacts = validate_stream_inventory(rep, repout)
     elif any(numbered_artifacts(repout)):
