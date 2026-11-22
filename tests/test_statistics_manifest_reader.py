@@ -97,3 +97,23 @@ def test_disabled_families_hide_stale_catalog_and_findings(tmp_path):
                        source_table='time_series/system_comparisons.parquet')],columns=COLUMNS).to_parquet(root/'coverage/contrast_coverage.parquet')
     generate_report(root)
     assert pd.read_parquet(root/'findings.parquet').empty
+
+
+def test_saved_statistics_catalog_covers_every_family(tmp_path):
+    """lipid_contacts statistics were written but absent from the catalog."""
+    import pandas as pd
+
+    from mdscope.contracts.metric_selection import STATISTICS_FAMILIES
+    root = tmp_path/'project_summary/statistics'
+    (root/'lipid_contacts').mkdir(parents=True)
+    (root/'manifest.json').write_text(json.dumps({'status': 'complete', 'methods': {},
+                                                  'families': {}, 'replicate_paths': []}))
+    pd.DataFrame({'system': ['a'], 'replicate': ['rep1'], 'level': ['class'],
+                  'leaflet': ['upper'], 'species_a': ['PC'], 'species_b': ['CHOL'],
+                  'metric': ['enrichment']}).to_parquet(root/'lipid_contacts/replicate_statistics.parquet')
+    families = inspect_saved_statistics(tmp_path)['families']
+    assert set(families) == set(STATISTICS_FAMILIES)
+    identity, = families['lipid_contacts']['identities']
+    assert {key: identity[key] for key in ('level', 'leaflet', 'species_a', 'species_b', 'metric')} == {
+        'level': 'class', 'leaflet': 'upper', 'species_a': 'PC',
+        'species_b': 'CHOL', 'metric': 'enrichment'}

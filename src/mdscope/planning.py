@@ -606,6 +606,10 @@ SAVED_STATISTICS_IDENTITY = {
     ),
     "diffusion": ("replicate_common_lag_slopes.parquet", ("metric",)),
     "coupling": ("replicate_correlations.parquet", ("mechanism",)),
+    "lipid_contacts": (
+        "replicate_statistics.parquet",
+        ("level", "leaflet", "species_a", "species_b", "metric"),
+    ),
 }
 
 
