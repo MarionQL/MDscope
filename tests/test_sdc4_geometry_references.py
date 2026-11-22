@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mdscope.mechanisms.sdc4_mechanisms import (
+from mdscope.systems.sdc4.mechanisms import (
     SDC4Mechanisms,
     _backbone_axis,
     _local_surface,

@@ -9,8 +9,8 @@ import MDAnalysis as mda
 
 from ..config import analysis_runs
 from ..core.progress import track
-from ..mechanisms.sdc4_mechanisms import SDC4Mechanisms
-from ..mechanisms.sdc4_mechanisms import enabled as sdc4_enabled
+from ..systems.sdc4.mechanisms import SDC4Mechanisms
+from ..systems.sdc4.mechanisms import enabled as sdc4_enabled
 from .fused_distance import FusedDistances
 from .fused_distance import enabled_names as distance_enabled
 from .fused_extensions import FusedExtensions

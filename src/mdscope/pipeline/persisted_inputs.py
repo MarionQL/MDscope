@@ -14,7 +14,7 @@ import pandas as pd
 
 from ..config import analysis_runs
 from ..core.provenance import config_hash
-from ..mechanisms.hs_hydration import temporal_hs_hydration_profiles
+from ..observables.hydration import temporal_hs_hydration_profiles
 from ..mechanisms.residue_occlusion import (
     FRACTION_COLUMNS,
     IDENTITY_COLUMNS,

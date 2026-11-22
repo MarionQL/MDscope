@@ -24,7 +24,7 @@ FOCUS = {
     "mdscope.pipeline.replica_tasks", "mdscope.pipeline.analysis_selection",
     "mdscope.observables.lipid_enrichment", "mdscope.observables.solvation",
     "mdscope.observables.solvation_postprocess", "mdscope.observables.solvation_common",
-    "mdscope.mechanisms.sdc4_mechanisms",
+    "mdscope.systems.sdc4.mechanisms",
 }
 
 # Conditions are represented with dashed edges. The initial streaming

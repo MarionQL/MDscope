@@ -4,9 +4,10 @@
 |---|---|
 | `config/` | YAML loading, defaults, named runs and ordered per-analysis validators (`validators/`) |
 | `core/` | Geometry, selections, alignment, coordinate sources, checkpoints |
-| `observables/` | Structure, membrane, lipid, SASA, DSSP, MSD and density metrics |
+| `observables/` | Structure, membrane, lipid, SASA, DSSP, MSD, density and generic hydration |
 | `interactions/` | H bonds, salt bridges, ligand/lipid contacts |
-| `mechanisms/` | SDC4, HS topology, local environments, shared states |
+| `mechanisms/` | Generic local environments, motif episodes, occlusion and shared states |
+| `systems/sdc4/` | SDC4-specific motif/HS geometry and potassium bridge audits |
 | `statistics/` | Autocorrelation, replicate bootstrap, contrasts |
 | `reporting/` | Saved findings and optional figures |
 | `pipeline/` | Fused streaming, executable replica tasks, restart and finalization |

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 
-from mdscope.mechanisms.potassium_bridge_audit import run_audit
+from mdscope.systems.sdc4.potassium_bridge_audit import run_audit
 
 
 def run(args):

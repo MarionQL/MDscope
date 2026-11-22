@@ -114,7 +114,7 @@ def test_tilted_plane_analytic_angle_and_sparse_unavailable():
 def test_normals_and_local_surfaces_share_known_height_fields(tmp_path, shape, wrap):
     from test_sdc4_geometry_references import _fixture
 
-    from mdscope.mechanisms.sdc4_mechanisms import SDC4Mechanisms
+    from mdscope.systems.sdc4.mechanisms import SDC4Mechanisms
 
     u, cfg = _fixture()
     anchors = u.select_atoms('name P')

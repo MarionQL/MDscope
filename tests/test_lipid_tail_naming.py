@@ -27,7 +27,7 @@ from MDAnalysis.coordinates.memory import MemoryReader
 from mdscope.config import DEFAULTS, resolve_config
 from mdscope.core.provenance import config_hash
 from mdscope.errors import ConfigError
-from mdscope.mechanisms.sdc4_mechanisms import _normal_order_setup
+from mdscope.systems.sdc4.mechanisms import _normal_order_setup
 from mdscope.observables.membrane_order import (
     _order_sites,
     _tail_spec,

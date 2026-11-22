@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from mdscope.mechanisms.sdc4_mechanisms import SDC4Mechanisms
+from mdscope.systems.sdc4.mechanisms import SDC4Mechanisms
 
 DATA = Path(os.environ.get("MDSCOPE_REAL_DATA", "examples/data")).resolve()
 ROOT = Path(os.environ.get("MDSCOPE_REAL_OUTPUT", "real_test_results")).resolve()

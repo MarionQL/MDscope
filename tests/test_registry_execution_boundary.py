@@ -136,13 +136,13 @@ def test_optional_scalar_collection_keeps_missing_files_missing(tmp_path, projec
 
 def test_output_plan_uses_lightweight_production_predicates(project):
     """Producer exports and registry must see identical scheduling decisions."""
-    from mdscope.mechanisms.sdc4_mechanisms import enabled as sdc4_producer
+    from mdscope.systems.sdc4.mechanisms import enabled as sdc4_producer
     from mdscope.pipeline.analysis_selection import (
         distance_enabled_names,
         extensions_enabled_names,
         membrane_enabled_names,
-        sdc4_enabled,
     )
+    from mdscope.config.runs import sdc4_enabled
     from mdscope.pipeline.fused_distance import enabled_names as distance_producer
     from mdscope.pipeline.fused_extensions import enabled_names as extensions_producer
     from mdscope.pipeline.fused_membrane import enabled_names as membrane_producer
@@ -190,7 +190,7 @@ def test_read_only_output_plan_does_not_load_producers():
         "for name in ('mdscope.pipeline.fused_membrane',\n"
         "             'mdscope.pipeline.fused_extensions',\n"
         "             'mdscope.pipeline.fused_distance',\n"
-        "             'mdscope.mechanisms.sdc4_mechanisms'):\n"
+        "             'mdscope.systems.sdc4.mechanisms'):\n"
         "    assert name not in sys.modules, name\n"
     )
     result = subprocess.run(

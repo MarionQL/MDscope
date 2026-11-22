@@ -13,7 +13,7 @@ from pathlib import Path
 import pandas as pd
 
 from ..config import analysis_enabled
-from ..mechanisms.potassium_bridge_audit import run_potassium_bridge_audit
+from ..systems.sdc4.potassium_bridge_audit import run_potassium_bridge_audit
 from ..observables.structure_profiles import run_structure_profiles
 from ..output_paths import FUSED_OUTPUTS
 

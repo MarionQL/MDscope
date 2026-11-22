@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 
-from mdscope.mechanisms.sdc4_mechanisms import _add_acidic_patch_sasa
+from mdscope.systems.sdc4.mechanisms import _add_acidic_patch_sasa
 from mdscope.observables.multi_origin_pipeline import _sampled_window
 
 

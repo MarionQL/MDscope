@@ -26,21 +26,21 @@ from MDAnalysis.lib.distances import (
     minimize_vectors,
 )
 
-from ..config import DEFAULTS, profile_dir, time_ps
-from ..core.persistence import atomic_json, atomic_parquet, ensure_dir
-from ..core.glycans import discover_covalent_glycans
-from ..core.lipid_geometry import (
+from ...config import DEFAULTS, profile_dir, time_ps
+from ...core.persistence import atomic_json, atomic_parquet, ensure_dir
+from ...core.glycans import discover_covalent_glycans
+from ...core.lipid_geometry import (
     accessible_area_grid,
     aligned_leaflets,
     anchor_groups,
     circular_axis_mean,
     periodic_center,
 )
-from ..core.progress import track
-from ..core.sequence import AA3, sequence_matches
-from ..observables.membrane_order import _atomic_npz, _order_sites
-from .mechanistic_common import heavy, nearest, selected, unit
-from .residue_occlusion import (
+from ...core.progress import track
+from ...core.sequence import AA3, sequence_matches
+from ...observables.membrane_order import _atomic_npz, _order_sites
+from ...mechanisms.mechanistic_common import heavy, nearest, selected, unit
+from ...mechanisms.residue_occlusion import (
     OCCLUSION_FILE,
     ResidueOcclusion,
     residue_environment_pending,
@@ -104,7 +104,7 @@ def _add_acidic_patch_sasa(frame, motifs, isolated_dir, environment_dir):
     return frame
 
 
-from ..pipeline.analysis_selection import sdc4_enabled as enabled
+from ...config.runs import sdc4_enabled as enabled
 
 
 def _id(label):
@@ -1217,7 +1217,7 @@ class SDC4Mechanisms:
         )
         atomic_json(out / "selection_audit.json", self.audit)
         if self.motif_lipid_residence_enabled:
-            from .motif_residence import summarize_lipid_residence
+            from ...mechanisms.motif_residence import summarize_lipid_residence
             parts = sorted(self.cache.glob("residence-*.parquet"))
             events = pd.concat((pd.read_parquet(p) for p in parts),
                                ignore_index=True) if parts else pd.DataFrame()
@@ -1226,7 +1226,7 @@ class SDC4Mechanisms:
                 events, df["time_ps"].to_numpy(float)
             )
             atomic_parquet(out / "motif_lipid_residence.parquet", residence)
-            from .motif_residence import summarize_intermittent_residence
+            from ...mechanisms.motif_residence import summarize_intermittent_residence
             intermittent = summarize_intermittent_residence(
                 events, df["time_ps"].to_numpy(float), gap_frames=1
             )

@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import capped_distance
 
-from ..core.persistence import atomic_parquet, ensure_dir
+from ..core.persistence import atomic_parquet
 from ..contracts.outputs import (
     GLYCAN_ATTACHMENTS_FILE, HS_SUGAR_HYDRATION_PATH,
     HYDRATION_AGGREGATE_COLUMNS, HYDRATION_ATTACHMENT_COLUMNS,
@@ -13,7 +13,7 @@ from ..contracts.outputs import (
 )
 from ..core.glycans import glycan_definition, glycan_sugars
 from ..core.sequence import sequence_chain_label
-from ..observables.solvation import unique_target_solvent_pairs
+from .solvation import unique_target_solvent_pairs
 
 OUTPUT = Path(HS_SUGAR_HYDRATION_PATH)
 ATTACHMENTS = GLYCAN_ATTACHMENTS_FILE
@@ -248,6 +248,7 @@ class HydrationObserver:
         self.frames += 1
 
     def flush(self, part):
+        from ..core.persistence import ensure_dir
         cache = ensure_dir(self.cache)
         for name, rows, columns in (
             ("counts", self.rows, self.COUNT_COLUMNS),
