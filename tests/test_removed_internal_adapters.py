@@ -8,6 +8,8 @@ REMOVED = {
     "mechanisms.shared_states",
     "contracts.residue_response",
     "config.validators.shared_states",
+    "config.validators.hydration",
+    "config.validators.residue_response",
 }
 
 

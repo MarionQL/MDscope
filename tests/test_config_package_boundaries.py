@@ -23,6 +23,13 @@ def test_package_exports_match_canonical_submodules():
     assert config.validate_config is validate_config
 
 
+def test_cohesive_statistics_validator_has_canonical_public_settings():
+    from mdscope.config.validators.statistics import residue_response_settings as canonical
+    from mdscope.config.validation import residue_response_settings as exposed
+    assert config.residue_response_settings is canonical
+    assert exposed is canonical
+
+
 def test_resolved_config_stays_stable_and_unmodified():
     original = deepcopy(DEFAULTS)
     raw = {

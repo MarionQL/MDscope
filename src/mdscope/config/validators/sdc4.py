@@ -1,7 +1,7 @@
 """Validation rules for sdc4 configuration."""
 import numpy as np
 from ...core.glycans import validate_glycan_spec
-from ..runs import analysis_runs, _validate_path_component
+from ..runs import analysis_runs, _validate_path_component, analysis_enabled
 
 
 def validate_sdc4(cfg):
@@ -65,3 +65,15 @@ def validate_sdc4(cfg):
             raise ValueError("sdc4_mechanisms.local_min_lipids must be >= 8")
         if mechanisms.get("local_order", {}).get("enabled") and not mechanisms["local_order"].get("lipid_selection"):
             raise ValueError("sdc4_mechanisms.local_order.lipid_selection is required")
+
+def validate_potassium_bridge_audit(cfg):
+    if analysis_enabled(cfg, "potassium_bridge_audit"):
+        analyses = cfg["analyses"]
+        solvation = analyses["solvation"]
+        motif = solvation["targets"].get("motif", {}).get("acidic_patch", {})
+        hs = analyses["sdc4_mechanisms"]["hs_auto"]
+        if not (solvation.get("water_selection") and isinstance(motif, dict)
+                and motif.get("sequence") and motif.get("selection")
+                and hs.get("glycan_selection") and hs.get("attachment_selection")):
+            raise ValueError("potassium_bridge_audit requires solvation water and acidic_patch "
+                             "selectors and sdc4_mechanisms.hs_auto selections")
