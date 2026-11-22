@@ -11,7 +11,7 @@ def test_cli_import_keeps_execution_modules_unloaded():
         "import sys\n"
         "import mdscope.cli\n"
         "for module in ('mdscope.pipeline.runner', 'mdscope.pipeline.streaming',\n"
-        "               'mdscope.reporting.report', 'mdscope.statistics',\n"
+        "               'mdscope.reporting.report', 'mdscope.statistics.dispatch',\n"
         "               'mdscope.pipeline.preflight'):\n"
         "    assert module not in sys.modules, module\n"
     )
@@ -27,7 +27,7 @@ def test_planner_import_does_not_load_statistical_estimators():
         "from mdscope.planning import build_plan\n"
         "from mdscope.statistics.families import STATISTICS_FAMILIES\n"
         "assert STATISTICS_FAMILIES\n"
-        "for module in ('mdscope.statistics', 'mdscope.statistics.profiles',\n"
+        "for module in ('mdscope.statistics.dispatch', 'mdscope.statistics.profiles',\n"
         "               'mdscope.statistics.time_series', 'mdscope.pipeline.runner',\n"
         "               'mdscope.pipeline.fused_membrane'):\n"
         "    assert module not in sys.modules, module\n"
