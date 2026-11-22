@@ -32,7 +32,7 @@ flowchart TD
 
 Read-only `cli.py` commands import the runner, statistical estimators, and topology preflight only when their selected command requires them. The statistics package initializer is lightweight; `statistics/dispatch.py` owns project inference and imports estimators only when explicitly invoked. Other lightweight schemas and selectors live in `statistics/{contracts,families,manifest,selection,permutation_resolution,state_feature_spec}.py`. `statistics/families.py` owns the lightweight family identifier list consumed by planning and the statistics dispatcher.
 
-Key interfaces: `cli.py`, `config/` (`defaults.py`, `runs.py`, `validation.py`, YAML loading in `__init__.py`), `registry.py` (`analysis_output_plan`, `required_artifacts`), `contracts/outputs.py` (one descriptor per analysis: primary path, named-run support, companions, schema; producer column/path constants), `output_paths.py` (compatibility exports for persisted paths), `pipeline/analysis_selection.py` (shared enabled-analysis predicates), `pipeline/replica_tasks.py` (`specialized_tasks`, `additional_time_series`), `pipeline/runner.py`, `pipeline/streaming.py`.
+Key interfaces: `cli.py`, `config/` (`defaults.py`, `runs.py`, `validation.py` dispatcher, `validators/` domain checks, YAML loading in `__init__.py`), `registry.py` (`analysis_output_plan`, `required_artifacts`), `contracts/outputs.py` (one descriptor per analysis: primary path, named-run support, companions, schema; producer column/path constants), `output_paths.py` (compatibility exports for persisted paths), `pipeline/analysis_selection.py` (shared enabled-analysis predicates), `pipeline/replica_tasks.py` (`specialized_tasks`, `additional_time_series`), `pipeline/runner.py`, `pipeline/streaming.py`.
 
 Output contracts now have a dependency-free owner in `contracts/outputs.py`.
 `registry.py` resolves configuration-dependent companions (SASA variants,
@@ -90,8 +90,9 @@ for deferred dependencies. This is a static dependency cleanup, not a claim
 about trajectory convergence or a new numerical estimator.
 
 In this inventory, `pipeline.runner` has many outgoing imports because it
-coordinates stages; `config.py` is imported widely because it owns resolved
-settings. Neither degree count alone justifies splitting a module. Do not add
+coordinates stages; `config/` is imported widely because it owns resolved
+settings. Its schema-only validators live in `config/validators/`; pure shared
+option contracts live below execution packages in `contracts/`. Neither degree count alone justifies splitting a module. Do not add
 CI thresholds for edge counts or SCC counts.
 
 | Responsibility | Canonical owner | Avoid |
@@ -129,9 +130,12 @@ CI thresholds for edge counts or SCC counts.
    time-series PNG directly from saved replica data; inferential plots require
    their corresponding completed statistical products.
 
-**Import cleanup rule:** `core.persistence` owns filesystem utilities, but
-`config.py` currently reexports some of them. Keep compatibility until all
-consumers have been audited; prefer direct canonical imports in *new* code.
+**Import ownership rule:** `core.persistence` exclusively owns filesystem
+utilities and `core.provenance` owns configuration hashing. The `config/`
+package does not re-export those helpers. Scientific selection validation
+calls `core.motifs` and `core.glycans`; presentation and inference schemas
+come from dependency-free `contracts/` modules, not `reporting/` or
+`statistics/`.
 `interactions/__init__.py` explicitly reexports the existing interaction
 function API rather than using `import *`; new consumers should import from
 the owning submodule directly. Neither boundary justifies a second implementation.
