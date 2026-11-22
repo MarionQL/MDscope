@@ -70,9 +70,10 @@ def discover_covalent_glycans(u, spec):
     unexpected chain count.
     """
     import MDAnalysis as mda
-    from .sequence import sequence_chain_label
     from scipy.sparse import coo_matrix
     from scipy.sparse.csgraph import connected_components
+
+    from .sequence import sequence_chain_label
 
     glysel, att_sel = spec.get("glycan_selection"), spec.get("attachment_selection")
     if not glysel or not att_sel:

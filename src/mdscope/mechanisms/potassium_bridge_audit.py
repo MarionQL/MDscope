@@ -3,25 +3,25 @@
 Outputs are per input trajectory. Keep conditions and replicate IDs separate.
 Distances and topology masses are in Å and Da, respectively.
 """
+import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import re
 
 import MDAnalysis as mda
-from MDAnalysis.lib.distances import capped_distance
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+from MDAnalysis.lib.distances import capped_distance
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import find_peaks
 from scipy.spatial import cKDTree
-import pyarrow.parquet as pq
-import pyarrow as pa
 
 from ..config import atomic_json, atomic_parquet, time_ps
 from ..core.glycans import discover_covalent_glycans
+from ..core.progress import track
 from ..core.sequence import sequence_matches
 from ..observables.solvation import SPATIAL_OFFSETS, rdf_from_counts, water_donor_hbonds
-from ..core.progress import track
 
 CONTACT_CUTOFFS = np.array([3., 3.5, 4., 5.])
 STERIC_CUTOFFS = np.array([0., 1.8, 2.1, 2.4])

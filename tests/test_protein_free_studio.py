@@ -3,12 +3,12 @@ import MDAnalysis as mda
 import pandas as pd
 import pytest
 import yaml
+from mdscope_test_support import freesasa_backend, membrane_universe
 
 from mdscope.config import load_config
 from mdscope.pipeline.preflight import validate_selections
 from mdscope.pipeline.runner import run_one
 from mdscope.studio.model import new_document
-from mdscope_test_support import freesasa_backend, membrane_universe
 
 
 def lipid_project(tmp_path):

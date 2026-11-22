@@ -6,8 +6,9 @@ physical trajectory. All distances are Angstrom; time is ps.
 from __future__ import annotations
 
 import numpy as np
-from ..core.atom_selection import select_heavy_atoms
 from MDAnalysis.lib.distances import capped_distance, distance_array
+
+from ..core.atom_selection import select_heavy_atoms
 from ..core.geometry import minimum_image_displacements
 
 

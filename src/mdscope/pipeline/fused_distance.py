@@ -5,23 +5,24 @@ algorithm; only trajectory iteration and checkpoint storage are changed.
 """
 from __future__ import annotations
 
-from pathlib import Path
-from tempfile import TemporaryDirectory
 import re
 import time
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import MDAnalysis as mda
 import numpy as np
 
 from ..config import analysis_runs, ensure_dir, time_ps
-from ..observables.membrane_order import _atomic_npz
 from ..core.progress import track
+from ..observables.membrane_order import _atomic_npz
 from ..observables.residue_membrane_distance import (
-    DEFAULT_LIPID_RESNAMES, _minimum_by_residue_hybrid,
-    _valid_box, _without_hydrogens, run_residue_membrane_distance,
+    DEFAULT_LIPID_RESNAMES,
+    _minimum_by_residue_hybrid,
+    _valid_box,
+    _without_hydrogens,
+    run_residue_membrane_distance,
 )
-
-
 from .analysis_selection import distance_enabled_names as enabled_names
 
 

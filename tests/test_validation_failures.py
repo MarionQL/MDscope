@@ -1,14 +1,17 @@
 """Actionable config/topology failures precede output creation or replacement."""
+import re
 from copy import deepcopy
 from pathlib import Path
-import re
+
 import MDAnalysis as mda
 import pytest
 import yaml
+from mdscope_test_support import freesasa_backend
+from mdscope_test_support import invoke_cli as invoke
+
 from mdscope.config import load_config
 from mdscope.pipeline.preflight import validate_selections
 from mdscope.pipeline.runner import run_one
-from mdscope_test_support import freesasa_backend, invoke_cli as invoke
 
 
 def _set(cfg, keys, value):

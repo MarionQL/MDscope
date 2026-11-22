@@ -4,21 +4,20 @@ Box-density-normalized radial distributions are NOT corrected for inaccessible v
 All distances are Å and times ps; the actual water/ion atom selections are
 explicit to avoid guessing CHARMM lipid and glycan atom chemistry.
 """
+import os
+import tempfile
 from collections import defaultdict
 from itertools import combinations, product
 from pathlib import Path
-import os
-import tempfile
-
-import pyarrow.parquet as pq
 
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 from MDAnalysis.lib.distances import capped_distance
 from MDAnalysis.lib.mdamath import triclinic_vectors
-from ..core.geometry import minimum_image_displacements
 
 from ..config import atomic_json, atomic_parquet, ensure_dir
+from ..core.geometry import minimum_image_displacements
 from .solvation_common import EPISODE_COLUMNS, rdf_from_counts
 
 PRESETS = {"standard": (False, False), "detailed": (True, True),
@@ -130,8 +129,9 @@ def _targets(u, spec, *, motifs=None):
                 if not matches:
                     raise ValueError(f"solvation motif {reference}: no match; unavailable targets cannot be measured as zero")
             elif sequence is not None:
-                from ..core.sequence import sequence_matches
                 import re
+
+                from ..core.sequence import sequence_matches
                 pattern = str(sequence).upper()
                 if not re.fullmatch("[ACDEFGHIKLMNPQRSTVWY]+", pattern):
                     raise ValueError(f"solvation motif {kind}/{label} must be an exact amino-acid sequence")
@@ -167,7 +167,10 @@ def _targets(u, spec, *, motifs=None):
                 auto = {"min_glycan_residues": 3, **(spec.get("hs_auto") or {})}
                 if not auto.get("glycan_selection") or not auto.get("attachment_selection"):
                     raise ValueError("solvation hs_chain grouping requires hs_auto glycan and attachment selections")
-                from ..core.glycans import discover_covalent_glycans, validate_glycan_spec
+                from ..core.glycans import (
+                    discover_covalent_glycans,
+                    validate_glycan_spec,
+                )
                 validate_glycan_spec(auto, "solvation hs_auto", min_residues=2)
                 chains, _, _ = discover_covalent_glycans(u, auto)
                 chunks = []
@@ -752,7 +755,10 @@ class SolvationObserver:
         write_solvation_derivatives(dest, self.repout,
             sasa_run=self.spec.get("sasa_run", "default"), cache_dir=self.cache)
         if self.eligible_bridge_pairs:
-            from .solvation_postprocess import bridge_pair_occupancy, bridge_pair_evidence
+            from .solvation_postprocess import (
+                bridge_pair_evidence,
+                bridge_pair_occupancy,
+            )
             frame_times = read("frames").drop_duplicates("frame").sort_values("frame").time_ps.to_numpy(float)
             pair_summary = bridge_pair_occupancy(
                 read("bridges"), frame_times, self.eligible_bridge_pairs, self.solvents)

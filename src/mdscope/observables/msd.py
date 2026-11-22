@@ -4,14 +4,18 @@ Streamed from the same trajectory pass and checkpoint state as before.
 Diffusion is a descriptive single-origin MSD slope fit on each replicate.
 """
 from __future__ import annotations
+
 from pathlib import Path
+
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-from ..core.geometry import minimum_image_displacements
 from MDAnalysis.exceptions import NoDataError
+
 from ..config import atomic_parquet
+from ..core.geometry import minimum_image_displacements
 from .multi_origin_msd import diffusion_fit_sensitivity
+
 
 def _residue_centers(atoms):
     """Vectorized center per selected residue, preserving MDAnalysis residue order.

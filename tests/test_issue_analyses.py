@@ -1,11 +1,13 @@
 """Regression tests for MDscope repository issues #1–#5."""
 import numpy as np
+
 from mdscope.core.lipid_geometry import classify_leaflets
-from mdscope.observables.lipid_enrichment import shell_fold
-from mdscope.observables.bilayer_normal import fit_local_normals
-from mdscope.interactions.lipid_hydrogen_bonds import ordered_pair
-from mdscope.observables.membrane_order import OrderSite,_profiles,_metric_name
 from mdscope.core.progress import track
+from mdscope.interactions.lipid_hydrogen_bonds import ordered_pair
+from mdscope.observables.bilayer_normal import fit_local_normals
+from mdscope.observables.lipid_enrichment import shell_fold
+from mdscope.observables.membrane_order import OrderSite, _metric_name, _profiles
+
 
 def test_lipid_order_leaflets_and_position_profiles():
     sites=[

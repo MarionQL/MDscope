@@ -9,8 +9,8 @@ from MDAnalysis.coordinates.memory import MemoryReader
 
 from mdscope.config import iter_replicates
 from mdscope.core import trajectory_sources
-from mdscope.observables.membrane import membrane_metrics
 from mdscope.observables import msd as msd_module
+from mdscope.observables.membrane import membrane_metrics
 from mdscope.observables.msd import initialize_msd
 
 
@@ -102,7 +102,9 @@ def test_raw_reader_rejects_mismatched_frame_count(monkeypatch):
 
 def test_multi_origin_closes_scratch_mapping_before_publishing(tmp_path, monkeypatch):
     from mmap import mmap
+
     import pandas as pd
+
     from mdscope.observables import multi_origin_pipeline as pipeline
 
     universe = _universe(0.)

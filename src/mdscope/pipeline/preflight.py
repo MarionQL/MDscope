@@ -1,13 +1,15 @@
 """Reusable topology/selection preflight; no trajectory processing or outputs."""
 from pathlib import Path
+
 import MDAnalysis as mda
 from MDAnalysis.exceptions import SelectionError
+
 from ..config import analysis_runs
-from ..errors import ConfigError
-from ..observables.residue_membrane_distance import _without_hydrogens
+from ..core.alignment import resolved_selection_counts
 from ..core.glycans import discover_covalent_glycans, glycan_definition, glycan_sugars
 from ..core.sequence import sequence_matches
-from ..core.alignment import resolved_selection_counts
+from ..errors import ConfigError
+from ..observables.residue_membrane_distance import _without_hydrogens
 from ..observables.sasa import import_freesasa, sasa_instances
 
 

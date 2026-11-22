@@ -7,8 +7,8 @@ from MDAnalysis.lib.distances import capped_distance
 
 from ..config import atomic_parquet
 from ..core.glycans import glycan_definition, glycan_sugars
-from ..observables.solvation import unique_target_solvent_pairs
 from ..core.sequence import sequence_chain_label
+from ..observables.solvation import unique_target_solvent_pairs
 
 OUTPUT = Path("extensions/sdc4_mechanisms/hs_sugar_hydration.parquet")
 ATTACHMENTS = "glycan_attachments.parquet"
@@ -286,6 +286,7 @@ class HydrationObserver:
         """Stream record batches to one atomic public Parquet product."""
         import os
         import tempfile
+
         import pyarrow as pa
         import pyarrow.parquet as pq
         destination.parent.mkdir(parents=True, exist_ok=True)

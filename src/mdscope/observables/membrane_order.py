@@ -16,7 +16,6 @@ from ..config import atomic_parquet, ensure_dir, time_ps
 from ..core.lipid_geometry import classify_leaflets, planar_box
 from ..core.progress import progress
 
-
 AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
 
 

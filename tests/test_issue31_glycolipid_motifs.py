@@ -5,8 +5,8 @@ import MDAnalysis as mda
 import numpy as np
 import pytest
 
-from mdscope.core.lipid_geometry import anchor_groups
 from mdscope.biophysical_common import sequence_motifs
+from mdscope.core.lipid_geometry import anchor_groups
 from mdscope.core.sequence import sequence_matches
 
 
@@ -96,8 +96,8 @@ def test_mechanistic_overlapping_motif_matches_are_intentionally_retained():
 
 @pytest.mark.parametrize("histidine_name", ["HSD", "HSE", "HSP", "HID", "HIE", "HIP"])
 def test_proline_motif_detects_histidine_topology_variants(histidine_name):
-    from mdscope.core.sequence import AA3
     from mdscope.biophysical_common import AA
+    from mdscope.core.sequence import AA3
     names = ["VAL", "VAL", histidine_name, "PRO", "LEU", "VAL", "PRO", "LEU"]
     atoms = [SimpleNamespace(chainID="PROB", segid="PROB", resname=aa,
                              resindex=i + 27) for i, aa in enumerate(names)]

@@ -7,11 +7,11 @@ standalone .run(). Raw event chunks are checkpointed atomically.
 """
 from __future__ import annotations
 
+import re
+import time
 from collections import defaultdict
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import re
-import time
 
 import MDAnalysis as mda
 import numpy as np
@@ -19,19 +19,21 @@ import pandas as pd
 from MDAnalysis.analysis.hydrogenbonds.hbond_analysis import HydrogenBondAnalysis
 
 from ..config import atomic_parquet, ensure_dir, time_ps
-from ..observables.membrane_order import _atomic_npz
+from ..core.profiling import _residue_label
 from ..core.progress import track
 from ..interactions.hydrogen_bonds import write_hydrogen_bonds
 from ..interactions.lipid_hydrogen_bonds import (
-    lipid_molecule_map, write_lipid_hydrogen_bonds,
+    lipid_molecule_map,
+    write_lipid_hydrogen_bonds,
 )
+from ..mechanisms.hs_hydration import HydrationObserver
+from ..mechanisms.local_environment import (
+    local_environment_frame,
+    prepare_local_environment,
+)
+from ..observables.membrane_order import _atomic_npz
 from ..observables.sasa import sasa_instances, sasa_residue_rows, write_sasa_burial
 from ..observables.solvation import SolvationObserver
-from ..mechanisms.hs_hydration import HydrationObserver
-from ..core.profiling import _residue_label
-from ..mechanisms.local_environment import prepare_local_environment, local_environment_frame
-
-
 from .analysis_selection import extensions_enabled_names as enabled_names
 
 

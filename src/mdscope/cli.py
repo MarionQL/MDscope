@@ -11,9 +11,10 @@ from pathlib import Path
 
 import yaml
 
-from .config import iter_replicates, load_config
 from . import __version__
+from .config import iter_replicates, load_config
 from .errors import UserInputError
+
 
 def interactive_init(output="analysis.yaml"):
     print("MDscope configuration generator (analysis runs themselves are non-interactive).")
@@ -83,6 +84,7 @@ def cmd_validate(args):
 def cmd_plan(args):
     """Print a no-run output plan; topology inspection is opt-in."""
     import json
+
     from .planning import build_plan
 
     cfg = load_config(args.config, check_paths=args.check_inputs)

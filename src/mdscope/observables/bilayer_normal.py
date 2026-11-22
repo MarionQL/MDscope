@@ -5,13 +5,16 @@ periodic neighbor shell, then theta = atan(sqrt(a²+b²)). Optimized sparse
 neighbor accumulation avoids dense N_lipid² matrices.
 """
 from __future__ import annotations
+
+import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-import MDAnalysis as mda
-from MDAnalysis.lib.distances import capped_distance,minimize_vectors
-from ..config import ensure_dir,atomic_parquet,time_ps
-from ..core.lipid_geometry import anchor_groups,centers,aligned_leaflets,planar_box
+from MDAnalysis.lib.distances import capped_distance, minimize_vectors
+
+from ..config import atomic_parquet, ensure_dir, time_ps
+from ..core.lipid_geometry import aligned_leaflets, anchor_groups, centers, planar_box
 from ..core.progress import progress
+
 
 def fit_local_normals(xyz,upper,box,radius=15.,min_neighbors=5,normal=2):
     xyz=np.asarray(xyz,float)

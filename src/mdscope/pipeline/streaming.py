@@ -4,34 +4,62 @@ Compatibility: raw/summary output schema retained; atomic NPZ checkpoints
 include committed artifact inventory and replicate identity.
 """
 from __future__ import annotations
+
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import perf_counter
-import json
 from zipfile import BadZipFile
+
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-from ..config import analysis_groups, analysis_runs, atomic_parquet,ensure_dir,time_ps,profile_dir
-from ..core.progress import track
-from ..core.profiling import PhaseProfiler
-from ..core.trajectory_sources import paired_frames
-from ..observables.msd import open_msd_universe
-from ..core.checkpoints import (validate_progress, validate_committed_parts,
-                                chunk_artifacts, validate_artifact_inventory,
-                                numbered_artifacts, prune_artifact_orphans)
+
+from ..config import (
+    analysis_groups,
+    analysis_runs,
+    atomic_parquet,
+    ensure_dir,
+    profile_dir,
+    time_ps,
+)
+from ..core.alignment import _apply_transform, _fit_transform, _valid_box
+from ..core.checkpoints import (
+    chunk_artifacts,
+    numbered_artifacts,
+    prune_artifact_orphans,
+    validate_artifact_inventory,
+    validate_committed_parts,
+    validate_progress,
+)
 from ..core.coordinate_contracts import CoordinateSpace, require_coordinate_space
-from .fused_membrane import FusedMembrane, enabled_names as fused_enabled_names
-from .fused_extensions import FusedExtensions, enabled_names as extension_enabled_names
-from .fused_distance import FusedDistances, enabled_names as distance_enabled_names
-from ..mechanisms.sdc4_mechanisms import SDC4Mechanisms, enabled as sdc4_enabled
-from ..core.alignment import _apply_transform,_fit_transform,_valid_box
+from ..core.profiling import PhaseProfiler
+from ..core.progress import track
+from ..core.trajectory_sources import paired_frames
+from ..interactions import (
+    chain_label,
+    initialize_ligand_contacts,
+    initialize_salt_bridges,
+    ligand_contact_events,
+    residue_label,
+    salt_bridge_events,
+)
+from ..mechanisms.sdc4_mechanisms import SDC4Mechanisms
+from ..mechanisms.sdc4_mechanisms import enabled as sdc4_enabled
+from ..observables.density_1d import DensityProfileAccumulator
+from ..observables.membrane import initialize_membrane, membrane_metrics
+from ..observables.msd import open_msd_universe
+from ..observables.radius_of_gyration import compute_rg
 from ..observables.rmsd import compute_rmsd
 from ..observables.rmsf import Welford
-from ..observables.radius_of_gyration import compute_rg
-from ..observables.density_1d import DensityProfileAccumulator
-from ..observables.membrane import initialize_membrane,membrane_metrics
-from ..interactions import chain_label,initialize_ligand_contacts,initialize_salt_bridges,ligand_contact_events,residue_label,salt_bridge_events
+from .fused_distance import FusedDistances
+from .fused_distance import enabled_names as distance_enabled_names
+from .fused_extensions import FusedExtensions
+from .fused_extensions import enabled_names as extension_enabled_names
+from .fused_membrane import FusedMembrane
+from .fused_membrane import enabled_names as fused_enabled_names
+
+
 def complete_membrane_density(rep, cfg, repout, runs):
     """Collect missing named density runs in one pass over the saved frame grid."""
     parent = ensure_dir(Path(repout) / "profiles/density_1d")

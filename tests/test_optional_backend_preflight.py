@@ -4,11 +4,11 @@ import json
 import MDAnalysis as mda
 import pytest
 import yaml
+from mdscope_test_support import freesasa_backend, invoke_cli
 
 from mdscope.config import load_config
 from mdscope.pipeline.preflight import validate_selections
 from mdscope.pipeline.runner import run_one
-from mdscope_test_support import freesasa_backend, invoke_cli
 
 HINT = "python -m pip install 'mdscope[sasa]'"
 

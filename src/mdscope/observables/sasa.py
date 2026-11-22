@@ -1,12 +1,16 @@
 """FreeSASA residue solvent-accessible surface area."""
 from __future__ import annotations
+
 from pathlib import Path
+
 import numpy as np
 import pandas as pd
+
+from ..config import atomic_parquet, ensure_dir, time_ps
 from ..core.profiling import _residue_label
 from ..core.progress import track
-from ..config import ensure_dir,atomic_parquet,time_ps
 from ..errors import MissingBackendError
+
 FREESASA_INSTALL_HINT = "python -m pip install 'mdscope[sasa]'"
 
 
