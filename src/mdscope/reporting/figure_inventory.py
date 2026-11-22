@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from .plot_ids import figure_family
+
 PRIMARY_SUFFIXES = (
     "__timeseries.png", "__profile.png", "__system_difference.png",
     "occupancy_heatmap.png", "lifetime_distribution.png",
@@ -86,18 +88,6 @@ def figure_inventory(root, system_repouts, cfg=None, include_rejected=False, *, 
                              family=figure_family(path), status=status, kind='table_report',
                              section=_relative(path.parent, root), archive=archive))
     return pd.DataFrame(rows,columns=["figure","figure_id","display_label","section","kind","bytes","family","status","source_metric","units","generated_at","source_files","sampling","format","page_count","page_ids","archive"])
-
-
-def figure_family(path):
-    parts = Path(path).parts
-    for token, family in (('shared_states','shared_states'),('sdc4','sdc4'),('sdc4_mechanisms','sdc4'),
-                          ('solvation','solvation'),('diffusion','diffusion'),
-                          ('lipid_contacts','lipid_contacts'),('membrane','lipid_enrichment'),
-                          ('interactions','interactions'),('profiles','profiles'),
-                          ('time_series','time_series')):
-        if token in parts:
-            return family
-    return 'other'
 
 
 def _figure_paths(root, system_repouts):

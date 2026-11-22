@@ -87,6 +87,12 @@ them for existing callers. RDF normalization, episode column order, and
 saved-output schemas are unchanged. The observer still imports offline
 postprocessing lazily at finalization.
 
+The last deferred cycle, `reporting.figure_inventory` ↔ `reporting.table_reports`,
+existed only because `table_reports` needed the path → figure-family
+classifier. `figure_family` now lives in `reporting.plot_ids` beside
+`id_from_figure_path`, so the inventory depends on `table_reports` and not
+the reverse. The current architecture map reports no import cycles (#269).
+
 Rebuild `architecture.json` to verify that the postprocessor has no import
 back-edge to `solvation.py` and inspect `architecture.json.import_sites`
 for deferred dependencies. This is a static dependency cleanup, not a claim

@@ -127,6 +127,19 @@ def describe_plot(identifier: str) -> dict:
     }
 
 
+def figure_family(path):
+    """Figure family of a saved figure path (one of FIGURE_FAMILIES)."""
+    parts = Path(path).parts
+    for token, family in (('shared_states','shared_states'),('sdc4','sdc4'),('sdc4_mechanisms','sdc4'),
+                          ('solvation','solvation'),('diffusion','diffusion'),
+                          ('lipid_contacts','lipid_contacts'),('membrane','lipid_enrichment'),
+                          ('interactions','interactions'),('profiles','profiles'),
+                          ('time_series','time_series')):
+        if token in parts:
+            return family
+    return 'other'
+
+
 def id_from_figure_path(path: Path) -> str | None:
     """Recover stable IDs for the supported persisted output filenames."""
     path = Path(path)
