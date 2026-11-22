@@ -135,7 +135,7 @@ def test_optional_scalar_collection_keeps_missing_files_missing(tmp_path, projec
 
 
 def test_output_plan_uses_lightweight_production_predicates(project):
-    """Producer exports and registry must see identical scheduling decisions."""
+    """Registry and execution share the config.runs scheduling predicates."""
     from mdscope.systems.sdc4.mechanisms import enabled as sdc4_producer
     from mdscope.config.runs import (
         distance_enabled_names,
@@ -143,13 +143,7 @@ def test_output_plan_uses_lightweight_production_predicates(project):
         membrane_enabled_names,
     )
     from mdscope.config.runs import sdc4_enabled
-    from mdscope.pipeline.fused_distance import enabled_names as distance_producer
-    from mdscope.pipeline.fused_extensions import enabled_names as extensions_producer
-    from mdscope.pipeline.fused_membrane import enabled_names as membrane_producer
 
-    assert membrane_enabled_names is membrane_producer
-    assert extensions_enabled_names is extensions_producer
-    assert distance_enabled_names is distance_producer
     assert sdc4_enabled is sdc4_producer
 
     path, _ = project("lightweight_predicates")

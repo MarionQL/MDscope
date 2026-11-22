@@ -16,7 +16,12 @@ import numpy as np
 import pandas as pd
 
 from ..config import analysis_groups, analysis_runs, profile_dir, time_ps
-from ..config.runs import structural_selection_requirements
+from ..config.runs import (
+    distance_enabled_names,
+    extensions_enabled_names,
+    membrane_enabled_names,
+    structural_selection_requirements,
+)
 from ..core.persistence import atomic_parquet, ensure_dir
 from ..core.alignment import _apply_transform, _fit_transform, _valid_box
 from ..core.checkpoints import (
@@ -48,11 +53,8 @@ from ..observables.radius_of_gyration import compute_rg
 from ..observables.rmsd import compute_rmsd
 from ..observables.rmsf import Welford
 from .fused_distance import FusedDistances
-from .fused_distance import enabled_names as distance_enabled_names
 from .fused_extensions import FusedExtensions
-from .fused_extensions import enabled_names as extension_enabled_names
 from .fused_membrane import FusedMembrane
-from .fused_membrane import enabled_names as fused_enabled_names
 
 
 def complete_membrane_density(rep, cfg, repout, runs):
@@ -319,8 +321,8 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path):
     )
     if msd_universe is not None:
         print(f"MSD original coordinate source: {rep.msd_trajectory}", flush=True)
-    fused = FusedMembrane(universe, cfg, repout) if fused_enabled_names(cfg) else None
-    extensions = FusedExtensions(universe, cfg, repout) if extension_enabled_names(cfg) else None
+    fused = FusedMembrane(universe, cfg, repout) if membrane_enabled_names(cfg) else None
+    extensions = FusedExtensions(universe, cfg, repout) if extensions_enabled_names(cfg) else None
     distances = FusedDistances(universe, cfg, repout) if distance_enabled_names(cfg) else None
     sdc4 = SDC4Mechanisms(universe, cfg, repout) if sdc4_enabled(cfg) else None
 

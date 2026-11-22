@@ -8,14 +8,11 @@ from __future__ import annotations
 import re
 import time
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
-import MDAnalysis as mda
 import numpy as np
 
 from ..config import analysis_runs, time_ps
-from ..core.persistence import atomic_json, ensure_dir
-from ..core.progress import track
+from ..core.persistence import atomic_json
 from ..observables.membrane_order import _atomic_npz
 from ..observables.residue_membrane_distance import (
     DEFAULT_LIPID_RESNAMES,
@@ -24,7 +21,6 @@ from ..observables.residue_membrane_distance import (
     _without_hydrogens,
     run_residue_membrane_distance,
 )
-from ..config.runs import distance_enabled_names as enabled_names
 
 
 class FusedDistances:
@@ -135,28 +131,3 @@ class FusedDistances:
             "compute_seconds": self.compute_seconds,
         })
         return result
-
-
-def run_fused_distances(rep, cfg, repout, *, run_ids=None):
-    """Compute selected distance runs using disposable scratch chunks."""
-    if not enabled_names(cfg) or (run_ids is not None and not run_ids):
-        return {}
-    tr = cfg["trajectory"]
-    u = mda.Universe(str(rep.topology), str(rep.trajectory))
-    start = 0 if tr.get("start") is None else int(tr["start"])
-    u.trajectory[start]
-    chunk = max(1, int(tr.get("chunk_frames", 1000)))
-    with TemporaryDirectory(dir=ensure_dir(Path(repout)), prefix=".distance-recovery-") as scratch:
-        observer = FusedDistances(u, cfg, repout, run_ids=run_ids, cache_dir=scratch)
-        observer.prune_from(0)
-        frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr["stride"]))]
-        for i, ts in enumerate(track(
-            frames, total=len(frames), desc=f"{rep.system}/{rep.label}: fused distances",
-            enabled=cfg.get("progress", {}).get("enabled", True),
-        )):
-            observer.update(ts, i)
-            if (i + 1) % chunk == 0:
-                observer.flush(i // chunk)
-        if observer.frames % chunk:
-            observer.flush(observer.frames // chunk)
-        return observer.finalize(rep)

@@ -12,7 +12,7 @@ from mdscope_test_support import (
     membrane_universe as _universe,
 )
 
-from mdscope.pipeline.fused_membrane import enabled_names
+from mdscope.config.runs import membrane_enabled_names as enabled_names
 
 
 def test_shared_anchor_and_checkpoint_replay(tmp_path):

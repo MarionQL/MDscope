@@ -6,7 +6,7 @@ import pandas as pd
 from mdscope.config import Replicate
 from mdscope.interactions.lipid_hydrogen_bonds import tabulate_events
 from mdscope.observables.bilayer_normal import run_bilayer_normal
-from mdscope.pipeline.fused_membrane import run_fused_membrane
+from mdscope.pipeline.fused_all import run_fused_only
 
 
 def _tiny_lipid_universe(tmp_path):
@@ -39,14 +39,14 @@ def test_lipid_analyses_real_small_trajectory(tmp_path):
          "trajectory":{"start":None,"stop":None,"stride":1},
          "time":{"dt_ps":None},
          "analyses":{
-             "lipid_enrichment":{"species_selections":selections,"axis":"z",
+             "lipid_enrichment":{"enabled":True,"species_selections":selections,"axis":"z",
                 "footprint_selection":"resname ALA and name CA",
                 "shell_edges_A":[0, 9], "slab_half_width_A":12., "exclusion_radius_A":2.},
              "bilayer_normal":{"species_selections":selections,"axis":"z",
                 "neighbor_radius_A":10.,"min_neighbors":3}}}
     rep=Replicate("test",1,pdb,dcd,"rep1")
     out=tmp_path/"test"/"rep1"
-    a=run_fused_membrane(rep,cfg,out,names=("lipid_enrichment",))["lipid_enrichment"]
+    a=run_fused_only(rep,cfg,out,only=("lipid_enrichment",))["FusedMembrane"]["lipid_enrichment"]
     b=run_bilayer_normal(rep,cfg,out)
     assert a["frames"]==5 and b["frames"]==5
     e=pd.read_parquet(out/"extensions/lipid_footprint/timeseries.parquet")

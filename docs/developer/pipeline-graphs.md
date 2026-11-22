@@ -57,7 +57,7 @@ stream, and can also run under observer-only scheduling. Some standalone or
 recovery operations reopen trajectories. The runner validates existing artifacts rather than assuming that files
 are valid. In observer-only execution it selects **pending (analysis, run ID)**
 pairs; completed named SASA and distance outputs are not recomputed. Replay
-chunks are staged separately from committed streaming chunks. Stand-alone per-family entry points remain callable, but the replica coordinator now uses one shared replay after either streaming or observer-only selection.
+chunks are staged separately from committed streaming chunks. `fused_all.run_fused_only` is the only fused replay loop: the former per-family `run_fused_membrane` / `run_fused_extensions` / `run_fused_distances` copies were removed (#279), so the replica coordinator, tests and the real-data parity check share one trajectory/chunk lifecycle after either streaming or observer-only selection.
 
 ## Recovery: reuse, replay, or fail safely
 
