@@ -49,7 +49,7 @@ For generalization PRs:
   validate new physics.
 
 Existing controls include `selections.groups`, supported analysis-specific
-selection fields, `membrane_order.tails`/`lipid_overrides`, SDC4 TM/ectodomain,
+selection fields, `membrane_order.tail_preset`/`tails`/`lipid_overrides`, SDC4 TM/ectodomain,
 HS/motif/lipid definitions, `statistics.metric_selection` and exact `plots.include`.
 These are not universal keys accepted by every analysis. Shared motif definitions and saved state-feature sources are configured below.
 Residue-response discovery is controlled by `statistics.residue_response`; see
@@ -78,6 +78,59 @@ analyses:
 - RMSD/Rg `groups` chooses a subset of shared groups; omitted means all. Global metrics stay in `summary/timeseries.parquet`.
 - Density, residue–membrane distance and SASA support named `runs`. Do **not** add `runs` to RMSD/Rg.
 - Membrane-relative density uses the midpoint of circular leaflet centers. Use **one comparable anchor per lipid**, a half-width divisible by the bin width and no `center_selection`. The half-width must fit within half the current normal box length. A different reference needs a new run ID.
+
+## Lipid-tail naming for -S_CH
+
+`analyses.membrane_order` owns the acyl-tail naming; SDC4 `local_order` uses the
+same `tails`/`lipid_overrides` with its own lipid selection.
+
+| Assumption | Kind |
+|---|---|
+| Tail atom names, residue names, `exclude_resnames` (`CHOL`, `CHL1`), headgroup anchor names (`P`, `O3`, `NF`) | Naming only: configure per topology |
+| Explicit, bonded C–H hydrogens; tail carbons form one bonded chain numbered from the carbonyl | Scientific constraint: checked, failures are errors |
+| One topology residue per lipid; fixed initial leaflets; global axis as bilayer normal | Scientific model: reported, not converted |
+
+- **Omitted** naming keeps the tested defaults `sn1: ^C2(\d+)$`, `sn2: ^C3(\d+)$`
+  and their output identities. In CHARMM36 these select the **sn-2** (C21…) and
+  **sn-1** (C31…) chains respectively; the keys are legacy labels.
+- `tail_preset: charmm36` (opt-in, never inferred) uses `sn1: ^C3(\d+)$`,
+  `sn2: ^C2(\d+)$`, verified against the SDC4 release TPRs and the NMRlipids
+  CHARMM36 POPC mapping. It maps no sphingolipid chains (CHARMM36 `C1S…`/`C1F…`).
+  Switching an existing project to it swaps the meaning of `sn1`/`sn2` outputs.
+- Precedence: `lipid_overrides.<RESNAME>.<tail>` naming > `tails.<tail>` >
+  preset tail > default. With a preset, an explicit `tails` entry replaces that
+  tail; without one it merges into the default tail (existing behavior).
+  `carbon_pattern` needs an integer capture group (the carbon position);
+  `carbon_names` (optional matching `positions`) wins over a merged pattern.
+- `mdscope validate` prints, per species and tail, mapped lipids, positions,
+  C–H bonds and exclusions (no matching carbons, fewer than
+  `min_carbons_per_tail`, no C–H). It fails when bonds contradict the mapping
+  (bonded carbons of different tails, non-consecutive positions, split chains,
+  non-carbon elements, overlapping tails), when no explicit hydrogens exist
+  (united-atom), or when `leaflet_anchor_selection` misses an order lipid.
+  Without topology bonds, mappings are reported as unverified.
+- Multi-residue lipids (for example AMBER Lipid21 head/tail residues) are
+  analyzed per residue; validate warns when one bonded molecule holds several
+  order residues.
+
+User-defined example (not a preset): Maciejewski–Rog POPC with sequential atom
+numbers, names from the NMRlipids `mappingPOPCMaciejewskiRog1.yaml`; verify
+them against your topology.
+
+```yaml
+analyses:
+  membrane_order:
+    enabled: true
+    lipid_selection: "resname POPC"
+    leaflet_anchor_selection: "resname POPC and name P8"
+    tails:
+      sn1:
+        carbon_names: [C36, C38, C39, C40, C41, C42, C43, C44, C45, C46, C47, C48, C49, C50, C51, C52]
+        positions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+      sn2:
+        carbon_names: [C15, C17, C18, C19, C20, C21, C22, C23, C24, C25, C26, C27, C28, C29, C30, C31, C32, C33]
+        positions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+```
 
 ## Shared motifs and saved-feature states
 

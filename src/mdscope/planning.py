@@ -72,7 +72,7 @@ REQUIRED_TOPOLOGY = {
     "rmsd": ("alignment atom set",),
     "rmsf": ("alignment atom set",),
     "membrane": ("lipid headgroup selection and valid box",),
-    "membrane_order": ("lipid-tail C-H sites; bond connectivity where available",),
+    "membrane_order": ("lipid-tail carbon chains and C-H sites; bonds verify tail naming where available",),
     "sasa": ("target/occluder atoms and radii; optional FreeSASA backend",),
     "solvation": ("target chemical sites and water/ion identities",),
     "sdc4_mechanisms": ("SDC4 domain identities; topology bonds for hs_auto",),
@@ -248,6 +248,7 @@ def build_plan(cfg: dict, config_path: str | Path, *,
 
     selected = []
     state_sources = state_feature_catalog(cfg)["sources"]
+    order_spec = cfg["analyses"]["membrane_order"]
     for name in cfg["analyses"]:
         for run in analysis_runs(cfg, name):
             status = ("registered" if name in registered_by_name
@@ -279,6 +280,13 @@ def build_plan(cfg: dict, config_path: str | Path, *,
                     glycan: glycan_definition(cfg["selections"]["glycans"], glycan)
                     for glycan in run.spec.get("glycans") or []}}
                    if name == "hydration" else {}),
+                # Effective naming shared by membrane_order and SDC4 local order.
+                **({"tail_naming": {
+                    "tail_preset": order_spec.get("tail_preset"), "tails": order_spec["tails"],
+                    "lipid_overrides": order_spec.get("lipid_overrides") or {}}}
+                   if name == "membrane_order" or (
+                       name == "sdc4_mechanisms" and (run.spec.get("local_order") or {}).get("enabled"))
+                   else {}),
                 "required_topology": list(REQUIRED_TOPOLOGY.get(name, ())),
                 "topology_requirements_status": ("partial_contract" if name in REQUIRED_TOPOLOGY
                                                  else "not_registered"),

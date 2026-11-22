@@ -22,6 +22,40 @@ def require_optional_backends(cfg):
         import_freesasa()
 
 
+def _emit_order_audit(emit, label, audit):
+    """Per-species/tail counts and exclusions from ``order_preflight``."""
+    chains = audit["chains"]
+    chain_text = (f"tail chains bond-verified for {chains['verified_residue_tails']}/"
+                  f"{chains['residue_tails']} residue tails" if chains["bond_graph"]
+                  else "no topology bonds: tail chains unverified")
+    emit(f"    {label}: tail_preset={audit['tail_preset'] or 'none'}, "
+         f"{audit['lipids']} lipids, C-H pairs from {audit['ch_pairs']}, {chain_text}")
+    minimum = audit["min_carbons_per_tail"]
+    for row in audit["species"]:
+        text = (f"{row['mapped_residues']}/{row['residues']} lipids, positions "
+                f"{row['positions']}, {row['ch_bonds']} C-H bonds" if row["mapped_residues"]
+                else f"unavailable for all {row['residues']} lipids")
+        excluded = [f"{row[key]} {reason}" for key, reason in (
+            ("unmatched_residues", "no matching carbons"),
+            ("below_minimum_residues", f"fewer than {minimum} carbons"),
+            ("no_ch_residues", "no C-H pairs")) if row[key]]
+        if row["mapped_residues"] and excluded:
+            text += "; excluded " + ", ".join(excluded)
+        elif excluded:
+            text += " (" + ", ".join(excluded) + ")"
+        emit(f"    {label} {row['resname']} {row['tail']}: {text}")
+    for resname, count in sorted(audit["excluded_resnames"].items()):
+        emit(f"    {label} {resname}: {count} residues excluded by exclude_resnames")
+    for resname in audit["unused_overrides"]:
+        emit(f"    {label}: lipid_overrides.{resname} matches no selected residue")
+    if audit.get("multi_residue_molecules"):
+        emit(f"    {label}: WARNING {audit['multi_residue_molecules']} bonded molecules "
+             "contain several order residues; species and leaflet counts are per residue")
+    if audit.get("leaflets"):
+        emit(f"    {label} initial leaflets at topology coordinates: "
+             f"upper={audit['leaflets']['upper']}, lower={audit['leaflets']['lower']}")
+
+
 def validate_selections(cfg, base=Path("."), *, systems=None, emit=None):
     """Check topology against configured selections; mismatches raise ``ConfigError``.
 
@@ -149,6 +183,13 @@ def _validate_selections(cfg, base, *, systems, emit):
         membrane = cfg["analyses"].get("membrane", {})
         if membrane.get("enabled") and not len(universe.select_atoms(membrane["headgroup_selection"])):
             raise ValueError(f"{system}: membrane headgroup_selection matched no atoms")
+        if cfg["analyses"]["membrane_order"].get("enabled"):
+            from ..observables.membrane_order import order_preflight
+            try:
+                counts["membrane_order"] = order_preflight(universe, cfg["analyses"]["membrane_order"])
+            except ValueError as exc:
+                raise ValueError(f"{system}: {exc}") from exc
+            _emit_order_audit(emit, "membrane_order", counts["membrane_order"])
         mechanism = cfg.get("analyses", {}).get("sdc4_mechanisms", {})
         if mechanism.get("enabled", False):
             for kind in ("tm_chains", "ectodomains"):
@@ -180,6 +221,25 @@ def _validate_selections(cfg, base, *, systems, emit):
                     raise ValueError(f"{system}: overlapping SDC4 lipid anchor selections")
                 lipid_owners.update(ids)
                 emit(f"    SDC4 lipid {name}: {len(ids)} molecules")
+            local_order = mechanism.get("local_order") or {}
+            if local_order.get("enabled"):
+                from ..mechanisms.sdc4_mechanisms import local_order_options
+                from ..observables.membrane_order import order_preflight
+                try:
+                    audit = order_preflight(
+                        universe, local_order_options(local_order, cfg["analyses"]["membrane_order"]),
+                        leaflets=False, anchor_residues=lipid_owners)
+                except ValueError as exc:
+                    raise ValueError(f"{system}: SDC4 local_order: {exc}") from exc
+                counts["sdc4_local_order"] = audit
+                _emit_order_audit(emit, "SDC4 local_order", audit)
+                if audit["lipids_without_anchor"] == audit["lipids"]:
+                    raise ValueError(
+                        f"{system}: no SDC4 local_order lipid is an SDC4 lipid anchor residue; "
+                        "local -S_CH would always be unavailable")
+                if audit["lipids_without_anchor"]:
+                    emit(f"    SDC4 local_order: {audit['lipids_without_anchor']} order lipids "
+                         "have no SDC4 lipid anchor and enter only the bulk mean")
             for name, selection in mechanism.get("ion_selections", {}).items():
                 count = len(universe.select_atoms(selection))
                 if not count:
