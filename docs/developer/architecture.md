@@ -32,7 +32,7 @@ flowchart TD
 
 Read-only `cli.py` commands import the runner, statistical estimators, and topology preflight only when their selected command requires them. `statistics_families.py` owns the lightweight family identifier list consumed by planning and the statistics dispatcher.
 
-Key interfaces: `cli.py`, `config.py` (`analysis_runs`, `iter_replicates`), `registry.py` (`analysis_output_plan`, `required_artifacts`), `contracts/outputs.py` (one descriptor per analysis: primary path, named-run support, companions, schema; producer column/path constants), `output_paths.py` (compatibility exports for persisted paths), `pipeline/analysis_selection.py` (shared enabled-analysis predicates), `pipeline/replica_tasks.py` (`specialized_tasks`, `additional_time_series`), `pipeline/runner.py`, `pipeline/streaming.py`.
+Key interfaces: `cli.py`, `config/` (`defaults.py`, `runs.py`, `validation.py`, YAML loading in `__init__.py`), `registry.py` (`analysis_output_plan`, `required_artifacts`), `contracts/outputs.py` (one descriptor per analysis: primary path, named-run support, companions, schema; producer column/path constants), `output_paths.py` (compatibility exports for persisted paths), `pipeline/analysis_selection.py` (shared enabled-analysis predicates), `pipeline/replica_tasks.py` (`specialized_tasks`, `additional_time_series`), `pipeline/runner.py`, `pipeline/streaming.py`.
 
 Output contracts now have a dependency-free owner in `contracts/outputs.py`.
 `registry.py` resolves configuration-dependent companions (SASA variants,
