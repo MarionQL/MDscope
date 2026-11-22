@@ -141,6 +141,7 @@ analyses:
   membrane_order:
     enabled: true
     axis: z
+    tail_preset: charmm36  # sn-1 C3x, sn-2 C2x; new output directory required
     lipid_selection: "resname POPC DPPC POPE POPI POPS PSM DOPC"
     min_carbons_per_tail: 4
     per_lipid_type: true
