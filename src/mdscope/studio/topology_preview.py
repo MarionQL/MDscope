@@ -41,7 +41,7 @@ def topology_signature(systems, base):
 
 
 @lru_cache(maxsize=2)
-def _cached_universe(path, revision):
+def _cached_universe(path, _revision):  # _revision only keys the cache: an edited file is re-read
     # Called only by the single worker for asynchronous requests.
     return Universe(path)
 
