@@ -3,7 +3,7 @@ import numpy as np
 
 
 def validate_hydration(cfg):
-    from ...core.glycans import validate_glycan_spec, validate_glycans
+    from ...core.glycans import validate_glycans
     glycans = cfg["selections"].get("glycans", {})
     validate_glycans(glycans)
     hydration = cfg["analyses"].get("hydration", {})
