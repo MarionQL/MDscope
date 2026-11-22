@@ -2,14 +2,14 @@
 
 | Path | Responsibility |
 |---|---|
-| `core/` | Geometry, selections, alignment, coordinate sources, checkpoints |
+| `config/` | YAML defaults, config resolution, validation, named analysis runs and labels |\n| `core/` | Geometry, selections, alignment, coordinate sources, checkpoints |
 | `observables/` | Structure, membrane, lipid, SASA, DSSP, MSD and density metrics |
 | `interactions/` | H bonds, salt bridges, ligand/lipid contacts |
 | `mechanisms/` | SDC4, HS topology, local environments, shared states |
 | `statistics/` | Autocorrelation, replicate bootstrap, contrasts |
 | `reporting/` | Saved findings and optional figures |
 | `pipeline/` | Fused streaming, executable replica tasks, restart and finalization |
-| `cli.py`, `config.py` | CLI and YAML configuration |
+| `cli.py`, `planning.py`, `studio/` | User interfaces, planning and Studio |
 | `contracts/outputs.py` | Per-analysis output descriptors, static paths, companions, schemas and shared producer constants |
 | `output_paths.py`, `registry.py` | Backward-compatible path exports, configuration-dependent companion selection and output planning |
 
