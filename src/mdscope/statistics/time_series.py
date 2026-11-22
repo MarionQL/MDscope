@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config
+from ..output_paths import SAVED_SCALAR_SOURCE_FILES
 from ..statistics_selection import time_series_selection, metric_estimator_enabled
 from .common import selected_rng
 from ..core.persistence import atomic_parquet, ensure_dir
@@ -85,8 +86,8 @@ def collect_time_series(repout: Path, *, sources: set[str] | None = None,
     if selected is not None and not selected:
         return out
     for path, group_col in(
-        (Path(repout) / "summary" / "timeseries.parquet", None),
-        (Path(repout) / "summary" / "group_timeseries.parquet", "group")
+        (Path(repout) / SAVED_SCALAR_SOURCE_FILES["summary"][0], None),
+        (Path(repout) / SAVED_SCALAR_SOURCE_FILES["summary"][1], "group")
     ):
         if not path.exists() or (sources is not None and "summary" not in sources):
             continue
@@ -140,7 +141,7 @@ def collect_time_series(repout: Path, *, sources: set[str] | None = None,
     # Reuse the SAME temporal block bootstrap / hierarchical statistics as
     # every other MDscope time series. Never resample individual lipid molecules
     # or water contacts as if they were independent simulation replicates.
-    solvation = Path(repout) / "extensions" / "solvation" / "species_timeseries.parquet"
+    solvation = Path(repout) / SAVED_SCALAR_SOURCE_FILES["solvation"][0]
     if (solvation.exists() and (sources is None or "solvation" in sources)
             and (selected is None or any(group is not None and group.startswith("solvation/")
                                         for group, _ in selected))):
@@ -161,7 +162,7 @@ def collect_time_series(repout: Path, *, sources: set[str] | None = None,
                 if metric in group and len(finite(group[metric])):
                     out[(group_id, metric)] = group[["time_ps", metric]].rename(
                         columns={metric: "value"})
-    hydration = Path(repout) / "extensions" / "hydration" / "aggregate_counts.parquet"
+    hydration = Path(repout) / SAVED_SCALAR_SOURCE_FILES["hydration"][0]
     if (hydration.exists() and (sources is None or "hydration" in sources)
             and (selected is None or any(group is not None and group.startswith("hydration/")
                                         for group, _ in selected))):
@@ -189,7 +190,7 @@ def collect_time_series(repout: Path, *, sources: set[str] | None = None,
             ):
                 out[(identity, metric)] = group[["time_ps", column]].rename(
                     columns={column: "value"})
-    bridges = Path(repout)/"extensions/solvation/bridge_pair_timeseries.parquet"
+    bridges = Path(repout) / SAVED_SCALAR_SOURCE_FILES["solvation_bridges"][0]
     if (bridges.exists() and (sources is None or "solvation_bridges" in sources)
             and (selected is None or any(group is not None and group.startswith("solvation_bridges/")
                                         for group, _ in selected))):
@@ -207,7 +208,7 @@ def collect_time_series(repout: Path, *, sources: set[str] | None = None,
                 if metric not in group or not group[metric].notna().any():
                     continue
                 out[(identity, metric)] = group.sort_values("time_ps")[["time_ps", metric]].rename(columns={metric: "value"})
-    matrix = Path(repout)/'extensions/lipid_contacts/matrix.parquet'
+    matrix = Path(repout) / SAVED_SCALAR_SOURCE_FILES["lipid_contacts"][0]
     if (matrix.exists() and (sources is None or "lipid_contacts" in sources)
             and (selected is None or any(group is not None and group.startswith("lipid_contacts/")
                                         for group, _ in selected))):

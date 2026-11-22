@@ -50,7 +50,7 @@ For generalization PRs:
 Existing controls include `selections.groups`, supported analysis-specific
 selection fields, `membrane_order.tails`/`lipid_overrides`, SDC4 TM/ectodomain,
 HS/motif/lipid definitions, `statistics.metric_selection` and exact `plots.include`.
-These are not universal keys accepted by every analysis. Generic state-feature sources still have open implementation work (#163).
+These are not universal keys accepted by every analysis. Shared motif definitions and saved state-feature sources are configured below.
 Residue-response discovery is controlled by `statistics.residue_response`; see
 the validated options below. Do not advertise proposed fields as supported.
 
@@ -77,6 +77,110 @@ analyses:
 - RMSD/Rg `groups` chooses a subset of shared groups; omitted means all. Global metrics stay in `summary/timeseries.parquet`.
 - Density, residue–membrane distance and SASA support named `runs`. Do **not** add `runs` to RMSD/Rg.
 - Membrane-relative density uses the midpoint of circular leaflet centers. Use **one comparable anchor per lipid**, a half-width divisible by the bin width and no `center_selection`. The half-width must fit within half the current normal box length. A different reference needs a new run ID.
+
+## Shared motifs and saved-feature states
+
+A shared definition discovers topology membership; it never enables an analysis
+or assigns biological function. Solvation is the first generic measurement
+consumer. Existing inline solvation sequences and SDC4 motif settings keep their
+identities and numerical semantics. Other consumers must explicitly adopt the
+shared resolver before accepting motif references.
+
+```yaml
+selections:
+  motifs:
+    acidic_patch:
+      sequence: DE                       # or pattern: "D.E" (Python regex)
+      selection: protein                 # residue domain; CA atoms identify sequence
+      chains: null                       # all chains; [] selects none
+      overlap: false
+      missing: error                     # error or allow
+analyses:
+  solvation:
+    enabled: true
+    water_selection: "resname SOL and name OW"
+    targets:
+      motif:
+        patch: {motif: acidic_patch, atom_selection: "not name H*"}
+  shared_states:
+    enabled: true
+    preset: null                         # sdc4 is the backward-compatible default
+    features: [patch_water]
+    feature_sources:
+      patch_water:
+        source: solvation
+        group: solvation/water/motif/patch
+        metric: mean_n_solvent
+        units: molecules
+    alignment: exact
+    scaling: standardize                  # median/std, the supported scaling rule
+    n_states: 2
+```
+
+Merge this fragment with your project/systems configuration and disable unrelated
+analyses when unnecessary. Water names and motif sequences must match your
+system; they are not inferred from its name. Preview with
+`mdscope validate analysis.yaml` or Studio's topology preflight before a run.
+`mdscope plan analysis.yaml` includes state inputs and shared motif definitions;
+the authoring catalog lists summary/solvation candidates and source prerequisites.
+Topology-dependent hydration/bridge/lipid identities remain explicit templates
+until the saved reader validates their actual identities; they are not claimed
+as measured. Topology preflight adds ordered residue indices, residue numbers/names, segment
+identity and chain labels. Studio uses these same YAML mappings.
+
+Motif membership uses topology residue indices, never ambiguous residue numbers.
+Matches stay within contiguous selected fragments and segments; unknown or
+modified residues cannot become wildcard matches. `sequence` accepts uppercase
+standard amino acids; `pattern` accepts a consuming regular expression. Chain
+labels are chainIDs, falling back to segids. Omission uses all chains; an empty
+chain list with `missing: allow` previews an unavailable motif. Solvation requires
+at least one match for every requested motif target: absence cannot count as
+zero hydration. Overlapping discoveries are previewable with `overlap: true`,
+but solvation rejects shared target atoms to prevent double counting.
+`selections.motifs: {}` defines none; lists/null are invalid.
+
+Solvation saves one count per matched instance and frame, then averages instances
+within each solvent/target-class/site-label in `species_timeseries.parquet`.
+For chain-specific state features, declare separate chain-scoped motifs/labels.
+A reference does not change this aggregation, RDF normalization, water identity
+or heavy-atom selection. Membership is saved in solvation `metadata.json` and
+atom/residue target tables.
+
+| State source | Saved scalar identity (`group`, `metric`) |
+|---|---|
+| `summary` | `null` or named group; numerical column such as `rmsd_A` |
+| `solvation` | `solvation/<solvent>/<target_class>/<site_class>`; `mean_n_solvent` or `hydrated_fraction` |
+| `hydration` | `hydration/<compartment>/<level>/<label>`; `unique_water_count` or `unique_water_per_site` |
+| `solvation_bridges` | Existing bridge-pair group identity from the saved scalar catalog; supported numerical bridge column |
+| `lipid_contacts` | `lipid_contacts/<leaflet>/<species_a>/<species_b>`; `neighbors_per_molecule` or `enrichment` |
+
+With `preset: null`, feature aliases must exactly match `feature_sources` keys.
+Every source declares its logical product, exact metric/group and units. Units
+are recorded declarations, not conversions or a chemistry validation. Source
+readers are the same ones used by saved time-series statistics. Features within
+a replicate must share **exactly** the same finite, unique time grid; there is no
+interpolation, nearest-time matching or row-position join. Replicas may differ
+in length and sampling window. Missing/nonfinite feature values retain their
+observation positions; only complete vectors enter the model. The default
+`min_complete_fraction: 0.90` rejects excessive loss. Gaps/irregular sampling
+disable temporal block intervals; transitions never bridge dropped rows.
+
+One median/std scaler and seeded k-means model use equal training-frame counts
+per replicate (`training_frames_per_replicate: 2000` maximum). Standardization
+gives every selected feature equal scale; correlated/redundant features can
+still weight a physical property more heavily. Constant/all-missing features,
+missing products, mismatched times and too few distinct vectors fail. No model
+is fit if disabled. With the SDC4 preset, omitted/null `features` uses its six
+legacy geometric columns; explicit `features: []` is an error. Generic mode
+requires a nonempty explicit selection and does not enable SDC4.
+
+Results retain `project_summary/shared_states/` tables. `model.json` records
+sources, declared units, effective preset, scaling, complete-frame windows and
+training counts. A successful rerun archives the previous directory under
+`project_summary/archive/shared_states*`; failed preparation leaves it intact.
+SDC4-only conditioning products are produced solely for the SDC4 preset.
+States are geometric k-means groups, **not** established kinetic/metastable
+states or evidence of causation; short fixtures do not establish convergence.
 
 ## SASA environments
 

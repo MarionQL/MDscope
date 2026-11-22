@@ -20,3 +20,12 @@ FUSED_OUTPUTS = {
     "sdc4_mechanisms": "extensions/sdc4_mechanisms/timeseries.parquet",
     "potassium_bridge_audit": "extensions/potassium_bridge_audit/topology_audit.json",
 }
+
+# Scalar readers, state-feature provenance and authoring use the same sources.
+SAVED_SCALAR_SOURCE_FILES = {
+    "summary": ("summary/timeseries.parquet", "summary/group_timeseries.parquet"),
+    "solvation": ("extensions/solvation/species_timeseries.parquet",),
+    "hydration": ("extensions/hydration/aggregate_counts.parquet",),
+    "solvation_bridges": ("extensions/solvation/bridge_pair_timeseries.parquet",),
+    "lipid_contacts": ("extensions/lipid_contacts/matrix.parquet",),
+}

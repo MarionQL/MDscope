@@ -8,10 +8,11 @@ reported as *unmapped*, rather than guessed from file naming conventions.
 from __future__ import annotations
 
 from pathlib import Path
+from .state_feature_spec import SDC4_FEATURES
 from typing import Any
 
 from .config import analysis_runs, iter_replicates, plot_enabled, statistics_family_config
-from .registry import analysis_output_plan, required_artifacts, artifact_schema, scalar_contracts, structural_profile_contracts, density_output_contracts, configured_profile_variables
+from .registry import state_feature_catalog, analysis_output_plan, required_artifacts, artifact_schema, scalar_contracts, structural_profile_contracts, density_output_contracts, configured_profile_variables
 from .statistics_families import STATISTICS_FAMILIES
 from .statistics_selection import ESTIMATOR_FLAGS
 from .reporting.plot_ids import STATIC_IDS, SDC4_CONDITION_STEMS, describe_plot, safe_plot_stem
@@ -217,6 +218,7 @@ def build_plan(cfg: dict, config_path: str | Path, *,
             })
 
     selected = []
+    state_sources = state_feature_catalog(cfg)["sources"]
     for name in cfg["analyses"]:
         for run in analysis_runs(cfg, name):
             status = ("registered" if name in registered_by_name
@@ -234,6 +236,16 @@ def build_plan(cfg: dict, config_path: str | Path, *,
                 "purpose": meta[0] if meta else "Not cataloged",
                 "coordinate_source": _source(name, cfg),
                 "selection_inputs": _selection_inputs(run.spec),
+                **({"state_model_inputs": {
+                    "preset": run.spec.get("preset", "sdc4"),
+                    "features": (run.spec.get("features") if run.spec.get("features") is not None else SDC4_FEATURES),
+                    "feature_sources": run.spec.get("feature_sources", {}),
+                    "source_prerequisites": {
+                        alias: state_sources[source["source"]]
+                        for alias, source in run.spec.get("feature_sources", {}).items()},
+                    "alignment": run.spec.get("alignment", "exact"),
+                    "scaling": run.spec.get("scaling", "standardize"),
+                }} if name == "shared_states" else {}),
                 "required_topology": list(REQUIRED_TOPOLOGY.get(name, ())),
                 "topology_requirements_status": ("partial_contract" if name in REQUIRED_TOPOLOGY
                                                  else "not_registered"),
@@ -905,4 +917,6 @@ def authoring_catalog(cfg, *, include_inactive=False):
             statistics[figure["id"]] = figure
         figures["statistics"] = statistics
     return {"scalars": scalars, "profiles": profiles,
+            "motifs": configured["selections"].get("motifs", {}),
+            "state_features": state_feature_catalog(configured),
             "figures": {owner: list(items.values()) for owner, items in figures.items()}}

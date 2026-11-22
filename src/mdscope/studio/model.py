@@ -119,6 +119,14 @@ def _change_group(document, old_id, new_id=None, *, duplicate=False, choices=Non
         # Use the backend's filesystem-safe group ID contract.
         from ..config import analysis_groups
         analysis_groups(candidate)
+    state_sources = document.get("analyses", {}).get("shared_states", {}).get("feature_sources", {})
+    state_references = [name for name, source in state_sources.items()
+                        if source.get("source") == "summary" and source.get("group") == old_id]
+    if state_references and new_id is None and not duplicate:
+        raise ValueError("Group is referenced by shared_states features: " + ", ".join(state_references))
+    if not duplicate and new_id is not None:
+        for name in state_references:
+            state_sources[name]["group"] = new_id
     replaced = {}
     for key, spec in groups.items():
         if key != old_id or duplicate:

@@ -51,6 +51,8 @@ jobs:
       - name: Validate SDC4 geometry and lipid maps on real TPR/XTC inputs
         run: |
           python tests/real_sdc4_mechanisms.py
+      - name: Validate shared motif hydration and generic saved-state inputs
+        run: python tests/real_motif_shared_states.py
       - name: Full-length physical audit and stage benchmarks
         run: |
           python tests/real_trajectory_physics.py
