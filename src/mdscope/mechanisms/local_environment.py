@@ -13,7 +13,8 @@ import pandas as pd
 from MDAnalysis.lib.distances import distance_array
 
 from ..biophysical_common import box_of, heavy, residue_pairs
-from ..config import atomic_parquet, ensure_dir, time_ps
+from ..config import time_ps
+from ..core.persistence import atomic_parquet, ensure_dir
 from ..core.motifs import resolve_motifs
 from ..core.sequence import sequence_chain_label
 

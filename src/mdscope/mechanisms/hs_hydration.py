@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import capped_distance
 
-from ..config import atomic_parquet
+from ..core.persistence import atomic_parquet
 from ..contracts.outputs import (
     GLYCAN_ATTACHMENTS_FILE, HS_SUGAR_HYDRATION_PATH,
     HYDRATION_AGGREGATE_COLUMNS, HYDRATION_ATTACHMENT_COLUMNS,

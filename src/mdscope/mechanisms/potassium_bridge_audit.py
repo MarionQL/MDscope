@@ -17,7 +17,8 @@ from scipy.ndimage import gaussian_filter1d
 from scipy.signal import find_peaks
 from scipy.spatial import cKDTree
 
-from ..config import atomic_json, atomic_parquet, time_ps
+from ..config import time_ps
+from ..core.persistence import atomic_json, atomic_parquet
 from ..core.glycans import discover_covalent_glycans
 from ..core.progress import track
 from ..core.sequence import sequence_matches
