@@ -2,7 +2,7 @@
 
 
 def validate_shared_states(cfg):
-    from ...statistics.state_feature_spec import validate_state_features
+    from ...contracts.state_feature_spec import validate_state_features
     mechanisms = cfg["analyses"].get("sdc4_mechanisms", {})
     shared = cfg["analyses"].get("shared_states", {})
     validate_state_features(shared)

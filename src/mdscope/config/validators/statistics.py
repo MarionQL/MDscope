@@ -8,7 +8,7 @@ from .residue_response import residue_response_settings
 def validate_statistics(cfg):
     stats = cfg.get("statistics", {})
     residue_response_settings(cfg)
-    from ...statistics.selection import validate_metric_selection
+    from ...contracts.metric_selection import validate_metric_selection
     validate_metric_selection(stats)
     for field in ("block", "hypothesis_tests"):
         if stats.get(field) is not None and not isinstance(stats[field], dict):

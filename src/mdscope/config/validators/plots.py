@@ -18,7 +18,7 @@ def validate_plots(cfg):
     if (not isinstance(families, dict) or set(families) - allowed
             or any(not isinstance(value, bool) for value in families.values())):
         raise ValueError("plots.families must map known families to booleans")
-    from ...reporting.plot_ids import validate_figure_options, validate_plot_ids
+    from ...contracts.plot_validation import validate_figure_options, validate_plot_ids
     validate_plot_ids(plots.get("include"))
     validate_figure_options(plots.get("options", {}))
     excluded = plots.get("interaction_exclude_kinds", [])

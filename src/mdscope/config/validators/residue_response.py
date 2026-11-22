@@ -22,7 +22,7 @@ def residue_response_settings(cfg):
                 any(not isinstance(v, str) or not v.strip() for v in values) or
                 len(set(values)) != len(values)):
             raise ValueError(f"statistics.residue_response.{key} must be null or distinct nonempty strings")
-    from ...statistics.contracts import RESIDUE_RESPONSE_PROFILE
+    from ...contracts.residue_response import RESIDUE_RESPONSE_PROFILE
     unsupported = [name for name in settings["profiles"] or []
                    if not RESIDUE_RESPONSE_PROFILE.match(name)]
     if unsupported:
