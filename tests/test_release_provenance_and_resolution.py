@@ -105,7 +105,7 @@ def test_reported_floor_equals_production_permutation_minimum(design, n_1, n_2, 
     """Oracle: maximally separated replicas reach the estimator's smallest p."""
     import numpy as np
 
-    from mdscope.permutation_resolution import permutation_floor
+    from mdscope.statistics.permutation_resolution import permutation_floor
     from mdscope.statistics.common import _permutation
     tests = {"enabled": True, "design": design}
     a = {f"r{i}": float(i) for i in range(n_1)}

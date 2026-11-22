@@ -25,7 +25,7 @@ from real_trajectory_smoke import DATA, ROOT, SYSTEMS, build_config, inspect
 
 from mdscope.config import load_config
 from mdscope.pipeline.runner import run_one
-from mdscope.statistics import analyze_project
+from mdscope.statistics.dispatch import analyze_project
 
 
 def _read(path):

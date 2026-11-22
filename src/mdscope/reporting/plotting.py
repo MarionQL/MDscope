@@ -24,7 +24,8 @@ from ..config import (
 )
 from ..core.persistence import archive_output
 from ..interactions import interaction_tables
-from ..statistics import collect_time_series, finite
+from ..statistics.time_series import collect_time_series
+from ..statistics.common import finite
 from .figure_inventory import current_statistics
 from .labels import _metric_meta
 from .plot_ids import figure_dpi, id_from_figure_path

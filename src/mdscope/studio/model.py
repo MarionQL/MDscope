@@ -9,7 +9,7 @@ import yaml
 from ..config import DEFAULTS, resolve_config
 from ..config_schema import option_schema
 from ..planning import build_plan
-from ..statistics_selection import studio_metric_selection_defaults
+from ..statistics.selection import studio_metric_selection_defaults
 
 
 def analysis_options():
@@ -432,7 +432,7 @@ def statistics_family_mode(document, family):
     None and an omitted family both mean all eligible backend identities.
     Explicit empty lists mean none; nonempty lists are exact allowlists.
     """
-    from ..statistics_selection import studio_metric_selection_defaults
+    from ..statistics.selection import studio_metric_selection_defaults
     if family not in studio_metric_selection_defaults():
         raise ValueError(f"Unknown statistics family: {family}")
     selectors = document.get("statistics", {}).get("metric_selection")
@@ -470,7 +470,7 @@ def set_statistics_exact_family(document, family, entries, *, catalog_complete=F
     family, but converting an unrestricted family would otherwise silently
     exclude dynamic identities absent from the Studio planning catalog.
     """
-    from ..statistics_selection import validate_metric_selection
+    from ..statistics.selection import validate_metric_selection
     before = statistics_family_mode(document, family)
     if before == "all" and not catalog_complete:
         raise ValueError(
@@ -492,7 +492,7 @@ def set_statistics_exact_family(document, family, entries, *, catalog_complete=F
 
 def statistics_selector_fields(family):
     """Guided table columns from backend identity and estimator contracts."""
-    from ..statistics_selection import ESTIMATOR_FLAGS, SIMPLE_FAMILY_KEYS
+    from ..statistics.selection import ESTIMATOR_FLAGS, SIMPLE_FAMILY_KEYS
     keys = (("kind", "interaction", "metric") if family == "interactions"
             else SIMPLE_FAMILY_KEYS[family])
     return [*keys, "inference", *sorted(ESTIMATOR_FLAGS[family])]

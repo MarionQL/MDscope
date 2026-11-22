@@ -4,7 +4,7 @@ import pandas as pd
 
 from mdscope.mechanisms.sdc4_mechanisms import _leaflet_plane_height
 from mdscope.mechanisms.shared_states import _write_matched_populations
-from mdscope.statistics import analyze_project
+from mdscope.statistics.dispatch import analyze_project
 
 
 def test_hs_episodes_and_dual_scalar_windows(tmp_path):

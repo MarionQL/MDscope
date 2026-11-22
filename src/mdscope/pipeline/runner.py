@@ -55,7 +55,7 @@ from ..observables.msd import (
 from ..observables.multi_origin_pipeline import run_multi_origin_diffusion
 from ..observables.structure_profiles import postprocess_structure_profiles
 from ..registry import analysis_output_plan, fused_output, fused_output_plan
-from ..statistics import analyze_project
+from ..statistics.dispatch import analyze_project
 from ..statistics.shared_states import fit_shared_states, publish_shared_states
 from .fused_all import run_fused_only
 from .fused_distance import enabled_names as distance_enabled_names
@@ -569,7 +569,7 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
             # Legacy family-wide plotting can dispatch statistical figures.
             requires_statistics = True
         if requires_statistics:
-            from ..statistics_manifest import read_statistics_manifest
+            from ..statistics.manifest import read_statistics_manifest
             manifest = root / "project_summary/statistics/manifest.json"
             facts = read_statistics_manifest(manifest)
             if facts.state == "missing":

@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from mdscope.statistics import analyze_project
+from mdscope.statistics.dispatch import analyze_project
 
 
 def test_statistics_exports_intervals_and_explicit_coverage(tmp_path):

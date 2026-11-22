@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from mdscope.statistics import analyze_project
+from mdscope.statistics.dispatch import analyze_project
 
 
 def test_coupling_uses_shared_grid_without_compressing_gaps(tmp_path):

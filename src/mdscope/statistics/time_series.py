@@ -15,7 +15,7 @@ from ..config import statistics_family_config
 from ..core.persistence import atomic_parquet, ensure_dir
 from ..interactions.interaction_tables import event_lifetimes
 from ..output_paths import SAVED_SCALAR_SOURCE_FILES
-from ..statistics_selection import metric_estimator_enabled, time_series_selection
+from .selection import metric_estimator_enabled, time_series_selection
 from .common import (
     _adaptive_intervals,
     _block_bootstrap,

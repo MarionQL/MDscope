@@ -289,7 +289,7 @@ def figure_status(path, cfg, root, system_repouts, records=None):
 
 def statistics_status(cfg, root, family):
     """Explain eligibility with explicit legacy and publication policies."""
-    from ..statistics_manifest import read_statistics_manifest
+    from ..statistics.manifest import read_statistics_manifest
     stats = cfg.get('statistics', {})
     option = stats.get('families', {}).get(family, True)
     if (not stats.get('enabled', True) or option is False or

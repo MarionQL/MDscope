@@ -113,7 +113,7 @@ def _fit_shared_states(cfg, root, system_repouts):
     spec = cfg.get("analyses", {}).get("shared_states", {})
     if not spec.get("enabled", False):
         return None
-    from ..state_feature_spec import SDC4_FEATURES, validate_state_features
+    from .state_feature_spec import SDC4_FEATURES, validate_state_features
     from .state_features import load_state_features
     validate_state_features(spec)
     sdc4 = spec.get("preset", "sdc4") == "sdc4"
