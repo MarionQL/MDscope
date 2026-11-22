@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from mdscope.config import load_config
+from mdscope.config import load_config, project_root
 from mdscope.planning import build_plan
 from mdscope.registry import analysis_output_plan, required_artifacts
 from mdscope_test_support import invoke_cli
@@ -21,6 +21,7 @@ def test_schema_only_plan_ignores_missing_inputs_but_checks_yaml(tmp_path, proje
     cfg = load_config(path, check_paths=False)
     plan = build_plan(cfg, path)
     assert plan["validation"]["mode"] == "schema_only"
+    assert plan["resolved_output_directory"] == str(project_root(cfg, path))
     assert not plan["validation"]["topology_checked"]
     assert not plan["validation"]["trajectory_frames_checked"]
     assert plan["systems"][0]["replicates"] == 1
@@ -39,6 +40,7 @@ def test_cli_plan_json_does_not_write_or_read_trajectory(tmp_path, project):
     result = invoke_cli(tmp_path, "plan", path, "--format", "json")
     plan = json.loads(result.stdout)
     assert plan["validation"]["mode"] == "schema_only"
+    assert plan["resolved_output_directory"] == str(root.resolve())
     assert plan["statistics_families"]
     assert plan["replicates"][0]["id"] == "rep1"
     assert not root.exists()
@@ -553,3 +555,30 @@ def test_plan_discovers_condition_specific_sdc4_figures(tmp_path, project):
     assert all(row["availability"] == "conditional_on_saved_data"
                for row in family["specific_figures"])
     assert not root.exists()
+
+
+def test_output_resolution_is_independent_of_working_directory(tmp_path, project):
+    path, root = project("plan_paths")
+    cfg = load_config(path)
+    assert project_root(cfg, path) == root.resolve()
+    assert project_root(cfg, path).is_absolute()
+
+    moved = tmp_path / "relocated" / "analysis.yaml"
+    moved.parent.mkdir()
+    moved.write_text(path.read_text())
+    moved_cfg = load_config(moved, check_paths=False)
+    assert project_root(moved_cfg, moved) == (
+        moved.parent / cfg["project"]["output"]).resolve()
+    assert project_root(moved_cfg, moved) != project_root(cfg, path)
+
+    moved_cfg["project"]["output"] = str(root.resolve())
+    assert project_root(moved_cfg, moved) == root.resolve()
+
+
+def test_cli_validate_and_text_plan_display_resolved_output(tmp_path, project):
+    path, root = project("plan_visible_path")
+    validated = invoke_cli(tmp_path, "validate", path)
+    planned = invoke_cli(tmp_path, "plan", path)
+    expected = f"Resolved output directory: {root.resolve()}"
+    assert expected in validated.stdout
+    assert expected in planned.stdout

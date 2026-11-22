@@ -12,7 +12,7 @@ from .state_feature_spec import SDC4_FEATURES
 from .core.glycans import glycan_definition
 from typing import Any
 
-from .config import analysis_runs, iter_replicates, plot_enabled, statistics_family_config
+from .config import analysis_runs, iter_replicates, plot_enabled, project_root, statistics_family_config
 from .registry import state_feature_catalog, analysis_output_plan, required_artifacts, artifact_schema, scalar_contracts, structural_profile_contracts, density_output_contracts, configured_profile_variables
 from .statistics_families import STATISTICS_FAMILIES
 from .statistics_selection import ESTIMATOR_FLAGS
@@ -530,6 +530,7 @@ def build_plan(cfg: dict, config_path: str | Path, *,
             "trajectory_frames_checked": False,
         },
         "project": cfg["project"],
+        "resolved_output_directory": str(project_root(cfg, config_path)),
         "systems": [
             {"id": system, "label": spec.get("label", system),
              "replicates": sum(rep.system == system for rep in reps)}

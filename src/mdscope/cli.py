@@ -12,7 +12,7 @@ from pathlib import Path
 import yaml
 
 from . import __version__
-from .config import iter_replicates, load_config
+from .config import iter_replicates, load_config, project_root
 from .errors import UserInputError
 
 
@@ -75,6 +75,7 @@ def cmd_validate(args):
     cfg = load_config(args.config)
     reps = list(iter_replicates(cfg, args.config))
     print(f"Valid config: {len(cfg['systems'])} systems, {len(reps)} replicates")
+    print(f"Resolved output directory: {project_root(cfg, args.config)}")
     for rep in reps:
         print(f"  {rep.system}/{rep.label}: {rep.trajectory}")
     print("\nResolved structural selections:")
@@ -102,6 +103,7 @@ def cmd_plan(args):
         return
     print(f"MDscope plan ({mode}): {len(plan['systems'])} systems, "
           f"{len(plan['replicates'])} replicas")
+    print(f"Resolved output directory: {plan['resolved_output_directory']}")
     for pair in plan["inference_design"]["comparisons"]:
         if pair["resolution_kind"] == "exact":
             print(f"  Exact two-sided p floor for {pair['system_1']} vs "

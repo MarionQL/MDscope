@@ -328,6 +328,12 @@ def analysis_enabled(cfg: dict, name: str) -> bool:
     return bool(analysis_runs(cfg, name))
 
 
+def project_root(cfg: dict, config_path: str | Path) -> Path:
+    """Resolve project.output relative to the YAML, not the working directory."""
+    path = Path(cfg["project"]["output"])
+    return (path if path.is_absolute() else Path(config_path).resolve().parent / path).resolve()
+
+
 def iter_replicates(cfg: dict, config_path: str | Path):
     base = Path(config_path).resolve().parent
     for system, spec in cfg["systems"].items():
