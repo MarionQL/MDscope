@@ -33,7 +33,7 @@ Use **GitHub Flow**: `main` is the integration branch; each issue or focused cha
 | `statistics/` | Replicate-level inference and comparisons |
 | `reporting/` | Findings, scientific figures and exports |
 | `pipeline/` | Shared streaming, orchestration, finalization |
-| `cli.py`, `config.py` | CLI and YAML configuration |
+| `config/` | YAML defaults, validation, named runs and resolution |\n| `cli.py`, `planning.py`, `studio/` | User-facing commands, planning and Studio |
 | `output_paths.py`, `registry.py` | Shared output path constants, persisted artifact schemas and required companions |
 | `pipeline/replica_tasks.py` | Specialized executable task dispatch and saved scalar inputs |
 
