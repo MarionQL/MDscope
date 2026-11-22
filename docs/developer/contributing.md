@@ -26,6 +26,7 @@ Use **GitHub Flow**: `main` is the integration branch; each issue or focused cha
 
 | Module | Owns |
 |---|---|
+| `contracts/` | Dependency-free output, figure-option, state-feature and statistics-selection schemas |
 | `core/` | Geometry, atom selections, trajectory sources, persistence, checkpoints |
 | `observables/` | RMSD/RMSF/MSD, membrane/lipid/structural observables |
 | `interactions/` | Molecular contacts and H bonds |
@@ -33,7 +34,8 @@ Use **GitHub Flow**: `main` is the integration branch; each issue or focused cha
 | `statistics/` | Replicate-level inference and comparisons |
 | `reporting/` | Findings, scientific figures and exports |
 | `pipeline/` | Shared streaming, orchestration, finalization |
-| `config/` | YAML defaults, validation, named runs and resolution |\n| `cli.py`, `planning.py`, `studio/` | User-facing commands, planning and Studio |
+| `config/` | YAML defaults, resolved configuration and ordered per-analysis validators |
+| `cli.py`, `planning.py`, `studio/` | User-facing commands, planning and Studio |
 | `output_paths.py`, `registry.py` | Shared output path constants, persisted artifact schemas and required companions |
 | `pipeline/replica_tasks.py` | Specialized executable task dispatch and saved scalar inputs |
 

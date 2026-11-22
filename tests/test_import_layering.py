@@ -1,8 +1,9 @@
 """Lower packages must not import higher ones (#256).
 
 Intended order: core -> observables/interactions -> mechanisms ->
-statistics/reporting -> pipeline -> cli/studio. Root modules such as
-config.py are outside this check (see #259). Function-level imports count:
+statistics/reporting -> pipeline -> cli/studio. The `config/` package may
+import `core/` and `contracts/`, not execution or presentation layers.
+Function-level imports count:
 they still couple the lower package to the higher one.
 """
 import ast
@@ -14,6 +15,7 @@ FORBIDDEN = {
     "core": HIGHER | {"observables", "interactions"},
     "observables": HIGHER,
     "interactions": HIGHER,
+    "config": HIGHER | {"observables", "interactions", "systems"},
 }
 # (importing module, imported module): reason. Remove entries as they are fixed.
 ALLOWED = {

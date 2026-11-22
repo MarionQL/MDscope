@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 
 from mdscope.systems.sdc4.mechanisms import _leaflet_plane_height
-from mdscope.mechanisms.shared_states import _write_matched_populations
+from mdscope.statistics.shared_states import _write_matched_populations
 from mdscope.statistics.dispatch import analyze_project
 
 

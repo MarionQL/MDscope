@@ -1,4 +1,4 @@
-"""Lightweight validation shared by YAML authoring and saved-state execution."""
+"""Shared-state feature schema; independent of the statistics runtime."""
 import math
 
 from ..output_paths import SAVED_SCALAR_SOURCE_FILES

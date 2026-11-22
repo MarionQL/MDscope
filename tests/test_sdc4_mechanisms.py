@@ -18,7 +18,7 @@ from mdscope.systems.sdc4.mechanisms import (
     _normal_order_setup,
     _order_by_residue,
 )
-from mdscope.mechanisms.shared_states import fit_shared_states
+from mdscope.statistics.shared_states import fit_shared_states
 from mdscope.statistics.profiles import collect_temporal_profiles
 
 
@@ -395,7 +395,7 @@ def test_lipid_residence_tracks_molecules_and_censors():
 
 
 def test_shared_states_exports_replica_conditioned_nxip(tmp_path):
-    from mdscope.mechanisms.shared_states import fit_shared_states
+    from mdscope.statistics.shared_states import fit_shared_states
     cfg = {"analyses": {"sdc4_mechanisms": {"enabled": True},
                          "shared_states": {"enabled": True, "features": [
                              "sdc4_ectodomain_A_height_A",
