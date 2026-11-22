@@ -24,6 +24,11 @@ SUPPLEMENT_SUFFIXES = (
 )
 
 
+def _relative(path, root):
+    """Persisted product identities are portable POSIX paths below the project."""
+    return Path(path).relative_to(root).as_posix()
+
+
 def figure_inventory(root, system_repouts, cfg=None, include_rejected=False, *, formats=("png", "pdf")):
     """List reporting products; formats=('png',) retains PNG-only consumers."""
     from filecmp import cmp
@@ -47,7 +52,7 @@ def figure_inventory(root, system_repouts, cfg=None, include_rejected=False, *, 
                 peers.append(path)
         if cfg is not None and status not in {'valid', 'legacy_unverified'} and not include_rejected:
             continue
-        record = records.get(str(path.relative_to(root)),{})
+        record = records.get(_relative(path, root),{})
         from .table_reports import report_manifest
         try:
             report = report_manifest(path) if path.suffix == '.pdf' else None
@@ -56,15 +61,15 @@ def figure_inventory(root, system_repouts, cfg=None, include_rejected=False, *, 
         pages = report.get('pages', []) if report else []
         rows.append({"format":path.suffix[1:], "page_count":report.get('page_count') if report else None,
                      "page_ids":json.dumps([page.get('figure_id') for page in pages if isinstance(page, dict)]),
-                     "figure_id":str(path.relative_to(root)),
+                     "figure_id":_relative(path, root),
                      "display_label":record.get('display_label', path.stem.replace('_',' ')),
                      "source_metric":record.get('source_metric'),"units":record.get('units'),
                      "generated_at":record.get('generated_at'),
                      "source_files":json.dumps(record.get('source_files',[])),
                      "sampling":json.dumps(record.get('sampling',[])),
-                     "status":status,"family":figure_family(path),"figure":str(path.relative_to(root)),
-                     "section":str(path.parent.relative_to(root)),
-                     "kind":kind,"bytes":path.stat().st_size})
+                     "status":status,"family":figure_family(path),"figure":_relative(path, root),
+                     "section":_relative(path.parent, root),
+                     "kind":kind,"bytes":path.stat().st_size,"archive":None})
     if include_rejected and 'pdf' in formats:
         from .table_reports import report_manifest, REPORT_NAME, MANIFEST_NAME
         for sidecar in (root/'project_summary/figures').rglob(MANIFEST_NAME):
@@ -73,14 +78,14 @@ def figure_inventory(root, system_repouts, cfg=None, include_rejected=False, *, 
                 continue
             try:
                 report = report_manifest(path)
-                status = report.get('status', 'invalid_manifest')
+                status, archive = report.get('status', 'invalid_manifest'), report.get('archive')
             except (OSError, ValueError, TypeError):
-                status = 'invalid_manifest'
-            rows.append(dict(figure=str(path.relative_to(root)), figure_id=str(path.relative_to(root)),
+                status, archive = 'invalid_manifest', None
+            rows.append(dict(figure=_relative(path, root), figure_id=_relative(path, root),
                              format='pdf', page_count=0, page_ids='[]', bytes=0,
-                             family=figure_family(path), status=status, kind='supplement',
-                             section=str(path.parent.relative_to(root))))
-    return pd.DataFrame(rows,columns=["figure","figure_id","display_label","section","kind","bytes","family","status","source_metric","units","generated_at","source_files","sampling","format","page_count","page_ids"])
+                             family=figure_family(path), status=status, kind='table_report',
+                             section=_relative(path.parent, root), archive=archive))
+    return pd.DataFrame(rows,columns=["figure","figure_id","display_label","section","kind","bytes","family","status","source_metric","units","generated_at","source_files","sampling","format","page_count","page_ids","archive"])
 
 
 def figure_family(path):
@@ -106,7 +111,7 @@ def _figure_paths(root, system_repouts):
 
 
 def figure_snapshot(root, system_repouts):
-    return {str(p.relative_to(root)): (p.stat().st_mtime_ns,p.stat().st_size)
+    return {_relative(p, root): (p.stat().st_mtime_ns,p.stat().st_size)
             for p in _figure_paths(root, system_repouts)}
 
 
@@ -155,7 +160,7 @@ def record_generated_figures(cfg, root, system_repouts, before):
                                      last_ps=float(times.max())))
     sources = {}
     for path in _figure_paths(root,system_repouts):
-        name = str(path.relative_to(root))
+        name = _relative(path, root)
         if before.get(name) == (path.stat().st_mtime_ns,path.stat().st_size):
             continue
         family = figure_family(path)
@@ -163,12 +168,16 @@ def record_generated_figures(cfg, root, system_repouts, before):
             sources[family] = _source_files(root,system_repouts,family)
         files = sources[family]
         from .labels import _metric_meta
-        metric = path.stem.split('__')[0]
-        label, units = _metric_meta(metric)
-        if units == metric:
-            units = 'see figure axes/source schema'
+        if path.suffix == '.pdf':
+            # A report spans metrics; each page carries its own figure identity.
+            metric, units, label = None, None, f'Statistics tables ({path.parent.name})'
+        else:
+            metric = path.stem.split('__')[0]
+            label, units = _metric_meta(metric)
+            if units == metric:
+                units = 'see figure axes/source schema'
         records[name] = dict(source_metric=metric,units=units,display_label=label,
-            family=family, source_files=[str(p.relative_to(root)) for p in files],
+            family=family, source_files=[_relative(p, root) for p in files],
             generated_at=datetime.now(timezone.utc).isoformat(), sampling=sampling,
             format=path.suffix[1:])
         if path.suffix == '.pdf':
@@ -263,7 +272,7 @@ def figure_status(path, cfg, root, system_repouts, records=None):
                 image.verify()
         except (OSError, SyntaxError, ValueError):
             return 'invalid_figure'
-    record = records.get(str(path.relative_to(root)))
+    record = records.get(_relative(path, root))
     if not record:
         return 'legacy_unverified'
     sources = record.get('source_files', [])

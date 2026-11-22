@@ -1,6 +1,7 @@
 """Single-writer, saved-data PDF table publication with page identity.
 
-A successful session replaces its reports and archives empty/unselected reports.
+A successful session replaces its reports and archives empty/unselected reports;
+each archived PDF keeps its own manifest in one timestamped generation directory.
 Rendering failures preserve committed PDFs. Unique staging files plus rollback
 protect publication exceptions; process/power-loss recovery is not transactional.
 """
@@ -54,7 +55,10 @@ def report_manifest(path):
     path = Path(path).with_name(MANIFEST_NAME)
     if not path.exists():
         return None
-    value = json.loads(path.read_text())
+    try:
+        value = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        raise ValueError(f'Invalid PDF page manifest: {path}: {exc}') from exc
     if (not isinstance(value, dict) or not isinstance(value.get('pages'), list) or
             any(not isinstance(page, dict) for page in value['pages'])):
         raise ValueError(f'Invalid PDF page manifest: {path}')
@@ -94,21 +98,21 @@ class TableReports:
         self.open_reports[report].savefig(fig, bbox_inches='tight')
         self.pages[report].append({'page':len(self.pages[report])+1,
                                   'figure_id':identifier or id_from_figure_path(figure_path),
-                                  'figure_path':str(figure_path.relative_to(self.root))})
+                                  'figure_path':figure_path.relative_to(self.root).as_posix()})
 
-    def _empty_status(self, report):
+    def _empty_status(self, report, superseded):
+        """Classify a report without pages from the pages it last published."""
         from ..config import figure_enabled, plot_enabled
         from .figure_inventory import figure_family
         if not self.enabled or (self.cfg is not None and not plot_enabled(
                 {**self.cfg, 'plots':{**self.cfg.get('plots', {}), 'include':None}}, figure_family(report))):
             return 'disabled'
         if self.cfg is not None:
-            prior = report_manifest(report)
-            pages = prior['pages'] if prior else []
-            if pages and not any(page.get('figure_id') and table_page_enabled(self.cfg, page['figure_id']) for page in pages):
-                return ('unselected' if not any(page.get('figure_id') and figure_enabled(self.cfg, page['figure_id']) for page in pages)
+            ids = [page.get('figure_id') for page in superseded if page.get('figure_id')]
+            if ids and not any(table_page_enabled(self.cfg, identifier) for identifier in ids):
+                return ('unselected' if not any(figure_enabled(self.cfg, identifier) for identifier in ids)
                         else 'disabled')
-            if not pages and self.cfg.get('plots', {}).get('include') == []:
+            if not ids and self.cfg.get('plots', {}).get('include') == []:
                 return 'unselected'
         return 'empty'
 
@@ -126,41 +130,66 @@ class TableReports:
                 raise failure
             if not success:
                 return
-            existing = set((self.root/'project_summary/figures').rglob(REPORT_NAME))
-            existing.update(path.with_name(REPORT_NAME) for path in
-                            (self.root/'project_summary/figures').rglob(MANIFEST_NAME))
+            from datetime import datetime, timezone
+            stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+            figures = self.root / 'project_summary/figures'
+            existing = set(figures.rglob(REPORT_NAME))
+            existing.update(path.with_name(REPORT_NAME) for path in figures.rglob(MANIFEST_NAME))
             manifests = {}
+            # Existing target -> archive directory, or None for a status-only
+            # sidecar that is set aside only until publication succeeds.
+            retired = {}
             for report in existing | set(self.pending):
                 pages = self.pages.get(report, [])
-                manifests[report] = {'status':'complete' if pages else self._empty_status(report),
-                                     'format':'pdf', 'pages':pages, 'page_count':len(pages),
-                                     'sha256':pdf_digest(self.pending[report]) if pages else None}
+                sidecar = report.with_name(MANIFEST_NAME)
+                generation = None
+                if report.exists():
+                    # A published PDF and its sidecar are one archived generation.
+                    generation = (self.root / '.archives/figure_tables/pdf_reports' /
+                                  report.parent.relative_to(self.root) / stamp)
+                    retired[report] = generation
+                if sidecar.exists():
+                    retired[sidecar] = generation
+                if pages:
+                    manifests[report] = {'status':'complete', 'format':'pdf', 'pages':pages,
+                                         'page_count':len(pages), 'sha256':pdf_digest(self.pending[report])}
+                    continue
+                prior = report_manifest(report) or {}
+                superseded = prior.get('pages') or prior.get('superseded_pages', [])
+                manifests[report] = {
+                    'status':self._empty_status(report, superseded), 'format':'pdf', 'pages':[],
+                    'page_count':0, 'sha256':None, 'superseded_pages':superseded,
+                    'archive':(generation.relative_to(self.root).as_posix() if generation
+                               else prior.get('archive'))}
             # Stage every sidecar before replacing any committed report.
             sidecars = {}
+            from ..config import atomic_json
             for report, value in manifests.items():
                 fd, temporary = tempfile.mkstemp(prefix='.statistics_tables.', suffix='.json', dir=report.parent)
                 staged.append(Path(temporary))
                 os.close(fd)
-                from ..config import atomic_json
                 atomic_json(temporary, value)
                 sidecars[report.with_name(MANIFEST_NAME)] = Path(temporary)
             replacements = {**self.pending, **sidecars}
-            targets = set(replacements) | existing
             # Selected legacy table PNGs move only after PDF rendering succeeds.
-            old_pngs = {self.root / page['figure_path'] for pages in self.pages.values()
-                        for page in pages if (self.root / page['figure_path']).is_file()}
-            targets |= old_pngs
+            for pages in self.pages.values():
+                for page in pages:
+                    png = self.root / page['figure_path']
+                    if png.is_file():
+                        retired[png] = self.root / '.archives/figure_tables' / png.parent.relative_to(self.root)
             backups = {}
             published = []
             try:
-                for target in sorted(targets | old_pngs):
-                    if target.exists():
-                        category = 'figure_tables' if target.suffix == '.png' else 'figure_tables/pdf_reports'
-                        archive = self.root / '.archives' / category / target.parent.relative_to(self.root)
-                        label = target.name
-                        if target.suffix == '.png':
-                            from datetime import datetime, timezone
-                            label = f'{target.stem}_{datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")}.png'
+                for target, archive in sorted(retired.items()):
+                    if archive is None:
+                        fd, aside = tempfile.mkstemp(prefix='.statistics_tables.', suffix='.previous.json',
+                                                     dir=target.parent)
+                        os.close(fd)
+                        staged.append(Path(aside))
+                        os.replace(target, aside)
+                        backups[target] = Path(aside)
+                    else:
+                        label = f'{target.stem}_{stamp}.png' if target.suffix == '.png' else target.name
                         backups[target] = archive_output(target, archive, label)
                 for target, temporary in replacements.items():
                     os.replace(temporary, target)
@@ -170,6 +199,9 @@ class TableReports:
                     target.unlink(missing_ok=True)
                 for target, backup in backups.items():
                     os.replace(backup, target)
+                for archive in {archive for archive in retired.values() if archive is not None}:
+                    if archive.is_dir() and not any(archive.iterdir()):
+                        archive.rmdir()
                 raise
         finally:
             for path in [*self.pending.values(), *staged]:

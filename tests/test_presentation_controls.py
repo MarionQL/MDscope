@@ -69,7 +69,7 @@ def test_figure_inventory_reads_generated_provenance_metadata(tmp_path):
     record_generated_figures(cfg, tmp_path, paths, {})
 
     inventory = figure_inventory(tmp_path, paths, cfg)
-    row = inventory.set_index("figure").loc[str(fig.relative_to(tmp_path))]
+    row = inventory.set_index("figure").loc[fig.relative_to(tmp_path).as_posix()]
     assert row["status"] == "valid"
     assert row["source_metric"] == "rmsd_A"
     assert row["display_label"] == "RMSD"

@@ -289,3 +289,160 @@ def test_pdf_table_formats_numeric_cells_in_mixed_columns_without_altering_data(
     assert '11.9818735105' not in text and '12' in text
     assert 'replicate-specific' in text
     pd.testing.assert_frame_equal(frame,original)
+
+
+def _manifest(folder):
+    import json
+    return json.loads((folder / "statistics_tables.manifest.json").read_text())
+
+
+def test_superseded_generations_archive_pdf_with_its_own_manifest(tmp_path):
+    import json
+    from mdscope.reporting.table_reports import pdf_digest
+    folder = tmp_path / "project_summary/figures/time_series"
+    published = []
+    for metric in ("first", "second", "third"):
+        with table_report_session(tmp_path, enabled=True):
+            _page(folder / f"{metric}__comparison_table.png")
+        published.append(((folder / "statistics_tables.pdf").read_bytes(), _manifest(folder)))
+    base = tmp_path / ".archives/figure_tables/pdf_reports/project_summary/figures/time_series"
+    generations = sorted(base.iterdir())
+    assert len(generations) == 2
+    for generation, (data, manifest) in zip(generations, published[:2]):
+        assert sorted(p.name for p in generation.iterdir()) == [
+            "statistics_tables.manifest.json", "statistics_tables.pdf"]
+        assert (generation / "statistics_tables.pdf").read_bytes() == data
+        archived = json.loads((generation / "statistics_tables.manifest.json").read_text())
+        assert archived == manifest
+        assert archived["sha256"] == pdf_digest(generation / "statistics_tables.pdf")
+    assert _manifest(folder)["pages"][0]["figure_path"] == (
+        "project_summary/figures/time_series/third__comparison_table.png")
+
+
+def test_repeated_unselected_session_keeps_status_identity_and_single_archive(tmp_path):
+    from mdscope.reporting.figure_inventory import figure_inventory
+    folder = tmp_path / "project_summary/figures/time_series"
+    selected = {"plots": {"enabled": True, "table_reports_pdf": True}}
+    with table_report_session(tmp_path, enabled=True, cfg=selected):
+        _page(folder / "density__comparison_table.png")
+    original = (folder / "statistics_tables.pdf").read_bytes()
+    pages = _manifest(folder)["pages"]
+    other = {"plots": {"enabled": True, "table_reports_pdf": True,
+                       "include": ["profiles:lipid_order__POPC__sn1:profile"]}}
+    archives = tmp_path / ".archives/figure_tables/pdf_reports"
+    records = []
+    for _ in range(2):
+        with table_report_session(tmp_path, enabled=True, cfg=other):
+            pass
+        records.append(_manifest(folder))
+        assert not (folder / "statistics_tables.pdf").exists()
+        assert len([p for p in archives.rglob("*") if p.is_file()]) == 2
+    assert records[0] == records[1]
+    assert records[0]["status"] == "unselected"
+    assert records[0]["superseded_pages"] == pages
+    generation = tmp_path / records[0]["archive"]
+    assert (generation / "statistics_tables.pdf").read_bytes() == original
+    rows = figure_inventory(tmp_path, {}, other, include_rejected=True)
+    row = rows.loc[rows["format"] == "pdf"].iloc[0]
+    assert (row["status"], row["kind"], row["archive"]) == (
+        "unselected", "table_report", records[0]["archive"])
+    assert figure_inventory(tmp_path, {}, other).empty
+    # Restoring the selection republishes without disturbing the archive.
+    with table_report_session(tmp_path, enabled=True, cfg=selected):
+        _page(folder / "density__comparison_table.png")
+    assert _manifest(folder)["status"] == "complete"
+    assert len([p for p in archives.rglob("*") if p.is_file()]) == 2
+
+
+def test_empty_session_with_corrupt_prior_manifest_fails_and_preserves_outputs(tmp_path):
+    folder = tmp_path / "project_summary/figures/time_series"
+    with table_report_session(tmp_path, enabled=True):
+        _page(folder / "density__comparison_table.png")
+    (folder / "statistics_tables.manifest.json").write_text("{broken")
+    before = {p: p.read_bytes() for p in folder.iterdir()}
+    with pytest.raises(ValueError, match="Invalid PDF page manifest.*statistics_tables"):
+        with table_report_session(tmp_path, enabled=True):
+            pass
+    assert {p: p.read_bytes() for p in folder.iterdir()} == before
+    assert not (tmp_path / ".archives").exists()
+
+
+def _production_fixture(tmp_path):
+    import pandas as pd
+    from runpy import run_path
+    scripts = Path(__file__).resolve().parents[1] / "scripts"
+    cfg, repouts = run_path(str(scripts / "plot_preview.py"))["create_fixture"](tmp_path)
+    cfg["plots"]["table_reports_pdf"] = True
+    # Saved between-condition summaries; rendering only reads them.
+    pd.DataFrame([{
+        "metric": metric, "group": None, "system_1": "condition_A", "system_2": "condition_B",
+        "mean_difference_system2_minus_system1": delta, "mean_difference_ci_low": delta - .1,
+        "mean_difference_ci_high": delta + .1, "mean_probability_difference_gt_0": .9,
+        "mean_p_value": .04, "mean_q_value": .08,
+    } for metric, delta in (("rmsd_A", .2), ("radius_of_gyration_A", .4))]).to_parquet(
+        tmp_path / "project_summary/statistics/time_series/system_comparisons.parquet")
+    return cfg, repouts
+
+
+def _figure_bytes(root):
+    return {p: p.read_bytes() for p in (root / "project_summary/figures").rglob("*") if p.is_file()}
+
+
+def test_production_plotting_inventories_each_pdf_once_with_page_identity(tmp_path, monkeypatch):
+    import json
+    from copy import deepcopy
+    from mdscope.reporting import plotting
+    from mdscope.reporting.figure_inventory import (
+        figure_inventory, figure_snapshot, record_generated_figures)
+    cfg, repouts = _production_fixture(tmp_path)
+    before = figure_snapshot(tmp_path, repouts)
+    plotting.plot_all(cfg, tmp_path, repouts)
+    record_generated_figures(cfg, tmp_path, repouts, before)
+    series = "project_summary/figures/time_series/statistics_tables.pdf"
+    profiles = "project_summary/figures/profiles/statistics_tables.pdf"
+    inventory = figure_inventory(tmp_path, repouts, cfg)
+    reports = inventory.loc[inventory["format"] == "pdf"].set_index("figure_id")
+    assert sorted(reports.index) == [profiles, series]
+    assert set(reports["status"]) == {"valid"}
+    assert set(reports["kind"]) == {"table_report"}
+    assert json.loads(reports.loc[series, "page_ids"]) == [
+        "time_series:radius_of_gyration_A:comparison_table",
+        "time_series:rmsd_A:comparison_table"]
+    assert json.loads(reports.loc[profiles, "page_ids"]) == [
+        "profiles:lipid_order__POPC__sn1:comparison_table"]
+    assert "project_summary/statistics/time_series/system_comparisons.parquet" in json.loads(
+        reports.loc[series, "source_files"])
+    provenance = json.loads((tmp_path / "project_summary/figures/figure_provenance.json").read_text())
+    assert provenance[series]["format"] == "pdf"
+    assert provenance[series]["source_metric"] is None
+    assert provenance[series]["page_ids"] == json.loads(reports.loc[series, "page_ids"])
+    png_only = figure_inventory(tmp_path, repouts, cfg, formats=("png",))
+    assert not png_only.empty and set(png_only["format"]) == {"png"}
+    assert not any(name.endswith("_table.png") for name in png_only["figure"])
+
+    # One selected table page: no other table pages, and the unselected
+    # profiles report is archived and reported rather than left as current.
+    single = deepcopy(cfg)
+    single["plots"]["include"] = ["time_series:rmsd_A:comparison_table"]
+    before = figure_snapshot(tmp_path, repouts)
+    plotting.plot_all(single, tmp_path, repouts)
+    record_generated_figures(single, tmp_path, repouts, before)
+    current = figure_inventory(tmp_path, repouts, single)
+    assert current["figure_id"].tolist() == [series]
+    assert json.loads(current.iloc[0]["page_ids"]) == ["time_series:rmsd_A:comparison_table"]
+    assert current.iloc[0]["status"] == "valid"
+    rejected = figure_inventory(tmp_path, repouts, single, include_rejected=True).set_index("figure_id")
+    assert rejected.loc[profiles, "status"] == "unselected"
+    assert (tmp_path / rejected.loc[profiles, "archive"] / "statistics_tables.pdf").is_file()
+
+    # A failing renderer leaves every committed figure, PDF and sidecar unchanged.
+    committed = _figure_bytes(tmp_path)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("profile renderer failed")
+    monkeypatch.setattr(plotting, "plot_profiles", fail)
+    with pytest.raises(RuntimeError, match="profile renderer failed"):
+        plotting.plot_all(cfg, tmp_path, repouts)
+    assert _figure_bytes(tmp_path) == committed
+    assert not list(tmp_path.rglob("*.pending.pdf"))
+    assert not (tmp_path / ".table_reports.lock").exists()

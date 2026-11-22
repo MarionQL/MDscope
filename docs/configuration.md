@@ -260,10 +260,15 @@ page count, completion state and integrity digest. Inventory includes PNG and
 PDF products; `formats=('png',)` retains PNG-only callers. Comparison pages
 remain eligible when bootstrap-table display is disabled.
 
-Successful rerenders archive superseded PDFs and metadata under
-`.archives/figure_tables/pdf_reports/`. Empty, unselected or disabled report
-sessions archive prior PDFs rather than advertising stale reports; rejected
-inventory records expose the reason. Rendering/publication failures preserve
+Successful rerenders archive each superseded PDF together with its manifest in
+one generation directory,
+`.archives/figure_tables/pdf_reports/<figure directory>/<UTC timestamp>/`.
+Empty, unselected or disabled report sessions archive prior PDFs rather than
+advertising stale reports. The remaining manifest then has no pages and records
+the status (`empty`, `unselected` or `disabled`), the superseded page identities
+and the `archive` directory; repeated runs keep that status and do not archive
+it again. Inventory exposes these with `include_rejected=True`, and inventory
+paths are POSIX paths relative to the project. Rendering/publication failures preserve
 the prior committed PDF and metadata. Only one table-report writer per project
 is supported; do not overlap plotting sessions. The master `plots.enabled: false`
 performs no rendering, and inventory treats its products as disabled.
