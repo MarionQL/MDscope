@@ -1,7 +1,7 @@
 """Lower packages must not import higher ones (#256).
 
 Intended order: core -> observables/interactions -> mechanisms ->
-statistics/reporting -> pipeline -> cli/studio. The `config/` package may
+systems -> statistics/reporting -> pipeline -> cli/studio. The `config/` package may
 import `core/` and `contracts/`, not execution or presentation layers.
 Function-level imports count:
 they still couple the lower package to the higher one.
@@ -16,6 +16,7 @@ FORBIDDEN = {
     "observables": HIGHER,
     "interactions": HIGHER,
     "config": HIGHER | {"observables", "interactions", "systems"},
+    "systems": {"pipeline", "statistics", "reporting", "studio"},
 }
 # (importing module, imported module): reason. Remove entries as they are fixed.
 ALLOWED = {
