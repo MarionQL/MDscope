@@ -217,3 +217,135 @@ def test_observer_only_mixed_families_replay_once_and_then_noop(tmp_path, monkey
     ).path.is_file()
     runner.run_replicate(rep, cfg, root, state)
     assert len(opened) == 1, "complete observer-only restart must not reopen"
+
+
+def test_named_sasa_reference_recovery_keeps_completed_sibling(tmp_path, monkeypatch):
+    """Recover only the environment run and its burial relative to a saved reference."""
+    from types import SimpleNamespace
+
+    from test_fused_sasa import FakeParameters, FakeResult, FakeStructure
+    from mdscope.observables import sasa
+
+    fake = SimpleNamespace(
+        Structure=FakeStructure, Parameters=FakeParameters,
+        ShrakeRupley=1, LeeRichards=2,
+        calc=lambda structure, params: FakeResult(structure),
+        calcCoord=lambda coordinates, radii, params: FakeResult(
+            SimpleNamespace(coordinates=np.asarray(coordinates).reshape(-1, 3))
+        ),
+    )
+    monkeypatch.setattr(sasa, "import_freesasa", lambda: fake)
+    rep, cfg = make_project(tmp_path, 2)
+    for settings in cfg["analyses"].values():
+        settings["enabled"] = False
+    cfg["analyses"]["sasa"] = {
+        "enabled": True, "runs": {
+            "isolated": {
+                "target_selection": "protein",
+                "occluder_selection": "protein",
+            },
+            "environment": {
+                "target_selection": "protein",
+                "occluder_selection": "protein or resname POPC",
+                "reference_run": "isolated",
+            },
+        },
+    }
+    cfg["progress"]["enabled"] = False
+    root = tmp_path / "results"
+    state = runner.RunState(root)
+    runner.run_replicate(rep, cfg, root, state)
+    repout = root / rep.system / rep.label
+    baseline = fused_output(repout, "sasa", run_id="isolated").path
+    environment = fused_output(repout, "sasa", run_id="environment").path
+    burial = environment.with_name("residue_burial.parquet")
+    summary = environment.with_name("residue_burial_summary.parquet")
+    assert all(path.is_file() for path in (baseline, environment, burial, summary))
+    baseline_before = baseline.read_bytes()
+    environment_before = pd.read_parquet(environment)
+    burial_before = pd.read_parquet(burial)
+    summary_before = pd.read_parquet(summary)
+    environment.unlink()
+    burial.unlink()
+    summary.unlink()
+
+    expected, pending = runner._plan_fused_replay(cfg, repout)
+    assert [entry.run_id for entry in expected if entry.name == "sasa"] == [
+        "isolated", "environment",
+    ]
+    assert [entry.run_id for entry in pending if entry.name == "sasa"] == [
+        "environment",
+    ]
+    original = fused_all.mda.Universe
+    opens = []
+
+    def counted(*args, **kwargs):
+        opens.append(args)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(fused_all.mda, "Universe", counted)
+    runner.run_replicate(rep, cfg, root, state)
+    assert len(opens) == 1
+    assert baseline.read_bytes() == baseline_before
+    pd.testing.assert_frame_equal(pd.read_parquet(environment), environment_before)
+    pd.testing.assert_frame_equal(pd.read_parquet(burial), burial_before)
+    pd.testing.assert_frame_equal(pd.read_parquet(summary), summary_before)
+    runner.run_replicate(rep, cfg, root, state)
+    assert len(opens) == 1, "reusable named runs must not trigger another pass"
+
+
+def test_interrupted_shared_publication_preserves_siblings_and_recovers(
+        tmp_path, monkeypatch):
+    """A later observer failure must leave existing products and markers untouched."""
+    rep, cfg, root, state, repout = _completed(tmp_path)
+    membrane = fused_output(repout, "bilayer_normal")
+    solvation = fused_output(repout, "solvation")
+    sibling = fused_output(
+        repout, "residue_membrane_distance", run_id="A"
+    ).path
+    sibling_bytes = sibling.read_bytes()
+    original_solvation = pd.read_parquet(solvation.path)
+    original_membrane = pd.read_parquet(membrane.path)
+    original_stages = (repout / "stage_timings.json").read_bytes()
+    prefix = runner._replicate_state_prefix(rep)
+    membrane_marker = state.marker(prefix + "-" + membrane.checkpoint_key)
+    solvation_marker = state.marker(prefix + "-" + solvation.checkpoint_key)
+    membrane_marker.unlink()
+    solvation_marker.unlink()
+    membrane.path.unlink()
+    solvation.path.unlink()
+
+    def interrupted(self):
+        raise RuntimeError("injected extension publication interruption")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(fused_all.FusedExtensions, "finalize", interrupted)
+        with pytest.raises(RuntimeError, match="injected extension publication"):
+            runner.run_replicate(rep, cfg, root, state)
+    # The membrane observer finalized first; the extension failed before publish.
+    assert membrane.path.is_file()
+    assert not solvation.path.exists()
+    assert not membrane_marker.exists() and not solvation_marker.exists()
+    assert sibling.read_bytes() == sibling_bytes
+    assert (repout / "stage_timings.json").read_bytes() == original_stages
+    assert not list(repout.glob(".fused-only-*"))
+
+    published_membrane = membrane.path.read_bytes()
+    expected, pending = runner._plan_fused_replay(cfg, repout)
+    assert solvation in pending
+    assert membrane not in pending
+    assert membrane in expected and solvation in expected
+    runner.run_replicate(rep, cfg, root, state)
+    assert membrane.path.read_bytes() == published_membrane
+    assert sibling.read_bytes() == sibling_bytes
+    pd.testing.assert_frame_equal(pd.read_parquet(membrane.path), original_membrane)
+    pd.testing.assert_frame_equal(pd.read_parquet(solvation.path), original_solvation)
+    assert json.loads(membrane_marker.read_text())["fused_into"] == (
+        "fused-membrane-fallback"
+    )
+    assert json.loads(solvation_marker.read_text())["fused_into"] == (
+        "fused-extensions-fallback"
+    )
+    stages = json.loads((repout / "stage_timings.json").read_text())["stages"]
+    assert [entry["stage"] for entry in stages] == ["fused-recovery", "summary"]
+    assert all(entry["seconds"] >= 0 for entry in stages)
