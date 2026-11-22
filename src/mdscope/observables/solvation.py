@@ -163,10 +163,12 @@ def _targets(u, spec, *, motifs=None):
                 # Topology-derived HS chain identities (never chainID alone).
                 # HS is attached to the protein, so generic bonded fragments
                 # cannot distinguish HS chains connected to the same protomer.
-                auto = spec.get("hs_auto") or {}
+                # HS keeps its pre-generic guard: >= 3 residues by default, never < 2.
+                auto = {"min_glycan_residues": 3, **(spec.get("hs_auto") or {})}
                 if not auto.get("glycan_selection") or not auto.get("attachment_selection"):
                     raise ValueError("solvation hs_chain grouping requires hs_auto glycan and attachment selections")
-                from ..core.glycans import discover_covalent_glycans
+                from ..core.glycans import discover_covalent_glycans, validate_glycan_spec
+                validate_glycan_spec(auto, "solvation hs_auto", min_residues=2)
                 chains, _, _ = discover_covalent_glycans(u, auto)
                 chunks = []
                 covered = set()
