@@ -236,6 +236,10 @@ def test_streamed_scalar_inventory_rejects_missing_metric_without_mutation(tmp_p
     before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
     row = next(r for r in inspect_results_directory(cfg, path.parent, root) if r["analysis"] == "rmsd")
     assert row["status"] == "incompatible"
+    from mdscope.pipeline.persisted_inputs import validate_replica_products
+    # Direct finalization must inspect core-stream contracts as well as fused outputs.
+    with pytest.raises(RuntimeError, match="rmsd"):
+        validate_replica_products(cfg, root, [rep])
     with pytest.raises(RuntimeError, match="rmsd"):
         finalize_project(path, cfg=cfg, results_dir=root)
     assert all(p.read_bytes() == value for p, value in before.items())
@@ -333,3 +337,74 @@ def test_temporal_rmsf_rejects_corruption_beyond_header_buffer(tmp_path):
     ready, reason = temporal_rmsf_readiness(tmp_path, times)
     assert not ready
     assert "CRC" in reason
+
+
+@pytest.mark.parametrize("missing_column", ["tail", "carbon_position", "n_lipids"])
+def test_registered_companion_schema_rejects_missing_fields_without_mutation(tmp_path, missing_column):
+    """Readable companion Parquet files still need their registered columns."""
+    from mdscope.pipeline.persisted_inputs import validate_analysis_output
+    from mdscope.registry import FusedOutput
+
+    entry = FusedOutput("membrane_order", tmp_path / "timeseries.parquet")
+    cfg = {"analyses": {"membrane_order": {"enabled": True}}}
+    pd.DataFrame({"time_ps": [0.0, 1.0]}).to_parquet(entry.path)
+    mapping = tmp_path / "site_mapping.parquet"
+    expected = pd.DataFrame({
+        "resname": ["POPC"], "tail": ["sn1"], "carbon_position": [2],
+        "atom_name": ["C32"], "n_lipids": [1],
+    })
+    expected.to_parquet(mapping)
+    pd.DataFrame({"profile": pd.Series(dtype=str),
+                  "file": pd.Series(dtype=str)}).to_parquet(tmp_path / "profile_index.parquet")
+
+    validate_analysis_output(entry, cfg)
+    expected.drop(columns=[missing_column]).to_parquet(mapping)
+    before = {p: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()}
+    with pytest.raises(RuntimeError, match=f"site_mapping.parquet.*missing columns.*{missing_column}"):
+        validate_analysis_output(entry, cfg)
+    assert before == {p: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()}
+
+
+def test_registered_companion_schema_accepts_additional_dynamic_columns(tmp_path):
+    """Registry contracts prescribe required columns, not a closed table schema."""
+    from mdscope.pipeline.persisted_inputs import validate_analysis_output
+    from mdscope.registry import FusedOutput
+
+    entry = FusedOutput("membrane_order", tmp_path / "timeseries.parquet")
+    cfg = {"analyses": {"membrane_order": {"enabled": True}}}
+    pd.DataFrame({"time_ps": [0.0], "order_mean": [0.4]}).to_parquet(entry.path)
+    pd.DataFrame({"resname": ["POPC"], "tail": ["sn1"],
+                  "carbon_position": [2], "atom_name": ["C32"], "n_lipids": [1],
+                  "new_optional_column": [0]}).to_parquet(tmp_path / "site_mapping.parquet")
+    pd.DataFrame({"profile": pd.Series(dtype=str),
+                  "file": pd.Series(dtype=str),
+                  "other_metadata": pd.Series(dtype=str)}).to_parquet(tmp_path / "profile_index.parquet")
+    validate_analysis_output(entry, cfg)
+
+
+def test_saved_inventory_and_finalizer_share_companion_schema_verdict(tmp_path):
+    """A complete marker cannot promote a schema-incomplete companion to ready."""
+    doc, _, root, rep, _ = saved_project(tmp_path)
+    doc["analyses"]["sasa"]["atom_sasa_selection"] = "name CA"
+    cfg = resolve_config(doc, base=tmp_path)
+    (root / "resolved_config.yaml").write_text(yaml.safe_dump(cfg))
+    atom_file = root / rep.system / rep.label / "profiles/sasa/atom_sasa.parquet"
+    atoms = pd.DataFrame({
+        "time_ps": [0.0, 1.0, 2.0],
+        "atom_index": [0, 0, 0],
+        "topology_residue_index": [0, 0, 0],
+        "atom_name": ["CA"] * 3,
+        "sasa_nm2": [1.0, 2.0, 3.0],
+    })
+    atoms.to_parquet(atom_file)
+    assert _row(doc, tmp_path, root)["status"] == "verified_existing"
+
+    atoms.drop(columns=["atom_name"]).to_parquet(atom_file)
+    snapshot = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    row = _row(doc, tmp_path, root)
+    assert row["status"] == "incompatible"
+    assert "atom_sasa.parquet" in row["reason"]
+    assert "atom_name" in row["reason"]
+    with pytest.raises(RuntimeError, match="atom_sasa.parquet.*missing columns"):
+        finalize_project(tmp_path / "analysis.yaml", cfg=cfg, results_dir=root)
+    assert snapshot == {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}

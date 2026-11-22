@@ -110,7 +110,7 @@ def test_completed_run_detects_missing_companion_without_trajectory_read(tmp_pat
 import pytest
 
 
-@pytest.mark.parametrize('damage', ['json', 'npz', 'schema', 'shape'])
+@pytest.mark.parametrize('damage', ['json', 'npz', 'npz_missing_key', 'schema', 'shape'])
 def test_finalizer_rejects_invalid_companions_before_mutation(tmp_path, damage):
     import numpy as np
     from validation_fixture import make_project
@@ -127,6 +127,11 @@ def test_finalizer_rejects_invalid_companions_before_mutation(tmp_path, damage):
     elif damage == 'npz':
         path = base/'extensions/sdc4_mechanisms/lipid_density_maps.npz'
         path.write_bytes(b'not an archive')
+    elif damage == 'npz_missing_key':
+        path = base/'extensions/sdc4_mechanisms/lipid_density_maps.npz'
+        with np.load(path, allow_pickle=False) as maps:
+            remaining = {name: maps[name] for name in maps.files if name != 'nframes'}
+        np.savez(path, **remaining)
     elif damage == 'schema':
         path = base/'extensions/solvation/counts.parquet'
         pd.DataFrame({'wrong': [1]}).to_parquet(path)

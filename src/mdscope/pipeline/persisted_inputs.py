@@ -23,7 +23,7 @@ from ..mechanisms.residue_occlusion import (
 )
 from ..observables.density_1d import missing_membrane_density_runs
 from ..observables.lipid_enrichment import footprint_pending
-from ..registry import analysis_output_plan, core_saved_contracts, required_artifacts
+from ..registry import artifact_schema, core_saved_contracts, required_artifacts, saved_output_plan
 
 
 def check_artifact(path: Path) -> int:
@@ -60,6 +60,15 @@ def validate_analysis_output(entry, cfg, *, allow_missing_occlusion=False):
             if may_add_occlusion and path == occlusion:
                 continue
             check_artifact(path)
+            if path != entry.path and path.suffix == ".parquet":
+                # Companions must satisfy the registry's existing column
+                # contracts too; metadata readability alone misses damaged tables.
+                from pyarrow.parquet import read_schema
+                expected_columns = artifact_schema(entry, path)["columns"]
+                if expected_columns is not None:
+                    missing = set(expected_columns) - set(read_schema(path).names)
+                    if missing:
+                        raise ValueError(f"{path}: missing columns {sorted(missing)}")
         if entry.path.suffix == ".parquet":
             from pyarrow.parquet import read_schema
             columns = set(read_schema(entry.path).names)
@@ -92,11 +101,9 @@ def validate_analysis_output(entry, cfg, *, allow_missing_occlusion=False):
                     raise ValueError(f"{occlusion}: missing residue occlusion columns")
             path = entry.path.parent / "lipid_density_maps.npz"
             with np.load(path, allow_pickle=False) as maps:
-                expected = {"counts", "density_per_nm2", "enrichment_fold",
-                            "bulk_density_per_nm2", "species", "leaflet",
-                            "x_edges_A", "y_edges_A", "nframes"}
+                expected = set(artifact_schema(entry, path)["array_keys"])
                 if not expected <= set(maps.files):
-                    raise ValueError(f"{path}: missing density-map arrays")
+                    raise ValueError(f"{path}: missing density-map arrays {sorted(expected - set(maps.files))}")
         if entry.name == "residue_membrane_distance":
             directory = entry.path.parent
             matrix = np.load(entry.path, allow_pickle=False, mmap_mode="r")
@@ -189,7 +196,7 @@ def validate_replica_products(cfg, root, replicates):
         repout = root / rep.system / rep.label
         try:
             times = validate_replica_summary(repout, rep)
-            for entry in analysis_output_plan(cfg, repout):
+            for entry in saved_output_plan(cfg, repout):
                 validate_saved_analysis(entry, cfg, times)
             validate_additional_products(repout, cfg, times)
             if requires_temporal_rmsf_statistics(cfg):
