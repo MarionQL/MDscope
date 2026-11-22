@@ -1,8 +1,11 @@
 # ADR-0001: Target package architecture
 
-**Status:** accepted (2026-11-22) · **Tracking:** [#269](https://github.com/MarionQL/MDscope/issues/269)
+**Status:** superseded for mandatory package moves by [ADR-0002](0002-evidence-first-architecture.md) (2026-11-22); retained as historical rationale · **Tracking:** [#269](https://github.com/MarionQL/MDscope/issues/269)
 
 ## Context
+
+**Historical design:** The full `analyses/`, `engine/`, `interfaces/` migration and strict linear layering below are **not mandatory acceptance criteria**. Use [ADR-0002](0002-evidence-first-architecture.md) for the current evidence-first decision, dependency DAG, cohesion criteria and implementation priorities. Keep the scientific/output compatibility goals of this ADR.
+
 
 The package is grouped by *kind* of code (`observables/`, `interactions/`, `mechanisms/`), with 15 modules at the package root. An import graph of `src/` (graphify code graph, 2026-11-22) showed:
 
