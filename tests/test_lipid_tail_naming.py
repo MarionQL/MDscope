@@ -24,7 +24,7 @@ import pytest
 import yaml
 from MDAnalysis.coordinates.memory import MemoryReader
 
-from mdscope.config import DEFAULTS, resolve_config
+from mdscope.config import DEFAULTS, config_hash, resolve_config
 from mdscope.errors import ConfigError
 from mdscope.mechanisms.sdc4_mechanisms import _normal_order_setup
 from mdscope.observables.membrane_order import (
@@ -267,16 +267,56 @@ def test_two_naming_conventions_reproduce_the_same_analytic_sn_profiles(tmp_path
     pd.testing.assert_frame_equal(results["charmm36"][1][identity], results["macrog"][1][identity])
 
 
-def test_default_tails_keep_their_legacy_charmm_labels(tmp_path):
-    """Omitted naming keeps sn1=^C2, sn2=^C3: CHARMM36 C2x is the sn-2 chain."""
+def test_default_tails_label_the_correct_charmm36_chains(tmp_path):
+    """Omitted naming and the preset must identify sn-1 as C3x, sn-2 as C2x."""
     cfg = _resolved({"lipid_selection": "resname POPC", "leaflet_anchor_selection": "name P"})
     assert "tail_preset" not in cfg["analyses"]["membrane_order"]
     assert cfg["analyses"]["membrane_order"]["tails"] == DEFAULTS["analyses"]["membrane_order"]["tails"]
-    profiles, _ = _run_order(bilayer("charmm36").universe(), cfg, tmp_path)
-    for label, chain in (("sn1", "sn2"), ("sn2", "sn1")):
+    assert cfg["analyses"]["membrane_order"]["tails"] == {
+        "sn1": {"carbon_pattern": r"^C3(\d+)$"},
+        "sn2": {"carbon_pattern": r"^C2(\d+)$"},
+    }
+    profiles, mapping = _run_order(bilayer("charmm36").universe(), cfg, tmp_path)
+    for chain in ("sn1", "sn2"):
         positions, expected = expected_minus_sch(chain)
-        np.testing.assert_array_equal(profiles[f"lipid_order__{label}"][0], positions)
-        np.testing.assert_allclose(profiles[f"lipid_order__{label}"][1][0], expected, atol=1e-5)
+        np.testing.assert_array_equal(profiles[f"lipid_order__{chain}"][0], positions)
+        np.testing.assert_allclose(profiles[f"lipid_order__{chain}"][1],
+                                   np.tile(expected, (5, 1)), atol=1e-5)
+        subset = mapping[mapping["tail"] == chain]
+        assert set(subset["atom_name"].str.match(r"^C" + ("3" if chain == "sn1" else "2"))) == {True}
+
+
+def test_legacy_results_require_new_config_hash_and_rerun(tmp_path):
+    """Pre-fix stored sn1=C2x and sn2=C3x must not masquerade as corrected data."""
+    options = {"lipid_selection": "resname POPC", "leaflet_anchor_selection": "name P"}
+    corrected = _resolved(options)
+    legacy = _resolved({**options, "tails": {
+        "sn1": {"carbon_pattern": r"^C2(\d+)$"},
+        "sn2": {"carbon_pattern": r"^C3(\d+)$"},
+    }})
+    assert config_hash(corrected) != config_hash(legacy)
+    universe = bilayer("charmm36").universe()
+    new_profiles, _ = _run_order(universe, corrected, tmp_path / "corrected")
+    old_profiles, _ = _run_order(bilayer("charmm36").universe(), legacy, tmp_path / "legacy")
+    for chain, old_chain in (("sn1", "sn2"), ("sn2", "sn1")):
+        np.testing.assert_array_equal(
+            new_profiles[f"lipid_order__{chain}"][0],
+            old_profiles[f"lipid_order__{old_chain}"][0],
+        )
+        np.testing.assert_allclose(
+            new_profiles[f"lipid_order__{chain}"][1],
+            old_profiles[f"lipid_order__{old_chain}"][1],
+            atol=1e-5,
+        )
+
+
+def test_default_sdc4_local_order_follows_correct_sn_chain_names():
+    universe = bilayer("charmm36").universe()
+    local = {"enabled": True, "lipid_selection": "resname POPC", "min_carbons_per_tail": 4}
+    naming = _resolved({})["analyses"]["membrane_order"]
+    setup = _normal_order_setup(universe, local, naming)
+    for site in setup["sites"]:
+        assert site.atom_name.startswith("C3" if site.tail == "sn1" else "C2")
 
 
 @pytest.mark.parametrize("order", [{"tail_preset": "charmm36"}, {}])
@@ -420,8 +460,8 @@ def test_tail_preset_resolution_precedence_and_round_trip():
     assert resolve_config(yaml.safe_load(yaml.safe_dump(cfg))) == cfg
     # Without a preset an explicit tail still merges into the default tail.
     legacy = _resolved({"tails": {"sn1": explicit}})["analyses"]["membrane_order"]["tails"]
-    assert legacy["sn1"] == {"carbon_pattern": r"^C2(\d+)$", **explicit}
-    assert legacy["sn2"] == {"carbon_pattern": r"^C3(\d+)$"}
+    assert legacy["sn1"] == {"carbon_pattern": r"^C3(\d+)$", **explicit}
+    assert legacy["sn2"] == {"carbon_pattern": r"^C2(\d+)$"}
     # A per-lipid naming override replaces the shared naming for that lipid only.
     spec = {"tails": {"sn1": {"carbon_names": ["C21"], "positions": [1]}},
             "lipid_overrides": {"DOPC": {"sn1": {"carbon_pattern": r"^C3(\d+)$"}}}}
@@ -452,8 +492,13 @@ def test_disabled_membrane_order_accepts_preset_and_keeps_production_yaml_unchan
         with open(name) as handle:
             raw = yaml.safe_load(handle)
         order = resolve_config(raw)["analyses"]["membrane_order"]
-        assert "tail_preset" not in order
-        assert order["tails"] == DEFAULTS["analyses"]["membrane_order"]["tails"]
+        expected_preset = name != "synd4_baseline.yaml"
+        assert order.get("tail_preset") == ("charmm36" if expected_preset else None)
+        assert {key: order["tails"][key] for key in ("sn1", "sn2")} == DEFAULTS["analyses"]["membrane_order"]["tails"]
+        if expected_preset:
+            assert set(order["tails"]) == {"sn1", "sn2", "sphingosine", "n_acyl"}
+        else:
+            assert set(order["tails"]) == {"sn1", "sn2"}
         assert order["lipid_overrides"] == {}
 
 

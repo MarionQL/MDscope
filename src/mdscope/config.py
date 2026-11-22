@@ -89,8 +89,8 @@ DEFAULTS = {
             "per_leaflet": True,
             "leaflet_anchor_selection": None,
             "tails": {
-                "sn1": {"carbon_pattern": r"^C2(\d+)$"},
-                "sn2": {"carbon_pattern": r"^C3(\d+)$"},
+                "sn1": {"carbon_pattern": r"^C3(\d+)$"},
+                "sn2": {"carbon_pattern": r"^C2(\d+)$"},
             },
             "lipid_overrides": {},
         },
