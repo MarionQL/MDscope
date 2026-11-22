@@ -26,13 +26,13 @@ from ..core.persistence import archive_output as _archive_previous_output
 from ..core.progress import stage_progress
 from ..errors import ConfigError, ReplicateIndexError
 from ..interactions import postprocess_interactions
-from ..mechanisms.hs_hydration import temporal_hs_hydration_profiles
+from ..observables.hydration import temporal_hs_hydration_profiles
 from ..mechanisms.residue_occlusion import (
     OCCLUSION_FILE,
     residue_environment_pending,
 )
-from ..mechanisms.sdc4_mechanisms import complete_residue_occlusion, run_sdc4_mechanisms
-from ..mechanisms.sdc4_mechanisms import enabled as sdc4_enabled
+from ..systems.sdc4.mechanisms import complete_residue_occlusion, run_sdc4_mechanisms
+from ..systems.sdc4.mechanisms import enabled as sdc4_enabled
 from ..observables.density_1d import missing_membrane_density_runs
 from ..observables.lipid_enrichment import (
     footprint_pending,

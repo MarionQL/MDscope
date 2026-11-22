@@ -38,8 +38,8 @@ from ..interactions import (
     residue_label,
     salt_bridge_events,
 )
-from ..mechanisms.sdc4_mechanisms import SDC4Mechanisms
-from ..mechanisms.sdc4_mechanisms import enabled as sdc4_enabled
+from ..systems.sdc4.mechanisms import SDC4Mechanisms
+from ..systems.sdc4.mechanisms import enabled as sdc4_enabled
 from ..observables.density_1d import DensityProfileAccumulator
 from ..observables.membrane import initialize_membrane, membrane_metrics
 from ..observables.msd import open_msd_universe

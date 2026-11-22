@@ -223,7 +223,7 @@ def _validate_selections(cfg, base, *, systems, emit):
                 emit(f"    SDC4 lipid {name}: {len(ids)} molecules")
             local_order = mechanism.get("local_order") or {}
             if local_order.get("enabled"):
-                from ..mechanisms.sdc4_mechanisms import local_order_options
+                from ..systems.sdc4.mechanisms import local_order_options
                 from ..observables.membrane_order import order_preflight
                 try:
                     audit = order_preflight(
