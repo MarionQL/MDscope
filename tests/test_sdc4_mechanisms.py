@@ -208,7 +208,7 @@ def test_residue_occlusion_counts_target_atoms_and_periodic_partners():
 
 
 def test_completion_matches_fused_occlusion_and_feeds_profile_statistics(tmp_path, monkeypatch):
-    from mdscope.mechanisms import sdc4_mechanisms as mechanisms
+    import mdscope.systems.sdc4.mechanisms as mechanisms
 
     repout = tmp_path / "legacy"
     cfg = _run(repout)
@@ -664,7 +664,7 @@ def test_residue_water_counts_unique_oxygen_and_bootstraps_conditioned_frames():
 
 
 def test_completed_occlusion_reuses_contact_fractions_for_hydration(tmp_path, monkeypatch):
-    from mdscope.mechanisms import sdc4_mechanisms as mechanisms
+    import mdscope.systems.sdc4.mechanisms as mechanisms
 
     def topology():
         u = _synthetic()
