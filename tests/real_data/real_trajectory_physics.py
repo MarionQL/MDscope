@@ -11,6 +11,7 @@ import gc
 import json
 import os
 import resource
+import sys
 import time
 import traceback
 from collections import Counter, defaultdict
@@ -30,9 +31,12 @@ from mdscope.core.lipid_geometry import (
 from mdscope.interactions.lipid_hydrogen_bonds import (
     lipid_molecule_map, run_lipid_hydrogen_bonds,
 )
-from pbc_invariance import WRAP_TOLERANCE_DEG, wrap_normal_difference
 
-# Hard-cutoff ties (see tests/pbc_invariance.py) are a few anchors per frame
+# The wrap-invariance oracle is shared with tests/test_pbc_invariance_oracle.py.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from pbc_invariance import WRAP_TOLERANCE_DEG, wrap_normal_difference  # noqa: E402
+
+# Hard-cutoff ties (see ../pbc_invariance.py) are a few anchors per frame
 # (at most 12/1632 = 0.7% on the test data); ~4x that indicates a neighbourhood
 # problem rather than tie statistics.
 MAX_TIE_FRACTION = 0.03

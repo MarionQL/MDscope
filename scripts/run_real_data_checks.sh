@@ -65,21 +65,21 @@ run() {
 }
 
 smoke() {
-    run python tests/real_hs_topology_audit.py
-    run python tests/real_full_config_validate.py
-    run python tests/real_trajectory_smoke.py
-    run python tests/real_sdc4_mechanisms.py
-    run python tests/real_motif_shared_states.py
-    run python tests/real_glycan_hydration.py
-    run python tests/real_trajectory_physics.py
+    run python tests/real_data/real_hs_topology_audit.py
+    run python tests/real_data/real_full_config_validate.py
+    run python tests/real_data/real_trajectory_smoke.py
+    run python tests/real_data/real_sdc4_mechanisms.py
+    run python tests/real_data/real_motif_shared_states.py
+    run python tests/real_data/real_glycan_hydration.py
+    run python tests/real_data/real_trajectory_physics.py
 }
 
 hbond() {
-    MDSCOPE_HBOND_BENCH_FRAMES="${MDSCOPE_HBOND_BENCH_FRAMES:-8}" run python tests/real_hbond_benchmark.py
+    MDSCOPE_HBOND_BENCH_FRAMES="${MDSCOPE_HBOND_BENCH_FRAMES:-8}" run python tests/real_data/real_hbond_benchmark.py
 }
 
 solvation() {
-    run python tests/real_release_solvation_bench.py --data-dir "${MDSCOPE_REAL_DATA}" \
+    run python tests/real_data/real_release_solvation_bench.py --data-dir "${MDSCOPE_REAL_DATA}" \
         --output-dir "${MDSCOPE_REAL_OUTPUT}/solvation_benchmark" \
         --standard-frames 24 --kinetics-frames 12
 }
@@ -87,11 +87,11 @@ solvation() {
 performance() {
     MDSCOPE_REAL_OUTPUT="${MDSCOPE_REAL_OUTPUT}/benchmark" MDSCOPE_STATS_WORKERS=1 \
         OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
-        run python tests/performance_pipeline_benchmark.py --frames 40 160 --draws 100 500
+        run python tests/real_data/performance_pipeline_benchmark.py --frames 40 160 --draws 100 500
 }
 
 finalization() {
-    run python tests/real_finalization_benchmark.py
+    run python tests/real_data/real_finalization_benchmark.py
 }
 
 conditions=(carb nocarb)

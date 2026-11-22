@@ -7,7 +7,7 @@ persisted per-replica data; no production replica is modified.
 
 Run with the test-data-v1 files in examples/data (scripts/run_real_data_checks.sh performance):
   MDSCOPE_REAL_DATA=examples/data MDSCOPE_REAL_OUTPUT=real_benchmark_results \\
-    python tests/performance_pipeline_benchmark.py --frames 40 160 --draws 100 500
+    python tests/real_data/performance_pipeline_benchmark.py --frames 40 160 --draws 100 500
 """
 from __future__ import annotations
 
