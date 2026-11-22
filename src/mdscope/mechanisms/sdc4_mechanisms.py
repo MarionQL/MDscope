@@ -26,7 +26,7 @@ from ..core.lipid_geometry import anchor_groups, aligned_leaflets, periodic_cent
 from .mechanistic_common import AA3, heavy, nearest, selected, sequence_matches, unit
 from ..observables.membrane_order import _candidate_sites, _fixed_ch_pairs, _atomic_npz
 from ..pipeline.progress import track
-from .hs_topology import discover_covalent_hs
+from ..core.glycans import discover_covalent_glycans
 from .residue_occlusion import OCCLUSION_FILE, ResidueOcclusion, residue_environment_pending
 
 
@@ -271,7 +271,7 @@ class SDC4Mechanisms:
         }
         self.hs_auto_audit = {}
         if (s.get("hs_auto") or {}).get("enabled", False):
-            self.hs, self.attach, self.hs_auto_audit = discover_covalent_hs(
+            self.hs, self.attach, self.hs_auto_audit = discover_covalent_glycans(
                 universe, s["hs_auto"]
             )
             self.hs = {k: heavy(v) for k, v in self.hs.items()}

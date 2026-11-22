@@ -70,6 +70,7 @@ smoke() {
     run python tests/real_trajectory_smoke.py
     run python tests/real_sdc4_mechanisms.py
     run python tests/real_motif_shared_states.py
+    run python tests/real_glycan_hydration.py
     run python tests/real_trajectory_physics.py
 }
 

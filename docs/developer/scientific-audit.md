@@ -27,6 +27,7 @@
 - **Density:** variable NPT cells, split centers and oblique box axes can violate a nominal slab reference.
 - **Structure:** RMSD/RMSF depend on fitting, Rg on masses, DSSP on geometry; proline regions are angle bins.
 - **SDC4:** NxIP/GGIVG motifs, six HS attachments, GM1a/BGAL `chainID`/CER160 identities are topology-specific.
+- **Glycans:** discovery trusts force-field residue names and bonds; only linear chains are numbered. Non-SDC4 glycan chemistry is validated on synthetic topologies only, and `O*` names are assumed to be the oxygen hydration sites.
 - **Legacy outputs:** readable tables can predate numerical corrections. Missing corrected fields remain NaN.
 
 Definitions and numerical contracts: [Scientific contracts](scientific-contracts.md) · [Analyses](../analyses.md).

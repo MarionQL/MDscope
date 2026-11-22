@@ -1,97 +1,17 @@
-"""Position- and chemistry-resolved water coordination of attached HS."""
+"""Fused water coordination of glycan sugars, protein residues and membrane sites."""
 from pathlib import Path
 
-import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import capped_distance
 
-from ..config import atomic_parquet, time_ps
+from ..config import atomic_parquet
+from ..core.glycans import glycan_definition, glycan_sugars
 from ..observables.solvation import unique_target_solvent_pairs
-from .hs_topology import discover_covalent_hs
+from .mechanistic_common import sequence_chain_label
 
 OUTPUT = Path("extensions/sdc4_mechanisms/hs_sugar_hydration.parquet")
-
-
-def sugar_map(universe, spec):
-    """Number each linear glycan from its protein bond, independent of resids."""
-    chains, attachments, _ = discover_covalent_hs(universe, spec["hs_auto"])
-    bonds = universe.bonds.indices
-    resindices = universe.atoms.resindices
-    left, right = bonds.T
-    edges = resindices[bonds]
-    edges = edges[edges[:, 0] != edges[:, 1]]
-    rows = []
-    atoms = []
-    owners = []
-    for chain, group in sorted(chains.items()):
-        residues = set(group.resindices)
-        attachment = attachments[chain].indices
-        roots = set(resindices[right[np.isin(left, attachment)]]) | set(
-            resindices[left[np.isin(right, attachment)]])
-        roots &= residues
-        chain_edges = edges[np.isin(edges, list(residues)).all(axis=1)]
-        neighbors = {i: set() for i in residues}
-        for a, b in chain_edges:
-            neighbors[a].add(b)
-            neighbors[b].add(a)
-        if len(roots) != 1:
-            raise ValueError(f"{chain}: expected one attachment sugar")
-        current = roots.pop()
-        visited = set()
-        while current not in visited:
-            visited.add(current)
-            residue = universe.residues[current]
-            sugar = group[group.resindices == current]
-            oxygen = sugar[np.char.startswith(sugar.names.astype(str), "O")]
-            if not len(oxygen):
-                raise ValueError(f"{chain}: no oxygen atoms in {residue.resname} {residue.resid}")
-            owners.extend([len(rows)] * len(oxygen))
-            atoms.extend(oxygen.indices)
-            rows.append((chain, len(visited), residue.resname, int(residue.resid), len(oxygen)))
-            onward = neighbors[current] - visited
-            if len(neighbors[current]) > (1 if len(visited) == 1 else 2):
-                raise ValueError(f"{chain}: expected a linear HS chain")
-            if not onward:
-                break
-            current = onward.pop()
-        if visited != residues:
-            raise ValueError(f"{chain}: incomplete glycan traversal")
-    columns = ["hs_chain", "sugar_position", "sugar_type", "sugar_resid", "oxygen_count"]
-    return pd.DataFrame(rows, columns=columns), universe.atoms[atoms], np.asarray(owners)
-
-
-def run_hs_hydration(rep, cfg, repout, expected_times):
-    spec = cfg["analyses"]["sdc4_mechanisms"]
-    cutoff = float(spec["hs_sugar_water_cutoff_A"])
-    u = mda.Universe(str(rep.topology), str(rep.trajectory))
-    sugars, oxygens, owner = sugar_map(u, spec)
-    water = u.select_atoms(spec["water_oxygen_selection"])
-    if not len(water) or len(np.unique(water.resindices)) != len(water):
-        raise ValueError("HS hydration requires one oxygen per water molecule")
-    tr = cfg["trajectory"]
-    frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr["stride"]))]
-    if not len(frames):
-        raise ValueError("No sampled frames for HS hydration")
-    times = np.empty(len(frames))
-    counts = np.empty((len(frames), len(sugars)), dtype=np.int32)
-    for i, ts in enumerate(frames):
-        box = ts.dimensions
-        if box is None or not np.isfinite(box).all() or np.any(box <= 0):
-            raise ValueError(f"Missing or invalid periodic cell at frame {ts.frame}")
-        pairs = capped_distance(oxygens.positions, water.positions, cutoff,
-                                box=box, method="nsgrid", return_distances=False)
-        counts[i], _ = unique_target_solvent_pairs(owner[pairs[:, 0]], pairs[:, 1], len(sugars))
-        times[i] = time_ps(ts, i, cfg)
-    if not np.isfinite(times).all() or np.any(np.diff(times) <= 0):
-        raise ValueError("HS hydration requires finite increasing frame times")
-    if times.shape != expected_times.shape or not np.allclose(times, expected_times, rtol=0, atol=1e-6):
-        raise ValueError("HS hydration frames differ from completed replica times")
-    table = pd.DataFrame({col: np.tile(sugars[col], len(frames)) for col in sugars})
-    table["time_ps"] = np.repeat(times, len(sugars))
-    table["water_cutoff_A"] = cutoff
-    table["water_count"] = counts.ravel()
-    atomic_parquet(repout / OUTPUT, table)
+ATTACHMENTS = "glycan_attachments.parquet"
 
 
 def temporal_hs_hydration_profiles(repout, cfg, expected_times=None):
@@ -153,6 +73,11 @@ class HydrationObserver:
         "frame", "time_ps", "compartment", "level", "group_id",
         "n_targets", "water_count", "water_cutoff_A", "n_sites", "water_per_site",
     ]
+    ATTACHMENT_COLUMNS = [
+        "compartment", "chain", "protein_chain", "protein_resid", "protein_resname",
+        "protein_atom", "protein_atom_index", "protein_topology_residue_index",
+        "n_sugars", "sugar_types",
+    ]
     SUGAR_COLUMNS = [
         "hs_chain", "sugar_position", "sugar_type", "sugar_resid",
         "oxygen_count", "time_ps", "water_cutoff_A", "water_count",
@@ -196,19 +121,38 @@ class HydrationObserver:
         if self.hs_enabled and (not np.isfinite(self.hs_cutoff) or self.hs_cutoff <= 0):
             raise ValueError("hs_sugar_water_cutoff_A must be finite and positive")
 
-        if self.hs_enabled:
-            self.sugars, sites, owners = sugar_map(universe, hs_spec)
-            for i, row in self.sugars.iterrows():
-                indices = sites.indices[owners == i]
-                target = self._add("hs", f"{row.hs_chain}:{int(row.sugar_position)}",
-                                   row.hs_chain, int(row.sugar_position),
-                                   row.sugar_type, int(row.sugar_resid),
-                                   int(universe.atoms[indices[0]].resindex),
-                                   indices, self.hs_cutoff)
-                self.hs_indices.append(target)
-                self._group("hs", "chain", row.hs_chain, target)
-                self._group("hs", "sugar_type", f"{row.hs_chain}:{row.sugar_type}", target)
-                self._group("hs", "total", "all", target)
+        # Each glycan definition is its own compartment; SDC4 hs_auto is "hs".
+        glycans = [("hs", hs_spec["hs_auto"], self.hs_cutoff)] if self.hs_enabled else []
+        if general:
+            definitions = cfg.get("selections", {}).get("glycans", {})
+            glycans += [(name, glycan_definition(definitions, name), cutoff)
+                        for name in spec.get("glycans") or ()]
+        self.attachments = []
+        for compartment, definition, glycan_cutoff in glycans:
+            sugars, sites, owners, attachments = glycan_sugars(universe, definition)
+            if compartment == "hs":
+                self.sugars = sugars
+            for i, row in sugars.iterrows():
+                position = int(row.sugar_position)
+                target = self._add(compartment, f"{row.chain}:{position}", row.chain,
+                                   position, row.sugar_type, int(row.sugar_resid),
+                                   int(row.topology_residue_index),
+                                   sites.indices[owners == i], glycan_cutoff)
+                if compartment == "hs":
+                    self.hs_indices.append(target)
+                self._group(compartment, "chain", row.chain, target)
+                self._group(compartment, "sugar_type", f"{row.chain}:{row.sugar_type}", target)
+                self._group(compartment, "total", "all", target)
+            for chain, atom in sorted((chain, atoms[0]) for chain, atoms in attachments.items()):
+                residues = sugars.loc[sugars.chain.eq(chain)]
+                self.attachments.append(dict(
+                    compartment=compartment, chain=chain,
+                    protein_chain=sequence_chain_label(atom), protein_resid=int(atom.resid),
+                    protein_resname=str(atom.resname), protein_atom=str(atom.name),
+                    protein_atom_index=int(atom.index),
+                    protein_topology_residue_index=int(atom.resindex),
+                    n_sugars=len(residues),
+                    sugar_types=",".join(residues.sugar_type.astype(str))))
 
         if general:
             protein_sel = spec.get("protein_selection") or cfg.get("selections", {}).get("protein", "protein")
@@ -235,15 +179,15 @@ class HydrationObserver:
                     self._group("membrane", "total", "all", target)
         if not self.targets:
             raise ValueError("Hydration selected no targets")
-        # Selecting HS glycans as membrane residues would silently corrupt
-        # per-compartment totals. Cross-compartment target atoms must be disjoint.
+        # Selecting glycans as membrane residues, or one chain in two glycan
+        # definitions, would corrupt totals: compartments must be disjoint.
         compartment_of_atom = {}
         for atom, owner in zip(self.site_indices, self.site_owner):
             compartment = self.targets[owner]["compartment"]
             previous = compartment_of_atom.setdefault(atom, compartment)
             if previous != compartment:
                 raise ValueError(
-                    "Hydration protein, HS and membrane target selections overlap")
+                    "Hydration glycan, protein and membrane target selections overlap")
         if set(self.water.indices).intersection(self.site_indices):
             raise ValueError("Hydration targets overlap water selection")
         self.sites = universe.atoms[self.site_indices]
@@ -309,7 +253,7 @@ class HydrationObserver:
         if self.hs_enabled:
             for index, sugar in zip(self.hs_indices, self.sugars.itertuples(index=False)):
                 self.hs_rows.append((
-                    sugar.hs_chain, int(sugar.sugar_position), sugar.sugar_type,
+                    sugar.chain, int(sugar.sugar_position), sugar.sugar_type,
                     int(sugar.sugar_resid), int(sugar.oxygen_count),
                     t, self.hs_cutoff, int(counts[index])))
         self.frames += 1
@@ -368,6 +312,9 @@ class HydrationObserver:
             self._consolidate(sorted(cache.glob(f"{name}-*.parquet")), dest / output)
         atomic_parquet(dest / "target_metadata.parquet",
                        pd.DataFrame(self.targets, columns=self.TARGET_COLUMNS))
+        if self.attachments:
+            atomic_parquet(dest / ATTACHMENTS, pd.DataFrame(
+                self.attachments, columns=self.ATTACHMENT_COLUMNS))
         if self.hs_enabled:
             self._consolidate(
                 sorted(cache.glob("hs-*.parquet")), self.repout / OUTPUT)

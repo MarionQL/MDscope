@@ -52,6 +52,7 @@ Real FreeSASA sphere/cap geometry and fake-FreeSASA streaming parity verify **di
 |---|---|
 | Subprocess CLI code not covered in parent process | Trace spawned executions before inferring missing verification |
 | SDC4/HS chemistry and selection preflight | Validate real TPRs; toy topologies are not exhaustive |
+| Non-SDC4 glycan topologies | Audit a real N-/O-glycoprotein TPR/PSF (naming, linkage atoms, branches) |
 | Long-event and large interaction memory | Measure peak RSS, output size, wall time on real six-replica work |
 | Convergence/sensitivity | Inspect independent replicas, time windows, cutoff, RDF and diffusion behavior |
 | Completed-stage artifact failure | Fault-inject missing/corrupt companion; require safe failure or rebuild |

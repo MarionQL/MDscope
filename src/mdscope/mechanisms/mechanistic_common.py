@@ -86,7 +86,7 @@ def sequence_chain_label(atom):
     if not chain:
         chain = segid
     if not chain:
-        raise ValueError("Motif matching requires chainID or segid")
+        raise ValueError("Motif and glycan chain labels require chainID or segid")
     return chain
 
 

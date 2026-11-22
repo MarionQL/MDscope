@@ -185,6 +185,13 @@ def test_hs_chain_grouping_reuses_covalent_topology_not_chain_ids():
     assert {t[0] for t in grouped} == {
         "hs/oxygen/PROA_S39", "hs/oxygen/PROA_S61"}
     assert sorted(len(t[3]) for t in grouped) == [2,2]
+    # Generic glycans default to 1 residue; HS keeps its >= 3 default and >= 2 floor.
+    del target_spec["hs_auto"]["min_glycan_residues"]
+    with pytest.raises(ValueError, match=r"2 residues \(<3\)"):
+        _targets(u, target_spec)
+    target_spec["hs_auto"]["min_glycan_residues"] = 1
+    with pytest.raises(ValueError, match="integer >= 2"):
+        _targets(u, target_spec)
 
 
 def test_tracking_class_filter_preserves_counts_but_limits_events(tmp_path):

@@ -97,6 +97,10 @@ def artifact_schema(entry: "FusedOutput", path: Path) -> dict:
             }[name])
             units = {"time_ps": "ps", "water_cutoff_A": "angstrom",
                      "water_count": "unique water entities"}
+        elif name == "glycan_attachments.parquet":
+            from .mechanisms.hs_hydration import HydrationObserver
+            fields = list(HydrationObserver.ATTACHMENT_COLUMNS)
+            row_grain = "one covalently attached glycan chain per replicate"
         elif name == "hs_sugar_hydration.parquet":
             from .mechanisms.hs_hydration import HydrationObserver
             fields = list(HydrationObserver.SUGAR_COLUMNS)
@@ -353,6 +357,10 @@ def required_artifacts(entry: FusedOutput, cfg: dict) -> tuple[Path, ...]:
         paths.extend(directory/f for f in ('motif_lipid_contact_events.parquet',
             'motif_lipid_residence.parquet', 'motif_lipid_residence_intermittent.parquet',
             'lipid_region_specificity.parquet', 'lipid_residue_contacts.parquet'))
+    if name == 'hydration' and spec.get('enabled') and spec.get('glycans'):
+        # Optional for HS-only runs, so pre-existing SDC4 outputs stay reusable.
+        from .mechanisms.hs_hydration import ATTACHMENTS
+        paths.append(directory / ATTACHMENTS)
     if name == 'hydration' and cfg['analyses'].get('sdc4_mechanisms', {}).get('hs_sugar_water_cutoff_A') is not None:
         from .mechanisms.hs_hydration import OUTPUT
         paths.append(Path(entry.path).parents[2] / OUTPUT)
@@ -583,6 +591,13 @@ def state_feature_catalog(cfg):
                             "group": f"solvation/{solvent}/{kind}/{label}", "metric": metric,
                             "units": units, "analysis": "solvation",
                             "availability": "conditional_on_saved_data"})
+    hydration = cfg["analyses"].get("hydration", {})
+    for name in (hydration.get("glycans") or []) if hydration.get("enabled") else []:
+        for metric, units in (("unique_water_count", "molecules"),
+                              ("unique_water_per_site", "molecules/site")):
+            candidates.append({"source": "hydration", "group": f"hydration/{name}/total/all",
+                               "metric": metric, "units": units, "analysis": "hydration",
+                               "availability": "conditional_on_saved_data"})
     sources = {
         "summary": {"group": "null or shared group", "metrics": "numerical saved columns",
                     "prerequisite": "Saved frame-wise global/group summary with selected numerical columns"},
