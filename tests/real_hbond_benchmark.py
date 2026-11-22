@@ -1,7 +1,8 @@
 """Release-data parity and speed benchmark for opt-in protein H-bond selection.
 
 Run: python tests/real_hbond_benchmark.py
-Requires both paired TPR/XTC files from GitHub release test-data-v1.
+Requires both paired test-data-v1 TPR/XTC files in examples/data (see
+scripts/run_real_data_checks.sh).
 """
 from __future__ import annotations
 
@@ -15,7 +16,7 @@ import numpy as np
 
 from mdscope.pipeline.fused_extensions import FusedExtensions
 
-DATA = Path(os.environ.get("MDSCOPE_REAL_DATA", "real_test_data"))
+DATA = Path(os.environ.get("MDSCOPE_REAL_DATA", "examples/data"))
 OUT = Path(os.environ.get("MDSCOPE_HBOND_BENCH_OUTPUT", "real_test_results/hbond_benchmark"))
 SYSTEMS = {
     "carb": ("carb-sdc4-step7_production.tpr", "carb-sdc4-rep1_test.xtc"),

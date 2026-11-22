@@ -30,7 +30,7 @@ from mdscope.interactions.lipid_hydrogen_bonds import (
     lipid_molecule_map, run_lipid_hydrogen_bonds,
 )
 
-DATA = Path(os.environ.get("MDSCOPE_REAL_DATA", "real_test_data")).resolve()
+DATA = Path(os.environ.get("MDSCOPE_REAL_DATA", "examples/data")).resolve()
 ROOT = Path(os.environ.get("MDSCOPE_REAL_OUTPUT", "real_test_results")).resolve()
 ROOT.mkdir(parents=True, exist_ok=True)
 SYSTEMS = {

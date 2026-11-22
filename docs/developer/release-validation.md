@@ -40,7 +40,7 @@ The fixture covers fused structural/membrane/SDC4/solvation/distance observers a
 - [ ] Run native FreeSASA sphere/cap/periodic tests; document optional skips.
 - [ ] Check crash/restart parity, companion artifact identity, and non-destructive input failures.
 - [ ] Review coordinate provenance, units, topology identities, leaflet definitions, sampling/censoring and missing-vs-zero.
-- [ ] Run release-backed GROMACS smoke/physics **when data/quotas permit**, then separately all six production replicas and sensitivity/convergence.
+- [ ] Run the local real-data checks (`scripts/run_real_data_checks.sh all` on the full `examples/data/` files), then separately all six production replicas and sensitivity/convergence.
 - [ ] Cite [`CITATION.cff`](../../CITATION.cff) with actual version/commit and comply with the repository [MIT License](../../LICENSE) (retain copyright and license notice).
 
 **Local investigation budget:** ~1 minute / 512 MiB for the tiny reference project with `MDSCOPE_STATS_WORKERS=1`. These are guidance, **not** timed CI assertions or production throughput predictions. Optional profiler: `pytest -q -s -m benchmark tests/test_performance_benchmarks.py`.
@@ -65,9 +65,9 @@ Record resource-blocked checks as **unverified**, never passed. A short referenc
 | Repository checkout | `git clone`, `git checkout <tag or SHA>` | `src/mdscope`, `pyproject.toml`, `scripts/`, tests, docs, examples | commit SHA (`git rev-parse HEAD`) |
 | sdist (`mdscope-X.Y.Z.tar.gz`) | `python -m build` | `src/mdscope`, `tests/`, `pyproject.toml`, README, LICENSE; no `scripts/`, `docs/` or examples | version + tag commit + SHA-256 |
 | Wheel (`mdscope-X.Y.Z-py3-none-any.whl`) | `python -m build` / `pip install` | installed `mdscope` package and `.dist-info` only; no `pyproject.toml`, `scripts/` or tests by design | version + tag commit + SHA-256 |
-| GitHub release `test-data-v1` | release assets | four TPR/XTC test files. Its auto-generated "Source code" archives are the **2026-10-27 tree at `79cf99b`** (root `analysis/`, no `pyproject.toml`, no `src/`), predating the #65 `src/` migration: **not a software release** | data asset SHA-256 (#182) |
+| Git tag `test-data-v1` | `git checkout test-data-v1` (formerly also a GitHub release) | the **2026-10-27 tree at `79cf99b`** (root `analysis/`, no `pyproject.toml`, no `src/`), predating the #65 `src/` migration: **not a software release**. Its four TPR/XTC files are no longer hosted; they are kept locally in `examples/data/` | commit `79cf99b`; data files by `tests/data/real_test_data.sha256` |
 
-A reviewer report of `analysis/` without `pyproject.toml` matches the `test-data-v1` source archive, but which file was inspected remains **unverified** until the reviewer confirms it (#182). Do not add `analysis` import aliases.
+A reviewer report of `analysis/` without `pyproject.toml` matches the `test-data-v1` tag's source archive (offered while the release existed), but which file was inspected remains **unverified** until the reviewer confirms it (#182). Do not add `analysis` import aliases.
 
 **Release procedure** (software releases use `vX.Y.Z` tags; never reuse data tags):
 
