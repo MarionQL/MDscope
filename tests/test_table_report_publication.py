@@ -198,14 +198,14 @@ def test_production_provenance_records_pdf_page_sources_and_sampling(tmp_path):
 
 
 def test_metadata_staging_failure_preserves_committed_pdf_and_page_identity(tmp_path, monkeypatch):
-    from mdscope import config
+    from mdscope.core import persistence
     folder = tmp_path/'project_summary/figures/time_series'
     with table_report_session(tmp_path, enabled=True):
         _page(folder/'old__comparison_table.png')
     before = {p:p.read_bytes() for p in (tmp_path/'project_summary/figures').rglob('*') if p.is_file()}
     def fail(*args, **kwargs):
         raise OSError('metadata disk full')
-    monkeypatch.setattr(config,'atomic_json',fail)
+    monkeypatch.setattr(persistence,'atomic_json',fail)
     with pytest.raises(OSError,match='metadata disk full'):
         with table_report_session(tmp_path, enabled=True):
             _page(folder/'new__comparison_table.png')
