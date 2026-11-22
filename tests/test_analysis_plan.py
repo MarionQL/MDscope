@@ -555,3 +555,30 @@ def test_plan_discovers_condition_specific_sdc4_figures(tmp_path, project):
     assert all(row["availability"] == "conditional_on_saved_data"
                for row in family["specific_figures"])
     assert not root.exists()
+
+
+def test_output_resolution_is_independent_of_working_directory(tmp_path, project):
+    path, root = project("plan_paths")
+    cfg = load_config(path)
+    assert project_root(cfg, path) == root.resolve()
+    assert project_root(cfg, path).is_absolute()
+
+    moved = tmp_path / "relocated" / "analysis.yaml"
+    moved.parent.mkdir()
+    moved.write_text(path.read_text())
+    moved_cfg = load_config(moved, check_paths=False)
+    assert project_root(moved_cfg, moved) == (
+        moved.parent / cfg["project"]["output"]).resolve()
+    assert project_root(moved_cfg, moved) != project_root(cfg, path)
+
+    moved_cfg["project"]["output"] = str(root.resolve())
+    assert project_root(moved_cfg, moved) == root.resolve()
+
+
+def test_cli_validate_and_text_plan_display_resolved_output(tmp_path, project):
+    path, root = project("plan_visible_path")
+    validated = invoke_cli(tmp_path, "validate", path)
+    planned = invoke_cli(tmp_path, "plan", path)
+    expected = f"Resolved output directory: {root.resolve()}"
+    assert expected in validated.stdout
+    assert expected in planned.stdout
