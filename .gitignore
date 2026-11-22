@@ -30,3 +30,6 @@ results/
 results_*/
 mdscope_results/
 *.log
+
+# Local real GROMACS test data (see docs/workflows.md); never commit trajectories.
+examples/data/
