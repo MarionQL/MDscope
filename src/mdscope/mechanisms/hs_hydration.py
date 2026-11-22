@@ -6,12 +6,17 @@ import pandas as pd
 from MDAnalysis.lib.distances import capped_distance
 
 from ..config import atomic_parquet
+from ..contracts.outputs import (
+    GLYCAN_ATTACHMENTS_FILE, HS_SUGAR_HYDRATION_PATH,
+    HYDRATION_AGGREGATE_COLUMNS, HYDRATION_ATTACHMENT_COLUMNS,
+    HYDRATION_COUNT_COLUMNS, HYDRATION_SUGAR_COLUMNS, HYDRATION_TARGET_COLUMNS,
+)
 from ..core.glycans import glycan_definition, glycan_sugars
 from ..core.sequence import sequence_chain_label
 from ..observables.solvation import unique_target_solvent_pairs
 
-OUTPUT = Path("extensions/sdc4_mechanisms/hs_sugar_hydration.parquet")
-ATTACHMENTS = "glycan_attachments.parquet"
+OUTPUT = Path(HS_SUGAR_HYDRATION_PATH)
+ATTACHMENTS = GLYCAN_ATTACHMENTS_FILE
 
 
 def temporal_hs_hydration_profiles(repout, cfg, expected_times=None):
@@ -61,27 +66,11 @@ class HydrationObserver:
     target counts. All distances are in Å and frame times in ps.
     """
 
-    TARGET_COLUMNS = [
-        "compartment", "target_id", "chain", "sugar_position", "resname",
-        "resid", "topology_residue_index", "n_sites", "water_cutoff_A",
-    ]
-    COUNT_COLUMNS = [
-        "frame", "time_ps", "compartment", "target_id", "water_count",
-        "water_cutoff_A", "n_sites", "water_per_site",
-    ]
-    AGGREGATE_COLUMNS = [
-        "frame", "time_ps", "compartment", "level", "group_id",
-        "n_targets", "water_count", "water_cutoff_A", "n_sites", "water_per_site",
-    ]
-    ATTACHMENT_COLUMNS = [
-        "compartment", "chain", "protein_chain", "protein_resid", "protein_resname",
-        "protein_atom", "protein_atom_index", "protein_topology_residue_index",
-        "n_sugars", "sugar_types",
-    ]
-    SUGAR_COLUMNS = [
-        "hs_chain", "sugar_position", "sugar_type", "sugar_resid",
-        "oxygen_count", "time_ps", "water_cutoff_A", "water_count",
-    ]
+    TARGET_COLUMNS = HYDRATION_TARGET_COLUMNS
+    COUNT_COLUMNS = HYDRATION_COUNT_COLUMNS
+    AGGREGATE_COLUMNS = HYDRATION_AGGREGATE_COLUMNS
+    ATTACHMENT_COLUMNS = HYDRATION_ATTACHMENT_COLUMNS
+    SUGAR_COLUMNS = HYDRATION_SUGAR_COLUMNS
 
     def __init__(self, universe, cfg, repout, *, cache_dir=None):
         self.u, self.cfg, self.repout = universe, cfg, Path(repout)

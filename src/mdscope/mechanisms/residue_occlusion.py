@@ -6,9 +6,10 @@ import pandas as pd
 from MDAnalysis.lib.distances import capped_distance, self_capped_distance
 from pyarrow.parquet import read_schema
 
+from ..contracts.outputs import RESIDUE_OCCLUSION_FILE
 from ..interactions.interaction_tables import chain_label, residue_label
 
-OCCLUSION_FILE = "residue_occlusion.parquet"
+OCCLUSION_FILE = RESIDUE_OCCLUSION_FILE
 PARTNERS = ("protein", "hs", "lipid", "any")
 WATER_COLUMNS = ("water_count", "polar_atom_count", "water_cutoff_A")
 FRACTION_COLUMNS = tuple(f"{partner}_fraction" for partner in PARTNERS)
