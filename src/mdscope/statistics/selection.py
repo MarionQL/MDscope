@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..contracts.metric_selection import (
     ESTIMATOR_FLAGS, INTERACTION_METRICS, SIMPLE_FAMILY_KEYS,
-    _valid_estimator_flags, validate_metric_selection,
+    _valid_estimator_flags as _valid_estimator_flags, validate_metric_selection as validate_metric_selection,
 )
 
 def time_series_selection(cfg):
