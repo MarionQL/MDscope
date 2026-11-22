@@ -95,8 +95,12 @@ same `tails`/`lipid_overrides` with its own lipid selection.
   **sn-1** (C31…) chains respectively; the keys are legacy labels.
 - `tail_preset: charmm36` (opt-in, never inferred) uses `sn1: ^C3(\d+)$`,
   `sn2: ^C2(\d+)$`, verified against the SDC4 release TPRs and the NMRlipids
-  CHARMM36 POPC mapping. It maps no sphingolipid chains (CHARMM36 `C1S…`/`C1F…`).
-  Switching an existing project to it swaps the meaning of `sn1`/`sn2` outputs.
+  CHARMM36 POPC mapping. CHARMM36 sphingolipids (PSM, CER*) have no sn
+  positions; the preset maps them as two separate tails, `sphingosine:
+  ^C(\d+)S$` (C1S…C18S from the headgroup carbon) and `n_acyl: ^C(\d+)F$`
+  (amide carbonyl C1F…), never pooled into `sn1`/`sn2`. Pooled and mean-order
+  scalars then include sphingolipid tails. Switching an existing project to the
+  preset swaps the meaning of `sn1`/`sn2` outputs and adds these profiles (#272).
 - Precedence: `lipid_overrides.<RESNAME>.<tail>` naming > `tails.<tail>` >
   preset tail > default. With a preset, an explicit `tails` entry replaces that
   tail; without one it merges into the default tail (existing behavior).
