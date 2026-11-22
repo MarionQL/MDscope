@@ -35,7 +35,7 @@ from ..mechanisms.local_environment import (
 from ..observables.membrane_order import _atomic_npz
 from ..observables.sasa import sasa_instances, sasa_residue_rows, write_sasa_burial
 from ..observables.solvation import SolvationObserver
-from .analysis_selection import extensions_enabled_names as enabled_names
+from ..config.runs import extensions_enabled_names as enabled_names
 
 
 def _part_paths(path, extension):

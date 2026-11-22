@@ -24,7 +24,7 @@ from ..observables.residue_membrane_distance import (
     _without_hydrogens,
     run_residue_membrane_distance,
 )
-from .analysis_selection import distance_enabled_names as enabled_names
+from ..config.runs import distance_enabled_names as enabled_names
 
 
 class FusedDistances:

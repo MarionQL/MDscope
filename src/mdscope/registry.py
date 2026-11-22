@@ -55,16 +55,12 @@ def fused_output(repout: Path, name: str, *, run_id: str | None = None) -> Fused
 def fused_output_plan(cfg: dict, repout: Path) -> tuple[FusedOutput, ...]:
     """Plan enabled fused outputs without creating readers or opening trajectories."""
     # Share production scheduling predicates without importing heavy producers.
-    from .pipeline.analysis_selection import (
+    from .config.runs import (
         distance_enabled_names as distance_enabled,
-    )
-    from .pipeline.analysis_selection import (
         extensions_enabled_names as extensions_enabled,
-    )
-    from .pipeline.analysis_selection import (
         membrane_enabled_names as membrane_enabled,
+        sdc4_enabled,
     )
-    from .config.runs import sdc4_enabled
     entries = [fused_output(repout, name) for name in membrane_enabled(cfg)]
     extensions = extensions_enabled(cfg)
     entries.extend(fused_output(repout, name) for name in extensions
