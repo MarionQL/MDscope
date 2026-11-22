@@ -5,7 +5,8 @@ higher-level registry (which may inspect production enabled predicates).
 Paths and on-disk formats are existing MDscope contracts, not new defaults.
 """
 
-from .contracts.outputs import FUSED_OUTPUTS, RUN_SCOPED_OUTPUTS
+from .contracts.outputs import FUSED_OUTPUTS as FUSED_OUTPUTS
+from .contracts.outputs import RUN_SCOPED_OUTPUTS as RUN_SCOPED_OUTPUTS
 
 # Scalar readers, state-feature provenance and authoring use the same sources.
 SAVED_SCALAR_SOURCE_FILES = {
