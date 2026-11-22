@@ -1,8 +1,8 @@
-"""Validation rules for solvation configuration."""
+"""Independent analysis validators, in historical evaluation order."""
 import numpy as np
 
 
-def validate_solvation(cfg):
+def validate_motif_definitions(cfg):
     from ...core.motifs import validate_motifs
     validate_motifs(cfg["selections"].get("motifs", {}))
     local_motifs = cfg["analyses"].get("local_environment", {}).get("motifs")
@@ -16,6 +16,9 @@ def validate_solvation(cfg):
                                      "{motif: <selections.motifs name>}")
             else:
                 validate_motifs({label: {"pattern": value}})
+
+
+def validate_solvation_targets(cfg):
     solvation = cfg["analyses"].get("solvation", {})
     if solvation.get("enabled"):
         if solvation.get("preset", "standard") not in ("standard", "detailed", "kinetics"):
@@ -69,3 +72,8 @@ def validate_solvation(cfg):
         if any(not 0 < float(value) <= radius
                for value in (solvation.get("shell_cutoffs_A") or {}).values()):
             raise ValueError("solvation shell cutoffs must be positive and <= search radius")
+
+
+def validate_solvation(cfg):
+    validate_motif_definitions(cfg)
+    validate_solvation_targets(cfg)

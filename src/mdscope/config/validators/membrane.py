@@ -1,10 +1,10 @@
-"""Validation rules for membrane configuration."""
+"""Independent analysis validators, in historical evaluation order."""
 import numpy as np
 from ..runs import analysis_runs
 from .common import _validate_time_window, _validate_tail_naming
 
 
-def validate_membrane(cfg):
+def validate_membrane_geometry(cfg):
     mem = cfg.get("analyses", {}).get("membrane", {})
     if mem.get("enabled"):
         if str(mem.get("axis", "z")).lower() not in {
@@ -30,6 +30,8 @@ def validate_membrane(cfg):
             if int(multi.get("multi_origin_particle_batch", 64)) < 1:
                 raise ValueError("multi_origin_particle_batch must be positive")
 
+
+def validate_membrane_order(cfg):
     order = cfg.get("analyses", {}).get("membrane_order", {})
     if order.get("enabled"):
         if str(order.get("axis", "z")).lower() not in {"x", "y", "z"}:
@@ -43,8 +45,13 @@ def validate_membrane(cfg):
                                 (mechanisms.get("local_order") or {}).get("enabled")):
         _validate_tail_naming(order)
 
+
+def validate_ligand_contacts(cfg):
     if cfg["analyses"]["ligand_contacts"].get("enabled") and not cfg["selections"].get("ligand"):
         raise ValueError("ligand_contacts is enabled but selections.ligand is null")
+
+
+def validate_residue_membrane_distance(cfg):
     for run in analysis_runs(cfg, "residue_membrane_distance"):
         if float(run.spec.get("initial_search_cutoff_A", 6.0)) <= 0:
             raise ValueError(
@@ -67,6 +74,8 @@ def validate_membrane(cfg):
                 "membrane_selection or lipid_resnames"
             )
 
+
+def validate_lipid_enrichment(cfg):
     for analysis_name in ("lipid_enrichment","bilayer_normal"):
         ext = cfg["analyses"].get(analysis_name, {})
         if ext.get("enabled"):
@@ -91,9 +100,25 @@ def validate_membrane(cfg):
         grid_size = enrich["area_grid_size"]
         if type(grid_size) is not int or not 16 <= grid_size <= 256:
             raise ValueError("lipid_enrichment.area_grid_size must be an integer from 16 to 256")
+
+
+def validate_bilayer_normal(cfg):
     normal = cfg["analyses"].get("bilayer_normal",{})
     if normal.get("enabled") and (float(normal.get("neighbor_radius_A",15))<=0 or int(normal.get("min_neighbors",5))<3):
         raise ValueError("bilayer_normal requires positive radius and >=3 neighbors")
+
+
+def validate_lipid_hydrogen_bonds(cfg):
     lipid_hb = cfg["analyses"].get("lipid_hydrogen_bonds",{})
     if lipid_hb.get("enabled") and not lipid_hb.get("lipid_selection"):
         raise ValueError("lipid_hydrogen_bonds.lipid_selection is required")
+
+
+def validate_membrane(cfg):
+    validate_membrane_geometry(cfg)
+    validate_membrane_order(cfg)
+    validate_ligand_contacts(cfg)
+    validate_residue_membrane_distance(cfg)
+    validate_lipid_enrichment(cfg)
+    validate_bilayer_normal(cfg)
+    validate_lipid_hydrogen_bonds(cfg)

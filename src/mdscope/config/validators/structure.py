@@ -1,10 +1,10 @@
-"""Validation rules for structure configuration."""
+"""Independent analysis validators, in historical evaluation order."""
 import numpy as np
 from ..defaults import DEFAULT_INSTANCE_ID
 from ..runs import analysis_groups, analysis_runs, _validate_path_component
 
 
-def validate_structure(cfg):
+def validate_alignment_and_groups(cfg):
     align = cfg.get("analyses", {}).get("alignment", {})
     if align.get(
         "enabled",
@@ -21,6 +21,9 @@ def validate_structure(cfg):
         if groups is not None and (not isinstance(groups, list) or any(not isinstance(x, str) for x in groups)
                                    or set(groups) - set(analysis_groups(cfg))):
             raise ValueError(f"analyses.{metric}.groups must list configured group IDs")
+
+
+def validate_sasa(cfg):
     for run in analysis_runs(cfg, "sasa"):
         spec = run.spec
         if str(spec.get("algorithm", "shrake_rupley")).lower() not in {"shrake_rupley", "shrake-rupley", "sr", "lee_richards", "lee-richards", "lr"}:
@@ -38,6 +41,8 @@ def validate_structure(cfg):
         if any(not np.isfinite(float(x)) or float(x) <= 0 for x in radii):
             raise ValueError(f"sasa[{run.run_id}] radii must be finite and positive")
 
+
+def validate_density_1d(cfg):
     for run in analysis_runs(cfg, "density_1d"):
         if str(run.spec.get("axis", "z")).lower() not in {"x", "y", "z"}:
             raise ValueError(
@@ -86,3 +91,9 @@ def validate_structure(cfg):
                     f"density_1d[{run.run_id}].selections.{selection_id}.mode "
                     "must be number or mass"
                 )
+
+
+def validate_structure(cfg):
+    validate_alignment_and_groups(cfg)
+    validate_sasa(cfg)
+    validate_density_1d(cfg)
