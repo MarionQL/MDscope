@@ -103,6 +103,23 @@ For a **named-run profile with restart**: repeat that exercise with two differen
 
 Before changing layout, run *both* onboarding exercises against the baseline and prospective branch; record changed modules, duplicate sources of truth, the number of manual registrations, owner hops and test failures caught. A nominal reduction in file count does not win if the edit surface and failure risk increase.
 
+## Specific refactor candidates, graded
+
+Benefit = potential improvement in change locality/ownership (5 highest); cost = migration effort (5 most expensive); risk = likelihood/severity of unintentional behavior changes (5 highest); confidence = strength of source evidence that this is worth changing (5 strongest). These are **review estimates**, not runtime measurements.
+
+| Candidate | Benefit | Cost | Risk | Confidence | Recommendation |
+|---|---:|---:|---:|---:|---|
+| Move pure analysis-activation predicates from pipeline to existing config ownership | 5 | 2 | 2 | 5 | **Do first** after baseline; simultaneously removes registry and SDC4 reverse dependencies |
+| Remove `core.alignment → config` and `contracts.state_feature_spec → output_paths` | 4 | 2 | 2 | 5 | **Do early**, preserve exact group validation and saved-source identity |
+| Derive one execution/replay plan and remove duplicated runner fallback decisions (#279) | 5 | 5 | 4 | 5 | **High payoff, high risk**; staged ownership and restart tests are mandatory |
+| Reduce duplicate metadata across descriptors, registry, planner and Studio | 5 | 4 | 3 | 4 | **High payoff** after execution decision baseline; prove onboarding gains |
+| Move standalone multi-origin runner out of scientific observables | 3 | 2 | 3 | 4 | **Conditional** on #279 work; keep FFT/MSD kernels unchanged |
+| Break SDC4's large streaming class into many components | 2 | 4 | 5 | 2 | **Do not do by file size**; extract only a demonstrated independent lifecycle seam |
+| Split all files into `analyses/`, `engine/` and `interfaces/` | 2 | 5 | 4 | 2 | **Defer / not an objective**; may be justified for one domain later |
+| Introduce plugin APIs / base classes for every analysis | 1 | 5 | 5 | 1 | **Reject for now**, no demonstrated third-party plugin requirement |
+
+These candidate ratings complement the architecture-alternative weighted score above; do not add them as if they were measured improvements.
+
 ## Staged work and measurable gates
 
 **P0 — Baseline and tests before implementation** (#269, coordinate with #279). Regenerate current HEAD graph with deferred/module-load flags and source hash. Record module inventory, current output/analysis selection registrations, sample extension change-maps, import/CLI startup cost, XTC pass/read counts, and before/after YAML/plan/config hashes. Establish feature-onboarding exercises and an actual *single source of truth* audit. Do not code a new framework to support the audit.
