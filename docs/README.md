@@ -7,7 +7,7 @@
 | Run/restart/finalize, Slurm, saved outputs | [Workflows](workflows.md) |
 | Configure analyses, runs, plots and statistics | [Configuration](configuration.md) |
 | Understand observables, assumptions and output tables | [Analyses](analyses.md) |
-| Navigate package boundaries and data flow | [Architecture](developer/architecture.md) |
+| Navigate package boundaries and data flow | [Architecture](developer/architecture.md) · [Target layout (ADR-0001)](developer/adr/0001-target-package-architecture.md) |
 | Preserve units, PBC and numerical meaning | [Scientific contracts](developer/scientific-contracts.md) |
 | Review scientific caveats and unverified claims | [Scientific audit](developer/scientific-audit.md) |
 | Review test effectiveness and remaining gaps | [Validation gaps](developer/validation-gaps.md) |
