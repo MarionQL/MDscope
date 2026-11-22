@@ -51,27 +51,28 @@ Moving a module is not inherently an architectural improvement. MDscope's highes
 - Maintain import-light planning and CLI entry points; heavy MDAnalysis/plotting/estimators load at use sites as justified.
 - Validate a built wheel/sdist outside the checkout and Python 3.11–3.13. Keep conventional `src/` packaging; do not use a new plugin system absent demonstrated external extension needs.
 
-**Weighted architecture score (1 poor to 5 excellent):**
+**Weighted architecture score (1 poor to 5 excellent; revised 2026-11-22):** Migration complexity is no longer scored as an architecture-quality dimension. Its previous 10 percentage points are split equally between cohesion and runtime/resource efficiency. **Implementation safety and reviewability still govern PR merging**; excluding migration effort from a design score does not waive those gates.
 
 | Dimension | Weight | Operational measure |
 |---|---:|---|
 | Analysis-change locality | 25% | Named-run and new-observable change-map: independent owners touched, duplicated switches/catalog entries, tests required |
 | Responsibility ownership and dependency direction | 20% | Unique decision owner, AST module graph, inward imports, SCC reasons, no duplicated persisted/selection facts |
 | Scientific, restart and compatibility safety | 20% | Independent oracle and lifecycle tests, snapshot parity, negative-path and interrupted-publication checks |
-| Cohesion and navigation | 15% | Functions grouped by reason to change, number of forwarding hops/indirect imports, discoverable ownership, meaningful seams |
-| Incremental migration risk | 10% | Scope of touched files/PR overlap, reviewable steps, no two active execution paths or long-lived aliases |
-| Runtime and resource behavior | 10% | Real XTC opens/passes, no-op reads, wall/CPU time, peak RSS and disk write amplification; no claims without measurement |
+| Cohesion and navigation | **20%** | Functions grouped by reason to change, number of forwarding hops/indirect imports, discoverable ownership, meaningful seams |
+| Runtime and resource behavior | **15%** | Real XTC opens/passes, no-op reads, wall/CPU time, peak RSS and disk write amplification; no speed claims without measurement |
 
-These are **reasoned design estimates, not measured benchmarks**:
+These are **reasoned design estimates, not measured benchmarks**; dimension ratings are held fixed to isolate the effect of reweighting. In particular, runtime scores are hypotheses until measured on representative workloads.
 
-| Candidate | Locality | Ownership | Safety | Cohesion | Migration | Runtime | Weighted / 5 |
+| Candidate | Locality | Ownership | Safety | Cohesion | Runtime | Previous / 5 | Revised / 5 |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| **A. Keep existing type-based packages; clarify ownership** | 2.5 | 3.5 | 4.5 | 3.5 | 5.0 | 4.0 | **3.65** |
-| **B. Enforce entire ADR-0001 `analyses/engine/interfaces` layout** | 3.5 | 3.5 | 4.0 | 3.5 | 1.5 | 4.0 | **3.45** |
-| **C. Hybrid: fix ownership/change locality; regroup domains only where proven** | 4.5 | 4.5 | 4.5 | 4.0 | 3.5 | 4.5 | **4.33** |
-| **D. Dynamic plugin/registry framework with per-analysis classes** | 4.5 | 3.0 | 3.0 | 2.0 | 1.5 | 3.0 | **3.08** |
+| **A. Keep existing type-based packages; clarify ownership** | 2.5 | 3.5 | 4.5 | 3.5 | 4.0 | 3.65 | **3.53** |
+| **B. Enforce entire ADR-0001 `analyses/engine/interfaces` layout** | 3.5 | 3.5 | 4.0 | 3.5 | 4.0 | 3.45 | **3.68** |
+| **C. Hybrid: fix ownership/change locality; regroup domains only where proven** | 4.5 | 4.5 | 4.5 | 4.0 | 4.5 | 4.33 | **4.40** |
+| **D. Dynamic plugin/registry framework with per-analysis classes** | 4.5 | 3.0 | 3.0 | 2.0 | 3.0 | 3.08 | **3.18** |
 
-**Decision: C (hybrid).** A is the low-risk fallback. B remains available for a *specific* domain when measured feature-change navigation justifies that relocation. D is premature: MDscope presently ships its analyses within one distribution, not a proven third-party plugin ecosystem.
+**Decision unchanged: C (hybrid).** A is the low-risk fallback. B rises above A when its migration burden is excluded, but directory relocation alone has no demonstrated runtime advantage. B remains available for a *specific* domain when measured feature-change navigation justifies it. D is premature: MDscope currently ships analyses within one distribution, not a proven third-party plugin ecosystem.
+
+**Disposition of in-flight PRs:** retain [#282](https://github.com/MarionQL/MDscope/pull/282) (real config/persistence ownership improvement, review micro-module cohesion before merging) and [#283](https://github.com/MarionQL/MDscope/pull/283) (legitimate SDC4-versus-generic-hydration boundary). Neither requires rollback merely because mandatory package migration was rejected. Merge #282 before #283 only when final-head checks and applicable contracts pass; do not conflate structural suitability with verified runtime or scientific parity.
 
 ## Preferred organization, without gratuitous moves
 
