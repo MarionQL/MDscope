@@ -120,7 +120,7 @@ class FusedDistances:
                 spec=entry["spec"], run_id=run_id,
                 precomputed_parts=self.cache / run_id,
             )
-        from ..config import atomic_json
+        from ..core.persistence import atomic_json
         atomic_json(self.repout / "fused_distance_timings.json", {
             "enabled_instances": list(self.runs),
             "frames_processed_this_invocation": self.frames,
