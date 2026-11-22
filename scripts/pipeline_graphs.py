@@ -21,7 +21,7 @@ FOCUS = {
     "mdscope.pipeline.runner", "mdscope.pipeline.streaming",
     "mdscope.pipeline.fused_all", "mdscope.pipeline.fused_membrane",
     "mdscope.pipeline.fused_extensions", "mdscope.pipeline.fused_distance",
-    "mdscope.pipeline.replica_tasks", "mdscope.pipeline.analysis_selection",
+    "mdscope.pipeline.replica_tasks", "mdscope.config.runs",
     "mdscope.observables.lipid_enrichment", "mdscope.observables.solvation",
     "mdscope.observables.solvation_postprocess", "mdscope.observables.solvation_common",
     "mdscope.systems.sdc4.mechanisms",

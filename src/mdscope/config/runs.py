@@ -8,6 +8,7 @@ from typing import Any
 
 import numpy as np
 
+from ..contracts.outputs import EXTENSION_ANALYSES, MEMBRANE_ANALYSES
 from .defaults import DEFAULT_INSTANCE_ID, MULTI_RUN_ANALYSES, merge
 
 @dataclass(frozen=True)
@@ -95,6 +96,54 @@ def analysis_enabled(cfg: dict, name: str) -> bool:
 def sdc4_enabled(cfg: dict) -> bool:
     """SDC4 feature activation without importing the execution pipeline."""
     return bool(cfg.get("analyses", {}).get("sdc4_mechanisms", {}).get("enabled", False))
+
+
+def membrane_enabled_names(cfg):
+    return tuple(
+        name for name in MEMBRANE_ANALYSES
+        if cfg.get("analyses", {}).get(name, {}).get("enabled", False)
+    )
+
+
+def extensions_enabled_names(cfg):
+    specs = cfg.get("analyses", {})
+    names = []
+    for name in EXTENSION_ANALYSES:
+        if not specs.get(name, {}).get("enabled", False):
+            continue
+        # Parallel DSSP requires the specialized worker implementation.
+        if name in {"dssp", "sasa"} and specs.get("dssp", {}).get("enabled", False) and specs["dssp"].get("backend", "serial") != "serial":
+            continue
+        names.append(name)
+    if (specs.get("hydration", {}).get("enabled", False)
+            or specs.get("sdc4_mechanisms", {}).get("hs_sugar_water_cutoff_A") is not None):
+        names.append("hydration")
+    return tuple(names)
+
+
+def distance_enabled_names(cfg):
+    return tuple(run.run_id for run in analysis_runs(cfg, "residue_membrane_distance"))
+
+
+def structural_selection_requirements(cfg):
+    """Global structural roles actually consumed by enabled production paths."""
+    analyses = cfg["analyses"]
+    enabled = lambda name: bool(analyses.get(name, {}).get("enabled", False))
+    features = [name for name in ("alignment", "rmsd", "rmsf") if enabled(name)]
+    protein = [name for name in ("rmsd", "rmsf", "dssp", "salt_bridges", "ligand_contacts", "sdc4_mechanisms") if enabled(name)]
+    if enabled("radius_of_gyration") and not analyses["radius_of_gyration"].get("selection"):
+        protein.append("radius_of_gyration")
+    if enabled("hydrogen_bonds") and analyses["hydrogen_bonds"].get("between") is None:
+        protein.append("hydrogen_bonds")
+    for name in ("local_environment", "hydration"):
+        if enabled(name) and not analyses[name].get("protein_selection"):
+            protein.append(name)
+    if any(not (run.spec.get("target_selection") or run.spec.get("selection")) for run in analysis_runs(cfg, "sasa")):
+        protein.append("sasa")
+    if any(not run.spec.get("selection") for run in analysis_runs(cfg, "residue_membrane_distance")):
+        protein.append("residue_membrane_distance")
+    return {"protein": protein, "features": features,
+            "alignment": ["alignment"] if enabled("alignment") else []}
 
 
 def project_root(cfg: dict, config_path: str | Path) -> Path:

@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..config import analysis_groups
-
 
 def _valid_box(universe):
     dims = np.asarray(
@@ -92,64 +90,8 @@ def selection_details(atoms):
     }
 
 
-def resolved_selection_counts(universe, cfg: dict) -> dict:
-    alignment_spec = cfg["analyses"].get("alignment", {})
-    alignment_enabled = bool(alignment_spec.get("enabled", True))
-    atoms, requirements = resolve_structural_atoms(universe, cfg)
-    protein, alignment, features = (atoms[role] for role in ("protein", "alignment", "features"))
-    out = {
-        "protein": len(protein) if requirements["protein"] else None,
-        "alignment": len(alignment) if requirements["alignment"] else None,
-        "features": len(features) if requirements["features"] else None,
-        "required_by": requirements,
-        "groups": {},
-        "details": {role: selection_details(atoms[role]) if requirements[role]
-                    else {"status": "not_required"} for role in atoms},
-    }
-    for group_id, group in analysis_groups(cfg).items():
-        atoms = universe.select_atoms(group["selection"])
-        measured = features.intersection(atoms)
-        align_atoms = (
-            universe.select_atoms(group["alignment_selection"]) if alignment_enabled
-            and group.get("alignment_selection") else alignment
-        )
-        out["groups"][group_id] = {
-            "group_atoms": len(atoms),
-            "feature_atoms": len(measured),
-            "feature_status": "required" if requirements["features"] else "not_required",
-            "alignment_atoms": len(align_atoms),
-            "measurement": selection_details(atoms),
-            "features": selection_details(measured),
-            "alignment": selection_details(align_atoms),
-        }
-    return out
-
-
-def structural_selection_requirements(cfg):
-    """Global structural roles actually consumed by enabled production paths."""
-    from ..config import analysis_runs
-    analyses = cfg["analyses"]
-    enabled = lambda name: bool(analyses.get(name, {}).get("enabled", False))
-    features = [name for name in ("alignment", "rmsd", "rmsf") if enabled(name)]
-    protein = [name for name in ("rmsd", "rmsf", "dssp", "salt_bridges", "ligand_contacts", "sdc4_mechanisms") if enabled(name)]
-    if enabled("radius_of_gyration") and not analyses["radius_of_gyration"].get("selection"):
-        protein.append("radius_of_gyration")
-    if enabled("hydrogen_bonds") and analyses["hydrogen_bonds"].get("between") is None:
-        protein.append("hydrogen_bonds")
-    for name in ("local_environment", "hydration"):
-        if enabled(name) and not analyses[name].get("protein_selection"):
-            protein.append(name)
-    if any(not (run.spec.get("target_selection") or run.spec.get("selection")) for run in analysis_runs(cfg, "sasa")):
-        protein.append("sasa")
-    if any(not run.spec.get("selection") for run in analysis_runs(cfg, "residue_membrane_distance")):
-        protein.append("residue_membrane_distance")
-    return {"protein": protein, "features": features,
-            "alignment": ["alignment"] if enabled("alignment") else []}
-
-
-def resolve_structural_atoms(universe, cfg):
+def resolve_structural_atoms(universe, cfg, requirements):
     """Do not parse unused defaults; preflight and streaming share these roles."""
-    requirements = structural_selection_requirements(cfg)
     selections = cfg["selections"]
     alignment = (cfg["analyses"]["alignment"].get("selection")
                  or selections.get("alignment") or "protein and name CA")

@@ -12,7 +12,9 @@ from pathlib import Path
 PACKAGE = Path(__file__).resolve().parents[1] / "src" / "mdscope"
 HIGHER = {"mechanisms", "statistics", "reporting", "pipeline", "studio"}
 FORBIDDEN = {
-    "core": HIGHER | {"observables", "interactions"},
+    "core": HIGHER | {"observables", "interactions", "config"},
+    "contracts": HIGHER | {"core", "observables", "interactions", "systems",
+                           "config", "output_paths", "registry"},
     "observables": HIGHER,
     "interactions": HIGHER,
     "config": HIGHER | {"observables", "interactions", "systems"},

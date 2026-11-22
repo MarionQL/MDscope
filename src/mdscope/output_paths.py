@@ -9,10 +9,4 @@ from .contracts.outputs import FUSED_OUTPUTS as FUSED_OUTPUTS
 from .contracts.outputs import RUN_SCOPED_OUTPUTS as RUN_SCOPED_OUTPUTS
 
 # Scalar readers, state-feature provenance and authoring use the same sources.
-SAVED_SCALAR_SOURCE_FILES = {
-    "summary": ("summary/timeseries.parquet", "summary/group_timeseries.parquet"),
-    "solvation": ("extensions/solvation/species_timeseries.parquet",),
-    "hydration": ("extensions/hydration/aggregate_counts.parquet",),
-    "solvation_bridges": ("extensions/solvation/bridge_pair_timeseries.parquet",),
-    "lipid_contacts": ("extensions/lipid_contacts/matrix.parquet",),
-}
+from .contracts.outputs import SAVED_SCALAR_SOURCE_FILES as SAVED_SCALAR_SOURCE_FILES

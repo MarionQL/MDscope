@@ -40,9 +40,7 @@ from ..observables.membrane_order import (
     _valid_box,
     order_setup,
 )
-from .analysis_selection import (
-    membrane_enabled_names as enabled_names,
-)
+from ..config.runs import membrane_enabled_names as enabled_names
 
 
 def _parts(path, suffix):

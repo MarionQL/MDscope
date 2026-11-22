@@ -67,7 +67,7 @@ def test_specialized_profiles_only_when_dssp_requires_workers(project):
     for name in ("dssp", "sasa"):
         cfg["analyses"][name]["enabled"] = True
 
-    from mdscope.pipeline.analysis_selection import extensions_enabled_names
+    from mdscope.config.runs import extensions_enabled_names
 
     assert "dssp" in extensions_enabled_names(cfg)
     assert [task.key for task in specialized_tasks(cfg)] == []
@@ -137,7 +137,7 @@ def test_optional_scalar_collection_keeps_missing_files_missing(tmp_path, projec
 def test_output_plan_uses_lightweight_production_predicates(project):
     """Producer exports and registry must see identical scheduling decisions."""
     from mdscope.systems.sdc4.mechanisms import enabled as sdc4_producer
-    from mdscope.pipeline.analysis_selection import (
+    from mdscope.config.runs import (
         distance_enabled_names,
         extensions_enabled_names,
         membrane_enabled_names,
@@ -245,3 +245,48 @@ def test_lipid_observable_has_no_back_edge_to_fused_executor():
         capture_output=True, text=True, check=False, timeout=60,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_foundational_imports_do_not_load_configuration_or_pipeline():
+    """Planning is lightweight and the geometry core has no config back-edge."""
+    code = (
+        "import sys\n"
+        "from mdscope.core.alignment import _fit_transform\n"
+        "assert 'mdscope.config' not in sys.modules\n"
+        "from mdscope.registry import analysis_output_plan\n"
+        "assert not any(name == 'mdscope.pipeline' or name.startswith('mdscope.pipeline.') "
+        "for name in sys.modules), sorted(name for name in sys.modules "
+        "if name.startswith('mdscope.pipeline'))\n"
+        "from mdscope.contracts.outputs import SAVED_SCALAR_SOURCE_FILES as canonical\n"
+        "from mdscope.output_paths import SAVED_SCALAR_SOURCE_FILES as facade\n"
+        "assert canonical is facade\n"
+    )
+    result = subprocess.run([sys.executable, "-c", code],
+                            capture_output=True, text=True, check=False, timeout=60)
+    assert result.returncode == 0, result.stderr
+
+
+def test_onboarding_scalar_and_named_profile_use_existing_contracts(project):
+    """Two onboarding probes: summary scalar and two configured named profile runs."""
+    from mdscope.config.runs import distance_enabled_names
+    from mdscope.registry import saved_output_plan
+
+    path, _ = project("onboarding_existing_analysis_probes")
+    cfg = load_config(path)
+    cfg["analyses"]["radius_of_gyration"]["enabled"] = True
+    cfg["analyses"]["residue_membrane_distance"].update({
+        "enabled": True,
+        "runs": {
+            "near": {"enabled": True, "membrane_selection": "name P"},
+            "skipped": {"enabled": False, "membrane_selection": "name O"},
+        },
+    })
+    assert distance_enabled_names(cfg) == ("near",)
+    output = saved_output_plan(cfg, Path("__replica__"))
+    scalar = [entry for entry in output if entry.name == "radius_of_gyration"]
+    profile = [entry for entry in output if entry.name == "residue_membrane_distance"]
+    assert len(scalar) == 1
+    assert scalar[0].path == Path("__replica__/summary/timeseries.parquet")
+    assert [(entry.run_id, entry.path.as_posix()) for entry in profile] == [
+        ("near", "__replica__/profiles/residue_membrane_distance/near/distance_matrix_A.npy"),
+    ]

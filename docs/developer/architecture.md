@@ -32,7 +32,7 @@ flowchart TD
 
 Read-only `cli.py` commands import the runner, statistical estimators, and topology preflight only when their selected command requires them. The statistics package initializer is lightweight; `statistics/dispatch.py` owns project inference and imports estimators only when explicitly invoked. Other lightweight runtime selectors live in `statistics/{contracts,families,manifest,selection,permutation_resolution}.py`; their shared validation rules live in `contracts/{plot_validation,metric_selection,state_feature_spec}.py`. `statistics/families.py` owns the lightweight family identifier list consumed by planning and the statistics dispatcher.
 
-Key interfaces: `cli.py`, `config/` (`defaults.py`, `runs.py`, `validation.py` dispatcher, `validators/` domain checks, YAML loading in `__init__.py`), `registry.py` (`analysis_output_plan`, `required_artifacts`), `contracts/outputs.py` (one descriptor per analysis: primary path, named-run support, companions, schema; producer column/path constants), `output_paths.py` (compatibility exports for persisted paths), `pipeline/analysis_selection.py` (shared enabled-analysis predicates), `pipeline/replica_tasks.py` (`specialized_tasks`, `additional_time_series`), `pipeline/runner.py`, `pipeline/streaming.py`.
+Key interfaces: `cli.py`, `config/` (`defaults.py`, `runs.py`, `validation.py` dispatcher, `validators/` domain checks, YAML loading in `__init__.py`), `registry.py` (`analysis_output_plan`, `required_artifacts`), `contracts/outputs.py` (one descriptor per analysis: primary path, named-run support, companions, schema; producer column/path constants), `output_paths.py` (compatibility exports for persisted paths), `config/runs.py` (shared enabled-analysis predicates), `pipeline/replica_tasks.py` (`specialized_tasks`, `additional_time_series`), `pipeline/runner.py`, `pipeline/streaming.py`.
 
 Output contracts now have a dependency-free owner in `contracts/outputs.py`.
 `registry.py` resolves configuration-dependent companions (SASA variants,
@@ -40,7 +40,7 @@ solvation options, HS sugar hydration) from those descriptors without importing
 observer implementations. Static solvation/hydration column contracts and HS
 output paths are imported by producers, rather than rediscovered from producer
 classes during planning. Execution scheduling remains in
-`pipeline/analysis_selection.py`; its enabled predicates are not duplicated
+`config/runs.py`; its enabled predicates are not duplicated
 in output descriptors. This is the #260 boundary preceding the execution-plan
 work in #279.
 
@@ -101,7 +101,7 @@ CI thresholds for edge counts or SCC counts.
 | Topology/selection checks | `pipeline/preflight.py`, `core/atom_selection.py` | GUI parsing MDAnalysis expressions independently |
 | Atomic writes, archiving, checkpoints | `core/persistence.py`, `core/checkpoints.py` | New output writers inside scientific kernels |
 | Numeric observables and interaction identity | `observables/`, `interactions/interaction_tables.py` | Re-implementing measurements in the planner |
-| Enabled analysis discovery | `pipeline/analysis_selection.py` (also imported by producers) | Planner-only copies of scheduling predicates |
+| Enabled analysis discovery | `config/runs.py` (also imported by producers) | Planner-only copies of scheduling predicates |
 | Streaming, task dispatch, restart and project finalization | `pipeline/streaming.py`, `pipeline/replica_tasks.py`, `pipeline/runner.py` | An extra trajectory pass for each observer |
 | Replica-aware inference, resampling, comparisons | `statistics/` | Treating frames as independent replicates |
 | Figure generation and provenance | `reporting/` | Synthetic-preview-only rendering code |
@@ -143,7 +143,7 @@ the owning submodule directly. Neither boundary justifies a second implementatio
 ### Scientific reuse audit: local environment and numerical policies
 
 - `mechanisms/local_environment.py` now owns one topology-setup and per-frame contact estimator, shared by its standalone reader and `pipeline/fused_extensions.py`. Fused execution retains chunk/restart ownership; the standalone entry point remains usable for targeted parity checks.
-- `pipeline/replica_tasks.py` no longer advertises a `local_environment` task that production always skips: `analysis_selection.extensions_enabled_names` enables it in fused extensions.
+- `pipeline/replica_tasks.py` no longer advertises a `local_environment` task that production always skips: `config.runs.extensions_enabled_names` enables it in fused extensions.
 - Do **not** merge `biophysical_common.heavy` with `mechanistic_common.heavy`: they deliberately select different hydrogen-inference policies. Likewise, all-pairs planar distances, point-to-anchor distances, mass-weighted centers, and fixed versus dynamic leaflet definitions differ in scientific contracts.
 - `statistics/shared_states.py` consumes saved feature tables and fits one shared state model across replicas; it is not a duplicate of the inferential `statistics/` dispatcher. No offline aggregation or estimator schema changes are in this refactor.
 - The specialized-task audit removed unreachable task descriptors for membrane order, bilayer normal, residue–membrane distances, protein H-bonds and lipid H-bonds. Their independent implementations remain available; production uses fused family execution and associated artifact validation/recovery. `specialized_tasks()` now schedules only non-serial DSSP/profile work and potassium bridge audit, preserving the legacy `profiles` / `potassium_bridge_audit` stage keys.
@@ -297,7 +297,7 @@ that canonical implementation directly. Explicit
 saved features reuse `statistics/time_series.collect_time_series` through
 `statistics/state_features.py`. SDC4-only downstream conditioning lives in
 `mechanisms/state_outcomes.py` and is constructed only for that preset.
-Saved source paths in `output_paths.SAVED_SCALAR_SOURCE_FILES` are shared by
+Saved source paths in `contracts.outputs.SAVED_SCALAR_SOURCE_FILES` (re-exported by `output_paths.py`) are shared by
 the temporal reader and the state-feature catalog in `registry.py`.
 Shared motif membership is resolved by `core/motifs.py` using the existing
 sequence matcher; neither Studio nor the planner assembles a second sequence.
