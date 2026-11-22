@@ -5,7 +5,7 @@ coverage and optional chemistry/reference columns may extend them. Identities ar
 not independent samples: condition inference uses simulation replicas.
 """
 
-from ..contracts.residue_response import RESIDUE_RESPONSE_PROFILE
+from ..contracts.residue_response import RESIDUE_RESPONSE_PROFILE as RESIDUE_RESPONSE_PROFILE
 BASE_COLUMNS = {
     "time_series": ("replicate_statistics.parquet", ["system", "replicate", "group", "metric", "mean", "median", "mean_ci_low", "mean_ci_high", "median_ci_low", "median_ci_high", "temporal_sampling_status", "bootstrap_draws", "ci_level"], "replicate / group / metric"),
     "profiles": ("system_profiles.parquet", ["system", "profile", "position", "position_label", "mean", "n_replicates", "mean_ci_low", "mean_ci_high", "bootstrap_draws", "ci_level"], "condition / profile / aligned position"),
