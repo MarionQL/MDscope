@@ -114,6 +114,15 @@ HS_SUGAR_HYDRATION_PATH = "extensions/sdc4_mechanisms/hs_sugar_hydration.parquet
 GLYCAN_ATTACHMENTS_FILE = "glycan_attachments.parquet"
 RESIDUE_OCCLUSION_FILE = "residue_occlusion.parquet"
 
+# Canonical persisted scalar source paths used by saved-data readers and schemas.
+SAVED_SCALAR_SOURCE_FILES = {
+    "summary": ("summary/timeseries.parquet", "summary/group_timeseries.parquet"),
+    "solvation": ("extensions/solvation/species_timeseries.parquet",),
+    "hydration": ("extensions/hydration/aggregate_counts.parquet",),
+    "solvation_bridges": ("extensions/solvation/bridge_pair_timeseries.parquet",),
+    "lipid_contacts": ("extensions/lipid_contacts/matrix.parquet",),
+}
+
 MEMBRANE_ANALYSES = ("membrane_order", "bilayer_normal", "lipid_enrichment", "lipid_contacts")
 EXTENSION_ANALYSES = ("hydrogen_bonds", "lipid_hydrogen_bonds", "dssp", "sasa", "local_environment", "solvation")
 

@@ -67,7 +67,7 @@ def test_specialized_profiles_only_when_dssp_requires_workers(project):
     for name in ("dssp", "sasa"):
         cfg["analyses"][name]["enabled"] = True
 
-    from mdscope.pipeline.analysis_selection import extensions_enabled_names
+    from mdscope.config.runs import extensions_enabled_names
 
     assert "dssp" in extensions_enabled_names(cfg)
     assert [task.key for task in specialized_tasks(cfg)] == []
@@ -137,7 +137,7 @@ def test_optional_scalar_collection_keeps_missing_files_missing(tmp_path, projec
 def test_output_plan_uses_lightweight_production_predicates(project):
     """Producer exports and registry must see identical scheduling decisions."""
     from mdscope.systems.sdc4.mechanisms import enabled as sdc4_producer
-    from mdscope.pipeline.analysis_selection import (
+    from mdscope.config.runs import (
         distance_enabled_names,
         extensions_enabled_names,
         membrane_enabled_names,
