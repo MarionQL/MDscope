@@ -24,7 +24,8 @@ import pytest
 import yaml
 from MDAnalysis.coordinates.memory import MemoryReader
 
-from mdscope.config import DEFAULTS, config_hash, resolve_config
+from mdscope.config import DEFAULTS, resolve_config
+from mdscope.core.provenance import config_hash
 from mdscope.errors import ConfigError
 from mdscope.mechanisms.sdc4_mechanisms import _normal_order_setup
 from mdscope.observables.membrane_order import (
