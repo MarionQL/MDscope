@@ -23,7 +23,7 @@ from ..mechanisms.residue_occlusion import (
 )
 from ..observables.density_1d import missing_membrane_density_runs
 from ..observables.lipid_enrichment import footprint_pending
-from ..registry import analysis_output_plan, core_saved_contracts, required_artifacts
+from ..registry import analysis_output_plan, artifact_schema, core_saved_contracts, required_artifacts
 
 
 def check_artifact(path: Path) -> int:
@@ -60,6 +60,15 @@ def validate_analysis_output(entry, cfg, *, allow_missing_occlusion=False):
             if may_add_occlusion and path == occlusion:
                 continue
             check_artifact(path)
+            if path != entry.path and path.suffix == ".parquet":
+                # Companions must satisfy the registry's existing column
+                # contracts too; metadata readability alone misses damaged tables.
+                from pyarrow.parquet import read_schema
+                expected_columns = artifact_schema(entry, path)["columns"]
+                if expected_columns is not None:
+                    missing = set(expected_columns) - set(read_schema(path).names)
+                    if missing:
+                        raise ValueError(f"{path}: missing columns {sorted(missing)}")
         if entry.path.suffix == ".parquet":
             from pyarrow.parquet import read_schema
             columns = set(read_schema(entry.path).names)
