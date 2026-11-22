@@ -6,6 +6,7 @@ Read only the guides relevant to the change; do not duplicate them here.
 |---|---|
 | Ownership, minimal changes, reviews | [Contributing](docs/developer/contributing.md) |
 | Module boundaries, persisted flow | [Architecture](docs/developer/architecture.md) |
+| Where moved or new modules belong (target layout) | [ADR-0001](docs/developer/adr/0001-target-package-architecture.md) |
 | Coordinate frames, PBC, units, numerical semantics | [Scientific contracts](docs/developer/scientific-contracts.md) |
 | Known scientific limitations | [Scientific audit](docs/developer/scientific-audit.md) |
 | Which checks to run and when | [Check policy](docs/developer/check-policy.md) |

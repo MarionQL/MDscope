@@ -1,6 +1,6 @@
 # Architecture
 
-MDscope uses a `src/mdscope/` package. [Package map](../../src/mdscope/README.md) lists ownership; [Contributing](contributing.md) defines refactoring rules. **Internal module aliases are not retained**; CLI/YAML/output compatibility is a separate contract.
+MDscope uses a `src/mdscope/` package. [Package map](../../src/mdscope/README.md) lists ownership; [Contributing](contributing.md) defines refactoring rules. **Internal module aliases are not retained**; CLI/YAML/output compatibility is a separate contract. This page describes the **current** layout; the agreed target layout and migration order are in [ADR-0001](adr/0001-target-package-architecture.md).
 
 ## Execution flow
 
