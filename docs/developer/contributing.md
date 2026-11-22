@@ -30,7 +30,8 @@ Use **GitHub Flow**: `main` is the integration branch; each issue or focused cha
 | `core/` | Geometry, atom selections, trajectory sources, persistence, checkpoints |
 | `observables/` | RMSD/RMSF/MSD, membrane/lipid/structural observables |
 | `interactions/` | Molecular contacts and H bonds |
-| `mechanisms/` | SDC4 and other system-specific analyses |
+| `mechanisms/` | Generic mechanistic analyses and postprocessors |
+| `systems/sdc4/` | SDC4-specific mechanistic observers and potassium audits |
 | `statistics/` | Replicate-level inference and comparisons |
 | `reporting/` | Findings, scientific figures and exports |
 | `pipeline/` | Shared streaming, orchestration, finalization |

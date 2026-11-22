@@ -2,6 +2,8 @@
 
 **Status:** accepted design criteria and preferred direction (2026-11-22); implementation decisions require measured evidence. **Supersedes ADR-0001's mandatory directory migration**, not its scientific or dependency-contract goals. **Tracker:** [#269](https://github.com/MarionQL/MDscope/issues/269); execution work: [#279](https://github.com/MarionQL/MDscope/issues/279).
 
+**Implementation note (issue #269, P0/P1):** The onboarding baseline and exemplar traces are in [analysis-onboarding-baseline.md](../analysis-onboarding-baseline.md). The proposed boundary fix centralizes enabled selectors in `config/runs.py`, moves topology-specific preview out of core alignment, and makes persisted scalar sources contract-owned; historical module inventories below intentionally retain their original snapshot identifiers. Do not confuse these import changes with a measured performance improvement.
+
 ## Why the earlier refactors felt incomplete
 
 Moving a module is not inherently an architectural improvement. MDscope's highest costs arise when a scientific analysis needs many separate changes to become runnable, resumable, discoverable in Studio, statistically selectable, and correctly represented in figures. The previous ADR prescribed an entire `analyses/`, `engine/`, `interfaces/` layout before proving it would reduce that cost. Conversely, micro-modules and compatibility-only forwarding increased navigation without creating independently owned behavior.
