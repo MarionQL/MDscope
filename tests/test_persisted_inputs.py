@@ -1,16 +1,16 @@
 """Saved-result browsing and actual finalization must agree on readiness facts."""
-from copy import deepcopy
 import json
+from copy import deepcopy
 
 import numpy as np
 import pandas as pd
 import pytest
 import yaml
 
-from mdscope.config import resolve_config, iter_replicates
+from mdscope.config import iter_replicates, resolve_config
+from mdscope.pipeline.runner import _replicate_state_prefix, finalize_project
 from mdscope.registry import analysis_output_plan
-from mdscope.studio.model import new_document, inspect_results_directory
-from mdscope.pipeline.runner import finalize_project, _replicate_state_prefix
+from mdscope.studio.model import inspect_results_directory, new_document
 
 
 def saved_project(tmp_path):
@@ -150,7 +150,7 @@ def test_coverage_includes_absent_expected_replica_rows():
 
 
 def test_saved_catalog_and_exact_export_keep_source_disabled(tmp_path):
-    from mdscope.studio.model import saved_source_catalog, review
+    from mdscope.studio.model import review, saved_source_catalog
     doc, cfg, root, rep, summary = saved_project(tmp_path)
     doc["analyses"]["sasa"]["enabled"] = False
     doc["statistics"]["enabled"] = True
@@ -197,8 +197,8 @@ def test_streamed_scalar_reuse_tracks_alignment_provenance(tmp_path, project):
 @pytest.mark.parametrize("names", [("A", "Z"), ("Z", "A")])
 @pytest.mark.parametrize("enabled", [True, False])
 def test_saved_only_sibling_retains_its_effective_settings_regardless_of_order(tmp_path, names, enabled):
-    from mdscope.pipeline.persisted_inputs import configuration_with_saved_sources
     from mdscope.config import analysis_runs
+    from mdscope.pipeline.persisted_inputs import configuration_with_saved_sources
     saved_only, current_name = names
     doc, cfg, root, rep, summary = saved_project(tmp_path)
     doc["analyses"]["sasa"] = {"enabled": True, "probe_radius_A": 1.4,
@@ -242,8 +242,12 @@ def test_streamed_scalar_inventory_rejects_missing_metric_without_mutation(tmp_p
 
 
 def test_saved_rmsf_static_readiness_is_separate_from_temporal_statistics(tmp_path, monkeypatch):
-    from mdscope.studio.model import saved_source_catalog, review, unavailable_exact_statistics
     from mdscope.pipeline.persisted_inputs import unavailable_saved_statistics
+    from mdscope.studio.model import (
+        review,
+        saved_source_catalog,
+        unavailable_exact_statistics,
+    )
     doc = new_document()
     doc["analyses"]["rmsf"]["enabled"] = True
     cfg = resolve_config(doc, base=tmp_path)
@@ -306,6 +310,7 @@ def test_saved_rmsf_static_readiness_is_separate_from_temporal_statistics(tmp_pa
 
 def test_temporal_rmsf_rejects_corruption_beyond_header_buffer(tmp_path):
     from zipfile import ZipFile
+
     from mdscope.observables.rmsf import temporal_rmsf_readiness
     cache = tmp_path / "cache"
     cache.mkdir()

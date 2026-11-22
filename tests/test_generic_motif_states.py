@@ -5,11 +5,11 @@ from copy import deepcopy
 import numpy as np
 import pandas as pd
 import pytest
+from test_solvation_motifs import _protein
 
 from mdscope.config import resolve_config
 from mdscope.mechanisms.shared_states import fit_shared_states
 from mdscope.observables.solvation import _targets
-from test_solvation_motifs import _protein
 
 
 def _spec():
@@ -67,8 +67,9 @@ def test_shared_motif_references_resolve_chain_scoped_whole_residues():
 
 
 def test_shared_config_is_validated_and_roundtrips():
-    from mdscope.studio.model import new_document, import_document
     import yaml
+
+    from mdscope.studio.model import import_document, new_document
     doc = new_document()
     doc["selections"]["motifs"] = {"acidic": {"sequence": "DE"}}
     doc["analyses"]["shared_states"] = _spec()
@@ -190,8 +191,8 @@ def test_invalid_motif_definitions_are_rejected(definition):
 
 
 def test_motifs_preview_through_production_topology_preflight(tmp_path):
+    from mdscope.planning import authoring_catalog, build_plan
     from mdscope.studio.model import new_document, topology_preflight
-    from mdscope.planning import build_plan, authoring_catalog
     u = _protein()
     # PDB uses one-character chain labels; the topology indices remain authoritative.
     u.atoms.chainIDs = ["A"]*4 + ["B"]*4
@@ -213,7 +214,9 @@ def test_motifs_preview_through_production_topology_preflight(tmp_path):
 
 def test_maintained_sdc4_configs_roundtrip_without_migration():
     from pathlib import Path
+
     import yaml
+
     from mdscope.studio.model import import_document
     for name in ("synd4_baseline.yaml", "synd4_full_mechanisms.yaml", "synd4_full_mechanisms_finalize_fast.yaml"):
         text = (Path(__file__).resolve().parents[1] / name).read_text()
@@ -225,8 +228,9 @@ def test_maintained_sdc4_configs_roundtrip_without_migration():
 def test_yaml_motif_measurement_to_saved_state_finalize_and_figures(tmp_path):
     import MDAnalysis as mda
     import yaml
+
+    from mdscope.pipeline.runner import finalize_project, run_all
     from mdscope.studio.model import new_document
-    from mdscope.pipeline.runner import run_all, finalize_project
     u = mda.Universe.empty(6, n_residues=4, atom_resindex=[0, 0, 1, 1, 2, 3], trajectory=True)
     u.add_TopologyAttr("names", ["CA", "CB", "CA", "CB", "OW", "OW"])
     u.add_TopologyAttr("resnames", ["ASP", "GLU", "SOL", "SOL"])
@@ -295,6 +299,7 @@ def test_replica_balanced_scaling_ignores_excess_length(tmp_path):
 
 def test_generic_motif_overlaps_gaps_modifications_and_segments():
     import MDAnalysis as mda
+
     from mdscope.core.motifs import resolve_motifs
     u = mda.Universe.empty(6, n_residues=6, n_segments=2, atom_resindex=np.arange(6),
                            residue_segindex=[0, 0, 0, 1, 1, 1], trajectory=True)
@@ -356,7 +361,7 @@ def test_chain_scope_uses_nonblank_segment_fallback():
 
 
 def test_studio_group_rename_migrates_state_inputs_and_delete_is_atomic():
-    from mdscope.studio.model import new_document, change_group
+    from mdscope.studio.model import change_group, new_document
     doc = new_document()
     doc["selections"]["groups"] = {"old": {"selection": "protein"}}
     spec = _spec()
@@ -391,9 +396,9 @@ def test_production_finalize_failure_preserves_model_and_saved_configuration(tmp
 
 
 def test_state_feature_catalog_exposes_sources_identities_and_prerequisites():
-    from mdscope.studio.model import new_document
-    from mdscope.planning import authoring_catalog, build_plan
     from mdscope.output_paths import SAVED_SCALAR_SOURCE_FILES
+    from mdscope.planning import authoring_catalog, build_plan
+    from mdscope.studio.model import new_document
     doc = new_document()
     doc["selections"]["motifs"] = {"patch": {"sequence": "DE"}}
     doc["analyses"]["solvation"].update(enabled=True, water_selection="resname SOL",

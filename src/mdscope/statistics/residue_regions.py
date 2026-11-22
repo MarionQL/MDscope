@@ -1,13 +1,12 @@
 """Discover contiguous residue changes from complete replica profiles."""
-from itertools import combinations
 import json
+from itertools import combinations
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from ..config import atomic_parquet
-
 
 _COLUMNS = [
     "profile", "system_1", "system_2", "chain", "start_residue", "end_residue",

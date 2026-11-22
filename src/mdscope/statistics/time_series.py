@@ -12,14 +12,28 @@ import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config
-from ..output_paths import SAVED_SCALAR_SOURCE_FILES
-from ..statistics_selection import time_series_selection, metric_estimator_enabled
-from .common import selected_rng
 from ..core.persistence import atomic_parquet, ensure_dir
 from ..interactions.interaction_tables import event_lifetimes
-
-
-from .common import finite, _temporal, _block_indices, _block_bootstrap, _hierarchical, _hierarchical_difference, _ci, _describe, _direction, _permutation, _fdr, _range_meta, _regular_times, _point_difference, _adaptive_intervals
+from ..output_paths import SAVED_SCALAR_SOURCE_FILES
+from ..statistics_selection import metric_estimator_enabled, time_series_selection
+from .common import (
+    _adaptive_intervals,
+    _block_bootstrap,
+    _block_indices,
+    _ci,
+    _describe,
+    _direction,
+    _fdr,
+    _hierarchical,
+    _hierarchical_difference,
+    _permutation,
+    _point_difference,
+    _range_meta,
+    _regular_times,
+    _temporal,
+    finite,
+    selected_rng,
+)
 
 LOCAL_GEOMETRY = {
     "sdc4_local_upper_height_A", "sdc4_local_upper_curvature_Ainv", "sdc4_local_thickness_A",

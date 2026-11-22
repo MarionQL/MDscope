@@ -1,8 +1,9 @@
 """Topology edge cases without real trajectories for scientific geometry."""
-import numpy as np
 import MDAnalysis as mda
-from mdscope.observables.msd import _residue_centers
+import numpy as np
+
 from mdscope.core.atom_selection import heavy_atom_mask
+from mdscope.observables.msd import _residue_centers
 
 
 def _atoms():

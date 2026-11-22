@@ -3,9 +3,9 @@
 import numpy as np
 import pandas as pd
 
-from mdscope.statistics.solvation import analyze_solvation_rdfs
-from mdscope.statistics.time_series import collect_time_series, analyze_time_series
 from mdscope.observables.solvation_postprocess import aggregate_coordination
+from mdscope.statistics.solvation import analyze_solvation_rdfs
+from mdscope.statistics.time_series import analyze_time_series, collect_time_series
 
 
 def test_hydration_frame_fraction_and_mean():

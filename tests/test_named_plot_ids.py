@@ -3,14 +3,14 @@ from copy import deepcopy
 from pathlib import Path
 from runpy import run_path
 
-from PIL import Image
 import pytest
 import yaml
+from PIL import Image
 
 from mdscope.config import DEFAULTS, figure_enabled, load_config, plot_enabled
+from mdscope.reporting.figure_inventory import figure_status
 from mdscope.reporting.plot_ids import id_from_figure_path, validate_plot_ids
 from mdscope.reporting.plotting import plot_all, plot_interactions
-from mdscope.reporting.figure_inventory import figure_status
 
 
 def _fake_data(tmp_path):
@@ -118,6 +118,7 @@ def test_solvation_not_selected_never_opens_rdf(tmp_path, monkeypatch):
 def test_sdc4_condition_selection_does_not_open_unselected_maps(tmp_path):
     import numpy as np
     import pandas as pd
+
     from mdscope.reporting.sdc4_figures import plot_sdc4_mechanisms
 
     rep = tmp_path / "condition" / "rep1"
@@ -150,6 +151,7 @@ def test_sdc4_condition_selection_does_not_open_unselected_maps(tmp_path):
 
 def test_shared_state_sampling_only_does_not_require_populations(tmp_path):
     import pandas as pd
+
     from mdscope.reporting.sdc4_figures import plot_sdc4_mechanisms
 
     out = tmp_path / "project_summary/shared_states"
@@ -170,6 +172,7 @@ def test_shared_state_sampling_only_does_not_require_populations(tmp_path):
 
 def test_lipid_contact_include_one_exact_heatmap(tmp_path):
     import pandas as pd
+
     from mdscope.reporting.membrane_figures import plot_lipid_contacts
 
     rep = tmp_path / "condition" / "rep1"
@@ -316,7 +319,7 @@ def test_describe_plot_uses_declared_renderers_and_saved_input_contracts():
 
 
 def test_figure_preview_manifest_can_describe_exact_output_ids(tmp_path):
-    from mdscope.reporting.plot_ids import id_from_figure_path, describe_plot
+    from mdscope.reporting.plot_ids import describe_plot, id_from_figure_path
 
     cfg, repouts = _fake_data(tmp_path)
     cfg["plots"]["include"] = ["time_series:rmsd_A:timeseries"]
@@ -443,7 +446,7 @@ def test_stale_per_replica_sdc4_png_is_preserved_but_not_active(tmp_path):
 
 def test_descriptive_plotting_does_not_require_completed_statistics(tmp_path, project):
     """A selected saved-data RMSD plot does not imply running bootstrap."""
-    from mdscope.pipeline.runner import run_one, finalize_project
+    from mdscope.pipeline.runner import finalize_project, run_one
 
     path, root = project("descriptive_only", statistics=False)
     options = yaml.safe_load(path.read_text())
@@ -463,7 +466,7 @@ def test_descriptive_plotting_does_not_require_completed_statistics(tmp_path, pr
 
 def test_statistical_plot_still_requires_completed_statistics(tmp_path, project):
     """A bootstrap figure cannot quietly render without inferential inputs."""
-    from mdscope.pipeline.runner import run_one, finalize_project
+    from mdscope.pipeline.runner import finalize_project, run_one
 
     path, root = project("statistical_plot_without_stats", statistics=False)
     options = yaml.safe_load(path.read_text())

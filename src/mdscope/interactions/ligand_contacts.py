@@ -1,8 +1,12 @@
 """Ligand-protein pairwise contacts and closest-distance detector."""
 from __future__ import annotations
+
 import numpy as np
-from MDAnalysis.lib.distances import capped_distance,distance_array
-from .interaction_tables import atom_label,residue_label
+from MDAnalysis.lib.distances import capped_distance, distance_array
+
+from .interaction_tables import atom_label, residue_label
+
+
 def initialize_ligand_contacts(universe, protein, ligand, cfg: dict):
     spec = cfg["analyses"]["ligand_contacts"]
     if not spec.get("enabled", False) or ligand is None or not len(ligand):

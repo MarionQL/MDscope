@@ -4,9 +4,8 @@ import shutil
 import MDAnalysis as mda
 import pandas as pd
 import pytest
-
 from mdscope_test_support import invoke_cli as invoke
-from validation_fixture import write_project, write_quickstart, verify_project
+from validation_fixture import verify_project, write_project, write_quickstart
 
 
 def test_portable_yaml_run_and_independent_references(tmp_path, monkeypatch):

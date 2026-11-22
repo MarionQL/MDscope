@@ -11,7 +11,9 @@ import pandas as pd
 import pytest
 
 from mdscope.mechanisms.sdc4_mechanisms import (
-    SDC4Mechanisms, _backbone_axis, _local_surface,
+    SDC4Mechanisms,
+    _backbone_axis,
+    _local_surface,
 )
 
 

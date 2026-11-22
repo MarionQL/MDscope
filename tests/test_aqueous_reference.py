@@ -1,11 +1,17 @@
 """Independent geometric density references; no bulk or binding inference."""
 import json
 from copy import deepcopy
+
 import numpy as np
 import pandas as pd
 import pytest
-from mdscope.observables.solvation import aqueous_slab_density, SolvationObserver, rdf_from_counts
 from mdscope_test_support import solvation_universe as _universe
+
+from mdscope.observables.solvation import (
+    SolvationObserver,
+    aqueous_slab_density,
+    rdf_from_counts,
+)
 
 
 def test_slab_density_periodic_variable_volume_and_excluded_hemisphere():

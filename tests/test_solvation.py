@@ -1,13 +1,16 @@
 """Independent tiny-system references for solvation counting, PBC and kinetics."""
+import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 import pytest
-import MDAnalysis as mda
 from MDAnalysis.coordinates.memory import MemoryReader
-
-from mdscope.observables.solvation import (SolvationObserver, contact_episodes,
-                                           rdf_from_counts)
 from mdscope_test_support import solvation_universe as _universe
+
+from mdscope.observables.solvation import (
+    SolvationObserver,
+    contact_episodes,
+    rdf_from_counts,
+)
 
 
 def test_bulk_rdf_formula():
@@ -267,6 +270,7 @@ def test_target_water_overlap_is_rejected(tmp_path):
 
 def test_unique_coordination_matches_python_reference_with_duplicates():
     from collections import defaultdict
+
     from mdscope.observables.solvation import unique_target_solvent_pairs
     targets = np.array([2, 0, 2, 2, 1, 0, 2, 1, 0], dtype=np.int32)
     water = np.array([7, 3, 7, 9, 1, 3, 8, 1, 4], dtype=np.int32)
@@ -315,6 +319,7 @@ def test_neighbor_methods_produce_identical_coordination(tmp_path):
 
 def test_water_hbond_uses_shared_triclinic_minimum_image():
     from MDAnalysis.lib.mdamath import triclinic_vectors
+
     from mdscope.observables.solvation import water_donor_hbonds
     box = np.array([30., 31., 32., 88., 94., 73.])
     lattice = triclinic_vectors(box)

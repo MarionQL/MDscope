@@ -7,9 +7,9 @@ from pathlib import Path
 import pandas as pd
 
 from mdscope.config import load_config
+from mdscope.output_paths import FUSED_OUTPUTS as CANONICAL_OUTPUT_PATHS
 from mdscope.pipeline.replica_tasks import additional_time_series, specialized_tasks
 from mdscope.registry import FUSED_OUTPUTS, analysis_output_plan
-from mdscope.output_paths import FUSED_OUTPUTS as CANONICAL_OUTPUT_PATHS
 
 
 def test_registry_import_does_not_import_execution_implementations():
@@ -136,14 +136,16 @@ def test_optional_scalar_collection_keeps_missing_files_missing(tmp_path, projec
 
 def test_output_plan_uses_lightweight_production_predicates(project):
     """Producer exports and registry must see identical scheduling decisions."""
-    from mdscope.pipeline.analysis_selection import (
-        membrane_enabled_names, extensions_enabled_names,
-        distance_enabled_names, sdc4_enabled,
-    )
-    from mdscope.pipeline.fused_membrane import enabled_names as membrane_producer
-    from mdscope.pipeline.fused_extensions import enabled_names as extensions_producer
-    from mdscope.pipeline.fused_distance import enabled_names as distance_producer
     from mdscope.mechanisms.sdc4_mechanisms import enabled as sdc4_producer
+    from mdscope.pipeline.analysis_selection import (
+        distance_enabled_names,
+        extensions_enabled_names,
+        membrane_enabled_names,
+        sdc4_enabled,
+    )
+    from mdscope.pipeline.fused_distance import enabled_names as distance_producer
+    from mdscope.pipeline.fused_extensions import enabled_names as extensions_producer
+    from mdscope.pipeline.fused_membrane import enabled_names as membrane_producer
 
     assert membrane_enabled_names is membrane_producer
     assert extensions_enabled_names is extensions_producer

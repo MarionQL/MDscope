@@ -1,5 +1,6 @@
 """Small, explicit leaflet partition shared by legacy median-based analyses."""
 from __future__ import annotations
+
 import numpy as np
 
 

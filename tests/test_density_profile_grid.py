@@ -57,7 +57,10 @@ def test_density_profiles_use_shared_physical_bins(tmp_path):
 def test_midplane_density_is_invariant_to_drift_and_periodic_wrap(tmp_path):
     import MDAnalysis as mda
 
-    from mdscope.observables.density_1d import DensityProfileAccumulator, temporal_density_profiles
+    from mdscope.observables.density_1d import (
+        DensityProfileAccumulator,
+        temporal_density_profiles,
+    )
 
     u = mda.Universe.empty(7, n_residues=7, atom_resindex=np.arange(7), trajectory=True)
     u.add_TopologyAttr("names", ["P"] * 5 + ["O"] * 2)

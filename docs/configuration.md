@@ -2,6 +2,34 @@
 
 Use [`synd4_full_mechanisms.yaml`](../synd4_full_mechanisms.yaml) for the complete, maintained SDC4 configuration. The examples below show **patterns**, not validated selections for another topology.
 
+## Config paths, output location and relocation
+
+All relative paths in `project.output`, `systems.*.topology`,
+`systems.*.replicates[].trajectory` and optional `msd_trajectory` are
+resolved from the **YAML file's directory**, not the shell's working directory.
+Absolute paths are used as given. Both `mdscope validate CONFIG.yaml` and
+`mdscope plan CONFIG.yaml` display the absolute resolved output directory;
+`mdscope plan --format json` exposes `resolved_output_directory` without
+opening trajectories.
+
+**Relocating the YAML:** For an existing run, keep the original resolved input
+paths and `project.output` **string** unchanged. If `project.output` is
+already absolute, moving the YAML is safe for the output location, provided all
+relative input paths are also updated or continue resolving to the same files.
+However, changing any YAML path string can change the saved configuration hash.
+The supported no-migration method is to leave the original YAML in place and
+invoke it by absolute path from the new location, or move the whole directory
+containing the YAML and its relative paths **only when starting a new project**
+in a fresh output directory. A symbolic link to the original YAML also retains
+its original resolved parent on platforms that support symlinks.
+
+Do not edit `project.output` to point to an existing results directory and
+assume resume will work: `resolved_config.yaml` is hashed from resolved YAML
+options (including the raw output setting). A changed hash is rejected instead
+of reusing possibly incompatible numerical products. To intentionally change
+paths or move an existing results folder, start a new run in a separate output
+directory; no automated saved-product migration is provided.
+
 ## Analysis options at a glance
 
 | Feature | YAML key | Output / rule |
@@ -200,6 +228,14 @@ but solvation rejects shared target atoms to prevent double counting.
 Solvation saves one count per matched instance and frame, then averages instances
 within each solvent/target-class/site-label in `species_timeseries.parquet`.
 For chain-specific state features, declare separate chain-scoped motifs/labels.
+
+`analyses.local_environment.motifs` uses the same matcher. Each entry is either a
+regex matched within `protein_selection` (non-overlapping; zero matches allowed) or
+`{motif: <selections.motifs name>}`, which keeps that definition's own selection,
+chain scope and policies. Unset, it uses `nxip: N.IP`, `gxxxg: G...G` and
+`hs_candidate: SG`; `{}` measures no motifs. Group names stay
+`motif_<label>_<segid>_<first resid>`. Topologies without chainID or segid labels
+must set `motifs: {}`.
 A reference does not change this aggregation, RDF normalization, water identity
 or heavy-atom selection. Membership is saved in solvation `metadata.json` and
 atom/residue target tables.

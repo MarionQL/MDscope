@@ -1,6 +1,8 @@
 """Catalog contracts: enabled planning, persisted paths and instance IDs."""
 from copy import deepcopy
+
 import pytest
+
 from mdscope.config import DEFAULTS
 from mdscope.registry import fused_output, fused_output_plan
 
@@ -83,8 +85,9 @@ def test_parallel_dssp_stays_specialized(tmp_path):
 
 def test_fused_distance_selective_run_keeps_other_checkpoint_parts(tmp_path):
     """A missing named distance output cannot prune a completed sibling."""
-    from mdscope.pipeline.fused_distance import FusedDistances
     from mdscope_test_support import membrane_universe
+
+    from mdscope.pipeline.fused_distance import FusedDistances
 
     cfg = {"selections": {"protein": "name CA"}, "analyses": {
         "residue_membrane_distance": {"enabled": True, "runs": {
@@ -107,8 +110,9 @@ def test_fused_distance_selective_run_keeps_other_checkpoint_parts(tmp_path):
 
 
 def test_fused_distance_rejects_unknown_requested_run_id(tmp_path):
-    from mdscope.pipeline.fused_distance import FusedDistances
     from mdscope_test_support import membrane_universe
+
+    from mdscope.pipeline.fused_distance import FusedDistances
 
     cfg = {"selections": {"protein": "name CA"}, "analyses": {
         "residue_membrane_distance": {"enabled": True, "runs": {

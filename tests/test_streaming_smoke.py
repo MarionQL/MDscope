@@ -1,11 +1,14 @@
 """Tiny trajectory regression: the streaming coordinator must still write RMSD and RMSF."""
-from copy import deepcopy
 import json
+from copy import deepcopy
+
+import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-import MDAnalysis as mda
-from mdscope.config import DEFAULTS,Replicate
+
+from mdscope.config import DEFAULTS, Replicate
 from mdscope.pipeline.streaming import run_streaming_pass
+
 
 def test_streaming_rmsd_rmsf_after_module_split(tmp_path, monkeypatch):
     monkeypatch.setenv("MDSCOPE_PROFILE", "1")

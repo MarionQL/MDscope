@@ -1,14 +1,11 @@
 """Common tools for neuronal membrane observables. PBC distances in Angstrom."""
 from __future__ import annotations
-import re
+
 import numpy as np
 from MDAnalysis.lib.distances import capped_distance
+
 from .core.atom_selection import select_heavy_atoms
 
-AA = {"ALA":"A","ARG":"R","ASN":"N","ASP":"D","CYS":"C","GLU":"E",
-"GLN":"Q","GLY":"G","HIS":"H","ILE":"I","LEU":"L","LYS":"K","MET":"M",
-"HSD":"H","HSE":"H","HSP":"H","HID":"H","HIE":"H","HIP":"H",
-"PHE":"F","PRO":"P","SER":"S","THR":"T","TRP":"W","TYR":"Y","VAL":"V"}
 
 def box_of(u):
     b = np.asarray(u.dimensions, dtype=float)
@@ -54,22 +51,6 @@ def lateral_distance(a,b,box,axis=2):
     d-=np.rint(d/lengths)*lengths
     return np.linalg.norm(d,axis=-1)
 
-def sequence_motifs(residues,patterns):
-    """Return chain-local sequence matches; never match across chain boundaries."""
-    chains={}
-    for r in residues:
-        key=str(getattr(r,"chainID","") or getattr(r,"segid","") or "unknown")
-        chains.setdefault(key,[]).append(r)
-    out=[]
-    for chain,rs in chains.items():
-        seq="".join(AA.get(str(r.resname).upper(),"X") for r in rs)
-        for name,pat in patterns.items():
-            for hit in re.finditer(pat,seq):
-                out.append({"chain":chain,"motif":name,"sequence":hit.group(),
-                            "start_resid":int(rs[hit.start()].resid),
-                            "end_resid":int(rs[hit.end()-1].resid),
-                            "resindices":[int(r.ix) for r in rs[hit.start():hit.end()]]})
-    return out
 
 def leaflet_groups(atoms,axis=2):
     """Assign lipid residues by circular z position on the first frame."""

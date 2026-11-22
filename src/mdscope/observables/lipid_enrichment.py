@@ -1,6 +1,6 @@
 """Lipid composition and proximity relative to the TM footprint in each leaflet."""
-from pathlib import Path
 import json
+from pathlib import Path
 
 import numpy as np
 import pandas as pd

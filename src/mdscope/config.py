@@ -332,6 +332,12 @@ def analysis_enabled(cfg: dict, name: str) -> bool:
     return bool(analysis_runs(cfg, name))
 
 
+def project_root(cfg: dict, config_path: str | Path) -> Path:
+    """Resolve project.output relative to the YAML, not the working directory."""
+    path = Path(cfg["project"]["output"])
+    return (path if path.is_absolute() else Path(config_path).resolve().parent / path).resolve()
+
+
 def iter_replicates(cfg: dict, config_path: str | Path):
     base = Path(config_path).resolve().parent
     for system, spec in cfg["systems"].items():
@@ -412,10 +418,12 @@ def profile_dir(repout: Path, analysis: str, run_id: str = DEFAULT_INSTANCE_ID) 
 
 
 # Preserve historical imports for existing extensions and HPC scripts.
-from .core.persistence import (ensure_dir as ensure_dir, atomic_json as atomic_json,
-                               atomic_text as atomic_text, atomic_parquet as atomic_parquet)
-from .core.provenance import (config_hash as config_hash,
-                              environment_metadata as environment_metadata)
+from .core.persistence import atomic_json as atomic_json
+from .core.persistence import atomic_parquet as atomic_parquet
+from .core.persistence import atomic_text as atomic_text
+from .core.persistence import ensure_dir as ensure_dir
+from .core.provenance import config_hash as config_hash
+from .core.provenance import environment_metadata as environment_metadata
 
 
 def time_ps(ts, frame_index: int, cfg: dict) -> float:
@@ -816,6 +824,17 @@ def validate_config(cfg: dict, base: Path = Path("."), *, check_paths: bool = Tr
 
     from .core.motifs import validate_motifs
     validate_motifs(cfg["selections"].get("motifs", {}))
+    local_motifs = cfg["analyses"].get("local_environment", {}).get("motifs")
+    if local_motifs is not None:
+        if not isinstance(local_motifs, dict):
+            raise ValueError("local_environment.motifs must map labels to a regex or {motif: name}")
+        for label, value in local_motifs.items():
+            if isinstance(value, dict):
+                if set(value) != {"motif"} or value["motif"] not in cfg["selections"].get("motifs", {}):
+                    raise ValueError(f"local_environment motif {label}: reference must be "
+                                     "{motif: <selections.motifs name>}")
+            else:
+                validate_motifs({label: {"pattern": value}})
     solvation = cfg["analyses"].get("solvation", {})
     if solvation.get("enabled"):
         if solvation.get("preset", "standard") not in ("standard", "detailed", "kinetics"):
@@ -966,7 +985,7 @@ def validate_config(cfg: dict, base: Path = Path("."), *, check_paths: bool = Tr
     if (not isinstance(families, dict) or set(families) - allowed
             or any(not isinstance(value, bool) for value in families.values())):
         raise ValueError("plots.families must map known families to booleans")
-    from .reporting.plot_ids import validate_plot_ids, validate_figure_options
+    from .reporting.plot_ids import validate_figure_options, validate_plot_ids
     validate_plot_ids(plots.get("include"))
     validate_figure_options(plots.get("options", {}))
     excluded = plots.get("interaction_exclude_kinds", [])

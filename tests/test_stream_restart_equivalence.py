@@ -1,9 +1,11 @@
 """Fault-injection integration tests for checkpoint restart equivalence."""
 from copy import deepcopy
+
+import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 import pytest
-import MDAnalysis as mda
+
 from mdscope.config import DEFAULTS, Replicate
 from mdscope.pipeline import streaming
 

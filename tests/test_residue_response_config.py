@@ -6,11 +6,11 @@ from pathlib import Path
 import pandas as pd
 import pytest
 import yaml
+from test_residue_response import _inputs
 
 from mdscope.config import load_config, resolve_config
-from mdscope.studio.model import new_document, review
 from mdscope.statistics.residue_regions import scan_saved_residue_regions
-from test_residue_response import _inputs
+from mdscope.studio.model import new_document, review
 
 
 def test_discovery_yaml_survives_studio_round_trip_and_plan(tmp_path):

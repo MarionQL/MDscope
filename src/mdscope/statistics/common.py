@@ -5,10 +5,10 @@ comparison statistics.
 
 from __future__ import annotations
 
-import math
-import os
 import hashlib
 import json
+import math
+import os
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from itertools import combinations

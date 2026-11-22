@@ -1,8 +1,11 @@
 """Acidic/basic protein residue salt-bridge detector."""
 from __future__ import annotations
+
 import numpy as np
 from MDAnalysis.lib.distances import capped_distance
+
 from .interaction_tables import residue_label
+
 # Interaction detectors
 NEGATIVE_ATOMS = "(resname ASP and name OD1 OD2) or (resname GLU and name OE1 OE2)"
 POSITIVE_ATOMS = "(resname LYS and name NZ) or (resname ARG and name NH1 NH2)"

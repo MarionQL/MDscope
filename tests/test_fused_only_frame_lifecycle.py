@@ -1,5 +1,6 @@
 """Fused-only scheduler must decode each frame once for all observers."""
 from types import SimpleNamespace
+
 from mdscope.pipeline import fused_all
 
 

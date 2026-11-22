@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from ..config import analysis_runs
 
-
 FUSED_MEMBRANE_ANALYSES = (
     "membrane_order", "bilayer_normal", "lipid_enrichment", "lipid_contacts",
 )

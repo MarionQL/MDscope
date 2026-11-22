@@ -1,17 +1,24 @@
 """Optional localhost configuration wizard. Run via mdscope-studio."""
-from copy import deepcopy
 import base64
+from copy import deepcopy
 from pathlib import Path
 
 import streamlit as st
 import yaml
 
 from mdscope.config import DEFAULTS, analysis_groups, resolve_config
+from mdscope.statistics_selection import (
+    ESTIMATOR_FLAGS,
+    studio_metric_selection_defaults,
+)
 from mdscope.studio.model import (
-    analysis_options, change_group, import_document, new_document, review,
+    analysis_options,
+    change_group,
+    import_document,
+    new_document,
+    review,
     topology_preflight,
 )
-from mdscope.statistics_selection import ESTIMATOR_FLAGS, studio_metric_selection_defaults
 
 
 def _studio_logo_markup(logo_file: Path) -> str:
@@ -502,10 +509,13 @@ def main():
                 doc["selections"]["groups"][target]["label"] = "New group"
                 doc["selections"]["groups"][target]["selection"] = ""
                 restart_editor(doc)
-            from mdscope.studio.topology_preview import (
-                topology_signature, submit_topologies, submit_groups,
-            )
             import hashlib
+
+            from mdscope.studio.topology_preview import (
+                submit_groups,
+                submit_topologies,
+                topology_signature,
+            )
             systems = doc.get("systems", {})
             signature = topology_signature(systems, base)
             groups_snapshot = deepcopy(doc["selections"]["groups"])
@@ -616,12 +626,15 @@ def main():
                 plan = card_plan
                 if plan is None:
                     plan, _ = preview_document(yaml.safe_dump(doc, sort_keys=False), base)
-                from mdscope.studio.model import (
-                    statistics_family_mode, set_statistics_family_mode,
-                    set_statistics_exact_family, statistics_selector_fields,
-                )
-                from mdscope.statistics_selection import validate_metric_selection
                 import pandas as pd
+
+                from mdscope.statistics_selection import validate_metric_selection
+                from mdscope.studio.model import (
+                    set_statistics_exact_family,
+                    set_statistics_family_mode,
+                    statistics_family_mode,
+                    statistics_selector_fields,
+                )
                 families = tuple(studio_metric_selection_defaults())
                 from mdscope.studio.model import statistics_source_status
                 inventory_fresh = (
@@ -805,8 +818,8 @@ def main():
         # One hierarchy for imported family switches and exact selections.
         # Imported configurations are not converted until a checkbox is changed.
         st.caption("Figures · select all, whole categories, or individual outputs.")
+        from mdscope.config import figure_enabled, merge
         from mdscope.planning import authoring_catalog
-        from mdscope.config import merge, figure_enabled
         merged = merge(DEFAULTS, doc)
         catalog = authoring_catalog(merged, include_inactive=True)["figures"]
         active_catalog = authoring_catalog(merged)["figures"]

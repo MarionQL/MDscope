@@ -1,8 +1,12 @@
 """The wrap-invariance oracle tolerates hard-cutoff ties but still catches PBC errors (#250)."""
 import numpy as np
+from pbc_invariance import (
+    WRAP_TOLERANCE_DEG,
+    cutoff_tie_anchors,
+    wrap_normal_difference,
+)
 
 from mdscope.observables.bilayer_normal import fit_local_normals
-from pbc_invariance import WRAP_TOLERANCE_DEG, cutoff_tie_anchors, wrap_normal_difference
 
 BOX = np.array([61.3, 59.7, 100.0, 90.0, 90.0, 90.0])
 RADIUS = 15.0

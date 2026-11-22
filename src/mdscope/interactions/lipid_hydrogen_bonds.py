@@ -16,9 +16,8 @@ from MDAnalysis.analysis.hydrogenbonds.hbond_analysis import HydrogenBondAnalysi
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
-from ..config import ensure_dir, atomic_parquet
+from ..config import atomic_parquet, ensure_dir
 from .interaction_tables import atom_label, count_timeseries
-
 
 GLYCOLIPID_CHAIN_IDS = ("GM1a", "BGAL", "CER160")
 

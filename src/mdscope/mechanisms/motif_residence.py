@@ -10,7 +10,6 @@ import pandas as pd
 
 from ..core.residence import sampled_episode_durations
 
-
 COLUMNS = [
     "motif", "species", "molecule_id", "start_ps", "end_ps", "duration_ps",
     "n_frames", "left_censored", "right_censored", "occupancy_fraction",

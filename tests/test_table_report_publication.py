@@ -2,11 +2,12 @@
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pytest
 
-from mdscope.reporting.table_reports import table_report_session, add_table_page
+from mdscope.reporting.table_reports import add_table_page, table_report_session
 
 
 def _page(path: Path):
@@ -161,10 +162,14 @@ def test_second_report_replace_failure_rolls_back_first(tmp_path, monkeypatch):
 
 
 def test_production_provenance_records_pdf_page_sources_and_sampling(tmp_path):
-    import pandas as pd
     import json
+
+    import pandas as pd
+
     from mdscope.reporting.figure_inventory import (
-        figure_snapshot, figure_inventory, record_generated_figures,
+        figure_inventory,
+        figure_snapshot,
+        record_generated_figures,
     )
     rep = tmp_path / "control/rep1"
     (rep / "summary").mkdir(parents=True)
@@ -246,8 +251,9 @@ def test_overlapping_project_writers_fail_without_corrupting_first_session(tmp_p
 
 def test_disabling_bootstrap_pages_keeps_comparison_pages_and_png_only_inventory(tmp_path):
     import pandas as pd
-    from mdscope.reporting.plotting import _table_figure
+
     from mdscope.reporting.figure_inventory import figure_inventory
+    from mdscope.reporting.plotting import _table_figure
     cfg={'plots':{'enabled':True,'bootstrap_tables':False,'table_reports_pdf':True}}
     folder=tmp_path/'project_summary/figures/time_series'
     with table_report_session(tmp_path,enabled=True,cfg=cfg):
@@ -261,6 +267,7 @@ def test_disabling_bootstrap_pages_keeps_comparison_pages_and_png_only_inventory
 
 def test_bad_pdf_metadata_does_not_break_png_inventory(tmp_path):
     from PIL import Image
+
     from mdscope.reporting.figure_inventory import figure_inventory
     folder=tmp_path/'project_summary/figures/time_series'
     with table_report_session(tmp_path,enabled=True):
@@ -277,6 +284,7 @@ def test_bad_pdf_metadata_does_not_break_png_inventory(tmp_path):
 def test_pdf_table_formats_numeric_cells_in_mixed_columns_without_altering_data(tmp_path):
     import pandas as pd
     from pypdf import PdfReader
+
     from mdscope.reporting.plotting import _table_figure
     frame=pd.DataFrame({'level':['condition_A/rep1','condition_A (system)'],
                         'tau(fr)':[11.9818735105,'replicate-specific']})
@@ -298,6 +306,7 @@ def _manifest(folder):
 
 def test_superseded_generations_archive_pdf_with_its_own_manifest(tmp_path):
     import json
+
     from mdscope.reporting.table_reports import pdf_digest
     folder = tmp_path / "project_summary/figures/time_series"
     published = []
@@ -368,8 +377,9 @@ def test_empty_session_with_corrupt_prior_manifest_fails_and_preserves_outputs(t
 
 
 def _production_fixture(tmp_path):
-    import pandas as pd
     from runpy import run_path
+
+    import pandas as pd
     scripts = Path(__file__).resolve().parents[1] / "scripts"
     cfg, repouts = run_path(str(scripts / "plot_preview.py"))["create_fixture"](tmp_path)
     cfg["plots"]["table_reports_pdf"] = True
@@ -391,9 +401,13 @@ def _figure_bytes(root):
 def test_production_plotting_inventories_each_pdf_once_with_page_identity(tmp_path, monkeypatch):
     import json
     from copy import deepcopy
+
     from mdscope.reporting import plotting
     from mdscope.reporting.figure_inventory import (
-        figure_inventory, figure_snapshot, record_generated_figures)
+        figure_inventory,
+        figure_snapshot,
+        record_generated_figures,
+    )
     cfg, repouts = _production_fixture(tmp_path)
     before = figure_snapshot(tmp_path, repouts)
     plotting.plot_all(cfg, tmp_path, repouts)

@@ -3,9 +3,9 @@
 Bounded smoke evidence, not evidence of state convergence or metastability.
 Run with MDSCOPE_REAL_DATA and MDSCOPE_REAL_OUTPUT, as `scripts/run_real_data_checks.sh smoke`.
 """
-from copy import deepcopy
 import json
 import os
+from copy import deepcopy
 from pathlib import Path
 
 import MDAnalysis as mda

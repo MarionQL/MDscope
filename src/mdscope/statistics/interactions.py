@@ -5,21 +5,39 @@ comparison statistics.
 
 from __future__ import annotations
 
-from time import perf_counter
 import os
 from itertools import combinations
 from pathlib import Path
+from time import perf_counter
 
 import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config
-from ..statistics_selection import interaction_selection, selected_interaction_metrics, metric_estimator_enabled
 from ..core.persistence import atomic_json, atomic_parquet, ensure_dir
-from ..interactions.interaction_tables import interaction_key_columns, interaction_tables, sample_dt
-
-
-from .common import _temporal, _block_weights, _hierarchical, _hierarchical_difference, _ci, _direction, _permutation, _fdr, _range_meta, _point_difference, selected_rng as _selected_rng
+from ..interactions.interaction_tables import (
+    interaction_key_columns,
+    interaction_tables,
+    sample_dt,
+)
+from ..statistics_selection import (
+    interaction_selection,
+    metric_estimator_enabled,
+    selected_interaction_metrics,
+)
+from .common import (
+    _block_weights,
+    _ci,
+    _direction,
+    _fdr,
+    _hierarchical,
+    _hierarchical_difference,
+    _permutation,
+    _point_difference,
+    _range_meta,
+    _temporal,
+)
+from .common import selected_rng as _selected_rng
 
 
 def _interaction_labels(table: pd.DataFrame, keys: list[str]) -> np.ndarray:

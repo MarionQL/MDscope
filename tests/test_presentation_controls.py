@@ -1,10 +1,15 @@
 """Offline family selection and adversarial stale-figure integrity checks."""
 from copy import deepcopy
+
 import pandas as pd
 from PIL import Image
+
 from mdscope.reporting.figure_inventory import (
-    record_generated_figures,figure_inventory,figure_status)
-from mdscope.reporting.plotting import plot_interactions, _metric_meta
+    figure_inventory,
+    figure_status,
+    record_generated_figures,
+)
+from mdscope.reporting.plotting import _metric_meta, plot_interactions
 
 
 def _fixture(tmp_path):

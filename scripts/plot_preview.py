@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import numpy as np
@@ -310,7 +311,9 @@ def render_preview(root: Path, *, include: list[str] | None = None):
         cfg["plots"]["include"] = list(include)
     # These are the same plotting functions used by runner.finalize_project.
     from mdscope.reporting.membrane_figures import (
-        plot_lipid_enrichment_matrix, plot_lipid_contacts, plot_project_diffusion,
+        plot_lipid_contacts,
+        plot_lipid_enrichment_matrix,
+        plot_project_diffusion,
     )
     from mdscope.reporting.sdc4_figures import plot_sdc4_mechanisms
     from mdscope.reporting.solvation_figures import plot_solvation

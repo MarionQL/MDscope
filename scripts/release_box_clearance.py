@@ -7,11 +7,12 @@ No arbitrary conformer generation or approval of production box size.
 import argparse
 import csv
 import json
+from itertools import product
 from pathlib import Path
 
 import numpy as np
-from itertools import product
 from scipy.spatial import cKDTree
+
 
 def image_minimum(a, b, box, *, nonzero=True, z_image_only=False):
     """Exact nearest sampled points across relevant translated image cells.

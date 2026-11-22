@@ -2,6 +2,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+
 from mdscope.observables.solvation_postprocess import bridge_pair_evidence
 
 
@@ -65,9 +66,11 @@ def test_long_window_offsets_are_bounded_and_reproducible(tmp_path):
 
 
 def test_observer_writes_site_audit_and_preserves_pair_summary(tmp_path):
-    from mdscope.observables.solvation import SolvationObserver
-    from test_solvation import _universe
     import json
+
+    from test_solvation import _universe
+
+    from mdscope.observables.solvation import SolvationObserver
     u=_universe()
     cfg={'analyses':{'solvation':dict(enabled=True,preset='kinetics',
         targets={'protein':{'first':'index 0','second':'index 1'}},
@@ -88,8 +91,9 @@ def test_observer_writes_site_audit_and_preserves_pair_summary(tmp_path):
 
 
 def test_disagreement_between_bridge_and_contact_records_is_detected(tmp_path):
-    from mdscope.observables.solvation import SolvationObserver
     from test_solvation import _universe
+
+    from mdscope.observables.solvation import SolvationObserver
     u=_universe()
     cfg={'analyses':{'solvation':dict(enabled=True,preset='kinetics',
         targets={'protein':{'first':'index 0','second':'index 1'}},
@@ -106,9 +110,10 @@ def test_disagreement_between_bridge_and_contact_records_is_detected(tmp_path):
 
 
 def test_spatial_reference_preserves_height_and_uses_periodic_same_ion(tmp_path):
+    from test_solvation import _universe
+
     from mdscope.observables.solvation import SolvationObserver
     from mdscope.statistics.time_series import collect_time_series
-    from test_solvation import _universe
 
     u = _universe()
     cfg = {"analyses": {"solvation": dict(

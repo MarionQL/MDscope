@@ -3,14 +3,18 @@
 Do not independently fit uncertainty or pool correlated trajectory frames.
 """
 from __future__ import annotations
+
 from itertools import combinations
 from pathlib import Path
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from ..config import ensure_dir, plot_enabled, figure_enabled
+
+from ..config import ensure_dir, figure_enabled, plot_enabled
 from .figure_inventory import current_statistics
 from .plot_ids import figure_dpi
+
 
 def plot_lipid_enrichment_matrix(cfg,root):
     if not any(figure_enabled(cfg, "lipid_enrichment:" + name)

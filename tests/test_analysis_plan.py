@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 import yaml
+from mdscope_test_support import invoke_cli
 
-from mdscope.config import load_config
+from mdscope.config import load_config, project_root
 from mdscope.planning import build_plan
 from mdscope.registry import analysis_output_plan, required_artifacts
-from mdscope_test_support import invoke_cli
 
 
 def test_schema_only_plan_ignores_missing_inputs_but_checks_yaml(tmp_path, project):
@@ -21,6 +21,7 @@ def test_schema_only_plan_ignores_missing_inputs_but_checks_yaml(tmp_path, proje
     cfg = load_config(path, check_paths=False)
     plan = build_plan(cfg, path)
     assert plan["validation"]["mode"] == "schema_only"
+    assert plan["resolved_output_directory"] == str(project_root(cfg, path))
     assert not plan["validation"]["topology_checked"]
     assert not plan["validation"]["trajectory_frames_checked"]
     assert plan["systems"][0]["replicates"] == 1
@@ -39,6 +40,7 @@ def test_cli_plan_json_does_not_write_or_read_trajectory(tmp_path, project):
     result = invoke_cli(tmp_path, "plan", path, "--format", "json")
     plan = json.loads(result.stdout)
     assert plan["validation"]["mode"] == "schema_only"
+    assert plan["resolved_output_directory"] == str(root.resolve())
     assert plan["statistics_families"]
     assert plan["replicates"][0]["id"] == "rep1"
     assert not root.exists()
@@ -291,6 +293,7 @@ def test_metric_estimator_flags_validate_through_real_yaml_schema(tmp_path, proj
 
 def test_saved_statistics_catalog_reads_real_parquet_schema_and_bounds_identities(tmp_path):
     import pandas as pd
+
     from mdscope.planning import inspect_saved_statistics
     folder = tmp_path / "project_summary/statistics"
     folder.mkdir(parents=True)
@@ -423,6 +426,7 @@ def test_plot_plan_flags_unknown_named_run_without_claiming_data(tmp_path, proje
 
 def test_saved_figure_discovery_uses_only_persisted_metric_identities(tmp_path, project):
     import pandas as pd
+
     from mdscope.planning import inspect_saved_plot_ids
     path, root = project("discover_saved_plot_ids")
     cfg = load_config(path, check_paths=False)
@@ -456,7 +460,9 @@ def test_saved_figure_discovery_uses_only_persisted_metric_identities(tmp_path, 
 
 def test_saved_figure_discovery_limit_and_profile_manifest_gate(tmp_path, project):
     import json
+
     import pandas as pd
+
     from mdscope.planning import inspect_saved_plot_ids
     path, root = project("discover_profiles")
     cfg = load_config(path, check_paths=False)
@@ -505,7 +511,9 @@ def test_saved_named_run_heatmap_requires_complete_companions(tmp_path, project)
 
 def test_saved_interaction_statistics_expose_exact_metric_figure_ids(tmp_path, project):
     import json
+
     import pandas as pd
+
     from mdscope.planning import inspect_saved_plot_ids
     path, root = project("saved_interaction_figures")
     cfg = load_config(path, check_paths=False)
@@ -553,3 +561,30 @@ def test_plan_discovers_condition_specific_sdc4_figures(tmp_path, project):
     assert all(row["availability"] == "conditional_on_saved_data"
                for row in family["specific_figures"])
     assert not root.exists()
+
+
+def test_output_resolution_is_independent_of_working_directory(tmp_path, project):
+    path, root = project("plan_paths")
+    cfg = load_config(path)
+    assert project_root(cfg, path) == root.resolve()
+    assert project_root(cfg, path).is_absolute()
+
+    moved = tmp_path / "relocated" / "analysis.yaml"
+    moved.parent.mkdir()
+    moved.write_text(path.read_text())
+    moved_cfg = load_config(moved, check_paths=False)
+    assert project_root(moved_cfg, moved) == (
+        moved.parent / cfg["project"]["output"]).resolve()
+    assert project_root(moved_cfg, moved) != project_root(cfg, path)
+
+    moved_cfg["project"]["output"] = str(root.resolve())
+    assert project_root(moved_cfg, moved) == root.resolve()
+
+
+def test_cli_validate_and_text_plan_display_resolved_output(tmp_path, project):
+    path, root = project("plan_visible_path")
+    validated = invoke_cli(tmp_path, "validate", path)
+    planned = invoke_cli(tmp_path, "plan", path)
+    expected = f"Resolved output directory: {root.resolve()}"
+    assert expected in validated.stdout
+    assert expected in planned.stdout

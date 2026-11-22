@@ -5,9 +5,13 @@ Run: python scripts/benchmark_contact_reuse.py
 Reports Python allocation peak, not native process RSS. Checks exact result
 checksums; timing is evidence, never a pass/fail threshold.
 """
-import time,json,tracemalloc
+import json
+import time
+import tracemalloc
+
 import numpy as np
 from MDAnalysis.lib.distances import capped_distance
+
 rng=np.random.default_rng(2026)
 box=np.array([160.,160.,160.,90.,90.,90.])
 lipids=rng.uniform([0,0,35],[160,160,65],(80000,3)).astype(np.float32)

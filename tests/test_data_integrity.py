@@ -1,12 +1,12 @@
 """Regressions for provenance, merged outputs, and lipid PBC geometry."""
 
+import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 import pytest
-import MDAnalysis as mda
 
-from mdscope.pipeline import runner
 from mdscope.core.lipid_geometry import AnchorTracker
+from mdscope.pipeline import runner
 
 
 def test_merge_rejects_conflicting_observable_names():

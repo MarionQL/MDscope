@@ -5,7 +5,13 @@ import pytest
 import yaml
 
 from mdscope.config import load_config, resolve_config
-from mdscope.studio.model import change_group, import_document, new_document, review, topology_preflight
+from mdscope.studio.model import (
+    change_group,
+    import_document,
+    new_document,
+    review,
+    topology_preflight,
+)
 
 
 def rmsd_document():
@@ -94,6 +100,7 @@ def test_topology_preflight_real_counts_no_trajectory_read(project):
 def test_app_rmsd_slice_and_statistics(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
     monkeypatch.chdir(tmp_path)
     at = AppTest.from_file(app.__file__).run()
@@ -119,7 +126,7 @@ def test_app_rmsd_slice_and_statistics(tmp_path, monkeypatch):
 
 
 def test_exported_distribution_runs_through_production(project):
-    from mdscope.pipeline.runner import run_one, finalize_project
+    from mdscope.pipeline.runner import finalize_project, run_one
     path, root = project("studio_export")
     doc = rmsd_document()
     fixture = yaml.safe_load(path.read_text())
@@ -154,6 +161,7 @@ def test_stale_group_figures_and_unrelated_statistics_are_removed(tmp_path):
 def test_app_group_editor_auto_ids_and_duplicate(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
     monkeypatch.chdir(tmp_path)
     at = AppTest.from_file(app.__file__).run()
@@ -184,6 +192,7 @@ def test_statistical_figure_kind_classifies_exact_plot_variants():
 def test_bulk_statistical_figure_selection_preserves_other_types(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
     monkeypatch.chdir(tmp_path)
     doc = rmsd_document()
@@ -211,8 +220,9 @@ def test_bulk_statistical_figure_selection_preserves_other_types(tmp_path, monke
 def test_studio_five_step_layout_and_group_default(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
-    from mdscope.studio.model import new_document, add_group
+    from mdscope.studio.model import add_group, new_document
     doc = new_document()
     add_group(doc, "my_group")
     assert doc["selections"]["groups"]["my_group"]["selection"] == ""
@@ -227,7 +237,9 @@ def test_group_edit_does_not_restart_completed_topology(tmp_path, monkeypatch):
     """A group addition may revalidate groups, never erase loaded identifiers."""
     pytest.importorskip("streamlit")
     from concurrent.futures import Future
+
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app, topology_preview
 
     monkeypatch.chdir(tmp_path)
@@ -268,8 +280,9 @@ def test_group_edit_does_not_restart_completed_topology(tmp_path, monkeypatch):
 
 
 def test_combined_topology_preview_reads_once_and_matches_groups(tmp_path, monkeypatch):
-    from mdscope.studio import topology_preview as preview
     import numpy as np
+
+    from mdscope.studio import topology_preview as preview
 
     calls = []
     class FakeAtoms:
@@ -307,7 +320,9 @@ def test_combined_topology_preview_reads_once_and_matches_groups(tmp_path, monke
 
 def test_background_topology_missing_file_and_group_independence(tmp_path):
     from mdscope.studio.topology_preview import (
-        inspect_topologies, inspect_groups, topology_signature,
+        inspect_groups,
+        inspect_topologies,
+        topology_signature,
     )
     systems = {"one": {"topology": "not_here.tpr"}}
     signature = topology_signature(systems, tmp_path)
@@ -366,6 +381,7 @@ def test_exact_figures_override_conflicting_imported_plot_switches(tmp_path):
 
 def test_exact_figure_export_reaches_production_renderer(tmp_path):
     import pandas as pd
+
     from mdscope.reporting.plotting import plot_time_series
 
     doc = rmsd_document()
@@ -390,6 +406,7 @@ def test_exact_figure_export_reaches_production_renderer(tmp_path):
 def test_app_exact_figures_override_imported_disabled_family(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
 
     monkeypatch.chdir(tmp_path)
@@ -418,6 +435,7 @@ def test_app_exact_figures_override_imported_disabled_family(tmp_path, monkeypat
 def test_app_preserves_legacy_inference_and_plot_switches(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
     monkeypatch.chdir(tmp_path)
     document = {"systems": new_document()["systems"],
@@ -443,6 +461,7 @@ def test_app_preserves_legacy_inference_and_plot_switches(tmp_path, monkeypatch)
 def test_topology_required_export_invalidates_after_selection_edit(project, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
     path, root = project("studio_guard")
     monkeypatch.chdir(path.parent)
@@ -473,8 +492,9 @@ def test_guided_family_fields_reuse_backend_estimator_capabilities():
 
 
 def test_dssp_card_contract_matches_writer_fields():
-    from mdscope.registry import FusedOutput, artifact_schema
     from pathlib import Path
+
+    from mdscope.registry import FusedOutput, artifact_schema
     schema = artifact_schema(FusedOutput("dssp", Path("assignments.parquet")), Path("assignments.parquet"))
     assert schema["columns"] == ["time_ps", "topology_residue_index", "residue", "dssp"]
     assert schema["row_grain"] == "one residue per analyzed frame per replicate"
@@ -482,10 +502,12 @@ def test_dssp_card_contract_matches_writer_fields():
 
 
 def test_interaction_card_schema_matches_empty_producer():
-    import numpy as np
     from pathlib import Path
-    from mdscope.registry import FusedOutput, artifact_schema
+
+    import numpy as np
+
     from mdscope.interactions.lipid_hydrogen_bonds import tabulate_events
+    from mdscope.registry import FusedOutput, artifact_schema
     expected = tabulate_events(np.empty((0, 6)), None, [], [])
     schema = artifact_schema(FusedOutput("lipid_hydrogen_bonds", Path("events.parquet")), Path("events.parquet"))
     assert schema["columns"] == list(expected.columns)
@@ -565,6 +587,7 @@ def test_named_sasa_and_dssp_profile_identity_catalog():
 def test_app_guided_rmsf_statistics_are_opt_in(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
     monkeypatch.chdir(tmp_path)
     at = AppTest.from_file(app.__file__).run()
@@ -614,6 +637,7 @@ def test_group_rename_and_delete_migrate_inference_identity():
 def test_app_named_sasa_runs_update_output_and_statistic_identity(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
     monkeypatch.chdir(tmp_path)
     at = AppTest.from_file(app.__file__).run()
@@ -663,10 +687,14 @@ def test_disabled_run_statistics_are_filtered_without_losing_editable_choice(tmp
 
 def test_density_contract_parity_with_real_accumulator(tmp_path):
     import pandas as pd
-    from mdscope.registry import density_output_contracts, configured_profile_variables
-    from mdscope.config import analysis_runs
-    from mdscope.observables.density_1d import DensityProfileAccumulator, temporal_density_profiles
     from mdscope_test_support import membrane_universe
+
+    from mdscope.config import analysis_runs
+    from mdscope.observables.density_1d import (
+        DensityProfileAccumulator,
+        temporal_density_profiles,
+    )
+    from mdscope.registry import configured_profile_variables, density_output_contracts
     doc = new_document()
     doc["analyses"]["density_1d"] = {"enabled": True, "runs": {"lipids": {
         "selections": {"heads": "resname POPC"}}}}
@@ -709,6 +737,7 @@ def test_distance_run_plan_and_heatmap_lifecycle(tmp_path):
 def test_distance_group_control_is_backend_boolean(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
     monkeypatch.chdir(tmp_path)
     at = AppTest.from_file(app.__file__).run()
@@ -847,7 +876,9 @@ def test_return_to_default_run_prunes_choices_and_protects_external_references(t
 def test_automatic_topology_preview_uses_real_parser(project, monkeypatch):
     pytest.importorskip("streamlit")
     from concurrent.futures import Future
+
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app, topology_preview
     path, root = project("studio_selection_preview")
     monkeypatch.chdir(path.parent)
@@ -887,6 +918,7 @@ def test_automatic_topology_preview_uses_real_parser(project, monkeypatch):
 def test_app_global_selection_yaml_deletion_preserves_named_groups(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
 
     monkeypatch.chdir(tmp_path)
@@ -910,6 +942,7 @@ def test_app_global_selection_yaml_deletion_preserves_named_groups(tmp_path, mon
 def test_app_statistics_tree_preserves_dynamic_all_and_exact_choices(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
 
     monkeypatch.chdir(tmp_path)
@@ -937,8 +970,8 @@ def test_app_statistics_tree_preserves_dynamic_all_and_exact_choices(tmp_path, m
 @pytest.mark.parametrize("operation", ["group", "run", "condition"])
 def test_lifecycle_failure_preserves_document_and_figure_choices(monkeypatch, operation):
     """A late catalog failure must not leave partially pruned selectors or IDs."""
-    from mdscope.studio import model
     from mdscope import planning
+    from mdscope.studio import model
 
     doc = rmsd_document()
     doc["selections"]["groups"] = {"patch": {"selection": "protein"}}
@@ -997,6 +1030,7 @@ def test_replica_lifecycle_rejects_invalid_removal_without_mutation():
 def test_app_group_duplicate_preserves_existing_group_and_choices(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
 
     monkeypatch.chdir(tmp_path)
@@ -1020,6 +1054,7 @@ def test_app_group_duplicate_preserves_existing_group_and_choices(tmp_path, monk
 def test_app_rejected_condition_removal_preserves_committed_state(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app, model
 
     monkeypatch.chdir(tmp_path)
@@ -1048,6 +1083,7 @@ def test_app_rejected_condition_removal_preserves_committed_state(tmp_path, monk
 def test_app_rejected_global_selection_yaml_preserves_export(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
 
     monkeypatch.chdir(tmp_path)
@@ -1072,6 +1108,7 @@ def test_app_rejected_global_selection_yaml_preserves_export(tmp_path, monkeypat
 def test_app_legacy_import_preserves_all_metric_selection_on_noop(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
 
     monkeypatch.chdir(tmp_path)
@@ -1103,6 +1140,7 @@ def test_imported_category_switches_remain_backend_compatible():
 def test_app_imported_figure_categories_preserved_until_tree_edit(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
 
     monkeypatch.chdir(tmp_path)
@@ -1126,6 +1164,7 @@ def test_app_imported_figure_categories_preserved_until_tree_edit(tmp_path, monk
 def test_app_hierarchical_figures_support_category_and_individual_override(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
 
     monkeypatch.chdir(tmp_path)
@@ -1152,8 +1191,9 @@ def test_app_hierarchical_figures_support_category_and_individual_override(tmp_p
                                     "solvation_rdfs", "diffusion", "coupling"])
 def test_statistics_family_contract_preserves_unrestricted_dynamic_metrics(family):
     from mdscope.studio.model import (
-        statistics_family_mode, set_statistics_family_mode,
         set_statistics_exact_family,
+        set_statistics_family_mode,
+        statistics_family_mode,
     )
     doc = {"statistics": {"enabled": True, "metric_selection": None}}
     assert statistics_family_mode(doc, family) == "all"
@@ -1173,7 +1213,8 @@ def test_statistics_family_contract_preserves_unrestricted_dynamic_metrics(famil
 
 def test_statistics_exact_conversion_validates_atomically_and_preserves_other_families():
     from mdscope.studio.model import (
-        statistics_family_mode, set_statistics_exact_family,
+        set_statistics_exact_family,
+        statistics_family_mode,
     )
     doc = {"statistics": {"metric_selection": {"profiles": [{"profile": "rmsf"}]}}}
     before = deepcopy(doc)
@@ -1244,6 +1285,7 @@ def test_statistics_imported_family_semantics_are_preserved_without_conversion(f
 def test_app_interaction_occupancy_cutoff_round_trip(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
 
     monkeypatch.chdir(tmp_path)
@@ -1294,6 +1336,7 @@ def test_exact_statistics_without_producer_blocks_export_but_unrestricted_does_n
 def test_app_exports_exact_saved_only_statistics_until_inventory_is_stale(tmp_path, monkeypatch):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
     monkeypatch.chdir(tmp_path)
     doc = new_document()
@@ -1344,8 +1387,10 @@ def test_results_coverage_does_not_collapse_named_runs_or_replicas():
 
 def test_results_inventory_requires_marker_matching_config_and_valid_schema(tmp_path):
     import json
+
     import pandas as pd
-    from mdscope.config import resolve_config, iter_replicates
+
+    from mdscope.config import iter_replicates, resolve_config
     from mdscope.pipeline.runner import _replicate_state_prefix
     from mdscope.registry import analysis_output_plan
     from mdscope.studio.model import inspect_results_directory
@@ -1465,6 +1510,7 @@ def test_explicit_results_root_uses_saved_only_inventory_before_statistics(tmp_p
 def test_app_global_selection_key_deletion_preserves_named_groups(tmp_path, monkeypatch):
     pytest.importorskip('streamlit')
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
     monkeypatch.chdir(tmp_path)
     doc = rmsd_document()
@@ -1519,7 +1565,7 @@ def test_exact_figures_override_legacy_false_in_production_resolver(tmp_path):
 
 
 def test_rejected_group_and_named_run_mutations_preserve_all_choices():
-    from mdscope.studio.model import change_group, add_named_run
+    from mdscope.studio.model import add_named_run, change_group
     doc = rmsd_document()
     doc['selections']['groups'] = {'patch': {'selection': 'resid 1:10'}}
     doc['statistics']['metric_selection'] = {'time_series': [{'metric': 'rmsd_A', 'group': 'patch'}]}
@@ -1537,6 +1583,7 @@ def test_rejected_group_and_named_run_mutations_preserve_all_choices():
 def test_app_invalid_global_selections_yaml_does_not_commit_partial_draft(tmp_path, monkeypatch):
     pytest.importorskip('streamlit')
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
     monkeypatch.chdir(tmp_path)
     doc = rmsd_document()
@@ -1560,6 +1607,7 @@ def test_app_statistics_preview_uses_current_hierarchy_selection(tmp_path, monke
     import json
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
+
     from mdscope.studio import app
 
     monkeypatch.chdir(tmp_path)
@@ -1616,8 +1664,8 @@ def test_planning_snapshot_resolves_one_consistent_draft(tmp_path, monkeypatch):
 
 
 def test_model_figure_hierarchy_commit_is_atomic_and_catalog_owned(tmp_path):
-    from mdscope.studio.model import set_figure_selection
     from mdscope.planning import authoring_catalog
+    from mdscope.studio.model import set_figure_selection
 
     doc = rmsd_document()
     doc["plots"] = {"enabled": True, "include": None, "time_series": False}
@@ -1638,8 +1686,8 @@ def test_model_figure_hierarchy_commit_is_atomic_and_catalog_owned(tmp_path):
 
 
 def test_offline_finalization_fails_closed_when_inventory_omits_required_run(tmp_path, monkeypatch):
-    from mdscope.pipeline import runner
     from mdscope.config import resolve_config
+    from mdscope.pipeline import runner
 
     doc = rmsd_document()
     doc["analyses"]["sasa"] = {"enabled": True}

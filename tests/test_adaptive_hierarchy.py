@@ -7,7 +7,6 @@ import pytest
 from mdscope.statistics.common import _adaptive_intervals
 from mdscope.statistics.time_series import analyze_time_series
 
-
 OPTIONS = dict(min_draws=800, max_draws=2400, batch_size=400, stable_checks=2,
                absolute_tolerance=0.01)
 

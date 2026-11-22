@@ -3,12 +3,13 @@ import numpy as np
 import pandas as pd
 import pytest
 from MDAnalysis.lib.mdamath import triclinic_vectors
+from mdscope_test_support import membrane_config as _cfg
+from mdscope_test_support import membrane_universe as _universe
 
-from mdscope.core.lipid_geometry import anchor_groups, aligned_leaflets
-from mdscope.pipeline.fused_membrane import FusedMembrane
-from mdscope.observables.solvation import SolvationObserver
+from mdscope.core.lipid_geometry import aligned_leaflets, anchor_groups
 from mdscope.observables.bilayer_normal import fit_local_normals
-from mdscope_test_support import membrane_universe as _universe, membrane_config as _cfg
+from mdscope.observables.solvation import SolvationObserver
+from mdscope.pipeline.fused_membrane import FusedMembrane
 
 
 @pytest.mark.parametrize('axis,angles', [
@@ -112,6 +113,7 @@ def test_tilted_plane_analytic_angle_and_sparse_unavailable():
 @pytest.mark.parametrize('wrap', [False, True])
 def test_normals_and_local_surfaces_share_known_height_fields(tmp_path, shape, wrap):
     from test_sdc4_geometry_references import _fixture
+
     from mdscope.mechanisms.sdc4_mechanisms import SDC4Mechanisms
 
     u, cfg = _fixture()

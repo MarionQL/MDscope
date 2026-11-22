@@ -14,17 +14,23 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from ..config import plot_enabled, figure_enabled, ensure_dir, replicate_label, replicate_specs, system_label
+from ..config import (
+    ensure_dir,
+    figure_enabled,
+    plot_enabled,
+    replicate_label,
+    replicate_specs,
+    system_label,
+)
 from ..core.persistence import archive_output
 from ..interactions import interaction_tables
 from ..statistics import collect_time_series, finite
 from .figure_inventory import current_statistics
-from .plot_ids import id_from_figure_path, figure_dpi, safe_plot_stem as _safe
-from .table_reports import add_table_page, table_report_session, table_page_enabled
-from .shared_scales import synchronize_y_axes
-
-
 from .labels import _metric_meta
+from .plot_ids import figure_dpi, id_from_figure_path
+from .plot_ids import safe_plot_stem as _safe
+from .shared_scales import synchronize_y_axes
+from .table_reports import add_table_page, table_page_enabled, table_report_session
 
 
 def configure_plot_style(cfg: dict):

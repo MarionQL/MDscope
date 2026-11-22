@@ -36,3 +36,6 @@ examples/data/
 
 # graphify knowledge-graph output (local; rebuild with `graphify update src`)
 graphify-out/
+
+# Local uv dependency lockfile
+uv.lock

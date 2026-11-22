@@ -4,19 +4,19 @@ The molecular geometry is specified in docs/developer/sdc4-fixtures.md.
 No production trajectories or force-field resources are required. Outputs are
 software fixtures, not molecular dynamics evidence.
 """
-from copy import deepcopy
-from pathlib import Path
 import argparse
 import json
 import shutil
+from copy import deepcopy
+from pathlib import Path
 
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 import yaml
+from test_sdc4_geometry_references import _fixture
 
 from mdscope.config import DEFAULTS, Replicate
-from test_sdc4_geometry_references import _fixture
 
 
 def _write_topology(pdb):

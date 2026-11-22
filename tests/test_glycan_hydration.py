@@ -192,7 +192,7 @@ def test_generic_definition_reproduces_sdc4_hs_preset(tmp_path):
 ])
 def test_missing_or_ambiguous_linkage_fails_explicitly(change, message):
     # The ambiguous case bonds the sugar to a second Thr atom.
-    universe = _universe(extra_bonds=[(0, 4)] if "resname THR" == change.get("attachment_selection") else ())
+    universe = _universe(extra_bonds=[(0, 4)] if change.get("attachment_selection") == "resname THR" else ())
     with pytest.raises(ValueError, match=message):
         discover_covalent_glycans(universe, {**O_GLYCAN, **change})
 

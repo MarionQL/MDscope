@@ -6,7 +6,6 @@ episode column ordering unchanged.
 """
 import numpy as np
 
-
 EPISODE_COLUMNS = ["solvent", "target_id", "solvent_id", "start_frame", "end_frame",
                    "duration_ps", "left_censored", "right_censored",
                    "sampled_duration_ps", "duration_convention"]

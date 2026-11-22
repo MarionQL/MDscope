@@ -11,9 +11,11 @@ import resource
 import tempfile
 import time
 from pathlib import Path
+
+import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-import MDAnalysis as mda
+
 from mdscope.observables.lipid_contacts import LipidContacts
 
 if __name__ == '__main__':

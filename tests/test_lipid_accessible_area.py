@@ -4,10 +4,19 @@ from copy import deepcopy
 import numpy as np
 import pandas as pd
 import pytest
-
-from mdscope.observables.lipid_enrichment import footprint_bands, summarize_lipid_composition
 from mdscope_test_support import (
-    membrane_config as _cfg, membrane_universe as _universe, execute_membrane as _execute,
+    execute_membrane as _execute,
+)
+from mdscope_test_support import (
+    membrane_config as _cfg,
+)
+from mdscope_test_support import (
+    membrane_universe as _universe,
+)
+
+from mdscope.observables.lipid_enrichment import (
+    footprint_bands,
+    summarize_lipid_composition,
 )
 
 

@@ -1,18 +1,18 @@
 """Mixed raw/fused/specialized observers survive a checkpoint interruption."""
-from copy import deepcopy
-from types import SimpleNamespace
-from dataclasses import replace
 import hashlib
 import shutil
+from copy import deepcopy
+from dataclasses import replace
+from types import SimpleNamespace
 
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 import pytest
+from validation_fixture import make_project
 
 from mdscope.config import DEFAULTS
-from mdscope.pipeline import streaming, runner
-from validation_fixture import make_project
+from mdscope.pipeline import runner, streaming
 
 
 def _final_tables(root):

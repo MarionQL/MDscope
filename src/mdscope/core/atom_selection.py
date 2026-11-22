@@ -4,7 +4,9 @@ These policies deliberately preserve three existing, non-equivalent rules.
 No chemistry rule is silently substituted for another.
 """
 from __future__ import annotations
+
 import re
+
 import numpy as np
 from MDAnalysis.exceptions import NoDataError
 

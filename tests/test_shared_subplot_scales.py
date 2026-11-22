@@ -1,8 +1,8 @@
 """Production subplot scaling: consistent units mean comparable visual limits."""
 from __future__ import annotations
 
-
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -57,8 +57,9 @@ def _plot_config():
 
 
 def test_time_series_production_panels_same_limits_after_smoothing(tmp_path, monkeypatch):
-    import mdscope.reporting.plotting as plotting
     from pathlib import Path
+
+    import mdscope.reporting.plotting as plotting
 
     input_values = {
         "control": [1., 2., 3., 4.],
@@ -149,6 +150,7 @@ def test_solvation_rdf_production_panels_share_y_limits(tmp_path, monkeypatch):
 
 def test_distance_heatmaps_share_time_axis_and_distance_colorbar(tmp_path, monkeypatch):
     from types import SimpleNamespace
+
     import mdscope.config as config
     import mdscope.reporting.plotting as plotting
 

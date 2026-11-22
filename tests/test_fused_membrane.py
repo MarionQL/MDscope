@@ -2,13 +2,17 @@
 import json
 
 import pandas as pd
-
-from mdscope.pipeline.fused_membrane import enabled_names
 from mdscope_test_support import (
-    membrane_universe as _universe,
-    membrane_config as _cfg,
     execute_membrane as _execute,
 )
+from mdscope_test_support import (
+    membrane_config as _cfg,
+)
+from mdscope_test_support import (
+    membrane_universe as _universe,
+)
+
+from mdscope.pipeline.fused_membrane import enabled_names
 
 
 def test_shared_anchor_and_checkpoint_replay(tmp_path):

@@ -1,8 +1,9 @@
 """Read-only TPR glycan-chain and covalent-attachment audit (no XTC required)."""
-from pathlib import Path
 import os
-import numpy as np
+from pathlib import Path
+
 import MDAnalysis as mda
+import numpy as np
 
 root=Path(os.environ.get("MDSCOPE_REAL_DATA","examples/data"))
 for system,filename in (

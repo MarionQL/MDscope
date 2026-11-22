@@ -1,5 +1,6 @@
 """Protect original simulation paths while expanding the full analysis YAML."""
 from pathlib import Path
+
 import yaml
 
 

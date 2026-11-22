@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from ..config import plot_enabled, figure_enabled
+
+from ..config import figure_enabled, plot_enabled
 from .plot_ids import figure_dpi
 from .sdc4_condition_figures import plot_sdc4_condition_figures
 

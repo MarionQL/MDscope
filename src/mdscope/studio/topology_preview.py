@@ -3,11 +3,11 @@
 Topologies are cached by filesystem revision in a bounded worker-local cache.
 Group edits reuse their loaded Universe and never invalidate metadata.
 """
+import hashlib
+import json
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from pathlib import Path
-import hashlib
-import json
 
 from MDAnalysis import Universe
 from MDAnalysis.exceptions import SelectionError

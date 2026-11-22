@@ -19,6 +19,30 @@ mdscope plotting synd4_full_mechanisms.yaml
 
 `run` performs replica processing **and** numerical finalization; `replicate --index N` processes one replica without project finalization.
 
+## Environment variables
+
+All variables read by MDscope source code or shipped runner scripts are listed
+here. YAML remains the primary interface for scientific settings; these
+variables control logging, environment setup, resource use and test tooling.
+
+| Variable | Reader | Default when unset | Effect |
+|---|---|---|---|
+| `MDSCOPE_DEBUG` | CLI | Disabled | `1` re-raises expected user-input errors with traceback |
+| `MDSCOPE_PROGRESS_EVERY_PERCENT` | `core/progress.py`, Slurm replicate runner | `1` | Percentage steps for progress when total work is known |
+| `MDSCOPE_PROGRESS_EVERY_FRAMES` | `core/progress.py` | `25` | Frame steps for progress with unknown total |
+| `MDSCOPE_PROFILE` | `core/profiling.py`, interaction statistics; Slurm and real-data scripts | Off in Python; `1` in replicate/real-data scripts | Collect wall-time profiling data |
+| `MDSCOPE_STATS_WORKERS` | `statistics/common.py`, statistics Slurm script | `SLURM_CPUS_PER_TASK` when available; otherwise module default | Worker count for supported statistics operations |
+| `MDSCOPE_ORDER_FINALIZE_MEMORY_MB` | `pipeline/fused_membrane.py` | `256` | Memory budget (MiB) for lipid-order finalization |
+| `MDSCOPE_ENV_SETUP` | `slurm/job_env.sh` | ARC example Miniconda `mdanalysis` environment | Path to a shell setup script; `none` uses inherited environment |
+| `MDSCOPE_REAL_DATA` | `scripts/run_real_data_checks.sh` | `examples/data` | Real test-data directory |
+| `MDSCOPE_REAL_OUTPUT` | `scripts/run_real_data_checks.sh` | `real_test_results` | Destination for real-data checks |
+| `MDSCOPE_HBOND_BENCH_FRAMES` | Real-data H-bond benchmark via `scripts/run_real_data_checks.sh` | `8` | H-bond benchmark frame count |
+| `MDSCOPE_BOX_FRAMES` | `scripts/run_real_data_checks.sh` | `40` (box sweep), `200` (clearance) | Frame cap for optional box-geometry checks |
+| `PYTHONUNBUFFERED` | Slurm and real-data shell scripts / Python runtime | `1` in scripts | Flush Python log output promptly |
+
+`SLURM_CPUS_PER_TASK` and `SLURM_ARRAY_TASK_*` are scheduler-provided
+settings, not MDscope-specific environment variables.
+
 ## Slurm jobs
 
 Submit `slurm/run_mdscope.sh`, `slurm/finalize_mdscope.sh`, `slurm/statistics_mdscope.sh` and `slurm/plotting_mdscope.sh` from the MDscope checkout (they source `slurm/job_env.sh`) with your validated YAML. Jobs **never install** MDscope: install it once, before submitting, into the environment the jobs activate (`python -m pip install -e '.[sasa]'`). Each job first checks that `python` imports MDscope, logs its version, source directory and commit, and otherwise exits with setup instructions.

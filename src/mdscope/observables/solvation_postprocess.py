@@ -1,6 +1,7 @@
 """Offline hydration statistics: no new trajectory or SASA calculations."""
 import numpy as np
 import pandas as pd
+
 from ..config import atomic_parquet
 from .solvation_common import EPISODE_COLUMNS, rdf_from_counts
 
@@ -110,6 +111,7 @@ def write_hydration_sasa_batches(counts_path, target_residues, sasa, destination
     import os
     import tempfile
     from pathlib import Path
+
     import pyarrow as pa
     import pyarrow.parquet as pq
 
@@ -397,10 +399,12 @@ def write_contact_episodes(event_paths, observed_frames, destination):
     identical to the in-memory reference, which also accepts unordered events.
     Survival and other downstream finalizers have separate memory contracts.
     """
-    from pathlib import Path
     import tempfile
+    from pathlib import Path
+
     import pyarrow as pa
     import pyarrow.parquet as pq
+
     from ..core.residence import sampled_episode_durations
     destination = Path(destination)
     frames = [int(frame) for frame, _ in observed_frames]

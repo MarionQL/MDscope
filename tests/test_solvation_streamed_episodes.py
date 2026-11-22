@@ -1,9 +1,11 @@
 """Entry-point memory regression and independent sampled-episode references."""
 from pathlib import Path
+
 import pandas as pd
 import pytest
-from mdscope.observables.solvation import SolvationObserver, contact_episodes
 from mdscope_test_support import solvation_universe as _universe
+
+from mdscope.observables.solvation import SolvationObserver, contact_episodes
 
 
 def test_finalization_never_materializes_the_full_event_table(tmp_path, monkeypatch):

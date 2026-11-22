@@ -1,15 +1,20 @@
 """Scientific-regression checks for PBC, leaflet tracking and glycolipid identity."""
-import numpy as np
 import MDAnalysis as mda
+import numpy as np
 
 from mdscope.core.lipid_geometry import (
-    anchor_groups, aligned_leaflets, classify_leaflets, periodic_center,
+    aligned_leaflets,
+    anchor_groups,
+    classify_leaflets,
+    periodic_center,
 )
-from mdscope.observables.lipid_enrichment import footprint_bands
-from mdscope.observables.bilayer_normal import fit_local_normals
-from mdscope.interactions.lipid_hydrogen_bonds import lipid_molecule_map, tabulate_events
 from mdscope.interactions.interaction_tables import INTERACTION_KEY_COLUMNS
-
+from mdscope.interactions.lipid_hydrogen_bonds import (
+    lipid_molecule_map,
+    tabulate_events,
+)
+from mdscope.observables.bilayer_normal import fit_local_normals
+from mdscope.observables.lipid_enrichment import footprint_bands
 
 BOX = np.array([100., 100., 100., 90., 90., 90.])
 

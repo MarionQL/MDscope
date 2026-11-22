@@ -6,16 +6,16 @@ or its executable analysis implementations.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 import pandas as pd
 
 from ..config import analysis_enabled
-from ..output_paths import FUSED_OUTPUTS
-from ..observables.structure_profiles import run_structure_profiles
 from ..mechanisms.potassium_bridge_audit import run_potassium_bridge_audit
+from ..observables.structure_profiles import run_structure_profiles
+from ..output_paths import FUSED_OUTPUTS
 
 
 @dataclass(frozen=True)

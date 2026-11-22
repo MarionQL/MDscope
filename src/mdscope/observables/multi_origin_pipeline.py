@@ -5,14 +5,16 @@ state untouched. Positions are staged in a temporary on-disk memmap; FFT
 processing only loads a limited number of lipid tracks at a time.
 """
 from __future__ import annotations
+
 from bisect import bisect_left, bisect_right
 from contextlib import ExitStack
 from mmap import mmap
 from pathlib import Path
 from tempfile import TemporaryFile
+
+import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-import MDAnalysis as mda
 from MDAnalysis.lib.distances import minimize_vectors
 
 from ..config import atomic_parquet, time_ps
@@ -86,7 +88,7 @@ def run_multi_origin_diffusion(rep, cfg, repout):
         if not np.all(np.isfinite(times)) or np.any(np.diff(times) <= 0) or not np.allclose(np.diff(times), np.diff(times)[0], rtol=1e-5, atol=1e-8):
             raise ValueError("Multi-origin MSD requires regularly spaced finite time samples")
         rows, curves = [], []
-        from .multi_origin_msd import multi_origin_msd, fit_multi_origin_curve
+        from .multi_origin_msd import fit_multi_origin_curve, multi_origin_msd
         for suffix, mask in (
             ("", np.ones(n_lipids, dtype=bool)),
             ("_upper", membrane.msd_upper_mask),

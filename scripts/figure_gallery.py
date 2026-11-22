@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import argparse
-from html import escape
 import json
 import os
+from html import escape
 from pathlib import Path
 
 from PIL import Image, ImageChops

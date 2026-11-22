@@ -4,17 +4,19 @@ These tests use hand-countable configurations and formulas that do not call
 the implementation to compute their expected answers. Passing them does not
 establish converged simulation estimates or transferable binding affinities.
 """
+import MDAnalysis as mda
 import numpy as np
-from mdscope.core.lipid_geometry import accessible_area_grid
 import pandas as pd
 import pytest
-import MDAnalysis as mda
 
+from mdscope.core.lipid_geometry import accessible_area_grid
 from mdscope.mechanisms.motif_residence import (
-    summarize_lipid_residence, summarize_intermittent_residence,
+    summarize_intermittent_residence,
+    summarize_lipid_residence,
 )
 from mdscope.mechanisms.sdc4_mechanisms import (
-    _composition_enrichment, _contacts,
+    _composition_enrichment,
+    _contacts,
 )
 
 
@@ -255,8 +257,8 @@ def test_batched_duration_oracle_and_single_observation():
 
 
 def test_corrected_enrichment_figures_and_inventory(tmp_path):
-    from mdscope.reporting.sdc4_figures import plot_sdc4_mechanisms
     from mdscope.reporting.figure_inventory import figure_inventory
+    from mdscope.reporting.sdc4_figures import plot_sdc4_mechanisms
     dest = tmp_path / "carb/rep1/extensions/sdc4_mechanisms"
     dest.mkdir(parents=True)
     pd.DataFrame({

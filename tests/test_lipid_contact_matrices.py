@@ -1,11 +1,12 @@
 """Hand-counted undirected graphs, molecule identity, periodic geometry and replay."""
+import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-import MDAnalysis as mda
 from MDAnalysis.coordinates.memory import MemoryReader
+
 from mdscope.observables.lipid_contacts import contact_matrix
-from mdscope.pipeline.fused_membrane import FusedMembrane
 from mdscope.observables.solvation_postprocess import bridge_residence
+from mdscope.pipeline.fused_membrane import FusedMembrane
 
 
 def test_complete_graph_has_random_mixing_enrichment_one():
@@ -91,6 +92,7 @@ def test_matrix_plot_family_disabled_before_parquet_read(tmp_path, monkeypatch):
 
 def test_difference_heatmap_uses_replica_means_and_masks_unavailable_species(tmp_path, monkeypatch):
     import matplotlib.axes
+
     from mdscope.reporting.membrane_figures import plot_lipid_contacts
 
     cfg = {'analyses': {'lipid_contacts': {'enabled': True}}, 'plots': {'dpi': 25}}

@@ -2,7 +2,9 @@
 import pytest
 
 from mdscope.core.coordinate_contracts import (
-    CoordinateSpace, require_coordinate_space, msd_source_space,
+    CoordinateSpace,
+    msd_source_space,
+    require_coordinate_space,
 )
 
 

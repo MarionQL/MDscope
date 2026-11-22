@@ -5,9 +5,10 @@ import pytest
 
 from mdscope.observables.lipid_contacts import contact_matrix
 from mdscope.statistics.lipid_contacts import (
-    _classes, contact_frames, analyze_lipid_contacts,
+    _classes,
+    analyze_lipid_contacts,
+    contact_frames,
 )
-
 
 CLASSES = {
     "PC": ["POPC", "DOPC"],
@@ -127,6 +128,7 @@ def test_bootstrap_exports_complete_replicas_leaflets_and_condition_differences(
 
     # Production plotting is saved-data-only; check precise plot IDs and PNGs.
     import json
+
     from mdscope.reporting.lipid_contact_bootstrap import plot_lipid_contact_bootstrap
     from mdscope.reporting.plot_ids import id_from_figure_path
     stats_dir = tmp_path / "project_summary/statistics"
