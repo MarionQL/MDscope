@@ -12,7 +12,7 @@ from mdscope.statistics.coupling import analyze_coupling
 from mdscope.statistics.diffusion import analyze_multi_origin_diffusion
 from mdscope.statistics.profiles import analyze_profiles
 from mdscope.statistics.solvation import analyze_solvation_rdfs
-from mdscope.statistics_selection import validate_metric_selection
+from mdscope.statistics.selection import validate_metric_selection
 
 
 @pytest.mark.parametrize("family,entry", [
@@ -194,7 +194,7 @@ def test_unknown_diffusion_metric_fails_before_products(tmp_path):
 
 
 def test_studio_new_config_explicitly_disables_all_inference_families():
-    from mdscope.statistics_selection import studio_metric_selection_defaults
+    from mdscope.statistics.selection import studio_metric_selection_defaults
     selection = studio_metric_selection_defaults()
     assert set(selection) == {
         "time_series", "profiles", "interactions",
@@ -208,7 +208,7 @@ def test_studio_new_config_explicitly_disables_all_inference_families():
 
 
 def test_studio_metric_selection_defaults_are_not_shared_mutable_lists():
-    from mdscope.statistics_selection import studio_metric_selection_defaults
+    from mdscope.statistics.selection import studio_metric_selection_defaults
     selection = studio_metric_selection_defaults()
     selection["profiles"].append({"profile": "test"})
     assert studio_metric_selection_defaults()["profiles"] == []
