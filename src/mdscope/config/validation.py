@@ -7,7 +7,7 @@ from .validators.membrane import validate_membrane
 from .validators.solvation import validate_solvation
 from .validators.hydration import validate_hydration
 from .validators.sdc4 import validate_sdc4
-from .validators.shared_states import validate_shared_states
+from .validators.statistics import validate_shared_states
 from .validators.plots import validate_plots
 from .validators.statistics import validate_statistics
 from .validators.residue_response import residue_response_settings as residue_response_settings

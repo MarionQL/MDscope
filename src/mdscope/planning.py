@@ -34,7 +34,7 @@ from .reporting.plot_ids import (
     describe_plot,
     safe_plot_stem,
 )
-from .statistics.state_feature_spec import SDC4_FEATURES
+from .contracts.state_feature_spec import SDC4_FEATURES
 from .statistics.families import STATISTICS_FAMILIES
 from .statistics.selection import ESTIMATOR_FLAGS
 
