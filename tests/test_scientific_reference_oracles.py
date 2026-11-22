@@ -14,7 +14,7 @@ from mdscope.mechanisms.motif_residence import (
     summarize_intermittent_residence,
     summarize_lipid_residence,
 )
-from mdscope.mechanisms.sdc4_mechanisms import (
+from mdscope.systems.sdc4.mechanisms import (
     _composition_enrichment,
     _contacts,
 )

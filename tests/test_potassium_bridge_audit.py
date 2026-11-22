@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from mdscope.config import DEFAULTS, Replicate, merge
-from mdscope.mechanisms.potassium_bridge_audit import peak_rows, topology_sites
+from mdscope.systems.sdc4.potassium_bridge_audit import peak_rows, topology_sites
 from mdscope.pipeline.runner import RunState, run_replicate
 
 
