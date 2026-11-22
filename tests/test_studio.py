@@ -1404,7 +1404,7 @@ def test_results_inventory_requires_marker_matching_config_and_valid_schema(tmp_
     entry = next(item for item in analysis_output_plan(cfg, root / rep.system / rep.label)
                  if item.name == "sasa")
     entry.path.parent.mkdir(parents=True)
-    pd.DataFrame({"time_ps": [0.], "topology_residue_index": [0],
+    pd.DataFrame({"time_ps": [0.], "topology_residue_index": [0], "residue": ["A:ALA1"],
                   "sasa_nm2": [1.]}).to_parquet(entry.path)
     summary = root / rep.system / rep.label / "summary" / "timeseries.parquet"
     summary.parent.mkdir(parents=True)
@@ -1427,7 +1427,7 @@ def test_results_inventory_requires_marker_matching_config_and_valid_schema(tmp_
     assert saved_only["scheduled"] is False
     entry.path.write_bytes(b"not a parquet file")
     assert status() == "incompatible"
-    pd.DataFrame({"time_ps": [0.], "topology_residue_index": [0],
+    pd.DataFrame({"time_ps": [0.], "topology_residue_index": [0], "residue": ["A:ALA1"],
                   "sasa_nm2": [1.]}).to_parquet(entry.path)
     changed = deepcopy(doc)
     changed["analyses"]["sasa"]["probe_radius_A"] = 1.8
