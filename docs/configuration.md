@@ -118,13 +118,263 @@ same `tails`/`lipid_overrides` with its own lipid selection.
 | Explicit, bonded C–H hydrogens; tail carbons form one bonded chain numbered from the carbonyl | Scientific constraint: checked, failures are errors |
 | One topology residue per lipid; fixed initial leaflets; global axis as bilayer normal | Scientific model: reported, not converted |
 
-- **Omitted** naming keeps the tested defaults `sn1: ^C2(\d+)$`, `sn2: ^C3(\d+)$`
-  and their output identities. In CHARMM36 these select the **sn-2** (C21…) and
-  **sn-1** (C31…) chains respectively; the keys are legacy labels.
-- `tail_preset: charmm36` (opt-in, never inferred) uses `sn1: ^C3(\d+)$`,
-  `sn2: ^C2(\d+)$`, verified against the SDC4 release TPRs and the NMRlipids
-  CHARMM36 POPC mapping. It maps no sphingolipid chains (CHARMM36 `C1S…`/`C1F…`).
-  Switching an existing project to it swaps the meaning of `sn1`/`sn2` outputs.
+- **Corrected default naming (issue #272):** `sn1: ^C3(\d+)# Configuration
+
+Use [`synd4_full_mechanisms.yaml`](../synd4_full_mechanisms.yaml) for the complete, maintained SDC4 configuration. The examples below show **patterns**, not validated selections for another topology.
+
+## Config paths, output location and relocation
+
+All relative paths in `project.output`, `systems.*.topology`,
+`systems.*.replicates[].trajectory` and optional `msd_trajectory` are
+resolved from the **YAML file's directory**, not the shell's working directory.
+Absolute paths are used as given. Both `mdscope validate CONFIG.yaml` and
+`mdscope plan CONFIG.yaml` display the absolute resolved output directory;
+`mdscope plan --format json` exposes `resolved_output_directory` without
+opening trajectories.
+
+**Relocating the YAML:** For an existing run, keep the original resolved input
+paths and `project.output` **string** unchanged. If `project.output` is
+already absolute, moving the YAML is safe for the output location, provided all
+relative input paths are also updated or continue resolving to the same files.
+However, changing any YAML path string can change the saved configuration hash.
+The supported no-migration method is to leave the original YAML in place and
+invoke it by absolute path from the new location, or move the whole directory
+containing the YAML and its relative paths **only when starting a new project**
+in a fresh output directory. A symbolic link to the original YAML also retains
+its original resolved parent on platforms that support symlinks.
+
+Do not edit `project.output` to point to an existing results directory and
+assume resume will work: `resolved_config.yaml` is hashed from resolved YAML
+options (including the raw output setting). A changed hash is rejected instead
+of reusing possibly incompatible numerical products. To intentionally change
+paths or move an existing results folder, start a new run in a separate output
+directory; no automated saved-product migration is provided.
+
+## Analysis options at a glance
+
+| Feature | YAML key | Output / rule |
+|---|---|---|
+| Protein groups | `selections.groups` | Shared frame pass; `summary/group_timeseries.parquet` |
+| Multiple density/distance/SASA instances | `analyses.<name>.runs` | Each named run has distinct selection, ID and files |
+| Optional figures | `plots.enabled`, `plots.families` | Offline `mdscope plotting`; no trajectory reread |
+| Statistics families | `statistics.families` | Override specific estimators and CI settings |
+| Interaction screening | `statistics.interaction_min_occupancy` | Filter *statistical identities*, not saved events |
+| Matched analysis window | `statistics.matched_window_ps` | Additional matched-time statistics |
+| Automatic HS identification | `analyses.sdc4_mechanisms.hs_auto` | Requires covalent bond topology |
+| Glycan chains for hydration | `selections.glycans` + `analyses.hydration.glycans` | Requires covalent bond topology; [below](#shared-glycan-definitions) |
+
+## YAML contract for generalization
+
+Every new user-selectable scientific choice must be expressible in the validated
+YAML and runnable from the CLI. Studio authors that same configuration. Optional
+presets supply tested defaults; explicit supported selections and overrides remain
+available. Internal module extraction alone does not require new configuration.
+
+For generalization PRs:
+
+- Define supported enable/disable controls and scientific choices in the existing
+  defaults/schema/semantic validation, with units and valid ranges. Preserve
+  omitted versus explicit-empty selections; reject unsupported options clearly.
+- Configure target/fit/environment selections, motif/chain scope, lipid naming,
+  glycan attachments and validated reference models through appropriate existing
+  fields or explicitly implemented extensions. Prefer named runs only for analyses
+  that support them. Keep biological interpretation distinct from generic kernels.
+- Preserve chosen SDC4 analyses and their current CLI/YAML/output contracts.
+  Generalization makes those analyses reusable; it does not remove SDC4-specific
+  measurements or silently replace configured motifs, PROA/PROB domains, HS
+  attachment identities, lipid anchors/classes or physical references.
+- Resolve presets and overrides once through the existing loader. Expose effective
+  choices, prerequisites and provenance in planning/saved results; preserve them
+  through Studio import, no-op export and subsequent edits. Selecting a group or
+  preset must not silently enable unrelated analyses, statistics or figures.
+- Verify a non-SDC4 configuration and applicable SDC4 numerical references. Keep
+  `synd4_baseline.yaml`, `synd4_full_mechanisms.yaml` and
+  `synd4_full_mechanisms_finalize_fast.yaml` resolving and round-tripping; if a real
+  migration is necessary, document it and demonstrate equivalent requested work.
+  Schema validation alone does not establish topology chemistry or numerical parity.
+- Include runnable YAML examples only after their keys are implemented. Keep
+  unsupported reference geometries/chemistries explicit; naming presets do not
+  validate new physics.
+
+Existing controls include `selections.groups`, supported analysis-specific
+selection fields, `membrane_order.tail_preset`/`tails`/`lipid_overrides`, SDC4 TM/ectodomain,
+HS/motif/lipid definitions, `statistics.metric_selection` and exact `plots.include`.
+These are not universal keys accepted by every analysis. Shared motif definitions and saved state-feature sources are configured below.
+Residue-response discovery is controlled by `statistics.residue_response`; see
+the validated options below. Do not advertise proposed fields as supported.
+
+### Groups vs named runs
+
+```yaml
+selections:
+  groups:
+    chain_a: {selection: "segid PROA", alignment_selection: "segid PROA and name CA"}
+analyses:
+  rmsd: {enabled: true, groups: [chain_a]}
+  rmsf: {enabled: true}
+  density_1d:
+    enabled: true
+    axis: z
+    bin_width_A: 1.0
+    selections: {water: "resname TIP3 and name OH2"}
+    runs:
+      membrane_relative:
+        membrane_center_selection: "resname POPC DPPC POPE POPI POPS PSM DOPC and name P"
+        half_width_A: 100.0
+```
+
+- RMSD/Rg `groups` chooses a subset of shared groups; omitted means all. Global metrics stay in `summary/timeseries.parquet`.
+- Density, residue–membrane distance and SASA support named `runs`. Do **not** add `runs` to RMSD/Rg.
+- Membrane-relative density uses the midpoint of circular leaflet centers. Use **one comparable anchor per lipid**, a half-width divisible by the bin width and no `center_selection`. The half-width must fit within half the current normal box length. A different reference needs a new run ID.
+
+## Lipid-tail naming for -S_CH
+
+`analyses.membrane_order` owns the acyl-tail naming; SDC4 `local_order` uses the
+same `tails`/`lipid_overrides` with its own lipid selection.
+
+| Assumption | Kind |
+|---|---|
+| Tail atom names, residue names, `exclude_resnames` (`CHOL`, `CHL1`), headgroup anchor names (`P`, `O3`, `NF`) | Naming only: configure per topology |
+| Explicit, bonded C–H hydrogens; tail carbons form one bonded chain numbered from the carbonyl | Scientific constraint: checked, failures are errors |
+| One topology residue per lipid; fixed initial leaflets; global axis as bilayer normal | Scientific model: reported, not converted |
+
+ maps the
+  CHARMM36 glycerophospholipid **sn-1** chain (C31…), and `sn2: ^C2(\d+)# Configuration
+
+Use [`synd4_full_mechanisms.yaml`](../synd4_full_mechanisms.yaml) for the complete, maintained SDC4 configuration. The examples below show **patterns**, not validated selections for another topology.
+
+## Config paths, output location and relocation
+
+All relative paths in `project.output`, `systems.*.topology`,
+`systems.*.replicates[].trajectory` and optional `msd_trajectory` are
+resolved from the **YAML file's directory**, not the shell's working directory.
+Absolute paths are used as given. Both `mdscope validate CONFIG.yaml` and
+`mdscope plan CONFIG.yaml` display the absolute resolved output directory;
+`mdscope plan --format json` exposes `resolved_output_directory` without
+opening trajectories.
+
+**Relocating the YAML:** For an existing run, keep the original resolved input
+paths and `project.output` **string** unchanged. If `project.output` is
+already absolute, moving the YAML is safe for the output location, provided all
+relative input paths are also updated or continue resolving to the same files.
+However, changing any YAML path string can change the saved configuration hash.
+The supported no-migration method is to leave the original YAML in place and
+invoke it by absolute path from the new location, or move the whole directory
+containing the YAML and its relative paths **only when starting a new project**
+in a fresh output directory. A symbolic link to the original YAML also retains
+its original resolved parent on platforms that support symlinks.
+
+Do not edit `project.output` to point to an existing results directory and
+assume resume will work: `resolved_config.yaml` is hashed from resolved YAML
+options (including the raw output setting). A changed hash is rejected instead
+of reusing possibly incompatible numerical products. To intentionally change
+paths or move an existing results folder, start a new run in a separate output
+directory; no automated saved-product migration is provided.
+
+## Analysis options at a glance
+
+| Feature | YAML key | Output / rule |
+|---|---|---|
+| Protein groups | `selections.groups` | Shared frame pass; `summary/group_timeseries.parquet` |
+| Multiple density/distance/SASA instances | `analyses.<name>.runs` | Each named run has distinct selection, ID and files |
+| Optional figures | `plots.enabled`, `plots.families` | Offline `mdscope plotting`; no trajectory reread |
+| Statistics families | `statistics.families` | Override specific estimators and CI settings |
+| Interaction screening | `statistics.interaction_min_occupancy` | Filter *statistical identities*, not saved events |
+| Matched analysis window | `statistics.matched_window_ps` | Additional matched-time statistics |
+| Automatic HS identification | `analyses.sdc4_mechanisms.hs_auto` | Requires covalent bond topology |
+| Glycan chains for hydration | `selections.glycans` + `analyses.hydration.glycans` | Requires covalent bond topology; [below](#shared-glycan-definitions) |
+
+## YAML contract for generalization
+
+Every new user-selectable scientific choice must be expressible in the validated
+YAML and runnable from the CLI. Studio authors that same configuration. Optional
+presets supply tested defaults; explicit supported selections and overrides remain
+available. Internal module extraction alone does not require new configuration.
+
+For generalization PRs:
+
+- Define supported enable/disable controls and scientific choices in the existing
+  defaults/schema/semantic validation, with units and valid ranges. Preserve
+  omitted versus explicit-empty selections; reject unsupported options clearly.
+- Configure target/fit/environment selections, motif/chain scope, lipid naming,
+  glycan attachments and validated reference models through appropriate existing
+  fields or explicitly implemented extensions. Prefer named runs only for analyses
+  that support them. Keep biological interpretation distinct from generic kernels.
+- Preserve chosen SDC4 analyses and their current CLI/YAML/output contracts.
+  Generalization makes those analyses reusable; it does not remove SDC4-specific
+  measurements or silently replace configured motifs, PROA/PROB domains, HS
+  attachment identities, lipid anchors/classes or physical references.
+- Resolve presets and overrides once through the existing loader. Expose effective
+  choices, prerequisites and provenance in planning/saved results; preserve them
+  through Studio import, no-op export and subsequent edits. Selecting a group or
+  preset must not silently enable unrelated analyses, statistics or figures.
+- Verify a non-SDC4 configuration and applicable SDC4 numerical references. Keep
+  `synd4_baseline.yaml`, `synd4_full_mechanisms.yaml` and
+  `synd4_full_mechanisms_finalize_fast.yaml` resolving and round-tripping; if a real
+  migration is necessary, document it and demonstrate equivalent requested work.
+  Schema validation alone does not establish topology chemistry or numerical parity.
+- Include runnable YAML examples only after their keys are implemented. Keep
+  unsupported reference geometries/chemistries explicit; naming presets do not
+  validate new physics.
+
+Existing controls include `selections.groups`, supported analysis-specific
+selection fields, `membrane_order.tail_preset`/`tails`/`lipid_overrides`, SDC4 TM/ectodomain,
+HS/motif/lipid definitions, `statistics.metric_selection` and exact `plots.include`.
+These are not universal keys accepted by every analysis. Shared motif definitions and saved state-feature sources are configured below.
+Residue-response discovery is controlled by `statistics.residue_response`; see
+the validated options below. Do not advertise proposed fields as supported.
+
+### Groups vs named runs
+
+```yaml
+selections:
+  groups:
+    chain_a: {selection: "segid PROA", alignment_selection: "segid PROA and name CA"}
+analyses:
+  rmsd: {enabled: true, groups: [chain_a]}
+  rmsf: {enabled: true}
+  density_1d:
+    enabled: true
+    axis: z
+    bin_width_A: 1.0
+    selections: {water: "resname TIP3 and name OH2"}
+    runs:
+      membrane_relative:
+        membrane_center_selection: "resname POPC DPPC POPE POPI POPS PSM DOPC and name P"
+        half_width_A: 100.0
+```
+
+- RMSD/Rg `groups` chooses a subset of shared groups; omitted means all. Global metrics stay in `summary/timeseries.parquet`.
+- Density, residue–membrane distance and SASA support named `runs`. Do **not** add `runs` to RMSD/Rg.
+- Membrane-relative density uses the midpoint of circular leaflet centers. Use **one comparable anchor per lipid**, a half-width divisible by the bin width and no `center_selection`. The half-width must fit within half the current normal box length. A different reference needs a new run ID.
+
+## Lipid-tail naming for -S_CH
+
+`analyses.membrane_order` owns the acyl-tail naming; SDC4 `local_order` uses the
+same `tails`/`lipid_overrides` with its own lipid selection.
+
+| Assumption | Kind |
+|---|---|
+| Tail atom names, residue names, `exclude_resnames` (`CHOL`, `CHL1`), headgroup anchor names (`P`, `O3`, `NF`) | Naming only: configure per topology |
+| Explicit, bonded C–H hydrogens; tail carbons form one bonded chain numbered from the carbonyl | Scientific constraint: checked, failures are errors |
+| One topology residue per lipid; fixed initial leaflets; global axis as bilayer normal | Scientific model: reported, not converted |
+
+
+  maps **sn-2** (C21…). The matching `tail_preset: charmm36` is optional,
+  never inferred from residue names; the two maintained full SDC4 YAMLs select
+  it explicitly. These mappings were checked against bonded CHARMM36 POPC
+  fixtures and the SDC4 release TPRs.
+- **Historical results generated before #272:** saved `lipid_order__sn1*`
+  and SDC4 local-order `sn1` products measured the **C2x/sn-2** chain;
+  saved `sn2` products measured **C3x/sn-1**. Their numeric order parameters
+  are not corrected by renaming files. Older statistics, figures and findings
+  inherit those mislabeled identities. Archive them as legacy and **rerun
+  replicate analysis and statistical finalization/plotting in a new output
+  directory**. Do not resume or mix files from the prior output directory:
+  changing the resolved default/preset changes the configuration hash.
+- Presently the `charmm36` preset on main maps glycerophospholipid tails;
+  CHARMM36 PSM/ceramide sphingoid and N-acyl chains are separately addressed
+  in PR #276, and must not be silently pooled with sn-1/sn-2.
 - Precedence: `lipid_overrides.<RESNAME>.<tail>` naming > `tails.<tail>` >
   preset tail > default. With a preset, an explicit `tails` entry replaces that
   tail; without one it merges into the default tail (existing behavior).
