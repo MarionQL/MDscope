@@ -16,7 +16,7 @@ import pyarrow.parquet as pq
 from MDAnalysis.lib.distances import capped_distance
 from MDAnalysis.lib.mdamath import triclinic_vectors
 
-from ..config import atomic_json, atomic_parquet, ensure_dir
+from ..core.persistence import atomic_json, atomic_parquet, ensure_dir
 from ..contracts.outputs import SOLVATION_COUNT_COLUMNS
 from ..core.geometry import minimum_image_displacements
 from .solvation_common import EPISODE_COLUMNS, rdf_from_counts

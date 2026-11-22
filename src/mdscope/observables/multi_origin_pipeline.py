@@ -17,7 +17,8 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import minimize_vectors
 
-from ..config import atomic_parquet, time_ps
+from ..config import time_ps
+from ..core.persistence import atomic_parquet
 from .membrane import initialize_membrane
 from .msd import _residue_centers
 
