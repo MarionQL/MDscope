@@ -1,12 +1,12 @@
 """Statistics profiling is opt-in and leaves inference results unchanged."""
 import json
 
-from mdscope.statistics import analyze_project
+from mdscope.statistics.dispatch import analyze_project
 
 
 def test_statistics_family_profile_records_inventory_and_stage_timings(
         tmp_path, monkeypatch):
-    import mdscope.statistics as statistics
+    import mdscope.statistics.dispatch as statistics
     monkeypatch.setenv("MDSCOPE_PROFILE", "1")
     monkeypatch.setattr(statistics, "write_contrast_coverage",
                         lambda *args: None)
@@ -28,7 +28,7 @@ def test_statistics_family_profile_records_inventory_and_stage_timings(
 
 
 def test_statistics_profile_disabled_has_no_extra_output(tmp_path, monkeypatch):
-    import mdscope.statistics as statistics
+    import mdscope.statistics.dispatch as statistics
     monkeypatch.delenv("MDSCOPE_PROFILE", raising=False)
     monkeypatch.setattr(statistics, "write_contrast_coverage",
                         lambda *args: None)

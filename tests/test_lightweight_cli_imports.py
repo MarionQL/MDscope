@@ -3,7 +3,7 @@
 import subprocess
 import sys
 
-from mdscope.statistics_families import STATISTICS_FAMILIES
+from mdscope.statistics.families import STATISTICS_FAMILIES
 
 
 def test_cli_import_keeps_execution_modules_unloaded():
@@ -25,7 +25,7 @@ def test_planner_import_does_not_load_statistical_estimators():
     code = (
         "import sys\n"
         "from mdscope.planning import build_plan\n"
-        "from mdscope.statistics_families import STATISTICS_FAMILIES\n"
+        "from mdscope.statistics.families import STATISTICS_FAMILIES\n"
         "assert STATISTICS_FAMILIES\n"
         "for module in ('mdscope.statistics', 'mdscope.statistics.profiles',\n"
         "               'mdscope.statistics.time_series', 'mdscope.pipeline.runner',\n"
