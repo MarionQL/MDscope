@@ -28,6 +28,20 @@ Run checks for the behavior changed, not every available workflow.
   Run them through Actions → select workflow → Run workflow → select PR branch.
   Figure review compares against the branch's merge base with `main` unless
   `base_ref` names another commit, branch or tag; the gallery records both SHAs.
+- **Local real-data runs** are equivalent evidence and avoid release downloads:
+  keep the four `test-data-v1` TPR/XTC files in git-ignored `examples/data/`
+  (never commit or upload trajectories), activate an environment with
+  `pip install -e '.[sasa]'`, then run `scripts/run_real_data_checks.sh
+  [smoke|hbond|solvation|performance|all]`. It verifies the files against
+  `tests/data/real_test_data.sha256` and runs the same scripts as the workflows;
+  outputs go to git-ignored `real_test_results/`. FreeSASA has no Windows wheel,
+  so run `smoke` on Linux/WSL or ARC. Record commit, environment and the final
+  `PASS` line in the PR.
+- For faster iteration, `python scripts/stride_real_data.py --stride 5` writes
+  `examples/data/stride5/` (41/40 frames at 50 ns, every smoke step's frame window
+  intact, with `provenance.json` and `SHA256SUMS`); run it with
+  `MDSCOPE_REAL_DATA=examples/data/stride5`. It allows `smoke`/`hbond` only and is
+  **not** merge evidence: use the full files before merging.
 - Other existing manual scientific audits remain manual. No scheduled production
   computation is added by this policy.
 - Dispatch heavy checks once a coherent change is ready for review. Do not run a
