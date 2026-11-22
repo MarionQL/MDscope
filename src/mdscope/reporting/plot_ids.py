@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ..contracts.plot_validation import (
     DYNAMIC_VARIANTS, SDC4_CONDITION_STEMS, STATIC_IDS,
-    validate_figure_options, validate_plot_ids,
+    validate_figure_options as validate_figure_options, validate_plot_ids,
 )
 
 def safe_plot_stem(value) -> str:
