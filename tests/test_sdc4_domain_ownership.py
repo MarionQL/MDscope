@@ -1,5 +1,4 @@
 """Domain boundaries after moving system-specific SDC4 execution (#258)."""
-import importlib.util
 import subprocess
 import sys
 
