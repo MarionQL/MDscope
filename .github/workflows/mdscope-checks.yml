@@ -49,6 +49,16 @@ jobs:
       - name: Install real FreeSASA for analytic geometry references
         if: matrix.python-version == '3.11'
         run: python -m pip install freesasa
+      - name: Record tested environment
+        run: |
+          mkdir -p /tmp/mdscope-env
+          python -m pip freeze --exclude-editable > "/tmp/mdscope-env/pip-freeze-py${{ matrix.python-version }}.txt"
+      - name: Publish tested environment
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mdscope-tested-env-py${{ matrix.python-version }}
+          path: /tmp/mdscope-env/
+          retention-days: 30
       - name: Build and validate distribution metadata
         if: matrix.python-version == '3.11'
         run: |
@@ -65,6 +75,11 @@ jobs:
           with tarfile.open(sdist) as archive:
               assert any(n.endswith("mdscope/studio/assets/MM+Lab+Logo.png") for n in archive.getnames())
           PY
+          {
+            echo "### Built distributions"
+            echo "Source commit: \`$(git rev-parse HEAD)\`"
+            (cd dist && sha256sum ./*) | sed 's/^/    /'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Verify installed package and CLI
         run: |
           cd /tmp
@@ -79,6 +94,12 @@ jobs:
           (cd /tmp && /tmp/mdscope-wheel/bin/mdscope --help)
           (cd /tmp && /tmp/mdscope-wheel/bin/python -c "from importlib.resources import files; assert (files('mdscope.studio') / 'assets' / 'MM+Lab+Logo.png').is_file()")
           (cd /tmp && /tmp/mdscope-wheel/bin/python -c "from streamlit.testing.v1 import AppTest; from importlib.resources import files; test = AppTest.from_file(str(files('mdscope.studio') / 'app.py')).run(timeout=30); assert not test.exception, test.exception")
+          # Wheel metadata, package __version__, CLI and CITATION.cff must agree.
+          expected=$(/tmp/mdscope-wheel/bin/python -c "import mdscope; print(mdscope.__version__)")
+          test "$(cd /tmp && /tmp/mdscope-wheel/bin/mdscope --version)" = "mdscope ${expected}"
+          test "$(/tmp/mdscope-wheel/bin/python -c "from importlib.metadata import version; print(version('mdscope'))")" = "${expected}"
+          grep -qx "version: ${expected}" CITATION.cff
+          echo "Installed wheel: mdscope ${expected} from $(git rev-parse --short HEAD)" >> "$GITHUB_STEP_SUMMARY"
           python -m venv /tmp/mdscope-sdist
           /tmp/mdscope-sdist/bin/pip install dist/*.tar.gz
           (cd /tmp && /tmp/mdscope-sdist/bin/python -c "import mdscope.cli, mdscope.pipeline.runner")
@@ -123,3 +144,29 @@ jobs:
         run: |
           pytest -q -s -m benchmark tests/test_performance_benchmarks.py
 
+  minimum-dependencies:
+    # Lowest declared versions of direct runtime dependencies (pyproject floors).
+    name: python-checks (3.11, minimum dependencies)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+      - name: Install MDscope at its declared minimum versions
+        run: |
+          python -m pip install uv==0.10.8
+          # lowest-direct pins MDscope's own requirements to their floors;
+          # test tooling is installed afterwards at current versions.
+          uv pip install --system --resolution lowest-direct -e .
+          uv pip install --system pytest "streamlit>=1.40,<2"
+          mkdir -p /tmp/mdscope-env
+          python -m pip freeze --exclude-editable | tee /tmp/mdscope-env/pip-freeze-py3.11-minimum.txt
+      - name: Publish tested minimum environment
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mdscope-tested-env-py3.11-minimum
+          path: /tmp/mdscope-env/
+          retention-days: 30
+      - name: Run synthetic regression tests at minimum versions
+        run: pytest -q --durations=20 tests

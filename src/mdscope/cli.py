@@ -12,6 +12,7 @@ from pathlib import Path
 import yaml
 
 from .config import iter_replicates, load_config
+from . import __version__
 from .errors import UserInputError
 
 def interactive_init(output="analysis.yaml"):
@@ -155,6 +156,7 @@ def cmd_scan_residue_regions(args):
 
 def main():
     parser = argparse.ArgumentParser(prog="mdscope")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--debug", action="store_true",
                         help="Show tracebacks for expected input errors (or set MDSCOPE_DEBUG=1)")
     sub = parser.add_subparsers(required=True)

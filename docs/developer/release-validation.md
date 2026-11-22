@@ -36,7 +36,7 @@ The fixture covers fused structural/membrane/SDC4/solvation/distance observers a
 
 - [ ] Record commit, Python/NumPy/MDAnalysis/FreeSASA versions, seed, worker allocation, commands, elapsed time, peak RSS, skips.
 - [ ] Run `pytest -q tests` and the portable oracle; keep independent mathematical/PBC/chemical/failure references.
-- [ ] Build wheel/sdist and install/test **outside checkout** for Python 3.11 and 3.13 ([Architecture](architecture.md)).
+- [ ] Build wheel/sdist and install/test **outside checkout** for Python 3.11–3.13, plus the minimum-dependency job ([Architecture](architecture.md)).
 - [ ] Run native FreeSASA sphere/cap/periodic tests; document optional skips.
 - [ ] Check crash/restart parity, companion artifact identity, and non-destructive input failures.
 - [ ] Review coordinate provenance, units, topology identities, leaflet definitions, sampling/censoring and missing-vs-zero.
@@ -46,3 +46,34 @@ The fixture covers fused structural/membrane/SDC4/solvation/distance observers a
 **Local investigation budget:** ~1 minute / 512 MiB for the tiny reference project with `MDSCOPE_STATS_WORKERS=1`. These are guidance, **not** timed CI assertions or production throughput predictions. Optional profiler: `pytest -q -s -m benchmark tests/test_performance_benchmarks.py`.
 
 Record resource-blocked checks as **unverified**, never passed. A short reference run cannot support manuscript-level claims.
+
+## Supported environments
+
+| Source of truth | Contents |
+|---|---|
+| `pyproject.toml` `[project].dependencies` | Tested **minimum** versions (floors). Upper bounds only for a demonstrated incompatibility. |
+| CI `python-checks (3.11, minimum dependencies)` | Installs every direct dependency at its floor (`uv --resolution lowest-direct`) and runs the suite. |
+| CI `mdscope-tested-env-*` artifacts | Exact `pip freeze` of each tested job: the lock solution for that commit. Commit no hand-maintained lock. |
+| `environment.yml` | Representative conda-forge environment with the same floors; not solver-tested in CI. |
+
+**Fixed-seed reproducibility:** bootstrap/permutation draws use seeded `numpy.random.Generator`. NumPy does not guarantee identical random streams for Generator *distributions* across releases (NEP 19), so a fixed seed reproduces draws only with the same NumPy version (and worker allocation, `MDSCOPE_STATS_WORKERS`). Record the tested environment artifact with results; exact enumeration (small exact permutation tests) is version-independent.
+
+## Software releases and artifact identity
+
+| Artifact | How obtained | Contains | Identifies code by |
+|---|---|---|---|
+| Repository checkout | `git clone`, `git checkout <tag or SHA>` | `src/mdscope`, `pyproject.toml`, `scripts/`, tests, docs, examples | commit SHA (`git rev-parse HEAD`) |
+| sdist (`mdscope-X.Y.Z.tar.gz`) | `python -m build` | `src/mdscope`, `tests/`, `pyproject.toml`, README, LICENSE; no `scripts/`, `docs/` or examples | version + tag commit + SHA-256 |
+| Wheel (`mdscope-X.Y.Z-py3-none-any.whl`) | `python -m build` / `pip install` | installed `mdscope` package and `.dist-info` only; no `pyproject.toml`, `scripts/` or tests by design | version + tag commit + SHA-256 |
+| GitHub release `test-data-v1` | release assets | four TPR/XTC test files. Its auto-generated "Source code" archives are the **2026-10-27 tree at `79cf99b`** (root `analysis/`, no `pyproject.toml`, no `src/`), predating the #65 `src/` migration: **not a software release** | data asset SHA-256 (#182) |
+
+A reviewer report of `analysis/` without `pyproject.toml` matches the `test-data-v1` source archive, but which file was inspected remains **unverified** until the reviewer confirms it (#182). Do not add `analysis` import aliases.
+
+**Release procedure** (software releases use `vX.Y.Z` tags; never reuse data tags):
+
+1. On an up-to-date `main` commit whose CI passed, set `__version__` in `src/mdscope/__init__.py` (the single version source) and `version:` in `CITATION.cff`; `tests/test_package_contract.py` and CI fail if they disagree.
+2. Complete the checklist above; record skips as unverified.
+3. `git tag -a vX.Y.Z -m "MDscope X.Y.Z"` on that commit and push the tag.
+4. From a clean checkout of the tag: `python -m build`, then `sha256sum dist/*` (CI also writes both to the job summary).
+5. Create a GitHub release for `vX.Y.Z` with the wheel, sdist and checksums, and release notes naming the commit, supported Python versions and tested-environment artifact. Only cite `vX.Y.Z` or a commit SHA as MDscope software.
+

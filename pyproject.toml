@@ -1,21 +1,36 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "mdscope"
-version = "0.12.0"
+# Single version source: src/mdscope/__init__.py (CITATION.cff is checked against it).
+dynamic = ["version"]
 description = "Reproducible molecular dynamics analysis workflows"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Marion LoPresti" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
 dependencies = [
-    "numpy",
-    "pandas",
-    "pyarrow",
-    "PyYAML",
-    "matplotlib",
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "pyarrow>=14",
+    "PyYAML>=6.0",
+    "matplotlib>=3.8",
     "pypdf>=5",
-    "MDAnalysis",
+    "MDAnalysis>=2.8",
+    "scipy>=1.11",
+    "Pillow>=10.1",
 ]
 
 [project.optional-dependencies]
@@ -23,6 +38,11 @@ sasa = ["freesasa"]
 studio = ["streamlit>=1.40,<2"]
 test = ["pytest"]
 dev = ["pytest", "build", "twine"]
+
+[project.urls]
+Repository = "https://github.com/MarionQL/MDscope"
+Issues = "https://github.com/MarionQL/MDscope/issues"
+Documentation = "https://github.com/MarionQL/MDscope/tree/main/docs"
 
 [project.scripts]
 mdscope = "mdscope.cli:main"
@@ -34,6 +54,9 @@ include-package-data = false
 
 [tool.setuptools.package-data]
 "mdscope.studio" = ["assets/*.png"]
+
+[tool.setuptools.dynamic]
+version = { attr = "mdscope.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

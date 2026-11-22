@@ -34,3 +34,7 @@ mdscope run analysis.yaml
 [Documentation index](docs/README.md) · [Scientific analyses](docs/analyses.md) · [Validation limits](docs/developer/scientific-audit.md) · [MIT license](LICENSE)
 
 Optional local configuration wizard: [MDscope Studio](docs/studio.md).
+
+## Releases and citation
+
+`mdscope --version` reports the installed version; cite it with the commit SHA ([`CITATION.cff`](CITATION.cff)). The GitHub release `test-data-v1` holds **test trajectories only**; its "Source code" archives are an older, pre-`src/` snapshot, not MDscope software. Use a `vX.Y.Z` tag or commit. Supported environments, the release procedure and artifact contents: [Release validation](docs/developer/release-validation.md#software-releases-and-artifact-identity).
