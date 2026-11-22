@@ -6,7 +6,7 @@ import MDAnalysis as mda
 import pytest
 
 from mdscope.config import load_config
-from mdscope.core.validation import validate_selections
+from mdscope.pipeline.preflight import validate_selections
 from mdscope.pipeline.runner import _validate_replica_products
 from mdscope.pipeline.streaming import validate_stream_inventory
 
@@ -71,6 +71,7 @@ def test_statistical_plot_manifest_failure_preserves_existing_figures(
     tmp_path, project, manifest_content, expected
 ):
     import yaml
+
     from mdscope.pipeline.runner import finalize_project
 
     config, root = project("plot_manifest_diagnostic")
@@ -122,6 +123,7 @@ def test_invalid_saved_time_axis_fails_before_downstream_processing(
     tmp_path, times
 ):
     import pandas as pd
+
     from mdscope.config import DEFAULTS
 
     root = tmp_path / "saved"

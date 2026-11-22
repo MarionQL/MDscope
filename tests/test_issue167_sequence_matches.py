@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from mdscope.mechanisms.mechanistic_common import sequence_matches
+from mdscope.core.sequence import sequence_matches
 
 
 @dataclass

@@ -314,7 +314,7 @@ def planning_snapshot(document, base):
 
 def topology_preflight(document, base):
     """Read topology only through production preflight; never open trajectories."""
-    from ..core.validation import validate_selections
+    from ..pipeline.preflight import validate_selections
     cfg = resolve_config(document, base=Path(base))
     return validate_selections(cfg, Path(base))
 
@@ -492,7 +492,7 @@ def set_statistics_exact_family(document, family, entries, *, catalog_complete=F
 
 def statistics_selector_fields(family):
     """Guided table columns from backend identity and estimator contracts."""
-    from ..statistics_selection import SIMPLE_FAMILY_KEYS, ESTIMATOR_FLAGS
+    from ..statistics_selection import ESTIMATOR_FLAGS, SIMPLE_FAMILY_KEYS
     keys = (("kind", "interaction", "metric") if family == "interactions"
             else SIMPLE_FAMILY_KEYS[family])
     return [*keys, "inference", *sorted(ESTIMATOR_FLAGS[family])]

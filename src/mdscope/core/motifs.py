@@ -44,7 +44,7 @@ def resolve_motifs(universe, definitions):
     Chain labels use chainID, falling back to segid exactly as the legacy matcher.
     Unknown residues, selection gaps and segment boundaries never bridge a hit.
     """
-    from ..mechanisms.mechanistic_common import sequence_matches, sequence_chain_label
+    from .sequence import sequence_chain_label, sequence_matches
     validate_motifs(definitions)
     resolved = {}
     for name, spec in definitions.items():

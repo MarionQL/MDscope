@@ -8,11 +8,15 @@ from tempfile import TemporaryDirectory
 import MDAnalysis as mda
 
 from ..config import analysis_runs
-from .fused_membrane import FusedMembrane, enabled_names as membrane_enabled
-from .fused_extensions import FusedExtensions, enabled_names as extension_enabled
-from .fused_distance import FusedDistances, enabled_names as distance_enabled
-from ..mechanisms.sdc4_mechanisms import SDC4Mechanisms, enabled as sdc4_enabled
-from .progress import track
+from ..core.progress import track
+from ..mechanisms.sdc4_mechanisms import SDC4Mechanisms
+from ..mechanisms.sdc4_mechanisms import enabled as sdc4_enabled
+from .fused_distance import FusedDistances
+from .fused_distance import enabled_names as distance_enabled
+from .fused_extensions import FusedExtensions
+from .fused_extensions import enabled_names as extension_enabled
+from .fused_membrane import FusedMembrane
+from .fused_membrane import enabled_names as membrane_enabled
 
 
 def run_fused_only(rep, cfg, repout, *, only=None):

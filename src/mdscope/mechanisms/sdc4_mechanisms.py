@@ -10,24 +10,47 @@ is a small-slope quadratic height-field estimate.
 """
 from __future__ import annotations
 
+import re
+import time
 from collections import defaultdict
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import re
-import time
 
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-from MDAnalysis.lib.distances import capped_distance, minimize_vectors, calc_dihedrals, distance_array
+from MDAnalysis.lib.distances import (
+    calc_dihedrals,
+    capped_distance,
+    distance_array,
+    minimize_vectors,
+)
 
-from ..config import DEFAULTS, atomic_json, atomic_parquet, ensure_dir, profile_dir, time_ps
-from ..core.lipid_geometry import anchor_groups, aligned_leaflets, periodic_center, accessible_area_grid, circular_axis_mean
-from .mechanistic_common import AA3, heavy, nearest, selected, sequence_matches, unit
-from ..observables.membrane_order import _candidate_sites, _fixed_ch_pairs, _atomic_npz
-from ..pipeline.progress import track
+from ..config import (
+    DEFAULTS,
+    atomic_json,
+    atomic_parquet,
+    ensure_dir,
+    profile_dir,
+    time_ps,
+)
 from ..core.glycans import discover_covalent_glycans
-from .residue_occlusion import OCCLUSION_FILE, ResidueOcclusion, residue_environment_pending
+from ..core.lipid_geometry import (
+    accessible_area_grid,
+    aligned_leaflets,
+    anchor_groups,
+    circular_axis_mean,
+    periodic_center,
+)
+from ..core.progress import track
+from ..core.sequence import AA3, sequence_matches
+from ..observables.membrane_order import _atomic_npz, _candidate_sites, _fixed_ch_pairs
+from .mechanistic_common import heavy, nearest, selected, unit
+from .residue_occlusion import (
+    OCCLUSION_FILE,
+    ResidueOcclusion,
+    residue_environment_pending,
+)
 
 
 def _leaflet_plane_height(position, anchors, box, side, radius, minimum):

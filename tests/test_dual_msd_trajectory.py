@@ -9,6 +9,7 @@ from MDAnalysis.coordinates.memory import MemoryReader
 
 from mdscope.config import iter_replicates
 from mdscope.core import trajectory_sources
+from mdscope.observables import msd as msd_module
 from mdscope.observables.membrane import membrane_metrics
 from mdscope.observables.msd import initialize_msd
 
@@ -43,8 +44,8 @@ def test_independent_msd_reader_uses_original_frames(monkeypatch):
     spec = {"headgroup_selection": "all", "msd": {"enabled": True}}
     initialize_msd(centered_main, state, spec)
     rep = SimpleNamespace(topology=Path("unused.tpr"), msd_trajectory=Path("raw.xtc"))
-    monkeypatch.setattr(trajectory_sources.mda, "Universe", lambda *args: uncentered_raw)
-    raw = trajectory_sources.open_msd_universe(
+    monkeypatch.setattr(msd_module.mda, "Universe", lambda *args: uncentered_raw)
+    raw = msd_module.open_msd_universe(
         rep, {"analyses": {"membrane": spec}}, state, centered_main, 0,
     )
     assert state.msd_atoms.universe is raw
@@ -91,17 +92,19 @@ def test_raw_reader_rejects_mismatched_frame_count(monkeypatch):
     state = _membrane()
     spec = {"headgroup_selection": "all", "msd": {"enabled": True}}
     initialize_msd(main, state, spec)
-    monkeypatch.setattr(trajectory_sources.mda, "Universe", lambda *args: raw)
+    monkeypatch.setattr(msd_module.mda, "Universe", lambda *args: raw)
     rep = SimpleNamespace(topology=Path("unused.tpr"), msd_trajectory=Path("raw.xtc"))
     with pytest.raises(ValueError, match="different frame counts"):
-        trajectory_sources.open_msd_universe(
+        msd_module.open_msd_universe(
             rep, {"analyses": {"membrane": spec}}, state, main, 0,
         )
 
 
 def test_multi_origin_closes_scratch_mapping_before_publishing(tmp_path, monkeypatch):
     from mmap import mmap
+
     import pandas as pd
+
     from mdscope.observables import multi_origin_pipeline as pipeline
 
     universe = _universe(0.)

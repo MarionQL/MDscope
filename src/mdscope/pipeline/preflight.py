@@ -1,13 +1,15 @@
 """Reusable topology/selection preflight; no trajectory processing or outputs."""
 from pathlib import Path
+
 import MDAnalysis as mda
 from MDAnalysis.exceptions import SelectionError
+
 from ..config import analysis_runs
+from ..core.alignment import resolved_selection_counts
+from ..core.glycans import discover_covalent_glycans, glycan_definition, glycan_sugars
+from ..core.sequence import sequence_matches
 from ..errors import ConfigError
 from ..observables.residue_membrane_distance import _without_hydrogens
-from .glycans import discover_covalent_glycans, glycan_definition, glycan_sugars
-from ..mechanisms.mechanistic_common import sequence_matches
-from .alignment import resolved_selection_counts
 from ..observables.sasa import import_freesasa, sasa_instances
 
 
@@ -61,7 +63,7 @@ def _validate_selections(cfg, base, *, systems, emit):
                 f"or named group selections in {topology}: {exc}. "
                 "Check MDAnalysis selection syntax and topology attributes."
             ) from exc
-        from .motifs import resolve_motifs
+        from ..core.motifs import resolve_motifs
         counts["motifs"] = resolve_motifs(universe, cfg.get("selections", {}).get("motifs", {}))
         for name, matches in counts["motifs"].items():
             emit(f"    motif {name}: {matches}")

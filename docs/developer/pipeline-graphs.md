@@ -197,7 +197,7 @@ outputs unchanged.
 | `plotting` | Selected statistical figure lacks completed statistics | Complete statistics first, or select a descriptive-only figure supported by the saved replicas; plotting does not infer missing CIs |
 | `report STATISTICS_DIR` | Missing/invalid manifest or contrast-coverage file | Inspect the named statistics directory; complete the statistical export before regenerating findings; preserve existing findings |
 
-The production checks live in `core/validation.py`,
+The production checks live in `pipeline/preflight.py`,
 `pipeline/streaming.py::validate_stream_inventory` and
 `pipeline/runner.py::_validate_replica_products` and
 `reporting/report.py::generate_report`. The **recovery graph**

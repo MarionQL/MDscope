@@ -9,19 +9,16 @@ import glob
 import json
 import os
 import tempfile
-from time import perf_counter
 from contextlib import ExitStack
-from tempfile import TemporaryDirectory
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from time import perf_counter
 
 import numpy as np
 import pandas as pd
 import yaml
-from ..core.persistence import archive_output as _archive_previous_output
-from ..core.validation import validate_selections
 
 from .. import __version__
-from ..errors import ConfigError, ReplicateIndexError
 from ..config import (
     analysis_enabled,
     atomic_json,
@@ -32,35 +29,63 @@ from ..config import (
     iter_replicates,
     load_config,
 )
+from ..core.persistence import archive_output as _archive_previous_output
+from ..core.progress import stage_progress
+from ..errors import ConfigError, ReplicateIndexError
 from ..interactions import postprocess_interactions
+from ..mechanisms.hs_hydration import temporal_hs_hydration_profiles
+from ..mechanisms.residue_occlusion import (
+    OCCLUSION_FILE,
+    residue_environment_pending,
+)
+from ..mechanisms.sdc4_mechanisms import complete_residue_occlusion, run_sdc4_mechanisms
+from ..mechanisms.sdc4_mechanisms import enabled as sdc4_enabled
+from ..observables.density_1d import missing_membrane_density_runs
+from ..observables.lipid_enrichment import (
+    footprint_pending,
+    summarize_lipid_composition,
+)
 from ..observables.membrane_order import membrane_order_timeseries
+from ..observables.msd import (
+    summarize_diffusion,
+    summarize_project_diffusion,
+    summarize_project_multi_origin,
+)
+from ..observables.multi_origin_pipeline import run_multi_origin_diffusion
 from ..observables.structure_profiles import postprocess_structure_profiles
+from ..registry import analysis_output_plan, fused_output, fused_output_plan
 from ..statistics import analyze_project
+from ..statistics.shared_states import fit_shared_states, publish_shared_states
+from .fused_all import run_fused_only
+from .fused_distance import enabled_names as distance_enabled_names
+from .fused_distance import run_fused_distances
+from .fused_extensions import enabled_names as extension_enabled_names
+from .fused_extensions import run_fused_extensions
+from .fused_membrane import enabled_names as fused_enabled_names
+from .fused_membrane import run_fused_membrane
 from .persisted_inputs import (
     check_artifact as _check_artifact,
-    validate_analysis_output as _validate_analysis_output,
+)
+from .persisted_inputs import (
+    configuration_with_saved_sources,
+    inspect_results_directory,
+)
+from .persisted_inputs import (
     replicate_state_prefix as _replicate_state_prefix,
+)
+from .persisted_inputs import (
+    validate_analysis_output as _validate_analysis_output,
+)
+from .persisted_inputs import (
     validate_replica_products as _validate_replica_products,
-    inspect_results_directory, configuration_with_saved_sources,
 )
-from .progress import stage_progress
-from .streaming import run_streaming_pass, validate_stream_inventory, complete_membrane_density
-from ..observables.density_1d import missing_membrane_density_runs
-from .fused_membrane import enabled_names as fused_enabled_names, run_fused_membrane
-from .fused_extensions import enabled_names as extension_enabled_names, run_fused_extensions
-from .fused_distance import enabled_names as distance_enabled_names, run_fused_distances
-from .fused_all import run_fused_only
-from ..mechanisms.sdc4_mechanisms import enabled as sdc4_enabled, run_sdc4_mechanisms, complete_residue_occlusion
-from ..mechanisms.residue_occlusion import (
-    OCCLUSION_FILE, residue_environment_pending,
+from .preflight import validate_selections
+from .replica_tasks import additional_time_series, specialized_tasks
+from .streaming import (
+    complete_membrane_density,
+    run_streaming_pass,
+    validate_stream_inventory,
 )
-from ..statistics.shared_states import fit_shared_states, publish_shared_states
-from ..mechanisms.hs_hydration import temporal_hs_hydration_profiles
-from ..registry import fused_output, fused_output_plan, analysis_output_plan
-from .replica_tasks import specialized_tasks, additional_time_series
-from ..observables.lipid_enrichment import footprint_pending, summarize_lipid_composition
-from ..observables.msd import summarize_diffusion, summarize_project_diffusion, summarize_project_multi_origin
-from ..observables.multi_origin_pipeline import run_multi_origin_diffusion
 
 
 class RunState:
@@ -541,8 +566,8 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
         if selected_figures is not None:
             # With an exact allowlist, raw-data plots can be regenerated before
             # statistics. Check their actual source contracts, not plot names.
-            from ..reporting.plot_ids import describe_plot
             from ..config import figure_enabled
+            from ..reporting.plot_ids import describe_plot
             requires_statistics = any(
                 any(source.startswith("project_summary/statistics/")
                     for source in describe_plot(identifier)["source_candidates"])
@@ -647,11 +672,16 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
                 print(f"FINDINGS: {report}", flush=True)
             return root
 
-        from ..reporting.figure_inventory import figure_snapshot, record_generated_figures
-        from ..reporting.plotting import plot_all
-        from ..reporting.membrane_figures import (
-            plot_lipid_enrichment_matrix, plot_lipid_contacts, plot_project_diffusion,
+        from ..reporting.figure_inventory import (
+            figure_snapshot,
+            record_generated_figures,
         )
+        from ..reporting.membrane_figures import (
+            plot_lipid_contacts,
+            plot_lipid_enrichment_matrix,
+            plot_project_diffusion,
+        )
+        from ..reporting.plotting import plot_all
         from ..reporting.sdc4_figures import plot_sdc4_mechanisms
         from ..reporting.solvation_figures import plot_solvation
 

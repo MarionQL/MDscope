@@ -22,17 +22,26 @@ import pandas as pd
 from MDAnalysis.lib.distances import minimize_vectors
 
 from ..config import atomic_parquet, ensure_dir, time_ps
-from ..core.lipid_geometry import anchor_groups, aligned_leaflets, centers, planar_box
-from ..observables.lipid_enrichment import FOOTPRINT_OUTPUT, LipidFootprint
-from ..observables.bilayer_normal import fit_local_normals
-from ..observables.membrane_order import (
-    AXIS_INDEX, _atomic_npz, _candidate_sites, _fixed_ch_pairs,
-    _metric_name, _profile_values, _profiles, _valid_box,
+from ..core.lipid_geometry import (
+    aligned_leaflets,
+    anchor_groups,
+    centers,
+    classify_leaflets,
+    planar_box,
 )
-from ..core.lipid_geometry import classify_leaflets
-from .progress import track
-
-
+from ..core.progress import track
+from ..observables.bilayer_normal import fit_local_normals
+from ..observables.lipid_enrichment import FOOTPRINT_OUTPUT, LipidFootprint
+from ..observables.membrane_order import (
+    AXIS_INDEX,
+    _atomic_npz,
+    _candidate_sites,
+    _fixed_ch_pairs,
+    _metric_name,
+    _profile_values,
+    _profiles,
+    _valid_box,
+)
 from .analysis_selection import (
     membrane_enabled_names as enabled_names,
 )

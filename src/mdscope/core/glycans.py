@@ -56,7 +56,7 @@ def glycan_definition(definitions, name):
 
 
 def _attachment_label(atom, chain):
-    from ..mechanisms.mechanistic_common import AA3
+    from .sequence import AA3
     code = AA3.get(str(atom.resname).upper(), str(atom.resname))
     return re.sub(r"[^A-Za-z0-9_]+", "_", f"{chain}_{code}{int(atom.resid)}")
 
@@ -70,9 +70,10 @@ def discover_covalent_glycans(u, spec):
     unexpected chain count.
     """
     import MDAnalysis as mda
-    from ..mechanisms.mechanistic_common import sequence_chain_label
     from scipy.sparse import coo_matrix
     from scipy.sparse.csgraph import connected_components
+
+    from .sequence import sequence_chain_label
 
     glysel, att_sel = spec.get("glycan_selection"), spec.get("attachment_selection")
     if not glysel or not att_sel:

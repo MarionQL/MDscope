@@ -13,7 +13,7 @@ production rendering. New documents opt out of analyses, statistics and figures.
 | Group/run operations, draft commits, exact export reconciliation | `studio.model` |
 | Draft input widgets and cached read-only previews | `studio.app` |
 | Guided project/system/replica/sampling inputs | `studio.project_editor`; system mutations in `studio.model` |
-| Topology preflight | `core.validation` |
+| Topology preflight | `pipeline.preflight` |
 | Saved output verification and offline finalization | `pipeline.persisted_inputs`; execution gate in `pipeline.runner`, Studio adapter in `studio.model` |
 
 ## Accepted authoring behavior

@@ -87,7 +87,7 @@ CI thresholds for edge counts or SCC counts.
 | Responsibility | Canonical owner | Avoid |
 |---|---|---|
 | YAML defaults, schema, user selection configuration | `config.py`, `config_schema.py` | Another Studio-only configuration engine |
-| Topology/selection checks | `core/validation.py`, `core/atom_selection.py` | GUI parsing MDAnalysis expressions independently |
+| Topology/selection checks | `pipeline/preflight.py`, `core/atom_selection.py` | GUI parsing MDAnalysis expressions independently |
 | Atomic writes, archiving, checkpoints | `core/persistence.py`, `core/checkpoints.py` | New output writers inside scientific kernels |
 | Numeric observables and interaction identity | `observables/`, `interactions/interaction_tables.py` | Re-implementing measurements in the planner |
 | Enabled analysis discovery | `pipeline/analysis_selection.py` (also imported by producers) | Planner-only copies of scheduling predicates |
@@ -222,7 +222,7 @@ operations and exact export reconciliation. `planning.authoring_catalog` supplie
 one figure candidate set to the UI and model, using registry variable contracts
 and production `reporting.plot_ids`. The Streamlit client caches schema-only
 previews by draft content; no trajectory or statistics computations occur.
-Topology checks reuse `core.validation`. See [Studio delivery](studio-plan.md)
+Topology checks reuse `pipeline.preflight`. See [Studio delivery](studio-plan.md)
 and the [user guide](../studio.md) for coverage and explicit remaining gaps.
 
 ## Persisted-input readiness

@@ -4,7 +4,7 @@ from threading import Event
 
 import pytest
 
-from mdscope.pipeline import progress as mod
+from mdscope.core import progress as mod
 
 
 class _Stderr(io.StringIO):
@@ -78,8 +78,8 @@ def test_known_total_does_not_print_frame_interval_updates(monkeypatch):
 
 
 def test_nondefault_percent_cadence_is_monotonic_bounded_and_finishes(monkeypatch):
-    import re
     import math
+    import re
     stderr = _Stderr()
     monkeypatch.setattr(mod.sys, 'stderr', stderr)
     monkeypatch.setenv('MDSCOPE_PROGRESS_EVERY_PERCENT', '7')
