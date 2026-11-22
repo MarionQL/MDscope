@@ -405,7 +405,7 @@ class FusedMembrane:
                 "ch_bonds": len(o["pairs"]), "profiles": len(o["profiles"]),
             }
         self.timings["finalize"] += time.perf_counter() - start
-        from ..config import atomic_json
+        from ..core.persistence import atomic_json
         atomic_json(self.repout / "fused_membrane_timings.json", {
             "frames_processed_this_invocation": self.frame_count,
             "compute_seconds_by_analysis": dict(self.timings),
