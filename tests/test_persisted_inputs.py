@@ -376,3 +376,31 @@ def test_registered_companion_schema_accepts_additional_dynamic_columns(tmp_path
                   "file": pd.Series(dtype=str),
                   "other_metadata": pd.Series(dtype=str)}).to_parquet(tmp_path / "profile_index.parquet")
     validate_analysis_output(entry, cfg)
+
+
+def test_saved_inventory_and_finalizer_share_companion_schema_verdict(tmp_path):
+    """A complete marker cannot promote a schema-incomplete companion to ready."""
+    doc, _, root, rep, _ = saved_project(tmp_path)
+    doc["analyses"]["sasa"]["atom_sasa_selection"] = "name CA"
+    cfg = resolve_config(doc, base=tmp_path)
+    (root / "resolved_config.yaml").write_text(yaml.safe_dump(cfg))
+    atom_file = root / rep.system / rep.label / "profiles/sasa/atom_sasa.parquet"
+    atoms = pd.DataFrame({
+        "time_ps": [0.0, 1.0, 2.0],
+        "atom_index": [0, 0, 0],
+        "topology_residue_index": [0, 0, 0],
+        "atom_name": ["CA"] * 3,
+        "sasa_nm2": [1.0, 2.0, 3.0],
+    })
+    atoms.to_parquet(atom_file)
+    assert _row(doc, tmp_path, root)["status"] == "verified_existing"
+
+    atoms.drop(columns=["atom_name"]).to_parquet(atom_file)
+    snapshot = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    row = _row(doc, tmp_path, root)
+    assert row["status"] == "incompatible"
+    assert "atom_sasa.parquet" in row["reason"]
+    assert "atom_name" in row["reason"]
+    with pytest.raises(RuntimeError, match="atom_sasa.parquet.*missing columns"):
+        finalize_project(tmp_path / "analysis.yaml", cfg=cfg, results_dir=root)
+    assert snapshot == {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
