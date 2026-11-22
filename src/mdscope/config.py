@@ -754,6 +754,17 @@ def validate_config(cfg: dict, base: Path = Path("."), *, check_paths: bool = Tr
 
     from .core.motifs import validate_motifs
     validate_motifs(cfg["selections"].get("motifs", {}))
+    local_motifs = cfg["analyses"].get("local_environment", {}).get("motifs")
+    if local_motifs is not None:
+        if not isinstance(local_motifs, dict):
+            raise ValueError("local_environment.motifs must map labels to a regex or {motif: name}")
+        for label, value in local_motifs.items():
+            if isinstance(value, dict):
+                if set(value) != {"motif"} or value["motif"] not in cfg["selections"].get("motifs", {}):
+                    raise ValueError(f"local_environment motif {label}: reference must be "
+                                     "{motif: <selections.motifs name>}")
+            else:
+                validate_motifs({label: {"pattern": value}})
     solvation = cfg["analyses"].get("solvation", {})
     if solvation.get("enabled"):
         if solvation.get("preset", "standard") not in ("standard", "detailed", "kinetics"):

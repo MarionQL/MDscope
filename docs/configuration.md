@@ -143,6 +143,14 @@ but solvation rejects shared target atoms to prevent double counting.
 Solvation saves one count per matched instance and frame, then averages instances
 within each solvent/target-class/site-label in `species_timeseries.parquet`.
 For chain-specific state features, declare separate chain-scoped motifs/labels.
+
+`analyses.local_environment.motifs` uses the same matcher. Each entry is either a
+regex matched within `protein_selection` (non-overlapping; zero matches allowed) or
+`{motif: <selections.motifs name>}`, which keeps that definition's own selection,
+chain scope and policies. Unset, it uses `nxip: N.IP`, `gxxxg: G...G` and
+`hs_candidate: SG`; `{}` measures no motifs. Group names stay
+`motif_<label>_<segid>_<first resid>`. Topologies without chainID or segid labels
+must set `motifs: {}`.
 A reference does not change this aggregation, RDF normalization, water identity
 or heavy-atom selection. Membership is saved in solvation `metadata.json` and
 atom/residue target tables.

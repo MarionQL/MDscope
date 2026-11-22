@@ -5,7 +5,6 @@ import MDAnalysis as mda
 import numpy as np
 import pytest
 
-from mdscope.biophysical_common import sequence_motifs
 from mdscope.core.lipid_geometry import anchor_groups
 from mdscope.core.sequence import sequence_matches
 
@@ -62,25 +61,6 @@ def test_multiresidue_selection_overlap_is_rejected():
         )
 
 
-def test_motif_search_does_not_bridge_two_chains():
-    # A G at the end of chain A and a G at the beginning of chain B
-    # must not be detected as an adjacent GG motif.
-    residues = [
-        SimpleNamespace(chainID="A", segid="A", resname="ALA", resid=10, ix=0),
-        SimpleNamespace(chainID="A", segid="A", resname="GLY", resid=20, ix=1),
-        SimpleNamespace(chainID="B", segid="B", resname="GLY", resid=90, ix=2),
-        SimpleNamespace(chainID="B", segid="B", resname="ALA", resid=100, ix=3),
-    ]
-    assert sequence_motifs(residues, {"glycine_pair": "GG"}) == []
-    # A positive match within B retains actual noncontiguous topology IDs.
-    residues.append(SimpleNamespace(chainID="B", segid="B",
-                                    resname="GLY", resid=140, ix=4))
-    result = sequence_motifs(residues, {"gag": "GAG"})
-    assert len(result) == 1
-    assert result[0]["chain"] == "B"
-    assert result[0]["resindices"] == [2, 3, 4]
-
-
 def test_mechanistic_overlapping_motif_matches_are_intentionally_retained():
     atoms = [
         SimpleNamespace(chainID="A", segid="A", resname="GLY", resindex=i)
@@ -96,7 +76,6 @@ def test_mechanistic_overlapping_motif_matches_are_intentionally_retained():
 
 @pytest.mark.parametrize("histidine_name", ["HSD", "HSE", "HSP", "HID", "HIE", "HIP"])
 def test_proline_motif_detects_histidine_topology_variants(histidine_name):
-    from mdscope.biophysical_common import AA
     from mdscope.core.sequence import AA3
     names = ["VAL", "VAL", histidine_name, "PRO", "LEU", "VAL", "PRO", "LEU"]
     atoms = [SimpleNamespace(chainID="PROB", segid="PROB", resname=aa,
@@ -104,4 +83,4 @@ def test_proline_motif_detects_histidine_topology_variants(histidine_name):
     hits = sequence_matches(atoms, {"proline_hydrophobic": "VVHPLVPL"})
     assert list(hits) == ["proline_hydrophobic_PROB_1"]
     np.testing.assert_array_equal(next(iter(hits.values())), np.arange(27, 35))
-    assert AA3[histidine_name] == AA[histidine_name] == "H"
+    assert AA3[histidine_name] == "H"

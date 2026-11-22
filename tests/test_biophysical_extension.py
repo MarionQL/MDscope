@@ -1,18 +1,8 @@
 """Synthetic regression checks for geometry and diffusion without trajectory files."""
 import numpy as np
-from mdscope.biophysical_common import sequence_motifs
 from mdscope.observables.msd import fit_lateral_diffusion
 from mdscope.statistics.coupling import correlation,block_means
 
-class Residue:
-    def __init__(self,name,resid,ix,chain):
-        self.resname=name;self.resid=resid;self.ix=ix;self.chainID=chain
-def test_motif_matches_and_chain_boundaries():
-    seq=[Residue(n,i,i,"A") for i,n in enumerate(["ASN","HIS","ILE","PRO"],1)]
-    seq += [Residue(n,i+4,i+4,"B") for i,n in enumerate(["ASN","HIS","ILE","PRO"],1)]
-    hits=sequence_motifs(seq,{"nxip":"N.IP"})
-    assert len(hits)==2
-    assert {m["chain"] for m in hits}=={"A","B"}
 
 def test_rmsd_separate_from_rmsf():
     from mdscope.observables.rmsd import compute_rmsd
