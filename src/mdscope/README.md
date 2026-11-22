@@ -2,7 +2,8 @@
 
 | Path | Responsibility |
 |---|---|
-| `config/` | YAML defaults, config resolution, validation, named analysis runs and labels |\n| `core/` | Geometry, selections, alignment, coordinate sources, checkpoints |
+| `config/` | YAML defaults, config resolution, validation, named analysis runs and labels |
+| `core/` | Geometry, selections, alignment, coordinate sources, checkpoints |
 | `observables/` | Structure, membrane, lipid, SASA, DSSP, MSD and density metrics |
 | `interactions/` | H bonds, salt bridges, ligand/lipid contacts |
 | `mechanisms/` | SDC4, HS topology, local environments, shared states |
