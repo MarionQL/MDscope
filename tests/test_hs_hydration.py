@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mdscope.mechanisms import hs_hydration
+from mdscope.observables import hydration as hs_hydration
 
 
 def test_sugar_hydration_with_reversed_residue_ids_and_shared_water(tmp_path):
