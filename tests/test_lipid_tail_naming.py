@@ -24,7 +24,7 @@ import pytest
 import yaml
 from MDAnalysis.coordinates.memory import MemoryReader
 
-from mdscope.config import DEFAULTS, resolve_config
+from mdscope.config import DEFAULTS, config_hash, resolve_config
 from mdscope.errors import ConfigError
 from mdscope.mechanisms.sdc4_mechanisms import _normal_order_setup
 from mdscope.observables.membrane_order import (
@@ -262,6 +262,39 @@ def test_default_tails_label_the_correct_charmm36_chains(tmp_path):
         subset = mapping[mapping["tail"] == chain]
         assert set(subset["atom_name"].str.match(r"^C" + ("3" if chain == "sn1" else "2"))) == {True}
 
+
+
+def test_legacy_results_require_new_config_hash_and_rerun(tmp_path):
+    """Pre-fix stored sn1=C2x and sn2=C3x must not masquerade as corrected data."""
+    options = {"lipid_selection": "resname POPC", "leaflet_anchor_selection": "name P"}
+    corrected = _resolved(options)
+    legacy = _resolved({**options, "tails": {
+        "sn1": {"carbon_pattern": r"^C2(\d+)$"},
+        "sn2": {"carbon_pattern": r"^C3(\d+)$"},
+    }})
+    assert config_hash(corrected) != config_hash(legacy)
+    universe = bilayer("charmm36").universe()
+    new_profiles, _ = _run_order(universe, corrected, tmp_path / "corrected")
+    old_profiles, _ = _run_order(bilayer("charmm36").universe(), legacy, tmp_path / "legacy")
+    for chain, old_chain in (("sn1", "sn2"), ("sn2", "sn1")):
+        np.testing.assert_array_equal(
+            new_profiles[f"lipid_order__{chain}"][0],
+            old_profiles[f"lipid_order__{old_chain}"][0],
+        )
+        np.testing.assert_allclose(
+            new_profiles[f"lipid_order__{chain}"][1],
+            old_profiles[f"lipid_order__{old_chain}"][1],
+            atol=1e-5,
+        )
+
+
+def test_default_sdc4_local_order_follows_correct_sn_chain_names():
+    universe = bilayer("charmm36").universe()
+    local = {"enabled": True, "lipid_selection": "resname POPC", "min_carbons_per_tail": 4}
+    naming = _resolved({})["analyses"]["membrane_order"]
+    setup = _normal_order_setup(universe, local, naming)
+    for site in setup["sites"]:
+        assert site.atom_name.startswith("C3" if site.tail == "sn1" else "C2")
 
 
 @pytest.mark.parametrize("order", [{"tail_preset": "charmm36"}, {}])
