@@ -16,7 +16,7 @@
 | Leaflets and MSD | Fixed cohorts distinguished from dynamic leaflets; direct-sum/PBC/drift tests | Flip-flop, stride aliasing, long-lag fit and finite-size effects |
 | Membrane geometry | Planar/PBC reference tests and unsupported-box errors | Strongly curved/tilted cells, headgroup-height mismatch |
 | Local bilayer normals | Whole-box-shift PBC invariance on every real-data frame; hard-cutoff ties (a neighbour within 2.5e-4 Å, ~10× measured float32 shift error, of the 15 Å cutoff) reported separately (#250) | Per-lipid tilt is discontinuous at the cutoff: one neighbour crossing it moved a ~16-neighbour tilt by ~1° (carb test data, 250 ns). Ensemble means are robust; per-lipid tilts and their tails are cutoff-sensitive |
-| Lipid tail naming | Tail mappings checked against topology elements/bonds; per-species/tail coverage in `mdscope validate`; opt-in `charmm36` preset with correct sn labels | Legacy default `sn1`/`sn2` keys select CHARMM36 C2x/C3x, i.e. the **sn-2/sn-1** chains; PSM/ceramide chains unmapped |
+| Lipid tail naming | Tail mappings checked against topology elements/bonds; per-species/tail coverage in `mdscope validate`; corrected default and optional `charmm36` preset use sn-1=C3x, sn-2=C2x (#272) | **Pre-#272 saved outputs retain reversed identities** (legacy `sn1`=C2x/sn-2, `sn2`=C3x/sn-1); rerun in fresh output directory. PSM/ceramide tails are not mapped by these sn chains (see #276) |
 | H bonds and bridges | Bond-verified molecule IDs, geometry thresholds | Protonation/chemical assignments; proximity is not cooperativity |
 
 ## Other model assumptions
