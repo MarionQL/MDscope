@@ -15,14 +15,8 @@ import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 
-from ..config import (
-    analysis_groups,
-    analysis_runs,
-    atomic_parquet,
-    ensure_dir,
-    profile_dir,
-    time_ps,
-)
+from ..config import analysis_groups, analysis_runs, profile_dir, time_ps
+from ..core.persistence import atomic_parquet, ensure_dir
 from ..core.alignment import _apply_transform, _fit_transform, _valid_box
 from ..core.checkpoints import (
     chunk_artifacts,

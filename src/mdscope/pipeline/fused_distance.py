@@ -13,7 +13,8 @@ from tempfile import TemporaryDirectory
 import MDAnalysis as mda
 import numpy as np
 
-from ..config import analysis_runs, ensure_dir, time_ps
+from ..config import analysis_runs, time_ps
+from ..core.persistence import ensure_dir
 from ..core.progress import track
 from ..observables.membrane_order import _atomic_npz
 from ..observables.residue_membrane_distance import (
