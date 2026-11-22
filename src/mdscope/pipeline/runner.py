@@ -28,6 +28,7 @@ from ..config import (
     environment_metadata,
     iter_replicates,
     load_config,
+    project_root,
 )
 from ..core.persistence import archive_output as _archive_previous_output
 from ..core.progress import stage_progress
@@ -131,15 +132,6 @@ class RunState:
             self.marker(key),
             {**(extra or {}), "status": "complete"}
         )
-
-
-def project_root(cfg: dict, config_path: str | Path) -> Path:
-    path = Path(cfg["project"]["output"])
-    return (
-        path
-        if path.is_absolute()
-        else Path(config_path).resolve().parent / path
-    )
 
 
 def _create_once(path: Path, payload: str) -> bool:
