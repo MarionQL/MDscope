@@ -1,4 +1,5 @@
 """Configuration package boundaries and compatibility after #259."""
+import ast
 import subprocess
 import sys
 from copy import deepcopy
@@ -54,3 +55,17 @@ def test_core_profiling_can_import_without_config_cycle():
     p = subprocess.run([sys.executable, "-c", code], capture_output=True,
                        text=True, check=False, timeout=45)
     assert p.returncode == 0, p.stderr
+
+
+def test_config_never_reexports_persistence_or_provenance():
+    package = Path(__file__).resolve().parents[1] / "src" / "mdscope" / "config"
+    forbidden = {"atomic_json", "atomic_parquet", "ensure_dir",
+                 "config_hash", "environment_metadata", "archive_output"}
+    for module in package.glob("*.py"):
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                assert not (node.module or "").endswith(("persistence", "provenance")), module
+                assert not forbidden.intersection(alias.name for alias in node.names), module
+    for name in forbidden:
+        assert not hasattr(config, name), name
