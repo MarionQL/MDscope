@@ -299,4 +299,13 @@ Shared motif membership is resolved by `core/motifs.py` using the existing
 sequence matcher; neither Studio nor the planner assembles a second sequence.
 Covalent glycan chains and attachment-relative sugar order come only from
 `core/glycans.py`; SDC4 HS, solvation `hs_chain` grouping, the K-bridge audit
-and hydration (`mechanisms/hs_hydration.HydrationObserver`) all reuse it.
+and hydration (`observables/hydration.HydrationObserver`) all reuse it.
+
+## SDC4 domain ownership (#258)
+
+Generic hydration lives in `observables/hydration.py` and reuses the same
+persisted columns and paths from `contracts/outputs.py`. SDC4-specific
+observers and potassium topology audits live in `systems/sdc4/`, not in the
+generic `mechanisms/` package. The pipeline owns their scheduling and
+checkpointing; all public CLI/YAML and persisted numerical contracts remain
+unchanged. Imports at the retired producer locations are not retained.

@@ -159,7 +159,8 @@ prove that an analysis ran or a trajectory was opened.
 | `core/` | Shared geometry, coordinate contracts, checkpoints, selection utilities | Minimum-image distances and frame provenance |
 | `observables/` | **Measure** physical quantities, often directly from trajectory frames | RMSD/RMSF, SASA, membrane order, lipid enrichment, water coordination |
 | `interactions/` | Detect and persist molecular contact/event relationships | H bonds, salt bridges, lipid contacts |
-| `mechanisms/` | System-specific **scientific features and models**; some are per-frame, others use saved results | SDC4 motif/HS geometry, HS hydration, shared conformational states |
+| `mechanisms/` | Generic scientific features and models, including saved-data states | Local environments, motif residence, occlusion, shared conformational states |
+| `systems/sdc4/` | SDC4-specific observers and chemistry | SDC4 motif/HS geometry and potassium bridge audit |
 | `pipeline/` | Decide **when/how** implementations run and resume; owns the shared frame loops | Streaming, fused observers, fallback dispatch |
 | `statistics/` | Compare replicas, estimate uncertainty, and evaluate contrasts from saved products | Hierarchical/bootstrap CIs, RDF contrasts |
 | `reporting/` | Present saved results, without reopening trajectories | Figures and findings |
@@ -169,7 +170,7 @@ perform PBC-aware coordinate calculations on each frame. Offline aggregation
 and inference belong in `statistics/`, while display-only grouping belongs
 in `reporting/`.
 
-`mechanisms/` is intentionally a sibling of `pipeline/`, not a child: SDC4
+`systems/sdc4/` is intentionally separate from `pipeline/`: SDC4
 and HS science is **what** is measured, whereas `pipeline/` owns **when** it
 runs. In particular, `mechanisms/shared_states.py` works from saved features
 and does not need a trajectory pass; `SDC4Mechanisms` is a per-frame observer.
