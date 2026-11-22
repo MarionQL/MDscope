@@ -6,16 +6,17 @@ schemas. Executable replica tasks live in pipeline.replica_tasks.
 from __future__ import annotations
 
 from dataclasses import dataclass
-
-from .contracts.outputs import (
-    GLYCAN_ATTACHMENTS_FILE, HS_SUGAR_HYDRATION_PATH, RESIDUE_OCCLUSION_FILE,
-    OUTPUT_DESCRIPTORS, artifact_schema,
-)
 from pathlib import Path
 
 from .config import analysis_enabled, analysis_runs
-from .output_paths import FUSED_OUTPUTS, RUN_SCOPED_OUTPUTS
-
+from .contracts.outputs import (
+    GLYCAN_ATTACHMENTS_FILE,
+    HS_SUGAR_HYDRATION_PATH,
+    OUTPUT_DESCRIPTORS,
+    RESIDUE_OCCLUSION_FILE,
+    artifact_schema as artifact_schema,
+)
+from .output_paths import FUSED_OUTPUTS, RUN_SCOPED_OUTPUTS as RUN_SCOPED_OUTPUTS
 
 # Precise schema details live with the artifact registry, not the GUI.
 # A missing column/shape description means the corresponding producer has
