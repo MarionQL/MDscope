@@ -71,9 +71,9 @@ def validate_plot_ids(include):
                 and parts[1].endswith(("_pair_count_undirected",
                                        "_neighbors_per_molecule", "_enrichment"))):
             continue
-        if len(parts) == 3 and parts[0] in {"time_series", "profiles"}:
-            if parts[1] and parts[2] in DYNAMIC_VARIANTS[parts[0]]:
-                continue
+        if (len(parts) == 3 and parts[0] in {"time_series", "profiles"}
+                and parts[1] and parts[2] in DYNAMIC_VARIANTS[parts[0]]):
+            continue
         if (len(parts) == 4 and parts[0] == "profiles" and parts[1]
                 and parts[2] and parts[3] == "distance_heatmap"):
             continue
