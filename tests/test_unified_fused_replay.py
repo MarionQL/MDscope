@@ -89,8 +89,19 @@ def test_complete_noop_does_not_reopen_trajectory(tmp_path, monkeypatch):
     def forbidden(*args, **kwargs):
         raise AssertionError("no-op run reopened a trajectory")
 
+    verified = []
+    original = runner._validate_analysis_output
+
+    def counted(entry, *args, **kwargs):
+        verified.append(entry.checkpoint_key)
+        return original(entry, *args, **kwargs)
+
     monkeypatch.setattr(fused_all.mda, "Universe", forbidden)
+    monkeypatch.setattr(runner, "_validate_analysis_output", counted)
     runner.run_replicate(rep, cfg, root, state)
+    # Existing products require preflight and final audit, not a third read.
+    from mdscope.registry import analysis_output_plan
+    assert len(verified) == len(analysis_output_plan(cfg, repout)) * 2
 
 
 def test_replay_rejects_mismatched_time_grid_before_publishing(tmp_path, monkeypatch):
