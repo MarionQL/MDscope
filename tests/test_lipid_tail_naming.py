@@ -24,7 +24,7 @@ import pytest
 import yaml
 from MDAnalysis.coordinates.memory import MemoryReader
 
-from mdscope.config import DEFAULTS, resolve_config
+from mdscope.config import DEFAULTS, config_hash, resolve_config
 from mdscope.errors import ConfigError
 from mdscope.mechanisms.sdc4_mechanisms import _normal_order_setup
 from mdscope.observables.membrane_order import (
@@ -178,15 +178,38 @@ def bilayer(convention, *, hydrogens=True, extra=()):
 
 
 def _psm(builder):
-    """CHARMM36 sphingomyelin chain names (C1S..C18S, C1F..C16F) from the SDC4 TPRs."""
+    """CHARMM36 sphingomyelin chains as in the SDC4 TPRs: C1S..C18S, C1F (amide
+    carbonyl, no hydrogen)..C16F. Every C-H bond is perpendicular to z, so
+    -S_CH = 0.5 at each mapped position."""
     residue = builder.residue("PSM")
     p = builder.atom(residue, "P", "P", [50, 25, 70])
     for prefix, count, x in (("S", 18, 48.), ("F", 16, 52.)):
         previous = p
         for k in range(1, count + 1):
             c = builder.atom(residue, f"C{k}{prefix}", "C", [x, 25, 68 - 1.25 * k], previous)
-            builder.atom(residue, f"H{k}{prefix}", "H", [x + 1.09, 25, 68 - 1.25 * k], c)
+            if not (prefix == "F" and k == 1):
+                builder.atom(residue, f"H{k}{prefix}", "H", [x + 1.09, 25, 68 - 1.25 * k], c)
             previous = c
+
+
+def test_charmm36_maps_sphingolipid_chains_without_pooling_them_into_sn_chains(tmp_path):
+    cfg = _resolved({"tail_preset": "charmm36", "lipid_selection": "resname POPC PSM",
+                     "leaflet_anchor_selection": "name P", "per_leaflet": False})
+    profiles, mapping = _run_order(bilayer("charmm36", extra=(_psm,)).universe(), cfg, tmp_path)
+    for tail, first, last in (("sphingosine", 1, 18), ("n_acyl", 2, 16)):
+        for profile in (f"lipid_order__{tail}", f"lipid_order__PSM__{tail}"):
+            positions, values = profiles[profile]
+            np.testing.assert_array_equal(positions, np.arange(first, last + 1), err_msg=profile)
+            np.testing.assert_allclose(values, 0.5, atol=1e-5, err_msg=profile)
+    # Pooled sn-1/sn-2 stay POPC-only: PSM chains never enter them.
+    for chain in ("sn1", "sn2"):
+        positions, expected = expected_minus_sch(chain)
+        np.testing.assert_array_equal(profiles[f"lipid_order__{chain}"][0], positions)
+        np.testing.assert_allclose(profiles[f"lipid_order__{chain}"][1],
+                                   np.tile(expected, (5, 1)), atol=1e-5)
+    psm = mapping[mapping.resname == "PSM"]
+    assert set(psm["tail"]) == {"sphingosine", "n_acyl"}
+    assert set(psm.n_lipids) == {1}
 
 
 def _cholesterol(builder):
@@ -244,16 +267,56 @@ def test_two_naming_conventions_reproduce_the_same_analytic_sn_profiles(tmp_path
     pd.testing.assert_frame_equal(results["charmm36"][1][identity], results["macrog"][1][identity])
 
 
-def test_default_tails_keep_their_legacy_charmm_labels(tmp_path):
-    """Omitted naming keeps sn1=^C2, sn2=^C3: CHARMM36 C2x is the sn-2 chain."""
+def test_default_tails_label_the_correct_charmm36_chains(tmp_path):
+    """Omitted naming and the preset must identify sn-1 as C3x, sn-2 as C2x."""
     cfg = _resolved({"lipid_selection": "resname POPC", "leaflet_anchor_selection": "name P"})
     assert "tail_preset" not in cfg["analyses"]["membrane_order"]
     assert cfg["analyses"]["membrane_order"]["tails"] == DEFAULTS["analyses"]["membrane_order"]["tails"]
-    profiles, _ = _run_order(bilayer("charmm36").universe(), cfg, tmp_path)
-    for label, chain in (("sn1", "sn2"), ("sn2", "sn1")):
+    assert cfg["analyses"]["membrane_order"]["tails"] == {
+        "sn1": {"carbon_pattern": r"^C3(\d+)$"},
+        "sn2": {"carbon_pattern": r"^C2(\d+)$"},
+    }
+    profiles, mapping = _run_order(bilayer("charmm36").universe(), cfg, tmp_path)
+    for chain in ("sn1", "sn2"):
         positions, expected = expected_minus_sch(chain)
-        np.testing.assert_array_equal(profiles[f"lipid_order__{label}"][0], positions)
-        np.testing.assert_allclose(profiles[f"lipid_order__{label}"][1][0], expected, atol=1e-5)
+        np.testing.assert_array_equal(profiles[f"lipid_order__{chain}"][0], positions)
+        np.testing.assert_allclose(profiles[f"lipid_order__{chain}"][1],
+                                   np.tile(expected, (5, 1)), atol=1e-5)
+        subset = mapping[mapping["tail"] == chain]
+        assert set(subset["atom_name"].str.match(r"^C" + ("3" if chain == "sn1" else "2"))) == {True}
+
+
+def test_legacy_results_require_new_config_hash_and_rerun(tmp_path):
+    """Pre-fix stored sn1=C2x and sn2=C3x must not masquerade as corrected data."""
+    options = {"lipid_selection": "resname POPC", "leaflet_anchor_selection": "name P"}
+    corrected = _resolved(options)
+    legacy = _resolved({**options, "tails": {
+        "sn1": {"carbon_pattern": r"^C2(\d+)$"},
+        "sn2": {"carbon_pattern": r"^C3(\d+)$"},
+    }})
+    assert config_hash(corrected) != config_hash(legacy)
+    universe = bilayer("charmm36").universe()
+    new_profiles, _ = _run_order(universe, corrected, tmp_path / "corrected")
+    old_profiles, _ = _run_order(bilayer("charmm36").universe(), legacy, tmp_path / "legacy")
+    for chain, old_chain in (("sn1", "sn2"), ("sn2", "sn1")):
+        np.testing.assert_array_equal(
+            new_profiles[f"lipid_order__{chain}"][0],
+            old_profiles[f"lipid_order__{old_chain}"][0],
+        )
+        np.testing.assert_allclose(
+            new_profiles[f"lipid_order__{chain}"][1],
+            old_profiles[f"lipid_order__{old_chain}"][1],
+            atol=1e-5,
+        )
+
+
+def test_default_sdc4_local_order_follows_correct_sn_chain_names():
+    universe = bilayer("charmm36").universe()
+    local = {"enabled": True, "lipid_selection": "resname POPC", "min_carbons_per_tail": 4}
+    naming = _resolved({})["analyses"]["membrane_order"]
+    setup = _normal_order_setup(universe, local, naming)
+    for site in setup["sites"]:
+        assert site.atom_name.startswith("C3" if site.tail == "sn1" else "C2")
 
 
 @pytest.mark.parametrize("order", [{"tail_preset": "charmm36"}, {}])
@@ -337,24 +400,28 @@ def test_validate_shows_counts_and_explicit_exclusions_per_species_and_tail(tmp_
         "tail_preset": "charmm36", "lipid_selection": "resname POPC PSM CHL1",
         "leaflet_anchor_selection": "name P",
         "lipid_overrides": {"DOPC": {"sn1": {"carbon_pattern": r"^C3(\d+)$"}}}})
-    assert ("membrane_order: tail_preset=charmm36, 4 lipids, C-H pairs from topology bonds, "
-            "tail chains bond-verified for 8/8 residue tails") in text
+    assert ("membrane_order: tail_preset=charmm36, 5 lipids, C-H pairs from topology bonds, "
+            "tail chains bond-verified for 10/10 residue tails") in text
     assert "membrane_order POPC sn1: 4/4 lipids, positions 2-16, 124 C-H bonds" in text
     assert "membrane_order POPC sn2: 4/4 lipids, positions 2-18, 132 C-H bonds" in text
+    assert "membrane_order POPC sphingosine: unavailable for all 4 lipids (4 no matching carbons)" in text
+    assert "membrane_order PSM sphingosine: 1/1 lipids, positions 1-18, 18 C-H bonds" in text
+    assert "membrane_order PSM n_acyl: 1/1 lipids, positions 2-16, 15 C-H bonds" in text
     assert "membrane_order PSM sn1: unavailable for all 1 lipids (1 no matching carbons)" in text
-    assert "membrane_order PSM sn2: unavailable for all 1 lipids (1 no matching carbons)" in text
     assert "membrane_order CHL1: 1 residues excluded by exclude_resnames" in text
     assert "membrane_order: lipid_overrides.DOPC matches no selected residue" in text
-    assert "membrane_order initial leaflets at topology coordinates: upper=2, lower=2" in text
+    assert "membrane_order initial leaflets at topology coordinates: upper=3, lower=2" in text
     audit = counts["s"]["membrane_order"]
     assert audit["multi_residue_molecules"] == 0
-    psm = [row for row in audit["species"] if row["resname"] == "PSM"]
-    assert [row["mapped_residues"] for row in psm] == [0, 0]
+    psm = {row["tail"]: row["mapped_residues"] for row in audit["species"] if row["resname"] == "PSM"}
+    assert psm == {"sn1": 0, "sn2": 0, "sphingosine": 1, "n_acyl": 1}
     plan = build_plan(cfg, path, validation_mode="topology_aware", topology_counts=counts)
     order_entry = next(item for item in plan["analyses"] if item["analysis"] == "membrane_order")
     assert order_entry["tail_naming"] == {
         "tail_preset": "charmm36",
-        "tails": {"sn1": {"carbon_pattern": r"^C3(\d+)$"}, "sn2": {"carbon_pattern": r"^C2(\d+)$"}},
+        "tails": {"sn1": {"carbon_pattern": r"^C3(\d+)$"}, "sn2": {"carbon_pattern": r"^C2(\d+)$"},
+                  "sphingosine": {"carbon_pattern": r"^C(\d+)S$"},
+                  "n_acyl": {"carbon_pattern": r"^C(\d+)F$"}},
         "lipid_overrides": {"DOPC": {"sn1": {"carbon_pattern": r"^C3(\d+)$"}}}}
     assert plan["topology_counts"]["s"]["membrane_order"]["species"] == audit["species"]
 
@@ -387,12 +454,14 @@ def test_tail_preset_resolution_precedence_and_round_trip():
                                                           "sn3": {"carbon_pattern": r"^C4(\d+)$"}}})
     order = cfg["analyses"]["membrane_order"]
     assert order["tails"] == {"sn1": explicit, "sn2": {"carbon_pattern": r"^C2(\d+)$"},
+                              "sphingosine": {"carbon_pattern": r"^C(\d+)S$"},
+                              "n_acyl": {"carbon_pattern": r"^C(\d+)F$"},
                               "sn3": {"carbon_pattern": r"^C4(\d+)$"}}
     assert resolve_config(yaml.safe_load(yaml.safe_dump(cfg))) == cfg
     # Without a preset an explicit tail still merges into the default tail.
     legacy = _resolved({"tails": {"sn1": explicit}})["analyses"]["membrane_order"]["tails"]
-    assert legacy["sn1"] == {"carbon_pattern": r"^C2(\d+)$", **explicit}
-    assert legacy["sn2"] == {"carbon_pattern": r"^C3(\d+)$"}
+    assert legacy["sn1"] == {"carbon_pattern": r"^C3(\d+)$", **explicit}
+    assert legacy["sn2"] == {"carbon_pattern": r"^C2(\d+)$"}
     # A per-lipid naming override replaces the shared naming for that lipid only.
     spec = {"tails": {"sn1": {"carbon_names": ["C21"], "positions": [1]}},
             "lipid_overrides": {"DOPC": {"sn1": {"carbon_pattern": r"^C3(\d+)$"}}}}
@@ -423,8 +492,13 @@ def test_disabled_membrane_order_accepts_preset_and_keeps_production_yaml_unchan
         with open(name) as handle:
             raw = yaml.safe_load(handle)
         order = resolve_config(raw)["analyses"]["membrane_order"]
-        assert "tail_preset" not in order
-        assert order["tails"] == DEFAULTS["analyses"]["membrane_order"]["tails"]
+        expected_preset = name != "synd4_baseline.yaml"
+        assert order.get("tail_preset") == ("charmm36" if expected_preset else None)
+        assert {key: order["tails"][key] for key in ("sn1", "sn2")} == DEFAULTS["analyses"]["membrane_order"]["tails"]
+        if expected_preset:
+            assert set(order["tails"]) == {"sn1", "sn2", "sphingosine", "n_acyl"}
+        else:
+            assert set(order["tails"]) == {"sn1", "sn2"}
         assert order["lipid_overrides"] == {}
 
 
