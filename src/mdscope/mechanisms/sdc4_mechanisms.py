@@ -44,7 +44,7 @@ from ..core.lipid_geometry import (
 )
 from ..core.progress import track
 from ..core.sequence import AA3, sequence_matches
-from ..observables.membrane_order import _atomic_npz, _candidate_sites, _fixed_ch_pairs
+from ..observables.membrane_order import _atomic_npz, _order_sites
 from .mechanistic_common import heavy, nearest, selected, unit
 from .residue_occlusion import (
     OCCLUSION_FILE,
@@ -223,19 +223,26 @@ def _backbone_axis(atoms, box):
     return unit(direction)
 
 
-def _normal_order_setup(u, spec):
+def local_order_options(spec, naming=None):
+    """Local -S_CH options: membrane_order tail naming, local_order population.
+
+    Only ``tails`` and ``lipid_overrides`` (with any resolved ``tail_preset``)
+    come from ``analyses.membrane_order``; other order settings keep defaults.
+    """
+    options = dict(DEFAULTS["analyses"]["membrane_order"])
+    options.update({key: (naming or {})[key] for key in ("tails", "lipid_overrides", "tail_preset")
+                    if key in (naming or {})})
+    options.update(spec)
+    return options
+
+
+def _normal_order_setup(u, spec, naming=None):
     if not spec.get("enabled", False):
         return None
-    options = dict(DEFAULTS["analyses"]["membrane_order"])
-    options.update(spec)
+    options = local_order_options(spec, naming)
     if not options.get("lipid_selection"):
         raise ValueError("sdc4_mechanisms.local_order.lipid_selection is required")
-    sites = _candidate_sites(u, options)
-    if not sites:
-        raise ValueError("No acyl carbon sites matched local_order selection")
-    sites, carbons, hydrogens, pairs = _fixed_ch_pairs(
-        u, sites, float(options.get("hydrogen_cutoff_A", 1.25))
-    )
+    _, (sites, carbons, hydrogens, pairs), _ = _order_sites(u, options)
     return {"sites": sites, "carbons": carbons, "hydrogens": hydrogens,
             "pairs": pairs, "resindices": np.array([s.residue_index for s in sites])}
 
@@ -495,7 +502,8 @@ class SDC4Mechanisms:
                     "verify topology chain IDs and TM residue range"
                 )
             self.gxxxg[chain] = heavy(universe.atoms[np.isin(universe.atoms.resindices, indices)])
-        self.local_order = _normal_order_setup(universe, s.get("local_order") or {})
+        self.local_order = _normal_order_setup(universe, s.get("local_order") or {},
+                                               cfg["analyses"].get("membrane_order"))
         self.extent = float(s.get("map_extent_A", 40.))
         self.bin_A = float(s.get("map_bin_A", 2.))
         n = int(np.ceil(2 * self.extent / self.bin_A))

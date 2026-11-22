@@ -33,6 +33,9 @@ def option_help(analysis, key):
         "contact_cutoff_A": "Contact distance threshold in angstroms; null disables the optional cutoff-fraction output.",
         "bins": "Histogram resolution; bin populations and normalization depend on the configured reference.",
         "batch_atoms": "Memory/work batching only; this does not add independent scientific samples.",
+        "tail_preset": "Opt-in verified acyl-tail naming (charmm36); explicit tails and lipid_overrides take precedence. Never inferred from residue names.",
+        "tails": "Named tails: carbon_pattern (integer capture = carbon position) or carbon_names [+ positions]; checked against topology bonds by mdscope validate.",
+        "lipid_overrides": "Per-residue-name tail naming that replaces the shared tail naming for that lipid.",
     }
     if key in definitions:
         return definitions[key]
@@ -109,6 +112,7 @@ def option_schema(defaults):
 
     tail = {"carbon_pattern": None, "carbon_names": None, "positions": None}
     order = analyses["membrane_order"]
+    order["tail_preset"] = None  # Not in DEFAULTS: omitted keeps the resolved config unchanged.
     order["tails"] = {"*": tail}
     order["lipid_overrides"] = {"*": {"*": tail}}
 

@@ -26,7 +26,6 @@ from ..core.lipid_geometry import (
     aligned_leaflets,
     anchor_groups,
     centers,
-    classify_leaflets,
     planar_box,
 )
 from ..core.progress import track
@@ -35,12 +34,10 @@ from ..observables.lipid_enrichment import FOOTPRINT_OUTPUT, LipidFootprint
 from ..observables.membrane_order import (
     AXIS_INDEX,
     _atomic_npz,
-    _candidate_sites,
-    _fixed_ch_pairs,
     _metric_name,
     _profile_values,
-    _profiles,
     _valid_box,
+    order_setup,
 )
 from .analysis_selection import (
     membrane_enabled_names as enabled_names,
@@ -112,7 +109,7 @@ class FusedMembrane:
                 universe, entry["spec"], state["species"], state["indices"], state["axis"],
             )
         if "membrane_order" in self.names:
-            self.order = self._order_setup()
+            self.order = order_setup(universe, cfg["analyses"]["membrane_order"])
 
     def _geometry_setup(self, name):
         spec = self.cfg["analyses"][name]
@@ -137,43 +134,6 @@ class FusedMembrane:
             if radius <= 0 or minimum < 3:
                 raise ValueError("neighbor_radius_A > 0 and min_neighbors >= 3")
         return {"key": key, "state": state, "spec": spec}
-
-    def _order_setup(self):
-        spec = self.cfg["analyses"]["membrane_order"]
-        axis = AXIS_INDEX[str(spec.get("axis", "z")).lower()]
-        sites = _candidate_sites(self.u, spec)
-        if not sites:
-            raise ValueError("membrane_order found no tail carbons; check lipid_selection and tail patterns")
-        sites, carbons, hydrogens, pairs = _fixed_ch_pairs(
-            self.u, sites, float(spec.get("hydrogen_cutoff_A", 1.25))
-        )
-        leaflet_by_residue = None
-        if spec.get("per_leaflet", True):
-            representative = {}
-            for site in sorted(sites, key=lambda item: (item.residue_index, item.position)):
-                representative.setdefault(site.residue_index, site.atom_index)
-            indices = np.asarray(list(representative), int)
-            coords = self.u.atoms[list(representative.values())].positions.copy()
-            anchor_selection = spec.get("leaflet_anchor_selection")
-            if anchor_selection:
-                selected = self.u.select_atoms(str(anchor_selection))
-                for i, index in enumerate(indices):
-                    matching = selected[selected.resindices == index]
-                    if len(matching):
-                        coords[i] = matching.center_of_geometry()
-            box = planar_box(self.u.dimensions, axis)
-            leaf = classify_leaflets(coords[:, axis], float(box[axis]))
-            leaflet_by_residue = {
-                int(ix): "upper" if flag else "lower"
-                for ix, flag in zip(indices, leaf)
-            }
-        profiles = _profiles(sites, spec, leaflet_by_residue)
-        if not profiles:
-            raise ValueError("membrane_order found no usable sn-1/sn-2 order profiles")
-        return {
-            "sites": sites, "carbons": carbons, "hydrogens": hydrogens,
-            "pairs": pairs, "profiles": profiles, "axis": axis,
-        }
 
     def update(self, ts, frame_index):
         """Consume one raw frame; never changes the Universe coordinates."""

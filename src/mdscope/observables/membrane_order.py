@@ -55,24 +55,27 @@ def _valid_box(universe):
     return universe.dimensions if np.all(dims[:3] > 0) else None
 
 
-def _tail_atoms(residue, spec: dict) -> list[tuple[object, int]]:
+def _tail_atoms(residue, spec: dict) -> list[tuple[int, str, int]]:
+    """``(atom index, atom name, carbon position)`` per mapped tail carbon."""
+    # Name/index arrays avoid building one Atom object per lipid atom.
+    atoms = list(zip(residue.atoms.indices.tolist(), map(str, residue.atoms.names)))
     names = spec.get("carbon_names")
     if names:
         positions = spec.get("positions")
         if positions is not None and len(positions) != len(names):
             raise ValueError("membrane_order tail positions must match carbon_names length")
         lookup = {str(name): i for i, name in enumerate(names)}
-        found = {str(atom.name): atom for atom in residue.atoms if str(atom.name) in lookup}
+        found = {name: index for index, name in atoms if name in lookup}
         return [
-            (found[str(name)], int(positions[i]) if positions is not None else i + 1)
+            (found[str(name)], str(name), int(positions[i]) if positions is not None else i + 1)
             for i, name in enumerate(names)
             if str(name) in found
         ]
 
     pattern = re.compile(str(spec["carbon_pattern"]))
     found = []
-    for atom in residue.atoms:
-        match = pattern.fullmatch(str(atom.name))
+    for index, name in atoms:
+        match = pattern.fullmatch(name)
         if not match:
             continue
         if match.lastindex:
@@ -83,18 +86,22 @@ def _tail_atoms(residue, spec: dict) -> list[tuple[object, int]]:
                     "membrane_order carbon_pattern capture group 1 must be an integer"
                 ) from exc
         else:
-            digits = re.findall(r"\d+", str(atom.name))
+            digits = re.findall(r"\d+", name)
             if not digits:
                 raise ValueError(
                     "membrane_order carbon_pattern needs an integer capture group "
                     "or numeric atom names"
                 )
             position = int(digits[-1])
-        found.append((atom, position))
-    return sorted(found, key=lambda item: item[1])
+        found.append((index, name, position))
+    return sorted(found, key=lambda item: item[2])
+
+
+NAMING_KEYS = ("carbon_pattern", "carbon_names", "positions")
 
 
 def _tail_spec(spec: dict, resname: str, tail: str) -> dict:
+    """Shared tail naming, replaced per lipid by an explicit naming override."""
     base = dict((spec.get("tails", {}) or {}).get(tail, {}) or {})
     override = (
         (spec.get("lipid_overrides", {}) or {})
@@ -102,44 +109,130 @@ def _tail_spec(spec: dict, resname: str, tail: str) -> dict:
         .get(tail, {})
         or {}
     )
+    if override.get("carbon_pattern") or override.get("carbon_names"):
+        base = {key: value for key, value in base.items() if key not in NAMING_KEYS}
     base.update(override)
     return base
 
 
-def _candidate_sites(universe, spec: dict) -> list[OrderSite]:
+def _scan_sites(universe, spec: dict, bonds):
+    """Map tail carbons per selected residue and verify them against the topology.
+
+    Returns ``(sites, matched, excluded, chains)``: matched-carbon counts per
+    residue for each ``(resname, tail)``, residue counts skipped through
+    ``exclude_resnames``, and the bond-graph verification summary.
+    """
     selection = spec.get("lipid_selection")
     atoms = universe.select_atoms(str(selection)) if selection else universe.atoms
-    excluded = {str(name) for name in spec.get("exclude_resnames", [])}
+    excluded_names = {str(name) for name in spec.get("exclude_resnames", [])}
     tails = list((spec.get("tails", {}) or {}).keys())
     minimum = int(spec.get("min_carbons_per_tail", 4))
-    sites = []
+    sites, matched, excluded = [], {}, {}
     # Iterate selected residues only: full hydrated TPRs contain hundreds of
     # thousands of water residues and scanning all of them is unnecessary.
     for residue in atoms.residues:
-        if str(residue.resname) in excluded:
+        resname = str(residue.resname)
+        if resname in excluded_names:
+            excluded[resname] = excluded.get(resname, 0) + 1
             continue
         for tail in tails:
-            tail_spec = _tail_spec(spec, str(residue.resname), tail)
-            if not tail_spec.get("carbon_pattern") and not tail_spec.get("carbon_names"):
-                continue
-            found = _tail_atoms(residue, tail_spec)
+            tail_spec = _tail_spec(spec, resname, tail)
+            found = (_tail_atoms(residue, tail_spec)
+                     if tail_spec.get("carbon_pattern") or tail_spec.get("carbon_names") else [])
+            matched.setdefault((resname, str(tail)), []).append(len(found))
             if len(found) < minimum:
                 continue
             sites.extend(
-                OrderSite(
-                    int(atom.index),
-                    int(residue.ix),
-                    str(residue.resname),
-                    str(tail),
-                    int(position),
-                    str(atom.name),
-                )
-                for atom, position in found
+                OrderSite(int(index), int(residue.ix), resname, str(tail), int(position), name)
+                for index, name, position in found
             )
-    return sites
+    return sites, matched, excluded, _verify_tail_chains(universe, sites, bonds)
 
 
-def _fixed_ch_pairs(universe, sites: list[OrderSite], cutoff: float):
+def _site_label(site: OrderSite) -> str:
+    return f"{site.resname} tail {site.tail} atom {site.atom_name} (position {site.position})"
+
+
+def _check_tail_atoms(universe, sites: list[OrderSite], group_ids, positions) -> None:
+    """Each mapped atom is one carbon at one position of one residue tail."""
+    owner = {}
+    for site in sites:
+        other = owner.setdefault(site.atom_index, site)
+        if other is not site:
+            raise ValueError(
+                f"membrane_order maps {site.resname} atom {site.atom_name} to both tails "
+                f"{other.tail} and {site.tail}; tail naming must not overlap"
+            )
+    try:
+        elements = universe.atoms[[site.atom_index for site in sites]].elements
+    except (NoDataError, AttributeError):
+        elements = ()
+    for site, element in zip(sites, elements):
+        element = str(element).strip().upper()
+        if element and element != "C":
+            raise ValueError(
+                f"membrane_order maps non-carbon atom {_site_label(site)} with "
+                f"element {element}; check tails and lipid_overrides"
+            )
+    seen = set()
+    for site, group, position in zip(sites, group_ids, positions):
+        if (group, position) in seen:
+            raise ValueError(f"membrane_order maps duplicate carbon positions in {_site_label(site)}")
+        seen.add((group, position))
+
+
+def _verify_tail_chains(universe, sites: list[OrderSite], bonds) -> dict:
+    """Reject tail mappings contradicted by topology elements or bonds.
+
+    With bonds, carbons of one residue tail must form one chain whose bonded
+    neighbours differ by exactly one position, and no tail carbon may bond to
+    another tail or residue. Residue tails without any bonded tail-carbon pair
+    (C-H-only bond graphs) are counted as unverified instead.
+    """
+    summary = {"bond_graph": False, "residue_tails": 0, "verified_residue_tails": 0}
+    if not sites:
+        return summary
+    group_of = {}
+    group_ids = np.asarray([group_of.setdefault((site.residue_index, site.tail), len(group_of))
+                            for site in sites], dtype=np.int64)
+    positions = np.asarray([site.position for site in sites], dtype=np.int64)
+    summary["residue_tails"] = n_groups = len(group_of)
+    _check_tail_atoms(universe, sites, group_ids, positions)
+    if bonds is None:
+        return summary
+    summary["bond_graph"] = True
+    site_of = np.full(len(universe.atoms), -1, dtype=np.int64)
+    site_of[[site.atom_index for site in sites]] = np.arange(len(sites))
+    left, right = site_of[bonds[:, 0]], site_of[bonds[:, 1]]
+    keep = (left >= 0) & (right >= 0)
+    pairs = np.unique(np.sort(np.stack([left[keep], right[keep]], axis=1), axis=1), axis=0)
+    left, right = pairs[:, 0], pairs[:, 1]
+    invalid = np.flatnonzero((group_ids[left] != group_ids[right])
+                             | (np.abs(positions[left] - positions[right]) != 1))
+    if len(invalid):
+        a, b = int(left[invalid[0]]), int(right[invalid[0]])
+        raise ValueError(
+            f"membrane_order tail mapping contradicts topology bonds: "
+            f"{_site_label(sites[a])} is bonded to {_site_label(sites[b])}; "
+            "bonded tail carbons must be consecutive positions of one tail"
+        )
+    edges = np.bincount(group_ids[left], minlength=n_groups)
+    nodes = np.bincount(group_ids, minlength=n_groups)
+    checked = edges > 0
+    split = np.flatnonzero(checked & (nodes - edges > 1))
+    if len(split):
+        group = int(split[0])
+        members = [site for site, gid in zip(sites, group_ids) if gid == group]
+        raise ValueError(
+            f"membrane_order tail {members[0].tail} of {members[0].resname} maps "
+            f"{int(nodes[group] - edges[group])} disconnected bonded segments "
+            f"({', '.join(site.atom_name for site in members)}); a tail must be one bonded chain"
+        )
+    summary["verified_residue_tails"] = int(np.count_nonzero(checked))
+    return summary
+
+
+def _fixed_ch_pairs(universe, sites: list[OrderSite], cutoff: float, topology_bonds):
     carbon_atoms = universe.atoms[[site.atom_index for site in sites]]
     residue_indices = sorted({site.residue_index for site in sites})
     residue_mask = np.isin(universe.atoms.resindices, residue_indices)
@@ -156,11 +249,7 @@ def _fixed_ch_pairs(universe, sites: list[OrderSite], cutoff: float):
     box = _valid_box(universe)
     # Prefer chemically exact C-H connectivity when topology bonds exist.
     # A radius search can otherwise spuriously associate nearby non-bonded H atoms.
-    try:
-        topology_bonds=np.asarray(universe.bonds.indices,dtype=np.int64)
-    except (NoDataError,AttributeError):
-        topology_bonds=None
-    if topology_bonds is not None and len(topology_bonds):
+    if topology_bonds is not None:
         ci=np.full(len(universe.atoms),-1,dtype=np.int32)
         hi=np.full(len(universe.atoms),-1,dtype=np.int32)
         ci[carbon_atoms.indices]=np.arange(len(carbon_atoms),dtype=np.int32)
@@ -298,6 +387,126 @@ def _metric_name(profile_id: str) -> str:
     return "lipid_order_" + "_".join(parts[1:]) + "_mean"
 
 
+def _order_sites(universe, spec: dict):
+    """Verified tail sites and fixed C-H pairs; one bond-graph read for both."""
+    try:
+        bonds = np.asarray(universe.bonds.indices, dtype=np.int64)
+    except (NoDataError, AttributeError):
+        bonds = None
+    if bonds is not None and not len(bonds):
+        bonds = None
+    scan = _scan_sites(universe, spec, bonds)
+    if not scan[0]:
+        raise ValueError(
+            "membrane_order found no tail carbons; check lipid_selection, tails, "
+            "tail_preset and lipid_overrides"
+        )
+    pairs = _fixed_ch_pairs(universe, scan[0], float(spec.get("hydrogen_cutoff_A", 1.25)), bonds)
+    return scan, pairs, bonds is not None
+
+
+def _initial_leaflets(universe, sites: list[OrderSite], spec: dict, axis_index: int) -> dict[int, str]:
+    """Fixed leaflet per order lipid from the current frame.
+
+    With ``leaflet_anchor_selection`` every order lipid needs an anchor atom;
+    otherwise each lipid uses its lowest-position tail carbon.
+    """
+    representative = {}
+    for site in sorted(sites, key=lambda item: (item.residue_index, item.position)):
+        representative.setdefault(site.residue_index, site.atom_index)
+    indices = np.asarray(list(representative), int)
+    coords = universe.atoms[list(representative.values())].positions.copy()
+    anchor_selection = spec.get("leaflet_anchor_selection")
+    if anchor_selection:
+        selected = universe.select_atoms(str(anchor_selection))
+        missing = []
+        for i, index in enumerate(indices):
+            matching = selected[selected.resindices == index]
+            if len(matching):
+                coords[i] = matching.center_of_geometry()
+            else:
+                missing.append(universe.residues[int(index)])
+        if missing:
+            examples = ", ".join(f"{res.resname} {res.resid}" for res in missing[:3])
+            raise ValueError(
+                f"membrane_order.leaflet_anchor_selection matched no atom in {len(missing)} "
+                f"order lipids (e.g. {examples}); leaflets need one comparable anchor per lipid"
+            )
+    box = planar_box(universe.dimensions, axis_index)
+    leaf = classify_leaflets(coords[:, axis_index], float(box[axis_index]))
+    return {int(ix): "upper" if flag else "lower" for ix, flag in zip(indices, leaf)}
+
+
+def order_setup(universe, spec: dict) -> dict:
+    """Fixed C-H pairs, initial leaflets and profiles from the current frame."""
+    axis = AXIS_INDEX[str(spec.get("axis", "z")).lower()]
+    _, (sites, carbons, hydrogens, pairs), _ = _order_sites(universe, spec)
+    leaflet_by_residue = (_initial_leaflets(universe, sites, spec, axis)
+                          if spec.get("per_leaflet", True) else None)
+    profiles = _profiles(sites, spec, leaflet_by_residue)
+    if not profiles:
+        raise ValueError("membrane_order found no usable sn-1/sn-2 order profiles")
+    return {"sites": sites, "carbons": carbons, "hydrogens": hydrogens,
+            "pairs": pairs, "profiles": profiles, "axis": axis}
+
+
+def order_preflight(universe, spec: dict, *, leaflets: bool = True,
+                    anchor_residues: set[int] | None = None) -> dict:
+    """Topology-only audit of tail mapping, C-H pairs and initial leaflets.
+
+    Raises on contradictory mappings or unavailable S_CH (no bonded/near
+    hydrogens). Species/tails without enough mapped carbons are reported as
+    exclusions, matching what the observer will compute. ``anchor_residues``
+    counts order lipids outside a population defined by other anchors.
+    """
+    (_, matched, excluded, chains), (sites, _, _, pairs), has_bonds = _order_sites(universe, spec)
+    minimum = int(spec.get("min_carbons_per_tail", 4))
+    ch_bonds = np.bincount(pairs[:, 0], minlength=len(sites))
+    rows = []
+    for (resname, tail), found in sorted(matched.items()):
+        found = np.asarray(found)
+        used = [(site, int(n)) for site, n in zip(sites, ch_bonds)
+                if site.resname == resname and site.tail == tail]
+        positions = sorted({site.position for site, _ in used})
+        mapped = len({site.residue_index for site, _ in used})
+        rows.append({
+            "resname": resname, "tail": tail, "residues": int(len(found)),
+            "mapped_residues": mapped,
+            "no_ch_residues": int(np.count_nonzero(found >= minimum)) - mapped,
+            "below_minimum_residues": int(np.count_nonzero((found > 0) & (found < minimum))),
+            "unmatched_residues": int(np.count_nonzero(found == 0)),
+            "ch_sites": len(used), "ch_bonds": int(sum(n for _, n in used)),
+            "positions": f"{positions[0]}-{positions[-1]}" if positions else None,
+        })
+    audit = {
+        "tail_preset": spec.get("tail_preset"), "min_carbons_per_tail": minimum,
+        "ch_pairs": "topology bonds" if has_bonds else "distance fallback",
+        "chains": chains, "excluded_resnames": excluded, "species": rows,
+        "lipids": len({site.residue_index for site in sites}),
+        "unused_overrides": sorted(set(spec.get("lipid_overrides") or {})
+                                   - {resname for resname, _ in matched}),
+    }
+    residues = sorted({site.residue_index for site in sites})
+    if anchor_residues is not None:
+        audit["lipids_without_anchor"] = len(set(residues) - set(anchor_residues))
+    if has_bonds:
+        fragments = universe.residues[residues].atoms.fragindices
+        owner = universe.residues[residues].atoms.resindices
+        per_fragment = {}
+        for fragment, residue in zip(fragments, owner):
+            per_fragment.setdefault(int(fragment), set()).add(int(residue))
+        audit["multi_residue_molecules"] = sum(len(v) > 1 for v in per_fragment.values())
+    if leaflets and spec.get("per_leaflet", True):
+        if universe.dimensions is None:
+            audit["leaflets"] = None  # Checked on the first analyzed frame instead.
+        else:
+            axis = AXIS_INDEX[str(spec.get("axis", "z")).lower()]
+            leaf = _initial_leaflets(universe, sites, spec, axis)
+            values = list(leaf.values())
+            audit["leaflets"] = {"upper": values.count("upper"), "lower": values.count("lower")}
+    return audit
+
+
 def run_membrane_order(rep, cfg: dict, repout: Path) -> dict:
     """Calculate conventional -S_CH from explicit C-H bond orientations."""
     spec = cfg["analyses"]["membrane_order"]
@@ -307,38 +516,9 @@ def run_membrane_order(rep, cfg: dict, repout: Path) -> dict:
     universe = mda.Universe(str(rep.topology), str(rep.trajectory))
     first_frame = trajectory.get("start")
     universe.trajectory[0 if first_frame is None else int(first_frame)]
-    sites = _candidate_sites(universe, spec)
-    if not sites:
-        raise ValueError(
-            "membrane_order found no tail carbons; check lipid_selection, tail patterns, "
-            "and lipid_overrides"
-        )
-    sites, carbons, hydrogens, pairs = _fixed_ch_pairs(
-        universe,
-        sites,
-        float(spec.get("hydrogen_cutoff_A", 1.25)),
-    )
-    leaflet_by_residue = None
-    if spec.get("per_leaflet", True):
-        representative = {}
-        for site in sorted(sites, key=lambda item: (item.residue_index, item.position)):
-            representative.setdefault(site.residue_index, site.atom_index)
-        indices = np.asarray(list(representative), int)
-        coords = universe.atoms[list(representative.values())].positions.copy()
-        anchor_selection = spec.get("leaflet_anchor_selection")
-        if anchor_selection:
-            selected = universe.select_atoms(str(anchor_selection))
-            for i, index in enumerate(indices):
-                matching = selected[selected.resindices == index]
-                if len(matching):
-                    coords[i] = matching.center_of_geometry()
-        box = planar_box(universe.dimensions, axis_index)
-        leaf = classify_leaflets(coords[:, axis_index], float(box[axis_index]))
-        leaflet_by_residue = {int(ix): "upper" if flag else "lower"
-                              for ix, flag in zip(indices, leaf)}
-    profiles = _profiles(sites, spec, leaflet_by_residue)
-    if not profiles:
-        raise ValueError("membrane_order found no usable sn-1/sn-2 order profiles")
+    setup = order_setup(universe, spec)
+    sites, carbons, hydrogens = setup["sites"], setup["carbons"], setup["hydrogens"]
+    pairs, profiles = setup["pairs"], setup["profiles"]
 
     profile_values = {profile.profile_id: [] for profile in profiles}
     times = []

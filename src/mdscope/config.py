@@ -6,6 +6,7 @@ helpers.
 from __future__ import annotations
 
 import math
+import re
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,17 @@ from .errors import ConfigError, InputPathError
 
 DEFAULT_INSTANCE_ID = "default"
 MULTI_RUN_ANALYSES = {"density_1d", "residue_membrane_distance", "sasa"}
+
+# Opt-in acyl-tail naming presets (``membrane_order.tail_preset``); never
+# inferred from residue names. CHARMM36 glycerophospholipids: glycerol C3
+# carries the sn-1 chain (C31...), C2 the sn-2 chain (C21...). Sphingolipid
+# chains (CHARMM36 C1S.../C1F...) have no sn-1/sn-2 mapping here.
+TAIL_PRESETS = {
+    "charmm36": {
+        "sn1": {"carbon_pattern": r"^C3(\d+)$"},
+        "sn2": {"carbon_pattern": r"^C2(\d+)$"},
+    },
+}
 
 DEFAULTS = {
     "project": {"name": "mdscope_project", "output": "mdscope_results"},
@@ -453,8 +465,30 @@ def resolve_config(raw: dict, *, base: Path = Path("."),
         if isinstance(raw_spec, dict) and "runs" in raw_spec and "enabled" not in raw_spec:
             cfg.setdefault("analyses", {}).setdefault(name, {})["enabled"] = True
     normalize_analysis_booleans(cfg)
+    _apply_tail_preset(cfg, raw)
     validate_config(cfg, Path(base).resolve(), check_paths=check_paths)
     return cfg
+
+
+def _apply_tail_preset(cfg, raw):
+    """Expand ``membrane_order.tail_preset`` once; explicit tails replace preset tails.
+
+    Without a preset, user tails keep merging into the default tails as before.
+    The preset name stays in the resolved configuration as provenance.
+    """
+    order = cfg["analyses"]["membrane_order"]
+    name = order.get("tail_preset")
+    if name is None:
+        return
+    if name not in TAIL_PRESETS:
+        raise ValueError(
+            f"membrane_order.tail_preset must be null or one of {sorted(TAIL_PRESETS)}; got {name!r}"
+        )
+    raw_order = (raw.get("analyses") or {}).get("membrane_order") or {}
+    explicit = raw_order.get("tails") or {}
+    if not isinstance(explicit, dict):
+        raise ValueError("membrane_order.tails must be a mapping")
+    order["tails"] = {**deepcopy(TAIL_PRESETS[name]), **deepcopy(explicit)}
 
 
 def normalize_analysis_booleans(cfg):
@@ -471,6 +505,41 @@ def _validate_time_window(window, label):
             or any(type(value) not in (int, float) or not math.isfinite(value) for value in window)
             or window[0] >= window[1]):
         raise ValueError(f"{label} requires two increasing finite times")
+
+
+def _validate_tail_spec(tail_spec, label):
+    if not isinstance(tail_spec, dict) or not (
+        tail_spec.get("carbon_pattern") or tail_spec.get("carbon_names")
+    ):
+        raise ValueError(f"{label} requires carbon_pattern or carbon_names")
+    if tail_spec.get("carbon_pattern"):
+        try:
+            re.compile(str(tail_spec["carbon_pattern"]))
+        except re.error as exc:
+            raise ValueError(f"{label}.carbon_pattern is not a valid regular expression: {exc}") from exc
+    names, positions = tail_spec.get("carbon_names"), tail_spec.get("positions")
+    if names and positions is not None and len(names) != len(positions):
+        raise ValueError(f"{label}.positions must match carbon_names")
+
+
+def _validate_tail_naming(order):
+    """Tail naming shared by membrane_order and SDC4 local order."""
+    tails = order.get("tails", {}) or {}
+    if not tails:
+        raise ValueError("membrane_order.tails must define at least one tail")
+    for tail, tail_spec in tails.items():
+        _validate_tail_spec(tail_spec, f"membrane_order.tails.{tail}")
+    for resname, overrides in (order.get("lipid_overrides") or {}).items():
+        if not isinstance(overrides, dict):
+            raise ValueError(f"membrane_order.lipid_overrides.{resname} must map tail names")
+        for tail, tail_spec in overrides.items():
+            label = f"membrane_order.lipid_overrides.{resname}.{tail}"
+            if tail not in tails:
+                raise ValueError(f"{label}: tail {tail!r} is not defined in membrane_order.tails")
+            if not isinstance(tail_spec, dict):
+                raise ValueError(f"{label} must be a mapping")
+            if tail_spec.get("carbon_pattern") or tail_spec.get("carbon_names"):
+                _validate_tail_spec(tail_spec, label)
 
 
 def validate_config(cfg: dict, base: Path = Path("."), *, check_paths: bool = True) -> None:
@@ -681,21 +750,10 @@ def validate_config(cfg: dict, base: Path = Path("."), *, check_paths: bool = Tr
             raise ValueError("membrane_order.hydrogen_cutoff_A must be > 0")
         if int(order.get("min_carbons_per_tail", 4)) < 1:
             raise ValueError("membrane_order.min_carbons_per_tail must be >= 1")
-        tails = order.get("tails", {}) or {}
-        if not tails:
-            raise ValueError("membrane_order.tails must define at least one tail")
-        for tail, tail_spec in tails.items():
-            if not isinstance(tail_spec, dict) or not (
-                tail_spec.get("carbon_pattern") or tail_spec.get("carbon_names")
-            ):
-                raise ValueError(
-                    f"membrane_order.tails.{tail} requires carbon_pattern or carbon_names"
-                )
-            if tail_spec.get("carbon_names") and tail_spec.get("positions") is not None:
-                if len(tail_spec["carbon_names"]) != len(tail_spec["positions"]):
-                    raise ValueError(
-                        f"membrane_order.tails.{tail}.positions must match carbon_names"
-                    )
+    mechanisms = cfg["analyses"].get("sdc4_mechanisms", {})
+    if order.get("enabled") or (mechanisms.get("enabled") and
+                                (mechanisms.get("local_order") or {}).get("enabled")):
+        _validate_tail_naming(order)
 
     if cfg["analyses"]["ligand_contacts"].get("enabled") and not cfg["selections"].get("ligand"):
         raise ValueError("ligand_contacts is enabled but selections.ligand is null")

@@ -21,7 +21,7 @@
 | Measurement | Definition | Important assumption |
 |---|---|---|
 | APL, thickness | Projected periodic area/lipid; separation of selected leaflet anchors | Approximately planar membrane, comparable anchor chemistry |
-| Lipid `-S_CH` | Bonded C–H orientational order by sn-1/sn-2 site, species and initial leaflet | Requires bonded all-atom hydrogens; fixed initial leaflet assignment |
+| Lipid `-S_CH` | Bonded C–H orientational order by configured tail/site, species and initial leaflet | Requires bonded all-atom hydrogens; fixed initial leaflet assignment; [tail naming](configuration.md#lipid-tail-naming-for--s_ch) |
 | Local bilayer normal | Plane fit to neighboring **same-leaflet** anchors; deviation from global axis (degrees) | Measures local tilt/undulation, **not** elastic modulus |
 | Leaflet composition enrichment | Local species mole fraction / same-leaflet reference fraction | Defined populations; unavailable species must stay absent |
 | Protein footprint enrichment | Lipid anchors in bands outside projected protein-disk union; species counts per accessible area | Geometric disk/slab/grid model, **not** binding affinity |
