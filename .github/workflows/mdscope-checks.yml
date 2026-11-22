@@ -54,6 +54,17 @@ jobs:
         run: |
           python -m build
           python -m twine check dist/*
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          import tarfile
+          wheel = next(Path("dist").glob("*.whl"))
+          sdist = next(Path("dist").glob("*.tar.gz"))
+          with ZipFile(wheel) as archive:
+              assert any(n.endswith("mdscope/studio/assets/MM+Lab+Logo.png") for n in archive.namelist())
+          with tarfile.open(sdist) as archive:
+              assert any(n.endswith("mdscope/studio/assets/MM+Lab+Logo.png") for n in archive.getnames())
+          PY
       - name: Verify installed package and CLI
         run: |
           cd /tmp
@@ -63,9 +74,11 @@ jobs:
         if: matrix.python-version == '3.11'
         run: |
           python -m venv /tmp/mdscope-wheel
-          /tmp/mdscope-wheel/bin/pip install dist/*.whl
+          /tmp/mdscope-wheel/bin/pip install "dist/$(basename "$(ls dist/*.whl)")"[studio]
           (cd /tmp && /tmp/mdscope-wheel/bin/python -c "import mdscope, mdscope.statistics, mdscope.interactions, mdscope.mechanisms, mdscope.pipeline; print(mdscope.__version__)")
           (cd /tmp && /tmp/mdscope-wheel/bin/mdscope --help)
+          (cd /tmp && /tmp/mdscope-wheel/bin/python -c "from importlib.resources import files; assert (files('mdscope.studio') / 'assets' / 'MM+Lab+Logo.png').is_file()")
+          (cd /tmp && /tmp/mdscope-wheel/bin/python -c "from streamlit.testing.v1 import AppTest; from importlib.resources import files; test = AppTest.from_file(str(files('mdscope.studio') / 'app.py')).run(timeout=30); assert not test.exception, test.exception")
           python -m venv /tmp/mdscope-sdist
           /tmp/mdscope-sdist/bin/pip install dist/*.tar.gz
           (cd /tmp && /tmp/mdscope-sdist/bin/python -c "import mdscope.cli, mdscope.pipeline.runner")

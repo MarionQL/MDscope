@@ -32,6 +32,9 @@ mdscope-studio = "mdscope.studio.launch:main"
 package-dir = {"" = "src"}
 include-package-data = false
 
+[tool.setuptools.package-data]
+"mdscope.studio" = ["assets/*.png"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["mdscope*"]

@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import glob
 import json
+import os
 import shutil
+import tempfile
 from time import perf_counter
 from contextlib import ExitStack
 from tempfile import TemporaryDirectory
@@ -20,7 +22,7 @@ from ..core.persistence import archive_output as _archive_previous_output
 from ..core.validation import validate_selections
 
 from .. import __version__
-from ..errors import ReplicateIndexError
+from ..errors import ConfigError, ReplicateIndexError
 from ..config import (
     analysis_enabled,
     analysis_runs,
@@ -120,18 +122,44 @@ def project_root(cfg: dict, config_path: str | Path) -> Path:
     )
 
 
+def _create_once(path: Path, payload: str) -> bool:
+    """Atomically publish a new file without ever replacing another task's file."""
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.link(temporary, path)
+        except FileExistsError:
+            return False
+        return True
+    finally:
+        os.unlink(temporary)
+
+
 def initialize(config_path: str | Path, cfg: dict):
     root = ensure_dir(project_root(cfg, config_path))
-    atomic_text(
-        root / "resolved_config.yaml",
-        yaml.safe_dump(cfg, sort_keys=False),
-    )
+    resolved = root / "resolved_config.yaml"
+    serialized = yaml.safe_dump(cfg, sort_keys=False)
+    if not _create_once(resolved, serialized):
+        try:
+            existing = yaml.safe_load(resolved.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError) as exc:
+            raise RuntimeError(f"Cannot verify saved configuration {resolved}") from exc
+        if config_hash(existing) != config_hash(cfg):
+            raise ConfigError(
+                f"Existing project {root} has config hash {config_hash(existing)}; "
+                f"new run has {config_hash(cfg)}. Use a separate output directory."
+            )
     metadata = environment_metadata()
     metadata.update({
         "config_path": str(Path(config_path).resolve()),
         "mdscope_version": __version__,
+        "config_hash": config_hash(cfg),
     })
-    atomic_json(root / "run_metadata.json", metadata)
+    _create_once(root / "run_metadata.json", json.dumps(metadata, indent=2) + "\n")
     return root, RunState(root)
 
 
@@ -233,6 +261,12 @@ def summarize_replicate(repout: Path, cfg: dict):
 def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     prefix = _replicate_state_prefix(rep)
     repout = ensure_dir(root / rep.system / rep.label)
+    metadata = environment_metadata()
+    metadata.update({
+        "system": rep.system, "replicate": rep.label,
+        "mdscope_version": __version__, "config_hash": config_hash(cfg),
+    })
+    _create_once(repout / "run_metadata.json", json.dumps(metadata, indent=2) + "\n")
     stage_timings = []
     # Reject damaged existing products before a reader can overwrite them.
     # The new occlusion companion can be calculated independently if absent.
