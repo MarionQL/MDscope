@@ -216,7 +216,7 @@ def test_maintained_sdc4_configs_roundtrip_without_migration():
     import yaml
     from mdscope.studio.model import import_document
     for name in ("synd4_baseline.yaml", "synd4_full_mechanisms.yaml", "synd4_full_mechanisms_finalize_fast.yaml"):
-        text = Path(name).read_text()
+        text = (Path(__file__).resolve().parents[1] / name).read_text()
         original = yaml.safe_load(text)
         restored = import_document(yaml.safe_dump(import_document(text)))
         assert resolve_config(restored, check_paths=False) == resolve_config(original, check_paths=False)

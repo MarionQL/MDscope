@@ -18,9 +18,9 @@ import yaml
 import mdscope
 
 REPO = Path(__file__).resolve().parents[1]
-SCRIPTS = ("run_mdscope.sh", "finalize_mdscope.sh", "plotting_mdscope.sh",
-           "statistics_mdscope.sh")
-HELPER = "scripts/slurm_job_env.sh"
+SCRIPTS = ("slurm/run_mdscope.sh", "slurm/finalize_mdscope.sh", "slurm/plotting_mdscope.sh",
+           "slurm/statistics_mdscope.sh")
+HELPER = "slurm/job_env.sh"
 N_REPLICATES = 4  # Two systems x two replicates.
 # A pip install command line (instructions inside messages are allowed).
 INSTALL = re.compile(r"^\s*(python3?\s+-m\s+)?pip3?\s+install", re.M)
@@ -45,7 +45,7 @@ def _shim(path, body):
 def job(tmp_path, project):
     """Return run(script, yaml_path=..., **env) -> (result, python calls)."""
     checkout = tmp_path / "checkout"
-    (checkout / "scripts").mkdir(parents=True)
+    (checkout / "slurm").mkdir(parents=True)
     for name in (*SCRIPTS, HELPER):
         shutil.copyfile(REPO / name, checkout / name)
     config, _ = project("slurm")
@@ -117,24 +117,24 @@ def test_plan_replicate_count_is_the_array_cardinality(job):
     (0, 4, 4),  # sparse, e.g. --array=0,1,2,4
 ])
 def test_mismatched_array_fails_before_analysis(job, task_min, task_max, count):
-    result, calls = job("run_mdscope.sh", MDSCOPE_ENV_SETUP="none",
+    result, calls = job("slurm/run_mdscope.sh", MDSCOPE_ENV_SETUP="none",
                         **_array(task_min, task_max, count))
     assert result.returncode == 2, result.stdout + result.stderr
     assert f"expected --array=0-{N_REPLICATES - 1}" in result.stdout
-    assert f"sbatch --array=0-{N_REPLICATES - 1} run_mdscope.sh" in result.stdout
+    assert f"sbatch --array=0-{N_REPLICATES - 1} slurm/run_mdscope.sh" in result.stdout
     assert not any("mdscope.cli replicate" in call for call in calls), calls
     _no_install(calls, result.stdout)
 
 
 def test_non_array_submission_fails_before_analysis(job):
-    result, calls = job("run_mdscope.sh", MDSCOPE_ENV_SETUP="none")
+    result, calls = job("slurm/run_mdscope.sh", MDSCOPE_ENV_SETUP="none")
     assert result.returncode == 2
     assert f"expected --array=0-{N_REPLICATES - 1}" in result.stdout
     assert not any("mdscope.cli replicate" in call for call in calls), calls
 
 
 def test_matching_array_runs_task_without_install(job):
-    result, calls = job("run_mdscope.sh", MDSCOPE_ENV_SETUP="none",
+    result, calls = job("slurm/run_mdscope.sh", MDSCOPE_ENV_SETUP="none",
                         **_array(0, N_REPLICATES - 1, N_REPLICATES, task_id=2))
     assert result.returncode == 0, result.stdout + result.stderr
     assert f"MDscope:      {mdscope.__version__}" in result.stdout
@@ -144,9 +144,9 @@ def test_matching_array_runs_task_without_install(job):
 
 
 @pytest.mark.parametrize("script,command", [
-    ("finalize_mdscope.sh", "finalize"),
-    ("statistics_mdscope.sh", "statistics"),
-    ("plotting_mdscope.sh", "plotting"),
+    ("slurm/finalize_mdscope.sh", "finalize"),
+    ("slurm/statistics_mdscope.sh", "statistics"),
+    ("slurm/plotting_mdscope.sh", "plotting"),
 ])
 def test_single_jobs_start_without_install(job, script, command):
     result, calls = job(script, MDSCOPE_ENV_SETUP="none")
@@ -159,7 +159,7 @@ def test_single_jobs_start_without_install(job, script, command):
 def test_env_setup_file_is_sourced(job, tmp_path):
     setup = tmp_path / "site_env.sh"
     setup.write_text('echo "site modules loaded"\n', newline="\n")
-    result, calls = job("finalize_mdscope.sh", MDSCOPE_ENV_SETUP=setup.as_posix())
+    result, calls = job("slurm/finalize_mdscope.sh", MDSCOPE_ENV_SETUP=setup.as_posix())
     assert result.returncode == 0, result.stdout + result.stderr
     assert "site modules loaded" in result.stdout
     assert calls[-1].startswith("-u -m mdscope.cli finalize")
@@ -187,7 +187,7 @@ def test_unimportable_mdscope_fails_with_setup_instructions(job, tmp_path, scrip
 ])
 def test_unavailable_environment_fails_before_python(job, value, message):
     env = {} if value is None else {"MDSCOPE_ENV_SETUP": value}
-    result, calls = job("statistics_mdscope.sh", **env)
+    result, calls = job("slurm/statistics_mdscope.sh", **env)
     assert result.returncode == 2
     assert message in result.stdout + result.stderr
     assert calls == []

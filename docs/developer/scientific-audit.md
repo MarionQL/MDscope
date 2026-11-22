@@ -60,8 +60,8 @@ Path("synd4_scientific_validation.yaml").write_text(yaml.safe_dump(cfg, sort_key
 PY
 mdscope validate synd4_scientific_validation.yaml
 mkdir -p slurm-out/mdscope
-sbatch run_mdscope.sh synd4_scientific_validation.yaml
-# Submit finalize_mdscope.sh with an afterok dependency on the returned job ID.
+sbatch slurm/run_mdscope.sh synd4_scientific_validation.yaml
+# Submit slurm/finalize_mdscope.sh with an afterok dependency on the returned job ID.
 ```
 
 Review across **all six** trajectories:

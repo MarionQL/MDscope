@@ -21,7 +21,7 @@ mdscope plotting synd4_full_mechanisms.yaml
 
 ## Slurm jobs
 
-Submit `run_mdscope.sh`, `finalize_mdscope.sh`, `statistics_mdscope.sh` and `plotting_mdscope.sh` from the MDscope checkout (they source `scripts/slurm_job_env.sh`) with your validated YAML. Jobs **never install** MDscope: install it once, before submitting, into the environment the jobs activate (`python -m pip install -e '.[sasa]'`). Each job first checks that `python` imports MDscope, logs its version, source directory and commit, and otherwise exits with setup instructions.
+Submit `slurm/run_mdscope.sh`, `slurm/finalize_mdscope.sh`, `slurm/statistics_mdscope.sh` and `slurm/plotting_mdscope.sh` from the MDscope checkout (they source `slurm/job_env.sh`) with your validated YAML. Jobs **never install** MDscope: install it once, before submitting, into the environment the jobs activate (`python -m pip install -e '.[sasa]'`). Each job first checks that `python` imports MDscope, logs its version, source directory and commit, and otherwise exits with setup instructions.
 
 | Setting | ARC example (script default) | Other sites |
 |---|---|---|
@@ -29,11 +29,11 @@ Submit `run_mdscope.sh`, `finalize_mdscope.sh`, `statistics_mdscope.sh` and `plo
 | Environment | Miniconda env `mdanalysis` | `MDSCOPE_ENV_SETUP=/path/setup.sh` (bash file sourced by the job) or `MDSCOPE_ENV_SETUP=none` (keep the environment exported by `sbatch`) |
 | Replica array | `--array=0-5` (six replicas of `synd4_full_mechanisms.yaml`) | `--array=0-<N-1>`, N from the schema-only plan |
 
-`run_mdscope.sh` runs one task per YAML replicate, indexed in plan order; the plan reads no topology or trajectory:
+`slurm/run_mdscope.sh` runs one task per YAML replicate, indexed in plan order; the plan reads no topology or trajectory:
 
 ```bash
 N=$(mdscope plan CONFIG.yaml --format json | python -c 'import json,sys; print(len(json.load(sys.stdin)["replicates"]))')
-sbatch -A ACCOUNT -p PARTITION --array=0-$((N-1)) run_mdscope.sh CONFIG.yaml
+sbatch -A ACCOUNT -p PARTITION --array=0-$((N-1)) slurm/run_mdscope.sh CONFIG.yaml
 ```
 
 Every task repeats this derivation and exits before analysis, printing the expected `--array` range, unless the submitted array is exactly `0..N-1` (`SLURM_ARRAY_TASK_MIN/MAX/COUNT`). Reprocess one failed replica with `mdscope replicate CONFIG.yaml --index I` in its own job, not with a partial array.
