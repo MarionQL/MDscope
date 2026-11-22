@@ -332,15 +332,18 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
         })
 
     pending_names = {entry.name for entry in pending}
+    pending_set = set(pending)
     membrane_recovered = bool(pending_names.intersection(MEMBRANE_ANALYSES))
     extension_recovered = bool(pending_names.intersection((*EXTENSION_ANALYSES, "hydration")))
     distance_recovered = "residue_membrane_distance" in pending_names
     for entry in expected:
         if not entry.path.is_file():
             raise RuntimeError(f"Missing fused {entry.name} output: {entry.path}")
-        # Validate completed products *before* recording a reusable marker.
+        # Existing products passed preflight; validate newly recovered ones
+        # before recording their marker, without duplicate no-op reads.
         # SDC4 residue occlusion is a separately resumable companion.
-        _validate_analysis_output(entry, cfg, allow_missing_occlusion=True)
+        if entry in pending_set:
+            _validate_analysis_output(entry, cfg, allow_missing_occlusion=True)
         key = prefix + "-" + entry.checkpoint_key
         if not state.complete(key):
             if entry.name in MEMBRANE_ANALYSES:
