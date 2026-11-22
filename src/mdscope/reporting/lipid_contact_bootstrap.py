@@ -7,7 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from ..config import ensure_dir, figure_enabled
+from ..config import figure_enabled
+from ..core.persistence import ensure_dir
 from .figure_inventory import current_statistics
 from .plot_ids import figure_dpi
 
