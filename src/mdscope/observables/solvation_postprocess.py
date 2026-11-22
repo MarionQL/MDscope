@@ -2,7 +2,7 @@
 import numpy as np
 import pandas as pd
 
-from ..config import atomic_parquet
+from ..core.persistence import atomic_parquet
 from .solvation_common import EPISODE_COLUMNS, rdf_from_counts
 
 

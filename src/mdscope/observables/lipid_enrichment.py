@@ -7,7 +7,7 @@ import pandas as pd
 from MDAnalysis.exceptions import NoDataError
 from scipy.spatial import cKDTree
 
-from ..config import atomic_json, atomic_parquet
+from ..core.persistence import atomic_json, atomic_parquet
 from ..core.atom_selection import select_heavy_atoms
 from ..core.lipid_geometry import circular_axis_mean
 from ..output_paths import FUSED_OUTPUTS

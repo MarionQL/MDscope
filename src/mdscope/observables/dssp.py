@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.analysis.dssp import DSSP
 
-from ..config import atomic_parquet, ensure_dir
+from ..core.persistence import atomic_parquet, ensure_dir
 from ..core.profiling import _residue_label
 
 

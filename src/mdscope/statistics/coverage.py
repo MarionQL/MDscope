@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ..config import atomic_parquet
+from ..core.persistence import atomic_parquet
 
 # Identity columns must match the keys used to create the comparison rows.
 SOURCES = (

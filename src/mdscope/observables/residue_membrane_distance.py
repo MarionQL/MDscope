@@ -9,15 +9,8 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import USED_OPENMP, capped_distance, distance_array
 
-from ..config import (
-    DEFAULT_INSTANCE_ID,
-    analysis_groups,
-    analysis_runs,
-    atomic_parquet,
-    ensure_dir,
-    profile_dir,
-    time_ps,
-)
+from ..config import DEFAULT_INSTANCE_ID, analysis_groups, analysis_runs, profile_dir, time_ps
+from ..core.persistence import atomic_parquet, ensure_dir
 from ..core.profiling import _residue_label
 from ..core.progress import track
 

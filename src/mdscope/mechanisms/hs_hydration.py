@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import capped_distance
 
-from ..config import atomic_parquet
+from ..core.persistence import atomic_parquet, ensure_dir
 from ..contracts.outputs import (
     GLYCAN_ATTACHMENTS_FILE, HS_SUGAR_HYDRATION_PATH,
     HYDRATION_AGGREGATE_COLUMNS, HYDRATION_ATTACHMENT_COLUMNS,
@@ -248,7 +248,6 @@ class HydrationObserver:
         self.frames += 1
 
     def flush(self, part):
-        from ..config import ensure_dir
         cache = ensure_dir(self.cache)
         for name, rows, columns in (
             ("counts", self.rows, self.COUNT_COLUMNS),

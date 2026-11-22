@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ..config import atomic_parquet
+from ..core.persistence import atomic_parquet
 
 _COLUMNS = [
     "profile", "system_1", "system_2", "chain", "start_residue", "end_residue",

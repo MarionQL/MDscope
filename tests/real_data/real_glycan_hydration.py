@@ -11,7 +11,7 @@ import MDAnalysis as mda
 import pandas as pd
 import yaml
 
-from mdscope.config import atomic_json
+from mdscope.core.persistence import atomic_json
 from mdscope.core.glycans import discover_covalent_glycans
 from mdscope.mechanisms.hs_hydration import OUTPUT, HydrationObserver
 

@@ -11,7 +11,8 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import capped_distance, minimize_vectors
 
-from ..config import atomic_parquet, ensure_dir, time_ps
+from ..config import time_ps
+from ..core.persistence import atomic_parquet, ensure_dir
 from ..core.lipid_geometry import aligned_leaflets, anchor_groups, centers, planar_box
 from ..core.progress import progress
 

@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ..config import atomic_parquet, ensure_dir
+from ..core.persistence import atomic_parquet, ensure_dir
 
 INTERACTION_KEY_COLUMNS = {
     "salt_bridges": ["residue_1", "residue_2", "interaction_class"],

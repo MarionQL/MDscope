@@ -14,14 +14,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from ..config import (
-    ensure_dir,
-    figure_enabled,
-    plot_enabled,
-    replicate_label,
-    replicate_specs,
-    system_label,
-)
+from ..config import figure_enabled, plot_enabled, replicate_label, replicate_specs, system_label
+from ..core.persistence import ensure_dir
 from ..core.persistence import archive_output
 from ..interactions import interaction_tables
 from ..statistics.time_series import collect_time_series

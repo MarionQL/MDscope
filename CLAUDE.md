@@ -34,7 +34,7 @@ MDSCOPE_REAL_DATA=examples/data/stride5 scripts/run_real_data_checks.sh smoke   
 
 ## Architecture
 
-`mdscope` CLI (`cli.py`) → YAML resolved and validated by `config.py` / `config_schema.py` → topology preflight (`pipeline/preflight.py`) → `pipeline/runner.py` per replica → **one shared streaming pass** over the trajectory (`pipeline/streaming.py`) feeding fused observers (`pipeline/fused_membrane.py`, `pipeline/fused_extensions.py`, SDC4 mechanisms, core observables) → chunked, checkpointed per-replica products → replicate summary + artifact validation → offline `statistics/` → findings and optional figures (`reporting/`).
+`mdscope` CLI (`cli.py`) → YAML resolved and validated by `config/` / `config_schema.py` → topology preflight (`pipeline/preflight.py`) → `pipeline/runner.py` per replica → **one shared streaming pass** over the trajectory (`pipeline/streaming.py`) feeding fused observers (`pipeline/fused_membrane.py`, `pipeline/fused_extensions.py`, SDC4 mechanisms, core observables) → chunked, checkpointed per-replica products → replicate summary + artifact validation → offline `statistics/` → findings and optional figures (`reporting/`).
 
 Contracts that span several files:
 

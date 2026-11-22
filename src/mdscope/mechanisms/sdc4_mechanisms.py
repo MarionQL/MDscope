@@ -26,14 +26,8 @@ from MDAnalysis.lib.distances import (
     minimize_vectors,
 )
 
-from ..config import (
-    DEFAULTS,
-    atomic_json,
-    atomic_parquet,
-    ensure_dir,
-    profile_dir,
-    time_ps,
-)
+from ..config import DEFAULTS, profile_dir, time_ps
+from ..core.persistence import atomic_json, atomic_parquet, ensure_dir
 from ..core.glycans import discover_covalent_glycans
 from ..core.lipid_geometry import (
     accessible_area_grid,

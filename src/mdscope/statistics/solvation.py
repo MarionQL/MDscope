@@ -6,7 +6,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ..config import atomic_parquet, ensure_dir, statistics_family_config
+from ..config import statistics_family_config
+from ..core.persistence import atomic_parquet, ensure_dir
 from .selection import metric_estimator_enabled, simple_family_selection
 from .replicate_contrasts import replicate_mean_contrasts
 

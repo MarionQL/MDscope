@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.exceptions import NoDataError
 
-from ..config import atomic_parquet
+from ..core.persistence import atomic_parquet
 from ..core.geometry import minimum_image_displacements
 from .multi_origin_msd import diffusion_fit_sensitivity
 

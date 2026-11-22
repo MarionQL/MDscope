@@ -146,7 +146,7 @@ def record_generated_figures(cfg, root, system_repouts, before):
     import json
     from datetime import datetime
 
-    from ..config import atomic_json
+    from ..core.persistence import atomic_json
     root = Path(root)
     dest = root/'project_summary/figures/figure_provenance.json'
     records = json.loads(dest.read_text()) if dest.exists() else {}

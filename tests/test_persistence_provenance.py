@@ -12,31 +12,33 @@ from mdscope.core import persistence, provenance
 @pytest.mark.parametrize("name", [
     "ensure_dir", "atomic_json", "atomic_text", "atomic_parquet",
 ])
-def test_persistence_legacy_imports_are_identical(name):
-    assert getattr(config, name) is getattr(persistence, name)
+def test_persistence_helpers_are_owned_by_core(name):
+    assert not hasattr(config, name)
+    assert callable(getattr(persistence, name))
 
 
 @pytest.mark.parametrize("name", ["config_hash", "environment_metadata"])
-def test_provenance_legacy_imports_are_identical(name):
-    assert getattr(config, name) is getattr(provenance, name)
+def test_provenance_helpers_are_owned_by_core(name):
+    assert not hasattr(config, name)
+    assert callable(getattr(provenance, name))
 
 
 def test_atomic_text_and_json_roundtrip_and_replace(tmp_path):
     target = tmp_path / "nested" / "state.txt"
-    config.atomic_text(target, "old")
-    config.atomic_text(target, "new")
+    persistence.atomic_text(target, "old")
+    persistence.atomic_text(target, "new")
     assert target.read_text() == "new"
     metadata = tmp_path / "nested" / "data.json"
-    config.atomic_json(metadata, {"x": 1})
-    config.atomic_json(metadata, {"x": 2})
+    persistence.atomic_json(metadata, {"x": 1})
+    persistence.atomic_json(metadata, {"x": 2})
     assert json.loads(metadata.read_text()) == {"x": 2}
     assert set(target.parent.iterdir()) == {target, metadata}
 
 
 def test_parquet_roundtrip_and_replace(tmp_path):
     dest = tmp_path / "nested" / "summary.parquet"
-    config.atomic_parquet(dest, pd.DataFrame({"time_ps": [1., 2.], "metric": [4, 5]}))
-    config.atomic_parquet(dest, pd.DataFrame({"time_ps": [3.], "metric": [6]}))
+    persistence.atomic_parquet(dest, pd.DataFrame({"time_ps": [1., 2.], "metric": [4, 5]}))
+    persistence.atomic_parquet(dest, pd.DataFrame({"time_ps": [3.], "metric": [6]}))
     pd.testing.assert_frame_equal(pd.read_parquet(dest), pd.DataFrame({"time_ps": [3.], "metric": [6]}))
     assert list(dest.parent.iterdir()) == [dest]
 
@@ -66,5 +68,5 @@ def test_failed_replace_preserves_existing_file_and_removes_temporary(
 def test_config_hash_matches_previous_deterministic_contract():
     obj = {"b": [2, 3], "a": {"value": 1}}
     expected = hashlib.sha256(json.dumps(obj, sort_keys=True, default=str).encode()).hexdigest()[:16]
-    assert config.config_hash(obj) == expected
-    assert config.config_hash({"a": {"value": 1}, "b": [2, 3]}) == expected
+    assert provenance.config_hash(obj) == expected
+    assert provenance.config_hash({"a": {"value": 1}, "b": [2, 3]}) == expected

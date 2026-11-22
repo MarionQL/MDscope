@@ -5,7 +5,8 @@ import numpy as np
 import pandas as pd
 from pyarrow.parquet import read_schema
 
-from ..config import atomic_parquet, statistics_family_config
+from ..config import statistics_family_config
+from ..core.persistence import atomic_parquet
 from .selection import metric_estimator_enabled, simple_family_selection
 from .common import _regular_times
 from .replicate_contrasts import replicate_mean_contrasts

@@ -6,7 +6,7 @@ Read only the guides relevant to the change; do not duplicate them here.
 |---|---|
 | Ownership, minimal changes, reviews | [Contributing](docs/developer/contributing.md) |
 | Module boundaries, persisted flow | [Architecture](docs/developer/architecture.md) |
-| Where moved or new modules belong (target layout) | [ADR-0001](docs/developer/adr/0001-target-package-architecture.md) |
+| Architecture decision criteria, cohesion and migration priority | [ADR-0002](docs/developer/adr/0002-evidence-first-architecture.md) ([historical ADR-0001](docs/developer/adr/0001-target-package-architecture.md)) |
 | Coordinate frames, PBC, units, numerical semantics | [Scientific contracts](docs/developer/scientific-contracts.md) |
 | Known scientific limitations | [Scientific audit](docs/developer/scientific-audit.md) |
 | Which checks to run and when | [Check policy](docs/developer/check-policy.md) |
@@ -23,6 +23,16 @@ Read only the guides relevant to the change; do not duplicate them here.
 - Redundant prose; retain concise scientific contracts and non-obvious rationale.
 
 Use **GitHub Flow** and the issue title/acceptance conventions in [Contributing](docs/developer/contributing.md). Keep changes on a focused issue branch and PR, not directly on `main`.
+
+## Refactoring and modularity principles
+
+1. **Prefer cohesive modules over maximally small modules.** Group related functions with shared responsibilities; do not split files merely to reduce line counts or lint complexity.
+2. **Avoid compatibility adapters for internal imports.** Migrate internal callers to canonical owners and remove obsolete forwarding modules; preserve adapters only for a demonstrated external/public compatibility contract or a temporary, tracked migration.
+3. **Separate by reason to change.** Split code when ownership, dependencies, invariants, or change lifecycles differ. Keep functions together when they typically evolve together.
+4. **Do not introduce abstractions without a concrete benefit.** Add registries, interfaces, base classes, wrappers, or helper layers only when they remove actual duplication, coupling, or a tested maintenance problem.
+5. **Measure complexity across the whole system.** Review import depth, indirection, navigation cost, number of touched modules per feature, duplicate responsibilities, cycles, and testability—not just individual file length or Ruff scores.
+
+Before a substantial architectural refactor, assess whether existing modules can be consolidated instead. Retain boundaries that protect scientific semantics, clear ownership, or dependency direction.
 
 ## Before merging
 

@@ -13,7 +13,8 @@ from tempfile import TemporaryDirectory
 import MDAnalysis as mda
 import numpy as np
 
-from ..config import analysis_runs, ensure_dir, time_ps
+from ..config import analysis_runs, time_ps
+from ..core.persistence import ensure_dir
 from ..core.progress import track
 from ..observables.membrane_order import _atomic_npz
 from ..observables.residue_membrane_distance import (
@@ -119,7 +120,7 @@ class FusedDistances:
                 spec=entry["spec"], run_id=run_id,
                 precomputed_parts=self.cache / run_id,
             )
-        from ..config import atomic_json
+        from ..core.persistence import atomic_json
         atomic_json(self.repout / "fused_distance_timings.json", {
             "enabled_instances": list(self.runs),
             "frames_processed_this_invocation": self.frames,

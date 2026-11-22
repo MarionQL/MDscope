@@ -12,7 +12,7 @@ import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 
-from mdscope.config import atomic_json
+from mdscope.core.persistence import atomic_json
 from mdscope.core.motifs import resolve_motifs
 from mdscope.observables.solvation import SolvationObserver
 from mdscope.statistics.shared_states import fit_shared_states

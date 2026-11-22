@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.analysis.hydrogenbonds.hbond_analysis import HydrogenBondAnalysis
 
-from ..config import atomic_parquet, ensure_dir
+from ..core.persistence import atomic_parquet, ensure_dir
 from .interaction_tables import atom_label, chain_label, count_timeseries
 
 

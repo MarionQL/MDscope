@@ -7,7 +7,8 @@ import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 
-from ..config import analysis_groups, analysis_runs, atomic_parquet, ensure_dir
+from ..config import analysis_groups, analysis_runs
+from ..core.persistence import atomic_parquet, ensure_dir
 from .dssp import _run_dssp
 from .sasa import _run_sasa
 

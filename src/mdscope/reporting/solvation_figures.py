@@ -153,7 +153,8 @@ def solvation_survival_figure(system_repouts, *, max_curves=8, dpi=150):
 
 def plot_solvation(cfg, root, system_repouts):
     """Render a few solvation diagnostics when explicitly requested."""
-    from ..config import ensure_dir, figure_enabled, plot_enabled
+    from ..config import figure_enabled, plot_enabled
+    from ..core.persistence import ensure_dir
     from .figure_inventory import current_statistics
     from .plot_ids import figure_dpi
 

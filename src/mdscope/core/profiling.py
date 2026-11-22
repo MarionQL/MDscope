@@ -9,7 +9,7 @@ import os
 from collections import defaultdict
 from time import perf_counter
 
-from ..config import atomic_json
+from .persistence import atomic_json
 
 
 class PhaseProfiler:

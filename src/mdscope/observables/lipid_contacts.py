@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import capped_distance
 
-from ..config import atomic_json, atomic_parquet, ensure_dir
+from ..core.persistence import atomic_json, atomic_parquet, ensure_dir
 from ..core.atom_selection import select_heavy_atoms
 from ..core.lipid_geometry import aligned_leaflets, anchor_groups, planar_box
 

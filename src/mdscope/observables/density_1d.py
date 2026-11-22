@@ -8,16 +8,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ..config import (
-    DEFAULT_INSTANCE_ID,
-    analysis_groups,
-    analysis_runs,
-    atomic_json,
-    atomic_parquet,
-    ensure_dir,
-    group_label,
-    profile_dir,
-)
+from ..config import DEFAULT_INSTANCE_ID, analysis_groups, analysis_runs, group_label, profile_dir
+from ..core.persistence import atomic_json, atomic_parquet, ensure_dir
 from ..core.lipid_geometry import bilayer_midplane, planar_box
 
 AXIS_INDEX={"x":0,"y":1,"z":2}
