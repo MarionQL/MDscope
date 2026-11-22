@@ -138,7 +138,8 @@ def test_pipeline_graphs_reuse_live_architecture_inventory(tmp_path):
     assert '"checkpoint" -> "replay_stream"' in recovery
     assert "streaming: shared primary frame pass" in execution
     assert '"fusedonly" [' in execution
-    assert '"choice" -> "fusedonly"' in execution
+    assert '"choice" -> "audit"' in execution
+    assert '"audit" -> "fusedonly"' in execution
     assert "FusedMembrane" in execution and "FusedExtensions" in execution
     focused = (output / "imports_focused.dot").read_text()
     assert '"mdscope.pipeline.runner"' in focused
