@@ -33,8 +33,8 @@ export PYTHONUNBUFFERED=1
 export MDSCOPE_PROGRESS_EVERY_PERCENT="${MDSCOPE_PROGRESS_EVERY_PERCENT:-1}"
 # Enable lightweight trajectory/analysis timing during SLURM runs by default.
 export MDSCOPE_PROFILE="${MDSCOPE_PROFILE:-1}"
-# shellcheck source=scripts/slurm_job_env.sh
-source "${ROOT}/scripts/slurm_job_env.sh"
+# shellcheck source=slurm/job_env.sh
+source "${ROOT}/slurm/job_env.sh"
 mdscope_activate_env
 mdscope_preflight
 
@@ -52,7 +52,7 @@ if [[ "${SLURM_ARRAY_TASK_COUNT:-}" != "${n_replicates}" \
     echo "ERROR: Slurm array ${SLURM_ARRAY_TASK_MIN:-?}-${SLURM_ARRAY_TASK_MAX:-?}" \
          "(${SLURM_ARRAY_TASK_COUNT:-?} tasks) does not match the ${n_replicates}" \
          "replicates in ${YAML}; expected --array=${expected}." >&2
-    echo "Resubmit: sbatch --array=${expected} run_mdscope.sh ${YAML}" >&2
+    echo "Resubmit: sbatch --array=${expected} slurm/run_mdscope.sh ${YAML}" >&2
     exit 2
 fi
 

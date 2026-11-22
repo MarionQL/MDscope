@@ -26,13 +26,13 @@ def test_profiler_is_opt_in_and_produces_correct_stream(tmp_path, monkeypatch):
 
 
 def test_slurm_launcher_routes_progress_to_stdout_and_loads_checkout():
-    script = (Path(__file__).resolve().parents[1] / "run_mdscope.sh").read_text()
+    script = (Path(__file__).resolve().parents[1] / "slurm" / "run_mdscope.sh").read_text()
     assert "exec 2>&1" in script
     assert "PYTHONUNBUFFERED=1" in script
     assert 'MDSCOPE_PROGRESS_EVERY_PERCENT' in script
     assert 'MDSCOPE_PROFILE' in script
     assert "synd4_full_mechanisms.yaml" in script
     assert "python -u -m mdscope.cli replicate" in script
-    assert 'source "${ROOT}/scripts/slurm_job_env.sh"' in script
-    helper = (Path(__file__).resolve().parents[1] / "scripts" / "slurm_job_env.sh").read_text()
+    assert 'source "${ROOT}/slurm/job_env.sh"' in script
+    helper = (Path(__file__).resolve().parents[1] / "slurm" / "job_env.sh").read_text()
     assert "MDscope commit:" in helper

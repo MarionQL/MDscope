@@ -25,8 +25,8 @@ fi
 # Finalization reads completed replicate outputs and generates the
 # cross-replicate statistics and findings; it does not rerun trajectories.
 export PYTHONUNBUFFERED=1
-# shellcheck source=scripts/slurm_job_env.sh
-source "${ROOT}/scripts/slurm_job_env.sh"
+# shellcheck source=slurm/job_env.sh
+source "${ROOT}/slurm/job_env.sh"
 mdscope_activate_env
 mdscope_preflight
 
