@@ -122,3 +122,11 @@ def validate_membrane(cfg):
     validate_lipid_enrichment(cfg)
     validate_bilayer_normal(cfg)
     validate_lipid_hydrogen_bonds(cfg)
+
+def validate_lipid_contacts(cfg):
+    contacts = cfg.get('analyses', {}).get('lipid_contacts', {})
+    if contacts.get('enabled', False):
+        if not contacts.get('selection') or not contacts.get('species_selections'):
+            raise ValueError('lipid_contacts requires selection and species_selections')
+        if float(contacts.get('cutoff_A', 5.)) <= 0 or int(contacts.get('batch_atoms', 4096)) < 1:
+            raise ValueError('lipid_contacts cutoff_A and batch_atoms must be positive')

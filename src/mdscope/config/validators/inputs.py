@@ -1,33 +1,12 @@
-"""Independent analysis validators, in historical evaluation order."""
+"""Source-file and trajectory validation."""
 from pathlib import Path
 import numpy as np
 from ...errors import InputPathError
-from ..runs import _validate_path_component, analysis_enabled
+from ..runs import _validate_path_component
 
 
-def validate_potassium_bridge_audit(cfg):
-    if analysis_enabled(cfg, "potassium_bridge_audit"):
-        analyses = cfg["analyses"]
-        solvation = analyses["solvation"]
-        motif = solvation["targets"].get("motif", {}).get("acidic_patch", {})
-        hs = analyses["sdc4_mechanisms"]["hs_auto"]
-        if not (solvation.get("water_selection") and isinstance(motif, dict)
-                and motif.get("sequence") and motif.get("selection")
-                and hs.get("glycan_selection") and hs.get("attachment_selection")):
-            raise ValueError("potassium_bridge_audit requires solvation water and acidic_patch "
-                             "selectors and sdc4_mechanisms.hs_auto selections")
 
-
-def validate_lipid_contacts(cfg):
-    contacts = cfg.get('analyses', {}).get('lipid_contacts', {})
-    if contacts.get('enabled', False):
-        if not contacts.get('selection') or not contacts.get('species_selections'):
-            raise ValueError('lipid_contacts requires selection and species_selections')
-        if float(contacts.get('cutoff_A', 5.)) <= 0 or int(contacts.get('batch_atoms', 4096)) < 1:
-            raise ValueError('lipid_contacts cutoff_A and batch_atoms must be positive')
-
-
-def validate_input_systems(cfg, base, *, check_paths):
+def validate_inputs(cfg, base, *, check_paths):
     systems = cfg.get("systems")
     if not systems:
         raise ValueError("Config must define at least one system under systems:")
@@ -103,9 +82,3 @@ def validate_input_systems(cfg, base, *, check_paths):
                 f"System {name!r} has duplicate replicate labels: "
                 + ", ".join(duplicates)
             )
-
-
-def validate_inputs(cfg, base, *, check_paths):
-    validate_potassium_bridge_audit(cfg)
-    validate_lipid_contacts(cfg)
-    validate_input_systems(cfg, base, check_paths=check_paths)
