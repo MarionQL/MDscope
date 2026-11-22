@@ -12,7 +12,8 @@ from zipfile import BadZipFile, ZipFile
 import numpy as np
 import pandas as pd
 
-from ..config import analysis_runs, config_hash
+from ..config import analysis_runs
+from ..core.provenance import config_hash
 from ..mechanisms.hs_hydration import temporal_hs_hydration_profiles
 from ..mechanisms.residue_occlusion import (
     FRACTION_COLUMNS,
