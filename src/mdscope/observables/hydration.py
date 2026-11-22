@@ -13,7 +13,7 @@ from ..contracts.outputs import (
 )
 from ..core.glycans import glycan_definition, glycan_sugars
 from ..core.sequence import sequence_chain_label
-from ..observables.solvation import unique_target_solvent_pairs
+from .solvation import unique_target_solvent_pairs
 
 OUTPUT = Path(HS_SUGAR_HYDRATION_PATH)
 ATTACHMENTS = GLYCAN_ATTACHMENTS_FILE

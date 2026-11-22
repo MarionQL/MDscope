@@ -26,21 +26,21 @@ from MDAnalysis.lib.distances import (
     minimize_vectors,
 )
 
-from ..config import DEFAULTS, profile_dir, time_ps
-from ..core.persistence import atomic_json, atomic_parquet, ensure_dir
-from ..core.glycans import discover_covalent_glycans
-from ..core.lipid_geometry import (
+from ...config import DEFAULTS, profile_dir, time_ps
+from ...core.persistence import atomic_json, atomic_parquet, ensure_dir
+from ...core.glycans import discover_covalent_glycans
+from ...core.lipid_geometry import (
     accessible_area_grid,
     aligned_leaflets,
     anchor_groups,
     circular_axis_mean,
     periodic_center,
 )
-from ..core.progress import track
-from ..core.sequence import AA3, sequence_matches
-from ..observables.membrane_order import _atomic_npz, _order_sites
-from .mechanistic_common import heavy, nearest, selected, unit
-from .residue_occlusion import (
+from ...core.progress import track
+from ...core.sequence import AA3, sequence_matches
+from ...observables.membrane_order import _atomic_npz, _order_sites
+from ...mechanisms.mechanistic_common import heavy, nearest, selected, unit
+from ...mechanisms.residue_occlusion import (
     OCCLUSION_FILE,
     ResidueOcclusion,
     residue_environment_pending,
@@ -104,7 +104,7 @@ def _add_acidic_patch_sasa(frame, motifs, isolated_dir, environment_dir):
     return frame
 
 
-from ..pipeline.analysis_selection import sdc4_enabled as enabled
+from ...pipeline.analysis_selection import sdc4_enabled as enabled
 
 
 def _id(label):
