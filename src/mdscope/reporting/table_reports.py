@@ -166,7 +166,7 @@ class TableReports:
                                else prior.get('archive'))}
             # Stage every sidecar before replacing any committed report.
             sidecars = {}
-            from ..config import atomic_json
+            from ..core.persistence import atomic_json
             for report, value in manifests.items():
                 fd, temporary = tempfile.mkstemp(prefix='.statistics_tables.', suffix='.json', dir=report.parent)
                 staged.append(Path(temporary))
