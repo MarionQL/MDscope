@@ -15,6 +15,7 @@
 | Solvation memory | Event extraction streamed; survival risk-count computation batched | Other bridge/survival/SASA derivatives still materialize tables |
 | Leaflets and MSD | Fixed cohorts distinguished from dynamic leaflets; direct-sum/PBC/drift tests | Flip-flop, stride aliasing, long-lag fit and finite-size effects |
 | Membrane geometry | Planar/PBC reference tests and unsupported-box errors | Strongly curved/tilted cells, headgroup-height mismatch |
+| Local bilayer normals | Whole-box-shift PBC invariance on every real-data frame; hard-cutoff ties (a neighbour within 2.5e-4 Å, ~10× measured float32 shift error, of the 15 Å cutoff) reported separately (#250) | Per-lipid tilt is discontinuous at the cutoff: one neighbour crossing it moved a ~16-neighbour tilt by ~1° (carb test data, 250 ns). Ensemble means are robust; per-lipid tilts and their tails are cutoff-sensitive |
 | H bonds and bridges | Bond-verified molecule IDs, geometry thresholds | Protonation/chemical assignments; proximity is not cooperativity |
 
 ## Other model assumptions

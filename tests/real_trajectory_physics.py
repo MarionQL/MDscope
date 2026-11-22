@@ -1,7 +1,8 @@
 """Full-length reference-trajectory physical audit and per-stage timing.
 
-Uses every available frame (200/201) for leaflet/PBC/geometry checks. The
-glycolipid H-bond subtest uses 20 frames because it is considerably costlier.
+Uses every available frame (200/201) for leaflet/PBC/geometry checks, so a
+frame-strided copy checks a subset of the same physical frames. The glycolipid
+H-bond subtest uses 20 frames because it is considerably costlier.
 This is NOT a claim of trajectory convergence or independent replicates.
 """
 from __future__ import annotations
@@ -29,6 +30,12 @@ from mdscope.core.lipid_geometry import (
 from mdscope.interactions.lipid_hydrogen_bonds import (
     lipid_molecule_map, run_lipid_hydrogen_bonds,
 )
+from pbc_invariance import WRAP_TOLERANCE_DEG, wrap_normal_difference
+
+# Hard-cutoff ties (see tests/pbc_invariance.py) are a few anchors per frame
+# (at most 12/1632 = 0.7% on the test data); ~4x that indicates a neighbourhood
+# problem rather than tie statistics.
+MAX_TIE_FRACTION = 0.03
 
 DATA = Path(os.environ.get("MDSCOPE_REAL_DATA", "examples/data")).resolve()
 ROOT = Path(os.environ.get("MDSCOPE_REAL_OUTPUT", "real_test_results")).resolve()
@@ -71,12 +78,14 @@ def geometry_audit(system, topology, trajectory):
     max_wrap_enrichment_diff = 0
     max_wrap_normal_diff = 0.
     max_wrap_center_diff = 0.
+    wrap_validity_changes = 0
+    tie_anchor_frames = []
+    max_tie_normal_diff = 0.
     changed_counts = []
     changed_lipids = {}
     transition_counts = Counter()
     previous_leaf = None
     previous_time = None
-    sampled = {0, 1, 2, 5, 10, 20, 40, 80, 120, 160, len(u.trajectory)-1}
     for i, ts in enumerate(u.trajectory):
         t0 = time.perf_counter()
         xyz = centers(tracker)
@@ -123,40 +132,47 @@ def geometry_audit(system, topology, trajectory):
         if previous_time is not None:
             assert ts.time > previous_time
         previous_time = ts.time
-        if i in sampled:
-            # Independently shift selected lipids/protein atoms by entire box
-            # vectors. All PBC-aware observables must remain invariant.
-            shifted_xyz = xyz.copy()
-            shifted_xyz[::4, 0] += ts.dimensions[0]
-            shifted_xyz[1::4, 1] -= ts.dimensions[1]
-            shifted_xyz[2::4, 2] += ts.dimensions[2]
-            shifted_protein = protein.positions.astype(float).copy()
-            shifted_protein[::3, 0] -= ts.dimensions[0]
-            shifted_protein[1::3, 1] += ts.dimensions[1]
-            shifted_center = periodic_center(shifted_protein, ts.dimensions)
-            center_error = float(np.linalg.norm(minimize_vectors(
-                (center-shifted_center)[None, :], ts.dimensions)[0]))
-            max_wrap_center_diff = max(max_wrap_center_diff, center_error)
-            shifted_leaf, _ = aligned_leaflets(
-                shifted_xyz[:, 2], float(ts.dimensions[2]), initial)
-            assert np.array_equal(shifted_leaf, current)
-            footprint_atoms = footprint.protein
-            before = footprint_atoms.positions.copy()
-            try:
-                moved = before.copy()
-                moved[::3, 0] -= ts.dimensions[0]
-                footprint_atoms.positions = moved
-                _, shifted_enrichment = footprint.frame(ts.time, shifted_xyz, shifted_leaf, changes, ts.dimensions)
-            finally:
-                footprint_atoms.positions = before
-            count_difference = max(abs(a["count_local"]-b["count_local"])
-                                   for a, b in zip(enrichment, shifted_enrichment))
-            max_wrap_enrichment_diff = max(max_wrap_enrichment_diff, count_difference)
-            shifted_angles, _ = fit_local_normals(
-                shifted_xyz, shifted_leaf, ts.dimensions, radius=15.,
-                min_neighbors=4, normal=2)
-            angle_difference = float(np.nanmax(np.abs(angles-shifted_angles)))
-            max_wrap_normal_diff = max(max_wrap_normal_diff, angle_difference)
+        # Every frame: wrap checks must not depend on which frames are sampled.
+        # Independently shift selected lipids/protein atoms by entire box
+        # vectors. All PBC-aware observables must remain invariant.
+        shifted_xyz = xyz.copy()
+        shifted_xyz[::4, 0] += ts.dimensions[0]
+        shifted_xyz[1::4, 1] -= ts.dimensions[1]
+        shifted_xyz[2::4, 2] += ts.dimensions[2]
+        shifted_protein = protein.positions.astype(float).copy()
+        shifted_protein[::3, 0] -= ts.dimensions[0]
+        shifted_protein[1::3, 1] += ts.dimensions[1]
+        shifted_center = periodic_center(shifted_protein, ts.dimensions)
+        center_error = float(np.linalg.norm(minimize_vectors(
+            (center-shifted_center)[None, :], ts.dimensions)[0]))
+        max_wrap_center_diff = max(max_wrap_center_diff, center_error)
+        shifted_leaf, _ = aligned_leaflets(
+            shifted_xyz[:, 2], float(ts.dimensions[2]), initial)
+        assert np.array_equal(shifted_leaf, current)
+        footprint_atoms = footprint.protein
+        before = footprint_atoms.positions.copy()
+        try:
+            moved = before.copy()
+            moved[::3, 0] -= ts.dimensions[0]
+            footprint_atoms.positions = moved
+            _, shifted_enrichment = footprint.frame(ts.time, shifted_xyz, shifted_leaf, changes, ts.dimensions)
+        finally:
+            footprint_atoms.positions = before
+        count_difference = max(abs(a["count_local"]-b["count_local"])
+                               for a, b in zip(enrichment, shifted_enrichment))
+        max_wrap_enrichment_diff = max(max_wrap_enrichment_diff, count_difference)
+        wrap = wrap_normal_difference(
+            xyz, current, shifted_xyz, shifted_leaf, ts.dimensions,
+            radius=15., min_neighbors=4)
+        max_wrap_normal_diff = max(max_wrap_normal_diff, wrap["max_non_tie_diff_deg"])
+        wrap_validity_changes += wrap["non_tie_validity_changes"]
+        max_tie_normal_diff = max(max_tie_normal_diff, wrap["max_tie_diff_deg"])
+        if wrap["tie_anchors"]:
+            tie_anchor_frames.append({"frame": i, "time_ps": float(ts.time),
+                                      "tie_anchors": wrap["tie_anchors"],
+                                      "max_tie_diff_deg": wrap["max_tie_diff_deg"]})
+        assert wrap["tie_anchors"] <= MAX_TIE_FRACTION * wrap["n_anchors"], (
+            f"{system} frame {i}: {wrap['tie_anchors']} cutoff-tie anchors")
         frame_records.append({
             "frame": i, "time_ps": float(ts.time),
             "leaflet_changes": changes,
@@ -170,7 +186,8 @@ def geometry_audit(system, topology, trajectory):
     assert len(frame_records) == len(u.trajectory)
     assert max_wrap_enrichment_diff == 0
     assert max_wrap_center_diff < 1e-3, max_wrap_center_diff
-    assert max_wrap_normal_diff < 1e-3, max_wrap_normal_diff
+    assert max_wrap_normal_diff < WRAP_TOLERANCE_DEG, max_wrap_normal_diff
+    assert wrap_validity_changes == 0, wrap_validity_changes
     print(f"{system}: PBC wrap invariance center={max_wrap_center_diff:.5g} A, "
           f"enrichment count diff={max_wrap_enrichment_diff}, "
           f"local normal diff={max_wrap_normal_diff:.5g} deg", flush=True)
@@ -196,6 +213,8 @@ def geometry_audit(system, topology, trajectory):
         "max_wrap_center_diff_A": max_wrap_center_diff,
         "max_wrap_enrichment_count_diff": max_wrap_enrichment_diff,
         "max_wrap_normal_diff_deg": max_wrap_normal_diff,
+        "wrap_cutoff_tie_frames": tie_anchor_frames,
+        "max_wrap_tie_normal_diff_deg": max_tie_normal_diff,
         "max_naive_center_error_A": float(frames.naive_center_error_A.max()),
         "mean_valid_normal_fraction": float(frames.valid_normal_fraction.mean()),
         "mean_normal_deg": float(frames.normal_mean_deg.mean()),
