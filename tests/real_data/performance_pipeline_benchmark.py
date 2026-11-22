@@ -32,10 +32,16 @@ def _read(path):
     return json.loads(Path(path).read_text()) if Path(path).exists() else {}
 
 
+def _replica(root, system):
+    # One project per system: a shared project.output would fail the
+    # resolved-config hash guard on the second system.
+    return root / system / system / "rep1"
+
+
 def _profile(root):
     result = {}
     for system in SYSTEMS:
-        prefix = root / system / "rep1"
+        prefix = _replica(root, system)
         result[system] = {
             "stage_timings": _read(prefix / "stage_timings.json"),
             "streaming": _read(prefix / "streaming_phase_profile.json"),
@@ -54,7 +60,7 @@ def _trajectory_experiment(root, frames, species):
     for system, (top, xtc) in SYSTEMS.items():
         config = build_config(system, DATA / top, DATA / xtc, species[system])
         data = yaml.safe_load(config.read_text())
-        data["project"]["output"] = str(root)
+        data["project"]["output"] = str(root / system)
         data["trajectory"]["stop"] = int(frames)
         # Explicitly measure the full cold run. Do not re-use previous output.
         data["statistics"]["enabled"] = False
@@ -75,7 +81,7 @@ def _stats_experiment(source, root, frames, draws, occupancy, template):
         destination = root / system
         destination.mkdir()
         link = destination / "rep1"
-        link.symlink_to((source / system / "rep1").resolve(), target_is_directory=True)
+        link.symlink_to(_replica(source, system).resolve(), target_is_directory=True)
         repouts[system] = [link]
     cfg = deepcopy(template)
     cfg["progress"]["enabled"] = False
@@ -134,7 +140,7 @@ def main():
         if not args.skip_trajectory:
             results["trajectory"][str(frames)] = _trajectory_experiment(
                 root, frames, species)
-        elif not all((root / system / "rep1/summary/timeseries.parquet").is_file()
+        elif not all((_replica(root, system) / "summary/timeseries.parquet").is_file()
                      for system in SYSTEMS):
             raise FileNotFoundError(f"Missing precomputed benchmark results: {root}")
 
