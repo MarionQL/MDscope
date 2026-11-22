@@ -64,7 +64,7 @@ def test_descriptor_schema_is_registry_schema(tmp_path, name, filename, columns)
 
 
 def test_producers_use_exact_descriptor_column_contracts():
-    from mdscope.mechanisms.hs_hydration import HydrationObserver, ATTACHMENTS, OUTPUT
+    from mdscope.observables.hydration import HydrationObserver, ATTACHMENTS, OUTPUT
     from mdscope.mechanisms.residue_occlusion import OCCLUSION_FILE
     from mdscope.observables.solvation import COUNT_COLUMNS
     from mdscope.observables.solvation_common import EPISODE_COLUMNS
@@ -92,7 +92,7 @@ def test_contract_module_is_dependency_free():
                        for alias in node.names) for node in imports)
     code = ("import sys; from mdscope.contracts.outputs import OUTPUT_DESCRIPTORS; "
             "assert 'mdscope.registry' not in sys.modules; "
-            "assert 'mdscope.mechanisms.hs_hydration' not in sys.modules; "
+            "assert 'mdscope.observables.hydration' not in sys.modules; "
             "assert 'mdscope.observables.solvation' not in sys.modules")
     result = subprocess.run([sys.executable, "-c", code], text=True,
                             capture_output=True, timeout=45, check=False)

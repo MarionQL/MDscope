@@ -13,7 +13,7 @@ import yaml
 
 from mdscope.core.persistence import atomic_json
 from mdscope.core.glycans import discover_covalent_glycans
-from mdscope.mechanisms.hs_hydration import OUTPUT, HydrationObserver
+from mdscope.observables.hydration import OUTPUT, HydrationObserver
 
 FRAMES = 20
 ATTACHMENTS = {"PROA_S39", "PROA_S61", "PROA_S63", "PROB_S309", "PROB_S331", "PROB_S333"}
