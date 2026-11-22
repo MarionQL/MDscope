@@ -236,6 +236,10 @@ def test_streamed_scalar_inventory_rejects_missing_metric_without_mutation(tmp_p
     before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
     row = next(r for r in inspect_results_directory(cfg, path.parent, root) if r["analysis"] == "rmsd")
     assert row["status"] == "incompatible"
+    from mdscope.pipeline.persisted_inputs import validate_replica_products
+    # Direct finalization must inspect core-stream contracts as well as fused outputs.
+    with pytest.raises(RuntimeError, match="rmsd"):
+        validate_replica_products(cfg, root, [rep])
     with pytest.raises(RuntimeError, match="rmsd"):
         finalize_project(path, cfg=cfg, results_dir=root)
     assert all(p.read_bytes() == value for p, value in before.items())
