@@ -7,7 +7,7 @@ import streamlit as st
 import yaml
 
 from mdscope.config import DEFAULTS, analysis_groups, resolve_config
-from mdscope.statistics_selection import (
+from mdscope.statistics.selection import (
     ESTIMATOR_FLAGS,
     studio_metric_selection_defaults,
 )
@@ -628,7 +628,7 @@ def main():
                     plan, _ = preview_document(yaml.safe_dump(doc, sort_keys=False), base)
                 import pandas as pd
 
-                from mdscope.statistics_selection import validate_metric_selection
+                from mdscope.statistics.selection import validate_metric_selection
                 from mdscope.studio.model import (
                     set_statistics_exact_family,
                     set_statistics_family_mode,
