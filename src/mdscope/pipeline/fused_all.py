@@ -22,7 +22,8 @@ from .fused_membrane import FusedMembrane
 from .fused_membrane import enabled_names as membrane_enabled
 
 
-def run_fused_only(rep, cfg, repout, *, only=None, validate_summary_grid=False):
+def run_fused_only(rep, cfg, repout, *, only=None, validate_summary_grid=False,
+                   on_finalized=None):
     """Replay only pending outputs in a shared source-frame pass.
 
     `only` accepts registry FusedOutput entries (including their run_id)
@@ -30,7 +31,8 @@ def run_fused_only(rep, cfg, repout, *, only=None, validate_summary_grid=False):
     Selected families use short-lived chunk staging so existing completed
     observer chunks are not overwritten during an independent replay.
     When recovering a primary-stream run, validate the saved time grid before
-    finalizing any newly produced output.
+    finalizing any newly produced output. The optional callback records each
+    successfully finalized observer before a later observer can fail.
     """
     requested = None if only is None else {
         (entry.name, entry.run_id) if hasattr(entry, "run_id") else (str(entry), "*")
@@ -114,10 +116,11 @@ def run_fused_only(rep, cfg, repout, *, only=None, validate_summary_grid=False):
         if count % chunk:
             for observer in observers:
                 observer.flush(count // chunk)
-        return {
-            type(observer).__name__: (
-                observer.finalize(rep) if isinstance(observer, FusedDistances)
-                else observer.finalize()
-            )
-            for observer in observers
-        }
+        results = {}
+        for observer in observers:
+            result = (observer.finalize(rep) if isinstance(observer, FusedDistances)
+                      else observer.finalize())
+            results[type(observer).__name__] = result
+            if on_finalized is not None:
+                on_finalized()
+        return results

@@ -320,32 +320,23 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
             state.mark(key, run_streaming_pass(rep, cfg, root))
             stage_timings.append({"stage": "streaming", "seconds": perf_counter() - t0})
 
-    # One registry-derived decision serves both observer-only runs and recovery
-    # after a primary stream. Scratch staging protects completed sibling runs.
+    # One registry-derived decision serves observer-only runs and recovery.
+    # Successful observers publish their markers before a later observer can
+    # fail; incomplete siblings never receive completion markers.
     expected, pending = _plan_fused_replay(cfg, repout)
-    if pending:
-        t0 = perf_counter()
-        run_fused_only(
-            rep, cfg, repout, only=pending,
-            validate_summary_grid=streaming_required,
-        )
-        stage_timings.append({
-            "stage": "fused-recovery" if streaming_required else "fused-only",
-            "seconds": perf_counter() - t0,
-        })
-
-    pending_names = {entry.name for entry in pending}
     pending_set = set(pending)
+    pending_names = {entry.name for entry in pending}
+    published = set()
     membrane_recovered = bool(pending_names.intersection(MEMBRANE_ANALYSES))
     extension_recovered = bool(pending_names.intersection((*EXTENSION_ANALYSES, "hydration")))
     distance_recovered = "residue_membrane_distance" in pending_names
-    for entry in expected:
+
+    def mark_fused(entry):
         if not entry.path.is_file():
             raise RuntimeError(f"Missing fused {entry.name} output: {entry.path}")
-        # Existing products passed preflight; validate newly recovered ones
-        # before recording their marker, without duplicate no-op reads.
-        # SDC4 residue occlusion is a separately resumable companion.
-        if entry in pending_set:
+        if entry in pending_set and entry not in published:
+            # Validate the committed companions before marking this output.
+            # SDC4 residue occlusion remains a separate completion stage.
             _validate_analysis_output(entry, cfg, allow_missing_occlusion=True)
         key = prefix + "-" + entry.checkpoint_key
         if not state.complete(key):
@@ -359,9 +350,31 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
                 source = ("streaming" if streaming_required and not distance_recovered
                           else "fused-distances-fallback")
             else:
-                # Keep the historical SDC4 stage-marker provenance.
                 source = "streaming" if streaming_required else "fused-only"
             state.mark(key, {"fused_into": source})
+        if entry in pending_set:
+            published.add(entry)
+
+    def mark_finalized_observer():
+        # Observers finalize independently inside the shared source-frame pass.
+        for entry in pending:
+            if entry not in published and entry.path.is_file():
+                mark_fused(entry)
+
+    if pending:
+        t0 = perf_counter()
+        run_fused_only(
+            rep, cfg, repout, only=pending,
+            validate_summary_grid=streaming_required,
+            on_finalized=mark_finalized_observer,
+        )
+        stage_timings.append({
+            "stage": "fused-recovery" if streaming_required else "fused-only",
+            "seconds": perf_counter() - t0,
+        })
+
+    for entry in expected:
+        mark_fused(entry)
 
     for task in specialized_tasks(cfg):
         key=prefix+"-"+task.key

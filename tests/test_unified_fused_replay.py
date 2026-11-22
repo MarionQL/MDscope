@@ -325,7 +325,10 @@ def test_interrupted_shared_publication_preserves_siblings_and_recovers(
     # The membrane observer finalized first; the extension failed before publish.
     assert membrane.path.is_file()
     assert not solvation.path.exists()
-    assert not membrane_marker.exists() and not solvation_marker.exists()
+    assert not solvation_marker.exists()
+    assert json.loads(membrane_marker.read_text())["fused_into"] == (
+        "fused-membrane-fallback"
+    )
     assert sibling.read_bytes() == sibling_bytes
     assert (repout / "stage_timings.json").read_bytes() == original_stages
     assert not list(repout.glob(".fused-only-*"))

@@ -135,7 +135,9 @@ avoiding one additional *constructor* that previously did **not** traverse
 trajectory frames. This may introduce a pair of targeted frame seeks, so
 wall time and total I/O must be measured rather than inferred. The shared recovery stage is recorded as `fused-recovery` rather than
 assigning the same wall time to multiple families. Historical stage-marker
-`fused_into` values are preserved. Real GROMACS trajectory smoke, memory,
+`fused_into` values are preserved; each successfully finalized observer
+can publish a validated marker even if a later observer fails. A failed or
+unpublished sibling remains unmarked. Real GROMACS trajectory smoke, memory,
 CPU/I/O and wall-time comparisons are required before merging or claiming a
 runtime speedup.
 
