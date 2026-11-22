@@ -330,7 +330,7 @@ def test_run_adds_missing_occlusion_and_reuses_completed_replica(tmp_path, monke
         raise AssertionError("already completed work was called")
 
     monkeypatch.setattr(runner, "run_streaming_pass", forbidden)
-    monkeypatch.setattr(runner, "run_sdc4_mechanisms", forbidden)
+    monkeypatch.setattr(runner, "run_fused_only", forbidden)
     monkeypatch.setattr(runner, "summarize_replicate", forbidden)
     runner.run_replicate(rep, cfg, root, state)
 

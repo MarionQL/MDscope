@@ -20,6 +20,7 @@ import yaml
 
 from .. import __version__
 from ..config import analysis_enabled, iter_replicates, load_config, project_root
+from ..contracts.outputs import EXTENSION_ANALYSES, MEMBRANE_ANALYSES
 from ..core.persistence import atomic_json, atomic_parquet, ensure_dir
 from ..core.provenance import config_hash, environment_metadata
 from ..core.persistence import archive_output as _archive_previous_output
@@ -31,7 +32,7 @@ from ..mechanisms.residue_occlusion import (
     OCCLUSION_FILE,
     residue_environment_pending,
 )
-from ..systems.sdc4.mechanisms import complete_residue_occlusion, run_sdc4_mechanisms
+from ..systems.sdc4.mechanisms import complete_residue_occlusion
 from ..systems.sdc4.mechanisms import enabled as sdc4_enabled
 from ..observables.density_1d import missing_membrane_density_runs
 from ..observables.lipid_enrichment import (
@@ -50,12 +51,6 @@ from ..registry import analysis_output_plan, fused_output, fused_output_plan
 from ..statistics.dispatch import analyze_project
 from ..statistics.shared_states import fit_shared_states, publish_shared_states
 from .fused_all import run_fused_only
-from .fused_distance import enabled_names as distance_enabled_names
-from .fused_distance import run_fused_distances
-from .fused_extensions import enabled_names as extension_enabled_names
-from .fused_extensions import run_fused_extensions
-from .fused_membrane import enabled_names as fused_enabled_names
-from .fused_membrane import run_fused_membrane
 from .persisted_inputs import (
     check_artifact as _check_artifact,
 )
@@ -269,6 +264,17 @@ def _output_pending(entry, cfg: dict) -> bool:
     return not entry.path.is_file()
 
 
+def _plan_fused_replay(cfg: dict, repout: Path):
+    """Return configured output identities and the instances needing a frame pass.
+
+    Called after existing-product preflight and the optional primary stream;
+    validation failures are not treated as missing or recoverable outputs.
+    """
+    expected = fused_output_plan(cfg, repout)
+    pending = tuple(entry for entry in expected if _output_pending(entry, cfg))
+    return expected, pending
+
+
 def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     prefix = _replicate_state_prefix(rep)
     repout = ensure_dir(root / rep.system / rep.label)
@@ -279,9 +285,12 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     })
     _create_once(repout / "run_metadata.json", json.dumps(metadata, indent=2) + "\n")
     stage_timings = []
+    # Resolve the registered inventory once for both preflight and the final
+    # audit: no independent re-selection after the trajectory has run.
+    registered = analysis_output_plan(cfg, repout)
     # Reject damaged existing products before a reader can overwrite them.
     # The new occlusion companion can be calculated independently if absent.
-    for entry in analysis_output_plan(cfg, repout):
+    for entry in registered:
         if entry.name == "lipid_enrichment" and not (entry.path.parent / "reference.json").is_file():
             continue  # An interrupted publication has no committed footprint.
         if entry.path.exists():
@@ -311,103 +320,61 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
             state.mark(key, run_streaming_pass(rep, cfg, root))
             stage_timings.append({"stage": "streaming", "seconds": perf_counter() - t0})
 
-    # Observer-only mode replays every pending instance in one frame pass.
-    # Preserve run IDs: multiple SASA and distance runs have distinct outputs.
-    # Lipid footprint needs its committed reference.json as well as a table.
-    if not streaming_required:
-        pending = tuple(entry for entry in fused_output_plan(cfg, repout)
-                        if _output_pending(entry, cfg))
-        if pending:
-            t0 = perf_counter()
-            run_fused_only(rep, cfg, repout, only=pending)
-            stage_timings.append({"stage": "fused-only", "seconds": perf_counter() - t0})
+    # One registry-derived decision serves observer-only runs and recovery.
+    # Successful observers publish their markers before a later observer can
+    # fail; incomplete siblings never receive completion markers.
+    expected, pending = _plan_fused_replay(cfg, repout)
+    pending_set = set(pending)
+    pending_names = {entry.name for entry in pending}
+    published = set()
+    membrane_recovered = bool(pending_names.intersection(MEMBRANE_ANALYSES))
+    extension_recovered = bool(pending_names.intersection((*EXTENSION_ANALYSES, "hydration")))
+    distance_recovered = "residue_membrane_distance" in pending_names
 
-    # These analyses are observers of the existing streaming frames, not
-    # separate trajectory readers. For geometry-only systems, one shared
-    # fallback pass is sufficient. Keep legacy task markers for resume.
-    fused_names = fused_enabled_names(cfg)
-    if fused_names:
-        expected = {name: fused_output(repout, name) for name in fused_names}
-        # A completed streaming marker guarantees finalized observer outputs.
-        # If outputs are missing (or there was no protein streaming pass),
-        # rebuild them with exactly one independent shared pass.
-        pending_names = tuple(name for name in fused_names
-                              if _output_pending(expected[name], cfg))
-        need_fallback = bool(pending_names)
-        if need_fallback:
-            t0 = perf_counter()
-            run_fused_membrane(rep, cfg, repout, names=pending_names)
-            stage_timings.append({"stage": "fused-membrane-fallback", "seconds": perf_counter() - t0})
-        for name in fused_names:
-            if not expected[name].path.is_file():
-                raise RuntimeError(f"Missing fused membrane output: {expected[name].path}")
-            key = prefix + "-" + expected[name].checkpoint_key
-            if not state.complete(key):
-                state.mark(key, {"fused_into": "streaming" if streaming_required and not need_fallback
-                                 else "fused-membrane-fallback"})
-
-    extension_names = extension_enabled_names(cfg)
-    if extension_names:
-        extension_outputs = {name: fused_output(repout, name)
-                             for name in extension_names if name != "sasa"}
-        if "sasa" in extension_names:
-            from ..config import analysis_runs
-            for run in analysis_runs(cfg, "sasa"):
-                entry = fused_output(repout, "sasa", run_id=run.run_id)
-                extension_outputs[entry.checkpoint_key] = entry
-        missing = [entry for entry in extension_outputs.values()
-                   if not entry.path.is_file()]
-        if missing:
-            t0 = perf_counter()
-            run_fused_extensions(
-                rep, cfg, repout,
-                names=tuple(dict.fromkeys(entry.name for entry in missing)),
-                sasa_run_ids=tuple(
-                    entry.run_id if entry.run_id is not None else "default"
-                    for entry in missing if entry.name == "sasa"
-                ),
-            )
-            stage_timings.append({"stage": "fused-extensions-fallback", "seconds": perf_counter() - t0})
-        for name in extension_outputs:
-            if not extension_outputs[name].path.is_file():
-                raise RuntimeError(f"Missing fused output: {extension_outputs[name].path}")
-            key = prefix + "-" + extension_outputs[name].checkpoint_key
-            if not state.complete(key):
-                state.mark(key, {"fused_into": "streaming" if streaming_required and not missing
-                                 else "fused-extensions-fallback"})
-
-    distance_names = distance_enabled_names(cfg)
-    if distance_names:
-        expected = {
-            run_id: fused_output(repout, "residue_membrane_distance", run_id=run_id)
-            for run_id in distance_names
-        }
-        missing = [name for name, entry in expected.items() if not entry.path.is_file()]
-        if missing:
-            t0 = perf_counter()
-            run_fused_distances(rep, cfg, repout, run_ids=tuple(missing))
-            stage_timings.append({"stage": "fused-distances-fallback", "seconds": perf_counter() - t0})
-        for run_id, entry in expected.items():
-            if not entry.path.is_file():
-                raise RuntimeError(f"Missing fused residue-distance output: {entry.path}")
-            key = prefix + "-" + entry.checkpoint_key
-            if not state.complete(key):
-                state.mark(key, {"fused_into": "streaming" if streaming_required and not missing
-                                 else "fused-distances-fallback"})
-
-    if sdc4_enabled(cfg):
-        output = fused_output(repout, "sdc4_mechanisms").path
-        if not output.is_file():
-            t0 = perf_counter()
-            run_sdc4_mechanisms(rep, cfg, repout)
-            stage_timings.append({"stage": "sdc4-mechanisms-fallback",
-                                  "seconds": perf_counter() - t0})
-        if not output.is_file():
-            raise RuntimeError(f"Missing SDC4 mechanism output: {output}")
-        key = prefix + "-" + fused_output(repout, "sdc4_mechanisms").checkpoint_key
+    def mark_fused(entry):
+        if not entry.path.is_file():
+            raise RuntimeError(f"Missing fused {entry.name} output: {entry.path}")
+        if entry in pending_set and entry not in published:
+            # Validate the committed companions before marking this output.
+            # SDC4 residue occlusion remains a separate completion stage.
+            _validate_analysis_output(entry, cfg, allow_missing_occlusion=True)
+        key = prefix + "-" + entry.checkpoint_key
         if not state.complete(key):
-            state.mark(key, {"fused_into": "streaming" if streaming_required
-                             else "fused-only"})
+            if entry.name in MEMBRANE_ANALYSES:
+                source = ("streaming" if streaming_required and not membrane_recovered
+                          else "fused-membrane-fallback")
+            elif entry.name in (*EXTENSION_ANALYSES, "hydration"):
+                source = ("streaming" if streaming_required and not extension_recovered
+                          else "fused-extensions-fallback")
+            elif entry.name == "residue_membrane_distance":
+                source = ("streaming" if streaming_required and not distance_recovered
+                          else "fused-distances-fallback")
+            else:
+                source = "streaming" if streaming_required else "fused-only"
+            state.mark(key, {"fused_into": source})
+        if entry in pending_set:
+            published.add(entry)
+
+    def mark_finalized_observer():
+        # Observers finalize independently inside the shared source-frame pass.
+        for entry in pending:
+            if entry not in published and entry.path.is_file():
+                mark_fused(entry)
+
+    if pending:
+        t0 = perf_counter()
+        run_fused_only(
+            rep, cfg, repout, only=pending,
+            validate_summary_grid=streaming_required,
+            on_finalized=mark_finalized_observer,
+        )
+        stage_timings.append({
+            "stage": "fused-recovery" if streaming_required else "fused-only",
+            "seconds": perf_counter() - t0,
+        })
+
+    for entry in expected:
+        mark_fused(entry)
 
     for task in specialized_tasks(cfg):
         key=prefix+"-"+task.key
@@ -441,7 +408,7 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
             complete_residue_occlusion(rep, cfg, repout)
             stage_timings.append({"stage": "residue-occlusion", "seconds": perf_counter() - t0})
 
-    for entry in analysis_output_plan(cfg, repout):
+    for entry in registered:
         _validate_analysis_output(entry, cfg)
     whole = repout / "summary" / "timeseries.parquet"
     grouped = repout / "summary" / "group_timeseries.parquet"

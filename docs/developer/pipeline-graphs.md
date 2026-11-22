@@ -24,35 +24,30 @@ conditions must be reviewed when `runner.py`, `streaming.py` or
 
 ```mermaid
 flowchart TD
-    CLI["run / replicate CLI"] --> RUN["runner.run_replicate"]
-    RUN --> PREF["Validate existing products"]
-    PREF --> DEC{"Core streaming or aligned cache required?"}
-    DEC -->|Yes| STR["streaming.run_streaming_pass<br/>Primary shared frame loop"]
-    DEC -->|No, pending instances| FO["fused_all.run_fused_only<br/>Selected observers and named runs, one frame loop"]
-    DEC -->|No work needed| AUD["Per-family output audit"]
-    STR --> CORE["Core measurements + checkpoints"]
+    CLI["run / replicate"] --> RUN["runner.run_replicate"]
+    RUN --> PREF["Preflight: validate existing primary and companion artifacts"]
+    PREF --> DEC{"Primary streaming required?"}
+    DEC -->|Yes| STR["streaming.run_streaming_pass: shared primary frames"]
+    STR --> CORE["Core measurements + checkpoint"]
     STR --> MEM["FusedMembrane"]
     STR --> EXT["FusedExtensions"]
     STR --> DIST["FusedDistances"]
     STR --> MECH["SDC4Mechanisms"]
-    FO --> MEM
-    FO --> EXT
-    FO --> DIST
-    FO --> MECH
-    CORE --> AUD
-    MEM --> AUD
-    EXT --> AUD
-    DIST --> AUD
-    MECH --> AUD
-    AUD -.->|Missing outputs after stream| FALL["Selective fused-family fallback readers"]
-    AUD --> VER["Artifact validation + legacy stage markers"]
-    FALL --> VER
-    VER -.->|Enabled, not fused or already satisfied| TASK["Specialized tasks / multi-origin MSD"]
-    VER --> SUM["Replica summary"]
+    CORE --> PLAN["Registry-derived pending output plan"]
+    MEM --> PLAN
+    EXT --> PLAN
+    DIST --> PLAN
+    MECH --> PLAN
+    DEC -->|No| PLAN
+    PLAN -->|Pending compatible work| FO["fused_all.run_fused_only: one selected replay pass"]
+    PLAN -->|None| VERIFY["Validate output contracts / stage markers"]
+    FO --> VERIFY
+    VERIFY -.->|Specialized tasks| TASK["Parallel DSSP / potassium audit / multi-origin MSD"]
+    VERIFY --> SUM["Summary from saved data"]
     TASK --> SUM
-    SUM -.->|Pending companions| LATE["Membrane density / hydration completion"]
-    SUM --> FIN["Offline statistics / findings / figures"]
-    LATE --> FIN
+    SUM -.->|Missing companions| LATE["Membrane density / hydration completion"]
+    SUM --> OFF["Offline statistics / findings / figures"]
+    LATE --> OFF
 ```
 
 **Reading this graph:** solid arrows show possible execution flow, not
@@ -62,8 +57,7 @@ stream, and can also run under observer-only scheduling. Some standalone or
 recovery operations reopen trajectories. The runner validates existing artifacts rather than assuming that files
 are valid. In observer-only execution it selects **pending (analysis, run ID)**
 pairs; completed named SASA and distance outputs are not recomputed. Replay
-chunks are staged separately from committed streaming chunks. Per-family
-fallbacks remain available after a completed streaming pass.
+chunks are staged separately from committed streaming chunks. Stand-alone per-family entry points remain callable, but the replica coordinator now uses one shared replay after either streaming or observer-only selection.
 
 ## Recovery: reuse, replay, or fail safely
 
@@ -73,31 +67,28 @@ trajectory must be reopened.
 
 ```mermaid
 flowchart TD
-    START["run_replicate"] --> PREF["Preflight: validate existing primary and required companions"]
-    PREF --> BAD{"Existing artifact invalid?"}
-    BAD -->|Yes| STOP["Fail without overwriting existing results"]
-    BAD -->|No| CORE{"Primary streaming required?"}
-    CORE -->|Yes| STATE{"Stream checkpoint state?"}
-    STATE -->|Completed, valid| REUSE["Validate committed stream inventory; reuse core products"]
-    STATE -->|Absent or resumable| STREAM["Resume or run primary stream after checkpoint validation"]
-    STATE -->|Invalid or inconsistent| STOP
-    REUSE --> FAMILY["Check fused-family output contracts"]
-    STREAM --> FAMILY
-    FAMILY -->|Missing primary outputs| FALL["Select only missing membrane / extension / distance / SDC4 outputs"]
-    FAMILY -->|Complete| VALID["Validate registered artifacts and companions"]
-    FALL --> SCRATCH2["Independent selective replay; staging isolated from stream chunks"]
-    SCRATCH2 --> VALID
-    CORE -->|No| PENDING{"Any pending fused output instances?"}
-    PENDING -->|No| SKIP["Reuse saved fused products; do not open a trajectory"]
-    PENDING -->|Yes| ONLY["One observer-only source-frame pass<br/>Only requested analysis + run IDs"]
-    ONLY --> SCRATCH["Temporary chunks; publish selected results"]
-    SCRATCH --> VALID
+    START["run_replicate"] --> PRE["Preflight existing output and companions"]
+    PRE --> BAD{"Invalid existing artifact?"}
+    BAD -->|Yes| ABORT["Fail; preserve existing outputs"]
+    BAD -->|No| STREAM{"Primary stream required?"}
+    STREAM -->|Yes| CP{"Checkpoint state?"}
+    CP -->|Complete and valid| REUSE["Validate inventory / reuse stream"]
+    CP -->|Absent or resumable| RUN["Run / resume primary stream"]
+    CP -->|Invalid| ABORT
+    REUSE --> PENDING["Registry pending identities by analysis and run ID"]
+    RUN --> PENDING
+    STREAM -->|No| PENDING
+    PENDING -->|None| SKIP["No extra trajectory read"]
+    PENDING -->|Some| SHARED["One selected source-frame replay"]
+    SHARED --> GRID["Check saved frame grid when stream summary exists"]
+    GRID --> SCRATCH["Scratch chunks / publish selected outputs"]
+    SCRATCH --> VALID["Validate products before marking complete"]
     SKIP --> VALID
-    VALID --> SUMMARY{"Summary reusable and inputs unchanged?"}
-    SUMMARY -->|Yes| EXTRA["Optional specialized / secondary passes"]
-    SUMMARY -->|No| BUILD["Rebuild summary from saved products"]
-    BUILD --> EXTRA
-    EXTRA --> DONE["Validated replica; project finalization is offline"]
+    VALID --> SUMMARY{"Saved summary reusable?"}
+    SUMMARY -->|Yes| EXTRA["Specialized and companion-only stages"]
+    SUMMARY -->|No| REBUILD["Rebuild summary"]
+    REBUILD --> EXTRA
+    EXTRA --> DONE["Offline finalization ready"]
 ```
 
 **Recovery contract:** existing invalid primary or companion artifacts fail
@@ -106,14 +97,49 @@ be computed, and an incomplete lipid footprint lacking its commit reference
 can be rebuilt. SDC4 residue occlusion has a documented companion-only
 completion path. Complete streaming checkpoints must pass their chunk
 inventory validation. If a non-streaming configuration has several pending
-fused families, they share **one** source-frame traversal. A stream-enabled
-configuration may require independent selective fallback passes for outputs
-that were added after the stream finished.
+fused families, they share **one** source-frame traversal. A stream-enabled configuration now replays compatible pending outputs in one shared source-frame pass after confirming the saved frame grid.
 
 Scratch replay chunks are discarded after successful publication; completed
 outputs are not regenerated just because another run in the same family is
 missing. This diagram is conceptual: see `runner.py`,
 `fused_all.py` and each observer's validation for exact failure modes.
+
+### #279 baseline and measured boundaries
+
+**Before**: merged `main` revision `2faacb0489fcd215e1b28ce27893ea575c510752`.
+The coordinator contained four independent per-family fallback branches (membrane,
+extensions, distance and SDC4). Each could open a separate trajectory after a
+completed primary stream. **After**: one derived set of pending registry outputs
+and one call to the existing fused shared-frame replay executor, irrespective
+of which compatible families are missing.
+
+| Scenario | Previous extra fused trajectory passes | New extra fused trajectory passes |
+|---|---:|---:|
+| No-op; all outputs validated | 0 | 0 |
+| Observer-only with multiple pending families | 1 | 1 |
+| Completed primary stream, one pending family | 1 | 1 |
+| Completed primary stream, three compatible missing families | Up to 3 | 1 |
+| Completed primary stream, four compatible missing families | Up to 4 | 1 |
+| Invalid existing companion | Fail before replay | Fail before replay |
+| Multi-origin MSD, specialized DSSP, potassium, occlusion-only | Separate as needed | Unchanged |
+
+These are **control-flow pass counts**, not performance benchmarks.
+The synthetic recovery test counts Universe opens **and decoded frame
+iterations** for one three-family replay, verifies selected numerical
+products and preserves an unchanged completed sibling. A separate test checks
+observer-only reuse with zero additional opens; corrupt timestamp and shorter
+saved time grids must fail without rewriting completed artifacts or markers. Distance
+finalization now reuses its already-open Universe for metadata at the
+original frame-zero selection context and restores the observer's frame,
+avoiding one additional *constructor* that previously did **not** traverse
+trajectory frames. This may introduce a pair of targeted frame seeks, so
+wall time and total I/O must be measured rather than inferred. The shared recovery stage is recorded as `fused-recovery` rather than
+assigning the same wall time to multiple families. Historical stage-marker
+`fused_into` values are preserved; each successfully finalized observer
+can publish a validated marker even if a later observer fails. A failed or
+unpublished sibling remains unmarked. Real GROMACS trajectory smoke, memory,
+CPU/I/O and wall-time comparisons are required before merging or claiming a
+runtime speedup.
 
 ## Dependencies: what imports what
 

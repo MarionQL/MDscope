@@ -41,8 +41,11 @@ observer implementations. Static solvation/hydration column contracts and HS
 output paths are imported by producers, rather than rediscovered from producer
 classes during planning. Execution scheduling remains in
 `config/runs.py`; its enabled predicates are not duplicated
-in output descriptors. This is the #260 boundary preceding the execution-plan
-work in #279.
+in output descriptors. This is the #260 contract boundary. Under #279 the runner derives one pending
+output set from the registry and uses one selected source-frame replay for
+compatible missing families, leaving specialized work and SDC4 occlusion
+completion separate. See [pipeline graphs](pipeline-graphs.md).
+
 
 For **execution**, **recovery** and **module-dependency** diagrams, including reproducible SVG/DOT generation, see [Pipeline graphs](pipeline-graphs.md). Import edges are AST-derived; execution and recovery are documented control-flow maps.
 

@@ -6,6 +6,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import MDAnalysis as mda
+import pandas as pd
+
+from ..config import time_ps
 
 from ..config import analysis_runs
 from ..core.progress import track
@@ -19,13 +22,17 @@ from .fused_membrane import FusedMembrane
 from .fused_membrane import enabled_names as membrane_enabled
 
 
-def run_fused_only(rep, cfg, repout, *, only=None):
+def run_fused_only(rep, cfg, repout, *, only=None, validate_summary_grid=False,
+                   on_finalized=None):
     """Replay only pending outputs in a shared source-frame pass.
 
     `only` accepts registry FusedOutput entries (including their run_id)
     or legacy family-name strings. None means all enabled fused outputs.
     Selected families use short-lived chunk staging so existing completed
     observer chunks are not overwritten during an independent replay.
+    When recovering a primary-stream run, validate the saved time grid before
+    finalizing any newly produced output. The optional callback records each
+    successfully finalized observer before a later observer can fail.
     """
     requested = None if only is None else {
         (entry.name, entry.run_id) if hasattr(entry, "run_id") else (str(entry), "*")
@@ -86,12 +93,21 @@ def run_fused_only(rep, cfg, repout, *, only=None):
         for observer in observers:
             observer.prune_from(0)
         frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr["stride"]))]
+        expected = None
+        if validate_summary_grid:
+            summary = repout / "summary" / "timeseries.parquet"
+            if summary.is_file():
+                expected = pd.read_parquet(summary, columns=["time_ps"])["time_ps"]
+        if not len(frames) or (expected is not None and len(expected) != len(frames)):
+            raise ValueError("Trajectory frame count does not match the replicate frame grid")
         chunk = max(1, int(tr.get("chunk_frames", 1000)))
         count = 0
         for count, ts in enumerate(track(
             frames, total=len(frames), desc=f"{rep.system}/{rep.label}: fused observers",
             enabled=cfg.get("progress", {}).get("enabled", True),
         ), start=1):
+            if expected is not None and time_ps(ts, count - 1, cfg) != expected.iat[count - 1]:
+                raise ValueError("Trajectory times do not match the replicate frame grid")
             for observer in observers:
                 observer.update(ts, count - 1)
             if count % chunk == 0:
@@ -100,10 +116,11 @@ def run_fused_only(rep, cfg, repout, *, only=None):
         if count % chunk:
             for observer in observers:
                 observer.flush(count // chunk)
-        return {
-            type(observer).__name__: (
-                observer.finalize(rep) if isinstance(observer, FusedDistances)
-                else observer.finalize()
-            )
-            for observer in observers
-        }
+        results = {}
+        for observer in observers:
+            result = (observer.finalize(rep) if isinstance(observer, FusedDistances)
+                      else observer.finalize())
+            results[type(observer).__name__] = result
+            if on_finalized is not None:
+                on_finalized()
+        return results
