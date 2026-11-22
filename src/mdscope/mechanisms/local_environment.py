@@ -12,16 +12,58 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import distance_array
 
-from ..biophysical_common import heavy, box_of, residue_pairs, sequence_motifs
+from ..biophysical_common import box_of, heavy, residue_pairs
 from ..config import atomic_parquet, ensure_dir, time_ps
+from ..core.motifs import resolve_motifs
+from ..core.sequence import sequence_chain_label
+
+DEFAULT_MOTIFS = {"nxip": "N.IP", "gxxxg": "G...G", "hs_candidate": "SG"}
+
+
+def motif_groups(universe, settings, shared, protein_selection):
+    """Heavy-atom groups for local-environment motifs, via the shared matcher.
+
+    A regex string matches within ``protein_selection`` (non-overlapping, zero
+    matches allowed); ``{motif: name}`` uses that ``selections.motifs``
+    definition with its own scope and policies. Keys stay
+    ``motif_<label>_<segid>_<first resid>`` (the saved column identities; the
+    former matcher read a residue-level chainID that does not exist and so
+    always fell back to segid), ordered by chain, motif, position.
+    """
+    configured = settings.get("motifs", DEFAULT_MOTIFS)
+    definitions = {
+        label: shared[value["motif"]] if isinstance(value, dict)
+        else {"pattern": value, "selection": protein_selection,
+              "overlap": False, "missing": "allow"}
+        for label, value in configured.items()
+    }
+    if not definitions:
+        return {}
+    first = {}
+    for residue in universe.select_atoms(protein_selection).residues:
+        first.setdefault((sequence_chain_label(residue.atoms[0]), residue.segindex), residue.ix)
+    rank = {label: i for i, label in enumerate(definitions)}
+    hits = sorted(
+        ((label, identity, hit) for label, found in resolve_motifs(universe, definitions).items()
+         for identity, hit in found.items()),
+        key=lambda item: (first.get((item[2]["chain"], item[2]["segindex"]), item[2]["resindices"][0]),
+                          rank[item[0]], item[2]["resindices"][0]),
+    )
+    groups = {}
+    for label, _, hit in hits:
+        key = f"motif_{label}_{hit['segid'].strip() or 'unknown'}_{hit['resids'][0]}"
+        if key in groups:
+            raise ValueError(f"local_environment motif hits share the identity {key}; "
+                             "give each chain a distinct segid")
+        groups[key] = heavy(universe.residues[hit["resindices"]].atoms)
+    return groups
 
 
 def prepare_local_environment(universe, cfg):
     """Resolve topology selections once, before frame iteration."""
     settings = cfg.get("analyses", {}).get("local_environment", {})
-    protein = heavy(universe.select_atoms(
-        settings.get("protein_selection") or cfg["selections"]["protein"]
-    ))
+    protein_selection = settings.get("protein_selection") or cfg["selections"]["protein"]
+    protein = heavy(universe.select_atoms(protein_selection))
     lipids = heavy(universe.select_atoms(settings.get(
         "lipid_selection",
         "resname POPC POPE POPI POPS DOPC DPPC PSM CHL1 CER160 CER1 BGAL GM1a",
@@ -34,15 +76,8 @@ def prepare_local_environment(universe, cfg):
     ions = heavy(universe.select_atoms(settings.get(
         "ion_selection", "resname SOD NA CLA CL POT K CAL CA"
     )))
-    hits = sequence_motifs(protein.residues, settings.get("motifs", {
-        "nxip": "N.IP", "gxxxg": "G...G", "hs_candidate": "SG",
-    }))
-    groups = {}
-    for hit in hits:
-        key = "motif_" + hit["motif"] + "_" + hit["chain"] + "_" + str(hit["start_resid"])
-        groups[key] = heavy(universe.atoms[
-            np.isin(universe.atoms.resindices, hit["resindices"])
-        ])
+    groups = motif_groups(universe, settings, cfg.get("selections", {}).get("motifs", {}),
+                          protein_selection)
     grouped = {
         str(name): lipids[lipids.resnames == name]
         for name in np.unique(lipids.resnames)
