@@ -31,6 +31,22 @@ Use **GitHub Flow** and the issue title/acceptance conventions in [Contributing]
 4. For substantive bugs, reproduce failure and test the affected entry point. Prefer independent analytical references; never weaken assertions to pass CI.
 5. Validate identity, frame/time alignment, PBC, missing-vs-zero and persisted-product completeness. Existing output files are not automatically valid.
 6. Follow the [check policy](docs/developer/check-policy.md): targeted local tests, automatic Python 3.11–3.13 CI, dispatched figure review, and local real-data/performance checks (`scripts/run_real_data_checks.sh`) for affected behavior. Report **executed** evidence, failures, skipped checks and production limits. Short fixtures do not prove convergence.
+   
+## Code Quality & Anti-Bloat Rules
+Before opening a PR or declaring a task complete, audit your changes to remove AI clutter:
+
+1. **Run deterministic checks:**
+   - Run `ruff check --select F,I,C90,SIM,RET,UP .` to remove unused imports/variables, enforce modern Python syntax, and flag overly complex or nested logic.
+   - Run `vulture . --min-confidence 80` to detect unused functions, classes, methods, and variables. Delete dead code rather than commenting it out.
+2. **Eliminate unnecessary abstractions:**
+   - Inline single-use helper functions or wrapper classes unless they isolate complex logic or external I/O.
+   - Avoid speculative configuration flags, unused `**kwargs` pass-throughs, or premature base classes.
+3. **Keep error handling lean:**
+   - Do not wrap standard operations in broad `try/except Exception:` blocks unless handling a specific, expected failure mode at an I/O or boundary layer.
+4. **Strip redundant comments & docstrings:**
+   - Delete inline comments that merely narrate *what* the next line does (e.g., `# Loop through items`). Keep comments only when explaining *why* a non-obvious decision, edge case, or domain rule is needed.
+   - Keep docstrings concise—omit boilerplate `Args:`/`Returns:` sections on trivial internal functions when type hints already make the signature clear.
+
 
 ## Delivery scope
 
