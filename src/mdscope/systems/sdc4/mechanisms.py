@@ -1217,7 +1217,7 @@ class SDC4Mechanisms:
         )
         atomic_json(out / "selection_audit.json", self.audit)
         if self.motif_lipid_residence_enabled:
-            from .motif_residence import summarize_lipid_residence
+            from ...mechanisms.motif_residence import summarize_lipid_residence
             parts = sorted(self.cache.glob("residence-*.parquet"))
             events = pd.concat((pd.read_parquet(p) for p in parts),
                                ignore_index=True) if parts else pd.DataFrame()
@@ -1226,7 +1226,7 @@ class SDC4Mechanisms:
                 events, df["time_ps"].to_numpy(float)
             )
             atomic_parquet(out / "motif_lipid_residence.parquet", residence)
-            from .motif_residence import summarize_intermittent_residence
+            from ...mechanisms.motif_residence import summarize_intermittent_residence
             intermittent = summarize_intermittent_residence(
                 events, df["time_ps"].to_numpy(float), gap_frames=1
             )
