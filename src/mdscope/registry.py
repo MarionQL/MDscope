@@ -18,9 +18,8 @@ from .contracts.outputs import (
 )
 from .output_paths import FUSED_OUTPUTS, RUN_SCOPED_OUTPUTS as RUN_SCOPED_OUTPUTS
 
-# Precise schema details live with the artifact registry, not the GUI.
-# A missing column/shape description means the corresponding producer has
-# a dynamic or as-yet-uncataloged contract; it is *not* a zero-length table.
+# Static schemas live in contracts.outputs. Missing column/shape metadata
+# means the producer's output is dynamic or not yet catalogued, not empty.
 @dataclass(frozen=True)
 class FusedOutput:
     name: str
