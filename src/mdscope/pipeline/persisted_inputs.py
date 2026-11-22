@@ -23,7 +23,7 @@ from ..mechanisms.residue_occlusion import (
 )
 from ..observables.density_1d import missing_membrane_density_runs
 from ..observables.lipid_enrichment import footprint_pending
-from ..registry import analysis_output_plan, artifact_schema, core_saved_contracts, required_artifacts
+from ..registry import artifact_schema, core_saved_contracts, required_artifacts, saved_output_plan
 
 
 def check_artifact(path: Path) -> int:
@@ -198,7 +198,7 @@ def validate_replica_products(cfg, root, replicates):
         repout = root / rep.system / rep.label
         try:
             times = validate_replica_summary(repout, rep)
-            for entry in analysis_output_plan(cfg, repout):
+            for entry in saved_output_plan(cfg, repout):
                 validate_saved_analysis(entry, cfg, times)
             validate_additional_products(repout, cfg, times)
             if requires_temporal_rmsf_statistics(cfg):
