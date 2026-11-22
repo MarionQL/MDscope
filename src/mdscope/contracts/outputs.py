@@ -9,48 +9,78 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+# One entry per output-producing analysis. Preserve historic path and ordering
+# contracts; conditional extras are resolved by registry.required_artifacts.
+@dataclass(frozen=True)
+class AnalysisOutputDescriptor:
+    """Static persisted-output contract for one analysis."""
+    name: str
+    primary_path: str | None = None
+    named_run: tuple[str, str] | None = None
+    companions: tuple[str, ...] = ()
+
+    def schema(self, path: Path) -> dict:
+        return artifact_schema(self, path)
+
+
+OUTPUT_DESCRIPTORS = {
+    "lipid_contacts": AnalysisOutputDescriptor(
+        "lipid_contacts", "extensions/lipid_contacts/timeseries.parquet",
+        companions=("matrix.parquet", "selection_audit.json")),
+    "membrane_order": AnalysisOutputDescriptor(
+        "membrane_order", "profiles/membrane_order/timeseries.parquet",
+        companions=("site_mapping.parquet", "profile_index.parquet")),
+    "bilayer_normal": AnalysisOutputDescriptor(
+        "bilayer_normal", "extensions/bilayer_normal/timeseries.parquet"),
+    "lipid_enrichment": AnalysisOutputDescriptor(
+        "lipid_enrichment", "extensions/lipid_footprint/timeseries.parquet",
+        companions=("counts.parquet", "selection_audit.parquet", "reference.json")),
+    "hydrogen_bonds": AnalysisOutputDescriptor(
+        "hydrogen_bonds", "interactions/hydrogen_bonds/events.parquet",
+        companions=("count_timeseries.parquet",)),
+    "lipid_hydrogen_bonds": AnalysisOutputDescriptor(
+        "lipid_hydrogen_bonds", "interactions/lipid_hydrogen_bonds/events.parquet",
+        companions=("count_timeseries.parquet", "molecule_audit.parquet")),
+    "dssp": AnalysisOutputDescriptor(
+        "dssp", "profiles/dssp/assignments.parquet"),
+    "sasa": AnalysisOutputDescriptor(
+        "sasa", "profiles/sasa/residue_sasa.parquet",
+        named_run=("profiles/sasa", "residue_sasa.parquet")),
+    "local_environment": AnalysisOutputDescriptor(
+        "local_environment", "extensions/local_environment/timeseries.parquet"),
+    "solvation": AnalysisOutputDescriptor(
+        "solvation", "extensions/solvation/counts.parquet",
+        companions=("rdf.parquet", "target_residues.parquet", "metadata.json",
+                    "species_timeseries.parquet", "target_summary.parquet",
+                    "shell_candidates.parquet")),
+    "hydration": AnalysisOutputDescriptor(
+        "hydration", "extensions/hydration/counts.parquet",
+        companions=("aggregate_counts.parquet", "target_metadata.parquet")),
+    "sdc4_mechanisms": AnalysisOutputDescriptor(
+        "sdc4_mechanisms", "extensions/sdc4_mechanisms/timeseries.parquet",
+        companions=("selection_audit.json", "lipid_density_maps.npz",
+                    "hs_conditioned_solvation.parquet")),
+    "potassium_bridge_audit": AnalysisOutputDescriptor(
+        "potassium_bridge_audit", "extensions/potassium_bridge_audit/topology_audit.json",
+        companions=("chemical_sites.parquet", "bridge_frames.parquet",
+                    "bridge_summary.parquet", "rdf.parquet", "rdf_peak_candidates.parquet")),
+    "residue_membrane_distance": AnalysisOutputDescriptor(
+        "residue_membrane_distance",
+        named_run=("profiles/residue_membrane_distance", "distance_matrix_A.npy"),
+        companions=("time_ps.npy", "residues.parquet", "median_profile.parquet",
+                    "selection_audit.parquet", "membrane_atom_indices.npy")),
+}
+
+# Legacy public tables are derived views: they are not separate registrations.
 FUSED_OUTPUTS = {
-    "lipid_contacts": "extensions/lipid_contacts/timeseries.parquet",
-    "membrane_order": "profiles/membrane_order/timeseries.parquet",
-    "bilayer_normal": "extensions/bilayer_normal/timeseries.parquet",
-    "lipid_enrichment": "extensions/lipid_footprint/timeseries.parquet",
-    "hydrogen_bonds": "interactions/hydrogen_bonds/events.parquet",
-    "lipid_hydrogen_bonds": "interactions/lipid_hydrogen_bonds/events.parquet",
-    "dssp": "profiles/dssp/assignments.parquet",
-    "sasa": "profiles/sasa/residue_sasa.parquet",
-    "local_environment": "extensions/local_environment/timeseries.parquet",
-    "solvation": "extensions/solvation/counts.parquet",
-    "hydration": "extensions/hydration/counts.parquet",
-    "sdc4_mechanisms": "extensions/sdc4_mechanisms/timeseries.parquet",
-    "potassium_bridge_audit": "extensions/potassium_bridge_audit/topology_audit.json",
+    name: descriptor.primary_path
+    for name, descriptor in OUTPUT_DESCRIPTORS.items()
+    if descriptor.primary_path is not None
 }
-
-# Analyses whose named runs write separate products at <directory>/<run_id>/<file>.
-# SASA's run named "default" keeps the unscoped FUSED_OUTPUTS path; residue
-# distances have no unscoped product, so every instance needs a run ID.
 RUN_SCOPED_OUTPUTS = {
-    "sasa": ("profiles/sasa", "residue_sasa.parquet"),
-    "residue_membrane_distance": ("profiles/residue_membrane_distance", "distance_matrix_A.npy"),
-}
-
-STATIC_COMPANIONS = {
-        'lipid_contacts': ('matrix.parquet', 'selection_audit.json'),
-        'lipid_enrichment': ('counts.parquet', 'selection_audit.parquet', 'reference.json'),
-        'membrane_order': ('site_mapping.parquet', 'profile_index.parquet'),
-        'hydrogen_bonds': ('count_timeseries.parquet',),
-        'lipid_hydrogen_bonds': ('count_timeseries.parquet', 'molecule_audit.parquet'),
-        'residue_membrane_distance': ('time_ps.npy', 'residues.parquet',
-                                    'median_profile.parquet', 'selection_audit.parquet',
-                                    'membrane_atom_indices.npy'),
-        'hydration': ('aggregate_counts.parquet', 'target_metadata.parquet'),
-        'solvation': ('rdf.parquet', 'target_residues.parquet', 'metadata.json',
-                      'species_timeseries.parquet', 'target_summary.parquet',
-                      'shell_candidates.parquet'),
-        'potassium_bridge_audit': ('chemical_sites.parquet', 'bridge_frames.parquet',
-                                  'bridge_summary.parquet', 'rdf.parquet',
-                                  'rdf_peak_candidates.parquet'),
-        'sdc4_mechanisms': ('selection_audit.json', 'lipid_density_maps.npz',
-                            'hs_conditioned_solvation.parquet'),
+    name: descriptor.named_run
+    for name, descriptor in OUTPUT_DESCRIPTORS.items()
+    if descriptor.named_run is not None
 }
 
 
@@ -86,30 +116,6 @@ RESIDUE_OCCLUSION_FILE = "residue_occlusion.parquet"
 
 MEMBRANE_ANALYSES = ("membrane_order", "bilayer_normal", "lipid_enrichment", "lipid_contacts")
 EXTENSION_ANALYSES = ("hydrogen_bonds", "lipid_hydrogen_bonds", "dssp", "sasa", "local_environment", "solvation")
-
-
-@dataclass(frozen=True)
-class AnalysisOutputDescriptor:
-    """Stable primary/named-run location and unconditionally required companions."""
-    name: str
-    primary_path: str | None = None
-    named_run: tuple[str, str] | None = None
-    companions: tuple[str, ...] = ()
-
-    def schema(self, path: Path) -> dict:
-        """Resolved field/axis/unit schema for a path owned by this analysis."""
-        return artifact_schema(self, path)
-
-
-OUTPUT_DESCRIPTORS = {
-    name: AnalysisOutputDescriptor(
-        name=name,
-        primary_path=FUSED_OUTPUTS.get(name),
-        named_run=RUN_SCOPED_OUTPUTS.get(name),
-        companions=STATIC_COMPANIONS.get(name, ()),
-    )
-    for name in dict.fromkeys((*FUSED_OUTPUTS, *RUN_SCOPED_OUTPUTS))
-}
 
 
 def artifact_schema(entry, path: Path) -> dict:
