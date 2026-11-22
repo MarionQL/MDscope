@@ -13,7 +13,7 @@ import pandas as pd
 
 from ..config import statistics_family_config
 from ..core.persistence import atomic_parquet, ensure_dir
-from ..mechanisms.hs_hydration import temporal_hs_hydration_profiles
+from ..observables.hydration import temporal_hs_hydration_profiles
 from ..mechanisms.residue_occlusion import temporal_residue_occlusion_profiles
 from ..observables.density_1d import align_density_profiles, temporal_density_profiles
 from ..observables.membrane_order import temporal_membrane_order_profiles

@@ -27,7 +27,7 @@ from ..interactions.lipid_hydrogen_bonds import (
     lipid_molecule_map,
     write_lipid_hydrogen_bonds,
 )
-from ..mechanisms.hs_hydration import HydrationObserver
+from ..observables.hydration import HydrationObserver
 from ..mechanisms.local_environment import (
     local_environment_frame,
     prepare_local_environment,
