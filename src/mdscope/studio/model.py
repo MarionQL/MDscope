@@ -314,7 +314,7 @@ def planning_snapshot(document, base):
 
 def topology_preflight(document, base):
     """Read topology only through production preflight; never open trajectories."""
-    from ..core.validation import validate_selections
+    from ..pipeline.preflight import validate_selections
     cfg = resolve_config(document, base=Path(base))
     return validate_selections(cfg, Path(base))
 

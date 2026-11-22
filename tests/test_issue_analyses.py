@@ -5,7 +5,7 @@ from mdscope.observables.lipid_enrichment import shell_fold
 from mdscope.observables.bilayer_normal import fit_local_normals
 from mdscope.interactions.lipid_hydrogen_bonds import ordered_pair
 from mdscope.observables.membrane_order import OrderSite,_profiles,_metric_name
-from mdscope.pipeline.progress import track
+from mdscope.core.progress import track
 
 def test_lipid_order_leaflets_and_position_profiles():
     sites=[

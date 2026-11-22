@@ -88,7 +88,7 @@ def run():
             ca_full = u.select_atoms(
                 f"protein and chainID PRO{chain} and name CA"
             )
-            from mdscope.mechanisms.mechanistic_common import AA3
+            from mdscope.core.sequence import AA3
             tm_seq = "".join(AA3.get(a.resname.upper(), "X") for a in ca_tm)
             full_seq = "".join(AA3.get(a.resname.upper(), "X") for a in ca_full)
             print(
@@ -109,7 +109,7 @@ def run():
                     f"{system}/{chain}: TM sequence {tm_seq!r} does not match "
                     "the user-verified domain boundary LIVGGIVGILFAVFLILLLMY"
                 )
-        from mdscope.mechanisms.mechanistic_common import sequence_matches
+        from mdscope.core.sequence import sequence_matches
         for chain in ("A", "B"):
             ca = u.select_atoms(f"protein and chainID PRO{chain} and name CA")
             pro_hits = sequence_matches(ca, {"proline_hydrophobic": "VVHPLVPL"})

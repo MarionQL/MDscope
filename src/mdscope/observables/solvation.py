@@ -130,7 +130,7 @@ def _targets(u, spec, *, motifs=None):
                 if not matches:
                     raise ValueError(f"solvation motif {reference}: no match; unavailable targets cannot be measured as zero")
             elif sequence is not None:
-                from ..mechanisms.mechanistic_common import sequence_matches
+                from ..core.sequence import sequence_matches
                 import re
                 pattern = str(sequence).upper()
                 if not re.fullmatch("[ACDEFGHIKLMNPQRSTVWY]+", pattern):

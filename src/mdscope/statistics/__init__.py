@@ -1,5 +1,5 @@
 """Replicate-aware MDscope statistics with explicit functional ownership."""
-from ..pipeline.progress import stage_progress
+from ..core.progress import stage_progress
 from .common import finite as finite  # re-exported for reporting.plotting
 from .time_series import collect_time_series as collect_time_series, analyze_time_series
 from .profiles import analyze_profiles

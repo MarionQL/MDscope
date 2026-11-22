@@ -19,9 +19,9 @@ import pyarrow as pa
 
 from ..config import atomic_json, atomic_parquet, time_ps
 from ..core.glycans import discover_covalent_glycans
-from .mechanistic_common import sequence_matches
+from ..core.sequence import sequence_matches
 from ..observables.solvation import SPATIAL_OFFSETS, rdf_from_counts, water_donor_hbonds
-from ..pipeline.progress import track
+from ..core.progress import track
 
 CONTACT_CUTOFFS = np.array([3., 3.5, 4., 5.])
 STERIC_CUTOFFS = np.array([0., 1.8, 2.1, 2.4])

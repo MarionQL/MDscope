@@ -8,7 +8,7 @@ from MDAnalysis.lib.distances import capped_distance
 from ..config import atomic_parquet
 from ..core.glycans import glycan_definition, glycan_sugars
 from ..observables.solvation import unique_target_solvent_pairs
-from .mechanistic_common import sequence_chain_label
+from ..core.sequence import sequence_chain_label
 
 OUTPUT = Path("extensions/sdc4_mechanisms/hs_sugar_hydration.parquet")
 ATTACHMENTS = "glycan_attachments.parquet"

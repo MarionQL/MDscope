@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from ..core.profiling import _residue_label
-from ..pipeline.progress import track
+from ..core.progress import track
 from ..config import ensure_dir,atomic_parquet,time_ps
 from ..errors import MissingBackendError
 FREESASA_INSTALL_HINT = "python -m pip install 'mdscope[sasa]'"
@@ -73,7 +73,7 @@ def sasa_instances(universe, cfg, *, validate_only=False):
             raise ValueError("atom_sasa_selection must be a nonempty subset of SASA target atoms")
         motif_sequences = spec.get("atom_sasa_sequences") or []
         if motif_sequences:
-            from ..mechanisms.mechanistic_common import sequence_matches
+            from ..core.sequence import sequence_matches
             matched = sequence_matches(
                 target.select_atoms("name CA"),
                 {f"atom_sasa_{i}": sequence for i, sequence in

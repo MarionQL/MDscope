@@ -6,7 +6,7 @@ import MDAnalysis as mda
 import pytest
 import yaml
 from mdscope.config import load_config
-from mdscope.core.validation import validate_selections
+from mdscope.pipeline.preflight import validate_selections
 from mdscope.pipeline.runner import run_one
 from mdscope_test_support import freesasa_backend, invoke_cli as invoke
 

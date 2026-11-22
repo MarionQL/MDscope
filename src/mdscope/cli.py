@@ -69,7 +69,7 @@ def cmd_init(args):
 
 
 def cmd_validate(args):
-    from .core.validation import validate_selections
+    from .pipeline.preflight import validate_selections
 
     cfg = load_config(args.config)
     reps = list(iter_replicates(cfg, args.config))
@@ -88,7 +88,7 @@ def cmd_plan(args):
     cfg = load_config(args.config, check_paths=args.check_inputs)
     counts = None
     if args.check_topology:
-        from .core.validation import validate_selections
+        from .pipeline.preflight import validate_selections
 
         counts = validate_selections(cfg, Path(args.config).resolve().parent)
     mode = ("topology_aware" if args.check_topology else

@@ -6,7 +6,7 @@ import MDAnalysis as mda
 import pytest
 
 from mdscope.config import load_config
-from mdscope.core.validation import validate_selections
+from mdscope.pipeline.preflight import validate_selections
 from mdscope.pipeline.runner import _validate_replica_products
 from mdscope.pipeline.streaming import validate_stream_inventory
 

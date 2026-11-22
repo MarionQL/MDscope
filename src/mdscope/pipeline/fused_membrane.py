@@ -30,7 +30,7 @@ from ..observables.membrane_order import (
     _metric_name, _profile_values, _profiles, _valid_box,
 )
 from ..core.lipid_geometry import classify_leaflets
-from .progress import track
+from ..core.progress import track
 
 
 from .analysis_selection import (

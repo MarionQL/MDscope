@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import yaml
 from ..core.persistence import archive_output as _archive_previous_output
-from ..core.validation import validate_selections
+from .preflight import validate_selections
 
 from .. import __version__
 from ..errors import ConfigError, ReplicateIndexError
@@ -43,7 +43,7 @@ from .persisted_inputs import (
     validate_replica_products as _validate_replica_products,
     inspect_results_directory, configuration_with_saved_sources,
 )
-from .progress import stage_progress
+from ..core.progress import stage_progress
 from .streaming import run_streaming_pass, validate_stream_inventory, complete_membrane_density
 from ..observables.density_1d import missing_membrane_density_runs
 from .fused_membrane import enabled_names as fused_enabled_names, run_fused_membrane

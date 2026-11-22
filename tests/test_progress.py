@@ -4,7 +4,7 @@ from threading import Event
 
 import pytest
 
-from mdscope.pipeline import progress as mod
+from mdscope.core import progress as mod
 
 
 class _Stderr(io.StringIO):

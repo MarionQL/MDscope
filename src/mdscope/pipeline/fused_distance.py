@@ -15,7 +15,7 @@ import numpy as np
 
 from ..config import analysis_runs, ensure_dir, time_ps
 from ..observables.membrane_order import _atomic_npz
-from .progress import track
+from ..core.progress import track
 from ..observables.residue_membrane_distance import (
     DEFAULT_LIPID_RESNAMES, _minimum_by_residue_hybrid,
     _valid_box, _without_hydrogens, run_residue_membrane_distance,

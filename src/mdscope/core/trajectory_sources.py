@@ -1,35 +1,7 @@
-"""Coordinate provenance for raw MSD alongside preprocessed analysis trajectories."""
+"""Frame-synchronized iteration of a primary and an optional raw MSD trajectory."""
 from __future__ import annotations
 
 import numpy as np
-import MDAnalysis as mda
-
-from ..observables.msd import initialize_msd
-
-
-def open_msd_universe(rep, cfg, membrane, main_universe, first_frame):
-    """Open a second trajectory only when explicitly requested for active MSD.
-
-    Both readers must use the identical topology and frame indexing. The
-    separate MSD reader never receives protein-fit transforms.
-    """
-    source = getattr(rep, "msd_trajectory", None)
-    if source is None or not (membrane.enabled and membrane.msd):
-        return None
-    raw = mda.Universe(str(rep.topology), str(source))
-    if len(raw.atoms) != len(main_universe.atoms):
-        raise ValueError(
-            "msd_trajectory and trajectory have different atom counts; "
-            "both sources must use the identical topology and atom ordering"
-        )
-    if len(raw.trajectory) != len(main_universe.trajectory):
-        raise ValueError(
-            "msd_trajectory and trajectory have different frame counts; "
-            "provide frame-synchronized trajectories"
-        )
-    raw.trajectory[int(first_frame)]
-    initialize_msd(raw, membrane, cfg["analyses"]["membrane"])
-    return raw
 
 
 def paired_frames(primary_frames, raw_msd_frames, *, tolerance_ps=0.1):

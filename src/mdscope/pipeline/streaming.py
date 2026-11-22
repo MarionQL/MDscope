@@ -13,9 +13,10 @@ import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 from ..config import analysis_groups, analysis_runs, atomic_parquet,ensure_dir,time_ps,profile_dir
-from .progress import track
+from ..core.progress import track
 from ..core.profiling import PhaseProfiler
-from ..core.trajectory_sources import open_msd_universe, paired_frames
+from ..core.trajectory_sources import paired_frames
+from ..observables.msd import open_msd_universe
 from ..core.checkpoints import (validate_progress, validate_committed_parts,
                                 chunk_artifacts, validate_artifact_inventory,
                                 numbered_artifacts, prune_artifact_orphans)

@@ -12,7 +12,7 @@ def test_cli_import_keeps_execution_modules_unloaded():
         "import mdscope.cli\n"
         "for module in ('mdscope.pipeline.runner', 'mdscope.pipeline.streaming',\n"
         "               'mdscope.reporting.report', 'mdscope.statistics',\n"
-        "               'mdscope.core.validation'):\n"
+        "               'mdscope.pipeline.preflight'):\n"
         "    assert module not in sys.modules, module\n"
     )
     result = subprocess.run([sys.executable, "-c", code],

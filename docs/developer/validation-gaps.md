@@ -14,7 +14,7 @@
 | `statistics/profiles.py` | 149/191 | 49/70 |
 | `statistics/interactions.py` | 156/163 | 62/72 |
 | `config.py` | 347/522 | 211/386 |
-| `core/validation.py` | 54/119 | 29/84 |
+| `pipeline/preflight.py` | 54/119 | 29/84 |
 | `reporting/report.py` | 435/595 | 178/282 |
 
 ```bash
