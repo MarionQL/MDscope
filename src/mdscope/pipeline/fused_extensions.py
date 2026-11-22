@@ -11,9 +11,7 @@ import re
 import time
 from collections import defaultdict
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
-import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 from MDAnalysis.analysis.hydrogenbonds.hbond_analysis import HydrogenBondAnalysis
@@ -21,7 +19,6 @@ from MDAnalysis.analysis.hydrogenbonds.hbond_analysis import HydrogenBondAnalysi
 from ..config import time_ps
 from ..core.persistence import atomic_parquet, ensure_dir
 from ..core.profiling import _residue_label
-from ..core.progress import track
 from ..interactions.hydrogen_bonds import write_hydrogen_bonds
 from ..interactions.lipid_hydrogen_bonds import (
     lipid_molecule_map,
@@ -408,30 +405,3 @@ class FusedExtensions:
             "compute_seconds_by_analysis": dict(self.timings),
         })
         return results
-
-
-def run_fused_extensions(rep, cfg, repout, *, names=None, sasa_run_ids=None):
-    """Replay selected missing extensions without touching committed stream chunks."""
-    if not enabled_names(cfg):
-        return {}
-    u = mda.Universe(str(rep.topology), str(rep.trajectory))
-    tr = cfg["trajectory"]
-    start = 0 if tr.get("start") is None else int(tr["start"])
-    u.trajectory[start]
-    chunk = max(1, int(tr.get("chunk_frames", 1000)))
-    with TemporaryDirectory(dir=ensure_dir(Path(repout)), prefix=".extensions-recovery-") as scratch:
-        observer = FusedExtensions(
-            u, cfg, repout, names=names, sasa_run_ids=sasa_run_ids,
-            cache_dir=scratch,
-        )
-        observer.prune_from(0)
-        frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr["stride"]))]
-        for i, ts in enumerate(track(frames, total=len(frames),
-                                     desc=f"{rep.system}/{rep.label}: fused extensions",
-                                     enabled=cfg.get("progress", {}).get("enabled", True))):
-            observer.update(ts, i)
-            if (i + 1) % chunk == 0:
-                observer.flush(i // chunk)
-        if observer.frames % chunk:
-            observer.flush(observer.frames // chunk)
-        return observer.finalize()

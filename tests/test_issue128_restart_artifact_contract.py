@@ -143,3 +143,47 @@ def test_finalizer_rejects_invalid_companions_before_mutation(tmp_path, damage):
     with pytest.raises(RuntimeError, match='invalid required'):
         runner.finalize_project(tmp_path/'unused.yaml', cfg, root, state, phase='statistics')
     assert previous.read_text() == 'preserve'
+
+
+def test_specialized_task_readiness_follows_registered_products(tmp_path, monkeypatch):
+    """A stale marker cannot hide an absent product; a missing marker cannot
+    force recomputation of a validated product."""
+    from validation_fixture import make_project
+
+    from mdscope.pipeline import replica_tasks, runner
+    rep, cfg = make_project(tmp_path, 3)
+    cfg["analyses"]["dssp"].update(enabled=True, backend="parallel")
+    root = tmp_path / "results"
+    output = root / "test/rep1/profiles/dssp/assignments.parquet"
+    calls = []
+
+    def profiles(rep, cfg, repout):
+        calls.append(1)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame({"time_ps": [0., 2.], "topology_residue_index": [0, 0], "residue": ["A:ALA1"] * 2,
+                      "dssp": ["H", "H"]}).to_parquet(output)
+        return {"frames": 2}
+
+    monkeypatch.setattr(replica_tasks, "run_structure_profiles", profiles)
+    state = runner.RunState(root)
+    runner.run_replicate(rep, cfg, root, state)
+    marker, = state.root.glob("*-profiles.json")
+    runner.run_replicate(rep, cfg, root, state)
+    assert len(calls) == 1
+
+    output.unlink()
+    runner.run_replicate(rep, cfg, root, state)
+    assert len(calls) == 2 and output.is_file()
+
+    marker.unlink()
+    saved = output.read_bytes()
+    runner.run_replicate(rep, cfg, root, state)
+    assert len(calls) == 2 and output.read_bytes() == saved
+
+    # Profile summaries group by residue label: a product without it is not
+    # reusable and must be rejected before the worker can overwrite it.
+    pd.read_parquet(output).drop(columns="residue").to_parquet(output)
+    damaged = output.read_bytes()
+    with pytest.raises(RuntimeError, match="residue"):
+        runner.run_replicate(rep, cfg, root, state)
+    assert len(calls) == 2 and output.read_bytes() == damaged

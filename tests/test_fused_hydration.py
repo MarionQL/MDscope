@@ -7,7 +7,8 @@ import pandas as pd
 from MDAnalysis.coordinates.memory import MemoryReader
 
 from mdscope.observables.hydration import OUTPUT, temporal_hs_hydration_profiles
-from mdscope.pipeline.fused_extensions import FusedExtensions, enabled_names
+from mdscope.config.runs import extensions_enabled_names as enabled_names
+from mdscope.pipeline.fused_extensions import FusedExtensions
 from mdscope.registry import fused_output, required_artifacts
 
 

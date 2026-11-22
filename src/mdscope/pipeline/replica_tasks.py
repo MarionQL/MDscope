@@ -22,6 +22,8 @@ from ..output_paths import FUSED_OUTPUTS
 class AnalysisTask:
     key: str
     run: Callable
+    # Registered analyses this task publishes; the registry owns their paths.
+    produces: tuple[str, ...]
 
 
 def specialized_tasks(cfg):
@@ -33,9 +35,10 @@ def specialized_tasks(cfg):
     """
     dssp = cfg.get("analyses", {}).get("dssp", {})
     if dssp.get("enabled", False) and dssp.get("backend", "serial") != "serial":
-        yield AnalysisTask("profiles", run_structure_profiles)
+        yield AnalysisTask("profiles", run_structure_profiles, ("dssp", "sasa"))
     if analysis_enabled(cfg, "potassium_bridge_audit"):
-        yield AnalysisTask("potassium_bridge_audit", run_potassium_bridge_audit)
+        yield AnalysisTask("potassium_bridge_audit", run_potassium_bridge_audit,
+                           ("potassium_bridge_audit",))
 
 
 def additional_time_series(repout: Path, cfg):

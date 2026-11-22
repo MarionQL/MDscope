@@ -127,7 +127,7 @@ def test_standalone_local_environment_matches_fused_saved_outputs(tmp_path):
     """Both execution paths must save the same frame and residue contracts."""
     from mdscope.config import Replicate
     from mdscope.mechanisms.local_environment import run_local_environment
-    from mdscope.pipeline.fused_extensions import run_fused_extensions
+    from mdscope.pipeline.fused_all import run_fused_only
 
     u = _universe()
     pdb, dcd = tmp_path / "local.pdb", tmp_path / "local.dcd"
@@ -142,7 +142,7 @@ def test_standalone_local_environment_matches_fused_saved_outputs(tmp_path):
     rep = Replicate("toy", 1, pdb, dcd, "rep1")
     standalone, fused = tmp_path / "standalone", tmp_path / "fused"
     direct = run_local_environment(rep, cfg, standalone)
-    run_fused_extensions(rep, cfg, fused, names=("local_environment",))
+    run_fused_only(rep, cfg, fused, only=("local_environment",))
     assert direct["frames"] == 5
 
     for filename in ("timeseries.parquet", "residue_contacts.parquet"):

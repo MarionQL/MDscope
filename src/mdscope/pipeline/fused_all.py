@@ -11,15 +11,16 @@ import pandas as pd
 from ..config import time_ps
 
 from ..config import analysis_runs
+from ..config.runs import distance_enabled_names as distance_enabled
+from ..config.runs import extensions_enabled_names as extension_enabled
+from ..config.runs import membrane_enabled_names as membrane_enabled
+from ..core.persistence import ensure_dir
 from ..core.progress import track
 from ..systems.sdc4.mechanisms import SDC4Mechanisms
 from ..systems.sdc4.mechanisms import enabled as sdc4_enabled
 from .fused_distance import FusedDistances
-from .fused_distance import enabled_names as distance_enabled
 from .fused_extensions import FusedExtensions
-from .fused_extensions import enabled_names as extension_enabled
 from .fused_membrane import FusedMembrane
-from .fused_membrane import enabled_names as membrane_enabled
 
 
 def run_fused_only(rep, cfg, repout, *, only=None, validate_summary_grid=False,
@@ -61,7 +62,7 @@ def run_fused_only(rep, cfg, repout, *, only=None, validate_summary_grid=False,
     if not (membrane or selected_extensions or distance or want_sdc4):
         return {}
 
-    repout = Path(repout)
+    repout = ensure_dir(Path(repout))
     u = mda.Universe(str(rep.topology), str(rep.trajectory))
     tr = cfg["trajectory"]
     start = 0 if tr.get("start") is None else int(tr["start"])

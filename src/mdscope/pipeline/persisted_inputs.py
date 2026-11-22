@@ -75,8 +75,8 @@ def validate_analysis_output(entry, cfg, *, allow_missing_occlusion=False):
             columns = set(read_schema(entry.path).names)
             expected = {
                 "solvation": {"frame", "time_ps", "target_id", "n_solvent"},
-                "dssp": {"time_ps", "topology_residue_index", "dssp"},
-                "sasa": {"time_ps", "topology_residue_index", "sasa_nm2"},
+                "dssp": {"time_ps", "topology_residue_index", "residue", "dssp"},
+                "sasa": {"time_ps", "topology_residue_index", "residue", "sasa_nm2"},
                 "hydrogen_bonds": {"time_ps", "donor", "acceptor"},
                 "lipid_hydrogen_bonds": {"time_ps", "donor", "acceptor"},
             }.get(entry.name, {"time_ps"})

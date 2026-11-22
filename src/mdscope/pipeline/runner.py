@@ -376,18 +376,18 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     for entry in expected:
         mark_fused(entry)
 
+    # Specialized tasks follow the fused readiness rule: existing products
+    # were validated before any reader ran, so only an absent registered
+    # product schedules work. A stage marker alone neither proves nor
+    # disproves completion.
     for task in specialized_tasks(cfg):
-        key=prefix+"-"+task.key
-        if task.key == "potassium_bridge_audit":
-            # The complete audit directory is published atomically. Reuse it
-            # even if the process stopped before recording the stage marker.
-            if fused_output(repout, task.key).path.is_file():
-                continue
-        if task.key == "potassium_bridge_audit" or not state.complete(key):
-            t0 = perf_counter()
-            result=task.run(rep,cfg,repout)
-            state.mark(key,result if isinstance(result,dict) else {})
-            stage_timings.append({"stage": task.key, "seconds": perf_counter() - t0})
+        if not any(_output_pending(entry, cfg) for entry in registered
+                   if entry.name in task.produces):
+            continue
+        t0 = perf_counter()
+        result = task.run(rep, cfg, repout)
+        state.mark(prefix + "-" + task.key, result if isinstance(result, dict) else {})
+        stage_timings.append({"stage": task.key, "seconds": perf_counter() - t0})
     msd_cfg = cfg.get("analyses", {}).get("membrane", {}).get("msd", {})
     if msd_cfg.get("enabled") and msd_cfg.get("multi_origin", False):
         targets = tuple(repout / "summary" / name for name in (

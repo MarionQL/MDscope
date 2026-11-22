@@ -22,7 +22,7 @@ from mdscope.interactions.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
 from mdscope.observables.bilayer_normal import run_bilayer_normal
 from mdscope.observables.membrane_order import run_membrane_order
 from mdscope.observables.residue_membrane_distance import run_residue_membrane_distance
-from mdscope.pipeline.fused_membrane import run_fused_membrane
+from mdscope.pipeline.fused_all import run_fused_only
 from mdscope.pipeline.runner import run_one
 
 DATA = Path(os.environ.get("MDSCOPE_REAL_DATA", "examples/data")).resolve()
@@ -218,7 +218,7 @@ def compare_fused_to_independent(system, config, topology, trajectory):
     for name, fn, path in (
         ("membrane_order", run_membrane_order, "profiles/membrane_order"),
         ("bilayer_normal", run_bilayer_normal, "extensions/bilayer_normal"),
-        ("lipid_enrichment", partial(run_fused_membrane, names=("lipid_enrichment",)),
+        ("lipid_enrichment", partial(run_fused_only, only=("lipid_enrichment",)),
          "extensions/lipid_footprint"),
     ):
         fn(rep, cfg, independent)

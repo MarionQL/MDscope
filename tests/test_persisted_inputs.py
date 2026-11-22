@@ -22,7 +22,7 @@ def saved_project(tmp_path):
     repout = root / rep.system / rep.label
     entry = next(iter(analysis_output_plan(cfg, repout)))
     entry.path.parent.mkdir(parents=True)
-    pd.DataFrame({"time_ps": [0., 1., 2.], "topology_residue_index": [0, 0, 0],
+    pd.DataFrame({"time_ps": [0., 1., 2.], "topology_residue_index": [0, 0, 0], "residue": ["A:ALA1"] * 3,
                   "sasa_nm2": [1., 2., 3.]}).to_parquet(entry.path)
     summary = repout / "summary/timeseries.parquet"
     summary.parent.mkdir()
@@ -128,7 +128,7 @@ def test_verified_sibling_run_survives_unrelated_run_settings_change(tmp_path):
     repout = summary.parent.parent
     for entry in analysis_output_plan(saved, repout):
         entry.path.parent.mkdir(parents=True, exist_ok=True)
-        pd.DataFrame({"time_ps": [0., 1., 2.], "topology_residue_index": [0, 0, 0],
+        pd.DataFrame({"time_ps": [0., 1., 2.], "topology_residue_index": [0, 0, 0], "residue": ["A:ALA1"] * 3,
                       "sasa_nm2": [1., 2., 3.]}).to_parquet(entry.path)
         (root / ".state" / (_replicate_state_prefix(rep) + "-" + entry.checkpoint_key + ".json")).write_text('{"status":"complete"}')
     (root / "resolved_config.yaml").write_text(yaml.safe_dump(saved))
@@ -206,7 +206,7 @@ def test_saved_only_sibling_retains_its_effective_settings_regardless_of_order(t
     saved = resolve_config(doc, base=tmp_path)
     for entry in analysis_output_plan(saved, summary.parent.parent):
         entry.path.parent.mkdir(parents=True, exist_ok=True)
-        pd.DataFrame({"time_ps": [0., 1., 2.], "topology_residue_index": [0, 0, 0],
+        pd.DataFrame({"time_ps": [0., 1., 2.], "topology_residue_index": [0, 0, 0], "residue": ["A:ALA1"] * 3,
                       "sasa_nm2": [1., 2., 3.]}).to_parquet(entry.path)
         (root / ".state" / (_replicate_state_prefix(rep) + "-" + entry.checkpoint_key + ".json")).write_text('{"status":"complete"}')
     (root / "resolved_config.yaml").write_text(yaml.safe_dump(saved))

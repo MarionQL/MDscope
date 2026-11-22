@@ -14,9 +14,7 @@ import re
 import time
 from collections import defaultdict
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
-import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import minimize_vectors
@@ -29,7 +27,6 @@ from ..core.lipid_geometry import (
     centers,
     planar_box,
 )
-from ..core.progress import track
 from ..observables.bilayer_normal import fit_local_normals
 from ..observables.lipid_enrichment import FOOTPRINT_OUTPUT, LipidFootprint
 from ..observables.membrane_order import (
@@ -411,34 +408,3 @@ class FusedMembrane:
             "enabled": list(self.names),
         })
         return result
-
-
-def run_fused_membrane(rep, cfg, repout, names=None):
-    """One-pass fallback for geometry-only systems without protein streaming."""
-    if names is None and not enabled_names(cfg):
-        return {}
-    tr = cfg["trajectory"]
-    u = mda.Universe(str(rep.topology), str(rep.trajectory))
-    start = 0 if tr.get("start") is None else int(tr["start"])
-    u.trajectory[start]
-    frames = u.trajectory[slice(tr.get("start"), tr.get("stop"), int(tr.get("stride", 1)))]
-    chunk = max(1, int(tr.get("chunk_frames", 1000)))
-    summary = Path(repout) / "summary" / "timeseries.parquet"
-    expected = pd.read_parquet(summary, columns=["time_ps"])["time_ps"] if summary.is_file() else None
-    if not len(frames) or (expected is not None and len(expected) != len(frames)):
-        raise ValueError("Trajectory frame count does not match the replicate frame grid")
-    # This independent pass must not create or rewrite stream-owned chunks.
-    with TemporaryDirectory(dir=ensure_dir(Path(repout))) as temporary:
-        observer = FusedMembrane(u, cfg, repout, names, cache_dir=Path(temporary))
-        for k, ts in enumerate(track(
-            frames, total=len(frames), desc=f"{rep.system}/{rep.label}: fused membrane",
-            enabled=cfg.get("progress", {}).get("enabled", True),
-        )):
-            if expected is not None and time_ps(ts, k, cfg) != expected.iat[k]:
-                raise ValueError("Trajectory times do not match the replicate frame grid")
-            observer.update(ts, k)
-            if (k + 1) % chunk == 0:
-                observer.flush(k // chunk)
-        if observer.frame_count % chunk:
-            observer.flush(observer.frame_count // chunk)
-        return observer.finalize()
