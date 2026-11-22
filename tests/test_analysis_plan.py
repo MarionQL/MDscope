@@ -588,3 +588,12 @@ def test_cli_validate_and_text_plan_display_resolved_output(tmp_path, project):
     expected = f"Resolved output directory: {root.resolve()}"
     assert expected in validated.stdout
     assert expected in planned.stdout
+
+
+def test_analysis_metadata_names_only_owned_families():
+    from mdscope.contracts.metric_selection import STATISTICS_FAMILIES
+    from mdscope.contracts.plot_validation import FIGURE_FAMILIES
+    from mdscope.planning import ANALYSIS_METADATA
+    for name, (_, statistics, figures) in ANALYSIS_METADATA.items():
+        assert set(statistics) <= set(STATISTICS_FAMILIES), name
+        assert set(figures) <= set(FIGURE_FAMILIES), name
