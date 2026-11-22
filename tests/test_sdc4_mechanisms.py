@@ -9,7 +9,7 @@ import pytest
 from MDAnalysis.coordinates.memory import MemoryReader
 
 from mdscope.mechanisms.residue_occlusion import ResidueOcclusion
-from mdscope.mechanisms.sdc4_mechanisms import (
+from mdscope.systems.sdc4.mechanisms import (
     SDC4Mechanisms,
     _angle,
     _backbone_axis,
@@ -545,7 +545,7 @@ def test_intermittent_residence_no_assumed_uniform_sampling():
 
 
 def test_lipid_composition_enrichment_independent_toy_denominators():
-    from mdscope.mechanisms.sdc4_mechanisms import _composition_enrichment
+    from mdscope.systems.sdc4.mechanisms import _composition_enrichment
     # 1 GM1 out of 2 contacts, against 1 GM1 in 10 available lipids:
     # 0.5 / 0.1 == 5.0 enrichment. Other lipid: 0.5 / 0.9.
     table = pd.DataFrame({
@@ -588,7 +588,7 @@ def test_accessible_area_grid_pbc_and_excluded_protein_reference():
 
 
 def test_proline_ramachandran_region_reference_and_boundaries():
-    from mdscope.mechanisms.sdc4_mechanisms import _proline_rama_region
+    from mdscope.systems.sdc4.mechanisms import _proline_rama_region
     assert _proline_rama_region(-75., 150.) == "PPII_like"
     assert _proline_rama_region(-130., 130.) == "beta_extended_like"
     assert _proline_rama_region(-65., -30.) == "alphaR_like"
