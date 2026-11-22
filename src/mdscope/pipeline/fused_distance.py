@@ -119,6 +119,7 @@ class FusedDistances:
                 rep, self.cfg, self.repout,
                 spec=entry["spec"], run_id=run_id,
                 precomputed_parts=self.cache / run_id,
+                _universe=self.u,
             )
         atomic_json(self.repout / "fused_distance_timings.json", {
             "enabled_instances": list(self.runs),

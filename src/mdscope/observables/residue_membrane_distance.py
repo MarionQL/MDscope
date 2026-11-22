@@ -159,11 +159,15 @@ def run_residue_membrane_distance(
     spec: dict | None = None,
     run_id: str = DEFAULT_INSTANCE_ID,
     precomputed_parts: Path | None = None,
+    _universe=None,
 ) -> dict:
     spec = spec if spec is not None else cfg["analyses"]["residue_membrane_distance"]
     if not spec.get("enabled", False):
         return {"enabled": False}
-    universe = mda.Universe(str(rep.topology), str(rep.trajectory))
+    # Fused frame readers already own a live Universe; the saved-chunk path
+    # needs its topology identity, not a second trajectory reader.
+    universe = (_universe if _universe is not None
+                else mda.Universe(str(rep.topology), str(rep.trajectory)))
     selection = str(spec.get("selection") or cfg["selections"]["protein"])
     selected = universe.select_atoms(selection)
     if not len(selected):
