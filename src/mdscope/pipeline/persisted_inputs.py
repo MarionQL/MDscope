@@ -42,9 +42,8 @@ def check_artifact(path: Path) -> int:
         with ZipFile(path) as archive:
             if not archive.namelist() or archive.testzip() is not None:
                 raise ValueError(f"Invalid NPZ payload: {path}")
-    elif path.suffix == ".json":
-        if not isinstance(json.loads(path.read_text()), dict):
-            raise ValueError(f"Expected a JSON object: {path}")
+    elif path.suffix == ".json" and not isinstance(json.loads(path.read_text()), dict):
+        raise ValueError(f"Expected a JSON object: {path}")
     return size
 
 

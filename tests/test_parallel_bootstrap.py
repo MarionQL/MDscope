@@ -34,7 +34,7 @@ def test_parallel_bootstrap_preserves_draws_and_rng(monkeypatch, reducer, draws,
 
 
 def test_worker_count_respects_slurm_and_affinity(monkeypatch):
-    monkeypatch.setattr(common.os, "sched_getaffinity", lambda pid: set(range(6)), raising=False)
+    monkeypatch.setattr(common.os, "sched_getaffinity", lambda _pid: set(range(6)), raising=False)
     monkeypatch.setenv("SLURM_JOB_ID", "123")
     monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
     monkeypatch.delenv("MDSCOPE_STATS_WORKERS", raising=False)
