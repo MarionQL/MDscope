@@ -17,13 +17,13 @@ from MDAnalysis.lib.distances import capped_distance
 from MDAnalysis.lib.mdamath import triclinic_vectors
 
 from ..config import atomic_json, atomic_parquet, ensure_dir
+from ..contracts.outputs import SOLVATION_COUNT_COLUMNS
 from ..core.geometry import minimum_image_displacements
 from .solvation_common import EPISODE_COLUMNS, rdf_from_counts
 
 PRESETS = {"standard": (False, False), "detailed": (True, True),
            "kinetics": (True, True)}
-COUNT_COLUMNS = ["frame", "time_ps", "solvent", "target_id", "target_class",
-                 "site_class", "n_solvent"]
+COUNT_COLUMNS = SOLVATION_COUNT_COLUMNS
 EVENT_COLUMNS = ["frame", "time_ps", "solvent", "target_id", "solvent_id"]
 BRIDGE_COLUMNS = ["frame", "time_ps", "solvent", "solvent_id", "target_a", "target_b"]
 

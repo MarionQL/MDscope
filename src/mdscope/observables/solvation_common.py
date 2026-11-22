@@ -6,9 +6,9 @@ episode column ordering unchanged.
 """
 import numpy as np
 
-EPISODE_COLUMNS = ["solvent", "target_id", "solvent_id", "start_frame", "end_frame",
-                   "duration_ps", "left_censored", "right_censored",
-                   "sampled_duration_ps", "duration_convention"]
+from ..contracts.outputs import SOLVATION_EPISODE_COLUMNS
+
+EPISODE_COLUMNS = SOLVATION_EPISODE_COLUMNS
 
 
 def rdf_from_counts(counts, edges, density_exposure):

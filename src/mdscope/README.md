@@ -10,7 +10,8 @@
 | `reporting/` | Saved findings and optional figures |
 | `pipeline/` | Fused streaming, executable replica tasks, restart and finalization |
 | `cli.py`, `config.py` | CLI and YAML configuration |
-| `output_paths.py`, `registry.py` | Canonical output paths, schemas and artifact contracts |
+| `contracts/outputs.py` | Per-analysis output descriptors, static paths, companions, schemas and shared producer constants |
+| `output_paths.py`, `registry.py` | Backward-compatible path exports, configuration-dependent companion selection and output planning |
 
 **Coordinate rule:** Membrane observables use source coordinates **before** protein fitting; optional `msd_trajectory` is separately synchronized. Do not rotate or recenter the shared input frames. Old internal Python aliases are unsupported.
 

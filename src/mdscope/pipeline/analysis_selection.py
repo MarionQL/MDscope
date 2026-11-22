@@ -6,10 +6,9 @@ trajectory implementations. Production consumers use these same predicates.
 from __future__ import annotations
 
 from ..config import analysis_runs
+from ..contracts.outputs import EXTENSION_ANALYSES, MEMBRANE_ANALYSES
 
-FUSED_MEMBRANE_ANALYSES = (
-    "membrane_order", "bilayer_normal", "lipid_enrichment", "lipid_contacts",
-)
+FUSED_MEMBRANE_ANALYSES = MEMBRANE_ANALYSES
 
 
 def membrane_enabled_names(cfg):
@@ -22,7 +21,7 @@ def membrane_enabled_names(cfg):
 def extensions_enabled_names(cfg):
     specs = cfg.get("analyses", {})
     names = []
-    for name in ("hydrogen_bonds", "lipid_hydrogen_bonds", "dssp", "sasa", "local_environment", "solvation"):
+    for name in EXTENSION_ANALYSES:
         if not specs.get(name, {}).get("enabled", False):
             continue
         # Parallel DSSP requires the specialized worker implementation.
