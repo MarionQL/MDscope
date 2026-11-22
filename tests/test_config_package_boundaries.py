@@ -69,3 +69,29 @@ def test_config_never_reexports_persistence_or_provenance():
                 assert not forbidden.intersection(alias.name for alias in node.names), module
     for name in forbidden:
         assert not hasattr(config, name), name
+
+
+def test_no_internal_consumer_imports_persistence_from_config():
+    """Deferred imports must not bypass the persistence ownership boundary."""
+    package = Path(__file__).resolve().parents[1] / "src" / "mdscope"
+    forbidden = {"atomic_json", "atomic_parquet", "ensure_dir",
+                 "config_hash", "environment_metadata", "archive_output"}
+    violations = []
+    for module in package.rglob("*.py"):
+        relative = module.relative_to(package)
+        if relative.parts[0] == "config":
+            continue
+        for node in ast.walk(ast.parse(module.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.level:
+                parts = relative.parts[:-1]
+                base = parts[:len(parts) - node.level + 1]
+                target = ".".join([*base, *([node.module] if node.module else [])])
+            else:
+                target = (node.module or "").removeprefix("mdscope.")
+            if target == "config":
+                for alias in node.names:
+                    if alias.name in forbidden or alias.name == "*":
+                        violations.append(f"{relative}:{node.lineno}: {alias.name}")
+    assert not violations, "\\n".join(violations)
