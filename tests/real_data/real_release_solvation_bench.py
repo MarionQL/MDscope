@@ -22,7 +22,7 @@ SYSTEMS = {
     "nocarb_sdc4": ("nocarb-sdc4-step7_production.tpr",
                     "nocarb-sdc4-rep1_test.xtc"),
 }
-BENCH = Path(__file__).resolve().parents[1] / "scripts" / "benchmark_solvation_real.py"
+BENCH = Path(__file__).resolve().parents[2] / "scripts" / "benchmark_solvation_real.py"
 
 
 def _configuration(topology, trajectory, system, data, *, n_frames):

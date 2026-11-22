@@ -33,3 +33,6 @@ mdscope_results/
 
 # Local real GROMACS test data (see docs/workflows.md); never commit trajectories.
 examples/data/
+
+# graphify knowledge-graph output (local; rebuild with `graphify update src`)
+graphify-out/

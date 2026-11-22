@@ -1,6 +1,6 @@
 """Benchmark real finalization (statistics, plots, PDF tables) on the two test trajectories.
 
-    python tests/real_finalization_benchmark.py
+    python tests/real_data/real_finalization_benchmark.py
 
 Uses MDSCOPE_REAL_DATA (default examples/data) and MDSCOPE_REAL_OUTPUT (default
 real_test_results). Per-replicate outputs are generated first and are NOT part
@@ -20,7 +20,7 @@ from pathlib import Path
 
 import yaml
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 DATA = Path(os.environ.get("MDSCOPE_REAL_DATA", "examples/data")).resolve()
 OUT = Path(os.environ.get("MDSCOPE_REAL_OUTPUT", "real_test_results")).resolve() / "finalization_benchmark"
 # Expensive production mechanisms/solvation/shared-state kernels are excluded:

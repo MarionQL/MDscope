@@ -1,6 +1,6 @@
 """Release-data parity and speed benchmark for opt-in protein H-bond selection.
 
-Run: python tests/real_hbond_benchmark.py
+Run: python tests/real_data/real_hbond_benchmark.py
 Requires both paired test-data-v1 TPR/XTC files in examples/data (see
 scripts/run_real_data_checks.sh).
 """
