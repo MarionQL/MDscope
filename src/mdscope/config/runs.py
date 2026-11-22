@@ -177,15 +177,6 @@ def profile_dir(repout: Path, analysis: str, run_id: str = DEFAULT_INSTANCE_ID) 
     return Path(repout) / "profiles" / analysis / run_id
 
 
-# Preserve historical imports for existing extensions and HPC scripts.
-from .core.persistence import atomic_json as atomic_json
-from .core.persistence import atomic_parquet as atomic_parquet
-from .core.persistence import atomic_text as atomic_text
-from .core.persistence import ensure_dir as ensure_dir
-from .core.provenance import config_hash as config_hash
-from .core.provenance import environment_metadata as environment_metadata
-
-
 def time_ps(ts, frame_index: int, cfg: dict) -> float:
     # When dt_ps is supplied it is interpreted as spacing between
     # analyzed frames, after trajectory.stride.
