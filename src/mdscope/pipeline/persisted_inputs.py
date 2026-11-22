@@ -101,11 +101,9 @@ def validate_analysis_output(entry, cfg, *, allow_missing_occlusion=False):
                     raise ValueError(f"{occlusion}: missing residue occlusion columns")
             path = entry.path.parent / "lipid_density_maps.npz"
             with np.load(path, allow_pickle=False) as maps:
-                expected = {"counts", "density_per_nm2", "enrichment_fold",
-                            "bulk_density_per_nm2", "species", "leaflet",
-                            "x_edges_A", "y_edges_A", "nframes"}
+                expected = set(artifact_schema(entry, path)["array_keys"])
                 if not expected <= set(maps.files):
-                    raise ValueError(f"{path}: missing density-map arrays")
+                    raise ValueError(f"{path}: missing density-map arrays {sorted(expected - set(maps.files))}")
         if entry.name == "residue_membrane_distance":
             directory = entry.path.parent
             matrix = np.load(entry.path, allow_pickle=False, mmap_mode="r")
