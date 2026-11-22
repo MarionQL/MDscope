@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import (
+    GROUP_ANALYSES,
     analysis_runs,
     iter_replicates,
     plot_enabled,
@@ -933,7 +934,7 @@ def authoring_catalog(cfg, *, include_inactive=False):
         membrane = configured["analyses"]["membrane"]
         for field in ("area_per_lipid", "thickness", "msd"):
             membrane.setdefault(field, {})["enabled"] = True
-        for name in ("rmsd", "radius_of_gyration"):
+        for name in GROUP_ANALYSES:
             configured["analyses"][name].pop("groups", None)
         distance = configured["analyses"]["residue_membrane_distance"]
         for spec in [distance, *(distance.get("runs") or {}).values()]:

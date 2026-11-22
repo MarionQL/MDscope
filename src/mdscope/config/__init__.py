@@ -9,7 +9,7 @@ import yaml
 
 from ..contracts.metric_selection import STATISTICS_FAMILIES
 from ..errors import ConfigError, InputPathError
-from .defaults import DEFAULTS, DEFAULT_INSTANCE_ID, MULTI_RUN_ANALYSES, TAIL_PRESETS, merge
+from .defaults import DEFAULTS, DEFAULT_INSTANCE_ID, GROUP_ANALYSES, MULTI_RUN_ANALYSES, TAIL_PRESETS, merge
 from .runs import (
     AnalysisRun, Replicate, _validate_path_component,
     analysis_runs, analysis_enabled, analysis_groups,
@@ -135,7 +135,7 @@ def statistics_family_config(cfg, family):
 
 # Export the historical public config API while modules are split.
 __all__ = [
-    "DEFAULTS", "DEFAULT_INSTANCE_ID", "MULTI_RUN_ANALYSES", "TAIL_PRESETS",
+    "DEFAULTS", "DEFAULT_INSTANCE_ID", "GROUP_ANALYSES", "MULTI_RUN_ANALYSES", "TAIL_PRESETS",
     "AnalysisRun", "Replicate", "_validate_path_component", "analysis_runs",
     "analysis_enabled", "analysis_groups", "group_label", "iter_replicates",
     "profile_dir", "project_root", "replicate_label", "replicate_specs",

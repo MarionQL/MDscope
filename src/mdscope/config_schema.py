@@ -10,6 +10,8 @@ from __future__ import annotations
 from copy import deepcopy
 from difflib import get_close_matches
 
+from .config.defaults import GROUP_ANALYSES, MULTI_RUN_ANALYSES
+
 
 def option_help(analysis, key):
     """Authoring help for supported backend fields, independent of the GUI."""
@@ -97,10 +99,10 @@ def option_schema(defaults):
         "pairs": None, "block_frames": None,
     }
 
-    for name in ("rmsd", "radius_of_gyration"):
+    for name in GROUP_ANALYSES:
         analyses[name]["groups"] = None
 
-    for name in ("density_1d", "residue_membrane_distance", "sasa"):
+    for name in sorted(MULTI_RUN_ANALYSES):
         analyses[name]["runs"] = {"*": None}  # Each run is checked below.
 
     density = analyses["density_1d"]

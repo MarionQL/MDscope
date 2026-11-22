@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from ..config import DEFAULTS, resolve_config
+from ..config import DEFAULTS, GROUP_ANALYSES, resolve_config
 from ..config_schema import option_schema
 from ..planning import build_plan
 from ..statistics.selection import studio_metric_selection_defaults
@@ -135,7 +135,7 @@ def _change_group(document, old_id, new_id=None, *, duplicate=False, choices=Non
             replaced[new_id] = deepcopy(spec)
     document["selections"]["groups"] = replaced
     if not duplicate:
-        for name in ("rmsd", "radius_of_gyration"):
+        for name in GROUP_ANALYSES:
             spec = document.get("analyses", {}).get(name, {})
             if isinstance(spec, dict) and spec.get("groups") is not None:
                 spec["groups"] = [new_id if key == old_id else key

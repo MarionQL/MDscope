@@ -15,7 +15,7 @@ import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 
-from ..config import analysis_groups, analysis_runs, profile_dir, time_ps
+from ..config import GROUP_ANALYSES, analysis_groups, analysis_runs, profile_dir, time_ps
 from ..config.runs import (
     distance_enabled_names,
     extensions_enabled_names,
@@ -328,7 +328,7 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path):
 
     # Resolve metric-specific group filters once; grouping itself is shared.
     metric_groups = {}
-    for metric in ("rmsd", "radius_of_gyration"):
+    for metric in GROUP_ANALYSES:
         requested = cfg["analyses"][metric].get("groups")
         if requested is not None:
             if not isinstance(requested, list) or not all(isinstance(x, str) for x in requested):

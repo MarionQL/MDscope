@@ -1,6 +1,7 @@
 """Independent analysis validators, in historical evaluation order."""
 import numpy as np
 from ..defaults import DEFAULT_INSTANCE_ID
+from ..defaults import GROUP_ANALYSES
 from ..runs import analysis_groups, analysis_runs, _validate_path_component
 
 
@@ -16,7 +17,7 @@ def validate_alignment_and_groups(cfg):
             raise ValueError(f"selections.groups.{group_id} is missing selection")
     for name in cfg.get("analyses", {}):
         analysis_runs(cfg, name)
-    for metric in ("rmsd", "radius_of_gyration"):
+    for metric in GROUP_ANALYSES:
         groups = cfg.get("analyses", {}).get(metric, {}).get("groups")
         if groups is not None and (not isinstance(groups, list) or any(not isinstance(x, str) for x in groups)
                                    or set(groups) - set(analysis_groups(cfg))):

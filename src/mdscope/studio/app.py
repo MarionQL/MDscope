@@ -6,7 +6,7 @@ from pathlib import Path
 import streamlit as st
 import yaml
 
-from mdscope.config import DEFAULTS, analysis_groups, resolve_config
+from mdscope.config import DEFAULTS, GROUP_ANALYSES, analysis_groups, resolve_config
 from mdscope.statistics.selection import (
     ESTIMATOR_FLAGS,
     studio_metric_selection_defaults,
@@ -125,7 +125,7 @@ def analysis_settings(name, spec, document):
     from mdscope.config_schema import option_help
     result = {}
     for key, default in defaults.items():
-        if key == "enabled" or (key == "groups" and name in {"rmsd", "radius_of_gyration"}):
+        if key == "enabled" or (key == "groups" and name in GROUP_ANALYSES):
             continue
         value = spec.get(key, default)
         label = key.replace("_", " ")
@@ -142,7 +142,7 @@ def analysis_settings(name, spec, document):
         if key in spec or edited != default:
             result[key] = edited
     from mdscope.config import MULTI_RUN_ANALYSES
-    excluded = {"enabled"} | ({"groups"} if name in {"rmsd", "radius_of_gyration"} else set())
+    excluded = {"enabled"} | ({"groups"} if name in GROUP_ANALYSES else set())
     if name in MULTI_RUN_ANALYSES:
         # A run action reruns immediately, before this editor returns. Preserve
         # preceding widget edits in the detached draft before that commit.
@@ -574,7 +574,7 @@ def main():
                         continue
                     with st.expander(f"{analysis_title(name)} · settings", expanded=False):
                         try:
-                            if name in {"rmsd", "radius_of_gyration"}:
+                            if name in GROUP_ANALYSES:
                                 default = spec.get("groups", list(doc["selections"].get("groups", {})))
                                 spec["groups"] = st.multiselect("Named measurement groups", list(doc["selections"].get("groups", {})),
                                                                  default=default, key=f"edit:groups:{name}")
@@ -595,7 +595,7 @@ def main():
                                             group.pop("alignment_selection", None)
                             edited = analysis_settings(name, spec, doc)
                             doc["analyses"][name] = {"enabled": True, **edited,
-                                                      **({"groups": spec["groups"]} if name in {"rmsd", "radius_of_gyration"} and "groups" in spec else {})}
+                                                      **({"groups": spec["groups"]} if name in GROUP_ANALYSES and "groups" in spec else {})}
                             with st.expander("Technical option names"):
                                 st.caption("Supported keys: " + ", ".join(key for key in schema if key != "enabled"))
                             st.caption("Units: Å for distances, ps for time, degrees for angles. Named runs are available where supported.")

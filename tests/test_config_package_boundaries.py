@@ -102,3 +102,25 @@ def test_no_internal_consumer_imports_persistence_from_config():
                     if alias.name in forbidden or alias.name == "*":
                         violations.append(f"{relative}:{node.lineno}: {alias.name}")
     assert not violations, "\\n".join(violations)
+
+
+def test_group_and_named_run_capabilities_have_one_owner():
+    from mdscope.config import GROUP_ANALYSES, MULTI_RUN_ANALYSES
+    from mdscope.config_schema import option_schema
+
+    analyses = option_schema(DEFAULTS)["analyses"]
+    # Group filters are a schema-only option; residue distance has an unrelated boolean ``groups``.
+    added = {name for name, spec in analyses.items()
+             if "groups" in spec and "groups" not in DEFAULTS["analyses"].get(name, {})}
+    assert added == set(GROUP_ANALYSES)
+    assert {name for name, spec in analyses.items() if "runs" in spec} == MULTI_RUN_ANALYSES
+    cfg = deepcopy(DEFAULTS)
+    for name in GROUP_ANALYSES:
+        cfg["analyses"][name]["groups"] = ["undeclared"]
+        try:
+            resolve_config(cfg)
+        except ValueError as exc:
+            assert f"analyses.{name}.groups" in str(exc)
+        else:
+            raise AssertionError(f"{name} accepted an undeclared group")
+        del cfg["analyses"][name]["groups"]
