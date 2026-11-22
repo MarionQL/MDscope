@@ -1,6 +1,4 @@
 """Per-sugar hydration uses bond order, periodic distances and unique waters."""
-from types import SimpleNamespace
-
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
@@ -9,7 +7,7 @@ import pytest
 from mdscope.mechanisms import hs_hydration
 
 
-def test_sugar_hydration_with_reversed_residue_ids_and_shared_water(tmp_path, monkeypatch):
+def test_sugar_hydration_with_reversed_residue_ids_and_shared_water(tmp_path):
     u = mda.Universe.empty(7, n_residues=5, atom_resindex=[0, 1, 1, 2, 3, 4, 4],
                            trajectory=True)
     u.add_TopologyAttr("names", ["OG", "O1", "O2", "O3", "O4", "OH2", "H1"])
@@ -29,9 +27,10 @@ def test_sugar_hydration_with_reversed_residue_ids_and_shared_water(tmp_path, mo
                         "attachment_selection": "name OG"},
         }},
     }
-    monkeypatch.setattr(hs_hydration.mda, "Universe", lambda *_: u)
-    hs_hydration.run_hs_hydration(SimpleNamespace(topology="top", trajectory="traj"),
-                                  cfg, tmp_path, np.array([0.]))
+    observer = hs_hydration.HydrationObserver(u, cfg, tmp_path)
+    observer.update(u.trajectory.ts, 0, 0.)
+    observer.flush(0)
+    observer.finalize()
     data = pd.read_parquet(tmp_path / hs_hydration.OUTPUT)
     assert list(data.sugar_resid) == [99, 40, 15]
     assert list(data.water_count) == [1, 1, 0]

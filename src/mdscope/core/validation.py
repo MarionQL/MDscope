@@ -5,7 +5,7 @@ from MDAnalysis.exceptions import SelectionError
 from ..config import analysis_runs
 from ..errors import ConfigError
 from ..observables.residue_membrane_distance import _without_hydrogens
-from ..mechanisms.hs_topology import discover_covalent_hs
+from .glycans import discover_covalent_glycans, glycan_definition, glycan_sugars
 from ..mechanisms.mechanistic_common import sequence_matches
 from .alignment import resolved_selection_counts
 from ..observables.sasa import import_freesasa, sasa_instances
@@ -65,6 +65,22 @@ def _validate_selections(cfg, base, *, systems, emit):
         counts["motifs"] = resolve_motifs(universe, cfg.get("selections", {}).get("motifs", {}))
         for name, matches in counts["motifs"].items():
             emit(f"    motif {name}: {matches}")
+        glycans = cfg.get("selections", {}).get("glycans", {})
+        hydration = cfg["analyses"].get("hydration", {})
+        consumed = set(hydration.get("glycans") or []) if hydration.get("enabled") else set()
+        counts["glycans"] = {}
+        for name in glycans:
+            definition = glycan_definition(glycans, name)
+            audit = discover_covalent_glycans(universe, definition)[2]
+            if name in consumed:  # hydration also needs linear sugar positions
+                sugars = glycan_sugars(universe, definition)[0]
+                for chain, item in audit.items():
+                    item["sugars"] = sugars.loc[sugars.chain.eq(chain), "sugar_type"].tolist()
+            counts["glycans"][name] = audit
+            for chain, item in audit.items():
+                emit(f"    glycan {name} {chain}: {item['glycan_residues']} residues "
+                     f"{item['glycan_resnames']} linked to {item['protein_chain']}:"
+                     f"{item['protein_resname']}{item['protein_resid']} {item['protein_atom']}")
         if cfg["analyses"].get("solvation", {}).get("enabled"):
             from ..observables.solvation import _targets
             solvation = cfg["analyses"]["solvation"]
@@ -168,7 +184,7 @@ def _validate_selections(cfg, base, *, systems, emit):
                     raise ValueError(f"{system}: ion selection {name} matched zero atoms")
                 emit(f"    SDC4 ion {name}: {count} atoms")
             if (mechanism.get("hs_auto") or {}).get("enabled"):
-                hs, sites, audit = discover_covalent_hs(
+                hs, sites, audit = discover_covalent_glycans(
                     universe, mechanism["hs_auto"]
                 )
                 for name, item in audit.items():

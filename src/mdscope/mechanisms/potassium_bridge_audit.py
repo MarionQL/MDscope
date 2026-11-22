@@ -18,7 +18,7 @@ import pyarrow.parquet as pq
 import pyarrow as pa
 
 from ..config import atomic_json, atomic_parquet, time_ps
-from .hs_topology import discover_covalent_hs
+from ..core.glycans import discover_covalent_glycans
 from .mechanistic_common import sequence_matches
 from ..observables.solvation import SPATIAL_OFFSETS, rdf_from_counts, water_donor_hbonds
 from ..pipeline.progress import track
@@ -61,7 +61,7 @@ def topology_sites(u, config):
                                {"acid": re.escape(motif["sequence"])})
     if len(matches) != 2:
         raise ValueError(f"Expected two exact acidic-patch sequences, found {list(matches)}")
-    chains, _, attachments = discover_covalent_hs(
+    chains, _, attachments = discover_covalent_glycans(
         u, config["analyses"]["sdc4_mechanisms"]["hs_auto"])
     records = []
     for owner, group in ([(name, u.residues[ids].atoms) for name, ids in matches.items()]

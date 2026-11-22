@@ -166,8 +166,8 @@ def _targets(u, spec, *, motifs=None):
                 auto = spec.get("hs_auto") or {}
                 if not auto.get("glycan_selection") or not auto.get("attachment_selection"):
                     raise ValueError("solvation hs_chain grouping requires hs_auto glycan and attachment selections")
-                from ..mechanisms.hs_topology import discover_covalent_hs
-                chains, _, _ = discover_covalent_hs(u, auto)
+                from ..core.glycans import discover_covalent_glycans
+                chains, _, _ = discover_covalent_glycans(u, auto)
                 chunks = []
                 covered = set()
                 selected = set(map(int, atoms.indices))

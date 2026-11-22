@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from .state_feature_spec import SDC4_FEATURES
+from .core.glycans import glycan_definition
 from typing import Any
 
 from .config import analysis_runs, iter_replicates, plot_enabled, statistics_family_config
@@ -75,7 +76,8 @@ REQUIRED_TOPOLOGY = {
     "sasa": ("target/occluder atoms and radii; optional FreeSASA backend",),
     "solvation": ("target chemical sites and water/ion identities",),
     "sdc4_mechanisms": ("SDC4 domain identities; topology bonds for hs_auto",),
-    "hydration": ("water oxygens, target identities, topology bonds for glycans",),
+    "hydration": ("water oxygens, target identities; topology bonds, glycan residues and "
+                  "attachment atoms for linear glycan chains",),
     "residue_membrane_distance": ("query residues and membrane atom selection",),
     "bilayer_normal": ("lipid anchor selections and sufficient neighbors",),
     "lipid_enrichment": ("footprint and lipid anchor selections",),
@@ -273,6 +275,10 @@ def build_plan(cfg: dict, config_path: str | Path, *,
                     "alignment": run.spec.get("alignment", "exact"),
                     "scaling": run.spec.get("scaling", "standardize"),
                 }} if name == "shared_states" else {}),
+                **({"glycan_definitions": {
+                    glycan: glycan_definition(cfg["selections"]["glycans"], glycan)
+                    for glycan in run.spec.get("glycans") or []}}
+                   if name == "hydration" else {}),
                 "required_topology": list(REQUIRED_TOPOLOGY.get(name, ())),
                 "topology_requirements_status": ("partial_contract" if name in REQUIRED_TOPOLOGY
                                                  else "not_registered"),
@@ -945,5 +951,6 @@ def authoring_catalog(cfg, *, include_inactive=False):
         figures["statistics"] = statistics
     return {"scalars": scalars, "profiles": profiles,
             "motifs": configured["selections"].get("motifs", {}),
+            "glycans": configured["selections"].get("glycans", {}),
             "state_features": state_feature_catalog(configured),
             "figures": {owner: list(items.values()) for owner, items in figures.items()}}

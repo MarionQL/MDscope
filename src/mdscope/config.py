@@ -29,7 +29,7 @@ DEFAULTS = {
         "alignment": "protein and name CA",
         "features": "protein and name CA",
         "ligand": None,
-        "groups": {}, "motifs": {},
+        "groups": {}, "motifs": {}, "glycans": {},
     },
     "analyses": {
         "alignment": {"enabled": True, "selection": None},
@@ -174,7 +174,7 @@ DEFAULTS = {
                       "options": {}},
         "hydration": {"enabled": False, "water_oxygen_selection": None,
                       "protein_selection": None, "membrane_selection": None,
-                      "cutoff_A": 3.5},
+                      "glycans": [], "cutoff_A": 3.5},
         "lifetimes": {"enabled": True, "gap_factor": 1.5},
     },
     "statistics": {
@@ -808,7 +808,14 @@ def validate_config(cfg: dict, base: Path = Path("."), *, check_paths: bool = Tr
                for value in (solvation.get("shell_cutoffs_A") or {}).values()):
             raise ValueError("solvation shell cutoffs must be positive and <= search radius")
 
+    from .core.glycans import validate_glycan_spec, validate_glycans
+    glycans = cfg["selections"].get("glycans", {})
+    validate_glycans(glycans)
     hydration = cfg["analyses"].get("hydration", {})
+    references = hydration.get("glycans", [])
+    if (not isinstance(references, list) or len(set(map(str, references))) != len(references)
+            or any(not isinstance(name, str) or name not in glycans for name in references)):
+        raise ValueError("hydration.glycans must list distinct selections.glycans names ([] selects none)")
     if hydration.get("enabled"):
         if not (hydration.get("water_oxygen_selection")
                 or cfg["analyses"].get("sdc4_mechanisms", {}).get("water_oxygen_selection")
@@ -855,10 +862,7 @@ def validate_config(cfg: dict, base: Path = Path("."), *, check_paths: bool = Tr
         if hs_auto.get("enabled"):
             if hs or sites:
                 raise ValueError("Use hs_auto OR explicit hs_chains/hs_attachment_sites, not both")
-            if not hs_auto.get("glycan_selection") or not hs_auto.get("attachment_selection"):
-                raise ValueError("hs_auto requires glycan_selection and attachment_selection")
-            if int(hs_auto.get("min_glycan_residues", 3)) < 2:
-                raise ValueError("hs_auto.min_glycan_residues must be >=2")
+            validate_glycan_spec(hs_auto, "sdc4_mechanisms.hs_auto", min_residues=2)
         elif not isinstance(hs, dict) or not isinstance(sites, dict) or set(hs) != set(sites):
             raise ValueError("sdc4_mechanisms.hs_chains and hs_attachment_sites must match")
         for group in (tm, ecto, hs, sites):

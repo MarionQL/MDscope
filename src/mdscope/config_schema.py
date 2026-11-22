@@ -66,6 +66,8 @@ def option_schema(defaults):
 
     schema["selections"]["motifs"] = {"*": dict.fromkeys(
         ("sequence", "pattern", "selection", "chains", "overlap", "missing"))}
+    from .core.glycans import GLYCAN_DEFAULTS
+    schema["selections"]["glycans"] = {"*": dict.fromkeys(GLYCAN_DEFAULTS)}
     analyses = schema["analyses"]
     analyses["shared_states"]["feature_sources"] = {"*": dict.fromkeys(
         ("source", "group", "metric", "units"))}

@@ -13,6 +13,7 @@ Use [`synd4_full_mechanisms.yaml`](../synd4_full_mechanisms.yaml) for the comple
 | Interaction screening | `statistics.interaction_min_occupancy` | Filter *statistical identities*, not saved events |
 | Matched analysis window | `statistics.matched_window_ps` | Additional matched-time statistics |
 | Automatic HS identification | `analyses.sdc4_mechanisms.hs_auto` | Requires covalent bond topology |
+| Glycan chains for hydration | `selections.glycans` + `analyses.hydration.glycans` | Requires covalent bond topology; [below](#shared-glycan-definitions) |
 
 ## YAML contract for generalization
 
@@ -181,6 +182,45 @@ training counts. A successful rerun archives the previous directory under
 SDC4-only conditioning products are produced solely for the SDC4 preset.
 States are geometric k-means groups, **not** established kinetic/metastable
 states or evidence of causation; short fixtures do not establish convergence.
+
+## Shared glycan definitions
+
+A definition discovers covalently attached glycan chains from **topology bonds**;
+like a motif, it enables nothing. `analyses.hydration` is the generic consumer.
+
+```yaml
+selections:
+  glycans:
+    o_glycans:
+      glycan_selection: "resname BGALNA BGAL ANE5AC"   # every residue of each chain
+      attachment_selection: "protein and resname THR SER and name OG1 OG"
+      min_glycan_residues: 1      # default 1
+      expected_chains: null       # default: no count check
+analyses:
+  hydration:
+    enabled: true
+    water_oxygen_selection: "resname TIP3 and name OH2"
+    cutoff_A: 3.5
+    glycans: [o_glycans]          # omitted or [] selects none
+```
+
+- Each bonded component of `glycan_selection` must bond to exactly **one**
+  `attachment_selection` atom (the allowed linkage chemistry); a bond to any other
+  atom outside the glycan selection, an unattached or undersized fragment, two
+  attachment atoms/residues and an `expected_chains` mismatch all fail.
+- Chains are labeled `<chain>_<residue letter><resid>` (`A_T12`, `PROA_S39`), using
+  chainID then segid. Sugars are numbered from the attachment sugar outward along
+  bonds; **branched chains fail** because they have no unique position.
+- Hydration sites are each sugar's oxygen atoms (`O*` names). Each definition is a
+  hydration compartment with `chain`, `sugar_type` (`<chain>:<resname>`) and
+  `total` unions in `aggregate_counts.parquet`; per-sugar identities are in
+  `target_metadata.parquet`, linkages in `glycan_attachments.parquet`.
+- Names are letters, digits, `_`, `.` or `-`, excluding `protein`, `membrane` and `hs`.
+  Definitions sharing atoms, or overlapping protein/membrane targets, fail.
+- Residue names and bonds come from the force field (TPR/PSF); bare PDBs cannot
+  define chains. Check `mdscope validate`, which lists each chain's linkage and
+  sugars, before running. SDC4 keeps `sdc4_mechanisms.hs_auto` (compartment `hs`,
+  `min_glycan_residues: 3`, `expected_chains: 6`).
 
 ## SASA environments
 

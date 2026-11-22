@@ -2,7 +2,7 @@
 import MDAnalysis as mda
 import pytest
 
-from mdscope.mechanisms.hs_topology import discover_covalent_hs
+from mdscope.core.glycans import discover_covalent_glycans as discover_covalent_hs
 
 
 def _universe():

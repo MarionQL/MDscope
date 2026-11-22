@@ -110,7 +110,7 @@ Other lipid outputs: `extensions/bilayer_normal/`, `extensions/lipid_footprint/`
 - A water may count once for **multiple neighboring sugars**; per-sugar count is not a conserved chain total.
 - HS profiles: `hs_water_by_position__*` (chain/position) and `hs_water_by_sugar_type__*` (type mean per frame, with exact positions documented).
 - Residues without polar atoms have unavailable coordination. Conditional CIs preserve missing frames and require support across multiple temporal blocks.
-- HS sugar hydration is a separate **optional trajectory pass**; saved cutoff and frame-grid compatibility are checked before reuse. Change the cutoff using fresh output or controlled regeneration.
+- HS sugar hydration is computed by the fused hydration observer (no extra trajectory pass); saved cutoff and frame-grid compatibility are checked before reuse. Change the cutoff using fresh output or controlled regeneration.
 
 ## Single- and multi-origin diffusion
 
@@ -286,6 +286,8 @@ analyses:
 `membrane_selection` selects the **hydration sites**, not merely the lipid
 species. Prefer an explicitly audited chemistry-specific selection; avoid
 comparing different oxygen/site populations as if they were identical.
+`glycans` lists [shared glycan definitions](configuration.md#shared-glycan-definitions)
+measured per sugar, chain and definition with `cutoff_A`.
 When omitted, an existing `sdc4_mechanisms.lipid_contact_selection` or
 `membrane.headgroup_selection` is reused if configured. HS sugar hydration
 can be enabled independently through the existing
@@ -295,8 +297,9 @@ hydration is disabled.
 | Output | Scope |
 |---|---|
 | `extensions/hydration/counts.parquet` | Water counts by frame, compartment, protein residue, HS sugar or selected membrane residue |
-| `extensions/hydration/aggregate_counts.parquet` | Unique water unions by HS chain, whole HS, whole protein, whole membrane and membrane residue name |
-| `extensions/hydration/target_metadata.parquet` | Topology residue index, HS chain and attachment-relative position, residue chemistry, site count and cutoff |
+| `extensions/hydration/aggregate_counts.parquet` | Unique water unions by glycan chain, chain sugar type, whole glycan definition (HS: `hs`), whole protein, whole membrane and membrane residue name |
+| `extensions/hydration/target_metadata.parquet` | Topology residue index, glycan chain and attachment-relative position, residue chemistry, site count and cutoff |
+| `extensions/hydration/glycan_attachments.parquet` | Per glycan chain: protein chain/residue/atom, topology indices and sugar sequence (required when `hydration.glycans` is set) |
 | `extensions/sdc4_mechanisms/hs_sugar_hydration.parquet` | Unchanged HS per-sugar schema for the existing position/type statistics |
 
 A water shared by two sugars contributes one count to **each** sugar, but

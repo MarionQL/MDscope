@@ -287,3 +287,6 @@ Saved source paths in `output_paths.SAVED_SCALAR_SOURCE_FILES` are shared by
 the temporal reader and the state-feature catalog in `registry.py`.
 Shared motif membership is resolved by `core/motifs.py` using the existing
 sequence matcher; neither Studio nor the planner assembles a second sequence.
+Covalent glycan chains and attachment-relative sugar order come only from
+`core/glycans.py`; SDC4 HS, solvation `hs_chain` grouping, the K-bridge audit
+and hydration (`mechanisms/hs_hydration.HydrationObserver`) all reuse it.
