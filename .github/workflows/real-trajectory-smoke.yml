@@ -29,7 +29,8 @@ jobs:
       - name: Install MDscope analysis dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e .
+          # The production YAML validated below enables SASA; preflight requires FreeSASA.
+          python -m pip install -e '.[sasa]'
       - name: Download paired real trajectories and TPR files
         env:
           GH_TOKEN: ${{ github.token }}
