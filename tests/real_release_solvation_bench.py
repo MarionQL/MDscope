@@ -148,7 +148,7 @@ def run(data_dir, output_dir, *, standard_frames, kinetics_frames, sustained_fra
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-dir", default="real_test_data")
+    parser.add_argument("--data-dir", default="examples/data")
     parser.add_argument("--output-dir", default="release_solvation_benchmark")
     parser.add_argument("--standard-frames", type=int, default=24)
     parser.add_argument("--kinetics-frames", type=int, default=12)

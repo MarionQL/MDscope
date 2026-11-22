@@ -8,7 +8,7 @@ import yaml
 
 from mdscope.cli import cmd_validate
 
-root = Path(os.environ.get("MDSCOPE_REAL_DATA", "real_test_data")).resolve()
+root = Path(os.environ.get("MDSCOPE_REAL_DATA", "examples/data")).resolve()
 original = yaml.safe_load(Path("synd4_full_mechanisms.yaml").read_text())
 original["project"]["output"] = str(root / "validate_only")
 original["trajectory"]["start"] = 0

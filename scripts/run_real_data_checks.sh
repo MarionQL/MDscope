@@ -2,7 +2,9 @@
 # Run the real GROMACS test-data checks locally, mirroring the manual GitHub
 # workflows, against trajectories kept outside git (default: examples/data/).
 #
-#   scripts/run_real_data_checks.sh [smoke|hbond|solvation|performance|all]
+#   scripts/run_real_data_checks.sh CHECK
+#   CHECK: smoke | hbond | solvation | performance | finalization |
+#          box-sweep | box-clearance | all
 #
 # Data: the four test-data-v1 TPR/XTC files, verified against
 # tests/data/real_test_data.sha256. For quicker iteration, point
@@ -23,8 +25,9 @@ export PYTHONUNBUFFERED=1
 export MDSCOPE_PROFILE="${MDSCOPE_PROFILE:-1}"
 
 case "${check}" in
-    smoke|hbond|solvation|performance|all) ;;
-    *) echo "usage: $0 [smoke|hbond|solvation|performance|all]" >&2; exit 2 ;;
+    smoke|hbond|solvation|performance|finalization|box-sweep|box-clearance|all) ;;
+    *) echo "usage: $0 [smoke|hbond|solvation|performance|finalization|box-sweep|box-clearance|all]" >&2
+       exit 2 ;;
 esac
 
 if [[ ! -d "${MDSCOPE_REAL_DATA}" ]]; then
@@ -39,7 +42,7 @@ if [[ -f "${MDSCOPE_REAL_DATA}/provenance.json" ]]; then
         "${MDSCOPE_REAL_DATA}/provenance.json")"
     manifest="$(cd "${MDSCOPE_REAL_DATA}" && pwd)/SHA256SUMS"
     case "${check}" in
-        solvation|performance|all)
+        solvation|performance|finalization|box-sweep|box-clearance|all)
             echo "ERROR: ${check} needs more frames than the stride-${derived} copy;" \
                  "use the full files (MDSCOPE_REAL_DATA=examples/data)." >&2
             exit 2 ;;
@@ -86,8 +89,28 @@ performance() {
         run python tests/performance_pipeline_benchmark.py --frames 40 160 --draws 100 500
 }
 
+finalization() {
+    run python tests/real_finalization_benchmark.py
+}
+
+conditions=(carb nocarb)
+
+box-sweep() {
+    # Hypothetical periodic-box lattice sensitivity (not a box-size certification).
+    for condition in "${conditions[@]}"; do
+        run python scripts/box_size_sweep.py             --tpr "${MDSCOPE_REAL_DATA}/${condition}-sdc4-step7_production.tpr"             --xtc "${MDSCOPE_REAL_DATA}/${condition}-sdc4-rep1_test.xtc"             --out "${MDSCOPE_REAL_OUTPUT}/box_size_sweep/${condition}"             --max-frames "${MDSCOPE_BOX_FRAMES:-40}" --lateral 26 28 30 32 --vertical 28
+    done
+}
+
+box-clearance() {
+    # Syndecan-HS periodic-image clearance in the released trajectories.
+    for condition in "${conditions[@]}"; do
+        run python scripts/release_box_clearance.py             --tpr "${MDSCOPE_REAL_DATA}/${condition}-sdc4-step7_production.tpr"             --xtc "${MDSCOPE_REAL_DATA}/${condition}-sdc4-rep1_test.xtc"             --max-frames "${MDSCOPE_BOX_FRAMES:-200}"             --out "${MDSCOPE_REAL_OUTPUT}/box_clearance/${condition}"
+    done
+}
+
 if [[ "${check}" == all ]]; then
-    smoke; hbond; solvation; performance
+    smoke; hbond; solvation; performance; finalization; box-sweep; box-clearance
 else
     "${check}"
 fi

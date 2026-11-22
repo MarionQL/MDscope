@@ -30,7 +30,7 @@ Use **GitHub Flow** and the issue title/acceptance conventions in [Contributing]
 3. Complete the smallest coherent solution that satisfies the authorized milestone, across modules when needed. Do not interpret minimal changes as a reason to stop after a small patch. Remove superseded internal paths within scope and after migrating callers; use adapters or separate tests when they protect a real contract.
 4. For substantive bugs, reproduce failure and test the affected entry point. Prefer independent analytical references; never weaken assertions to pass CI.
 5. Validate identity, frame/time alignment, PBC, missing-vs-zero and persisted-product completeness. Existing output files are not automatically valid.
-6. Follow the [check policy](docs/developer/check-policy.md): targeted local tests, automatic Python 3.11–3.13 CI, and explicitly dispatched visual/real-data/performance checks for affected behavior. Report **executed** evidence, failures, skipped checks and production limits. Short fixtures do not prove convergence.
+6. Follow the [check policy](docs/developer/check-policy.md): targeted local tests, automatic Python 3.11–3.13 CI, dispatched figure review, and local real-data/performance checks (`scripts/run_real_data_checks.sh`) for affected behavior. Report **executed** evidence, failures, skipped checks and production limits. Short fixtures do not prove convergence.
 
 ## Delivery scope
 

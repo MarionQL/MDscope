@@ -1,7 +1,7 @@
 """Release TPR/XTC parity for shared motif hydration and generic state inputs.
 
 Bounded smoke evidence, not evidence of state convergence or metastability.
-Run with MDSCOPE_REAL_DATA and MDSCOPE_REAL_OUTPUT, as the real smoke workflow.
+Run with MDSCOPE_REAL_DATA and MDSCOPE_REAL_OUTPUT, as `scripts/run_real_data_checks.sh smoke`.
 """
 from copy import deepcopy
 import json
@@ -19,7 +19,7 @@ from mdscope.statistics.shared_states import fit_shared_states
 
 
 def run():
-    data = Path(os.environ.get("MDSCOPE_REAL_DATA", "real_test_data")).resolve()
+    data = Path(os.environ.get("MDSCOPE_REAL_DATA", "examples/data")).resolve()
     root = Path(os.environ.get("MDSCOPE_REAL_OUTPUT", "real_test_results")).resolve() / "motif_states"
     sequence = "DDEDVVGPGQESDDFELSGSGDLDDLED"
     selection = "protein and name CA and chainID PROA PROB"

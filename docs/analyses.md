@@ -233,8 +233,8 @@ Use actual `target_id` strings from `target_residues.parquet`; example IDs are p
 
 ```bash
 python scripts/audit_potassium_bridges.py \
-  --tpr real_test_data/carb-sdc4-step7_production.tpr \
-  --xtc real_test_data/carb-sdc4-rep1_test.xtc \
+  --tpr examples/data/carb-sdc4-step7_production.tpr \
+  --xtc examples/data/carb-sdc4-rep1_test.xtc \
   --stride 10 --output potassium-audit-carb-rep1
 ```
 

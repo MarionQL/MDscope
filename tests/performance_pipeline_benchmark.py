@@ -5,8 +5,8 @@ containing one short trajectory, not independent biological replicates.
 The statistics benchmark uses separate output roots with links to the
 persisted per-replica data; no production replica is modified.
 
-Run after downloading the test-data-v1 GitHub release:
-  MDSCOPE_REAL_DATA=real_test_data MDSCOPE_REAL_OUTPUT=real_benchmark_results \\
+Run with the test-data-v1 files in examples/data (scripts/run_real_data_checks.sh performance):
+  MDSCOPE_REAL_DATA=examples/data MDSCOPE_REAL_OUTPUT=real_benchmark_results \\
     python tests/performance_pipeline_benchmark.py --frames 40 160 --draws 100 500
 """
 from __future__ import annotations

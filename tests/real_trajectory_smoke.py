@@ -25,7 +25,7 @@ from mdscope.pipeline.fused_membrane import run_fused_membrane
 from mdscope.interactions.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
 from mdscope.observables.residue_membrane_distance import run_residue_membrane_distance
 
-DATA = Path(os.environ.get("MDSCOPE_REAL_DATA", "real_test_data")).resolve()
+DATA = Path(os.environ.get("MDSCOPE_REAL_DATA", "examples/data")).resolve()
 ROOT = Path(os.environ.get("MDSCOPE_REAL_OUTPUT", "real_test_results")).resolve()
 ROOT.mkdir(parents=True, exist_ok=True)
 

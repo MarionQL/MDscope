@@ -4,7 +4,7 @@ import os
 import numpy as np
 import MDAnalysis as mda
 
-root=Path(os.environ.get("MDSCOPE_REAL_DATA","real_test_data"))
+root=Path(os.environ.get("MDSCOPE_REAL_DATA","examples/data"))
 for system,filename in (
     ("carb_sdc4","carb-sdc4-step7_production.tpr"),
     ("nocarb_sdc4","nocarb-sdc4-step7_production.tpr"),

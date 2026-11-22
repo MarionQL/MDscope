@@ -17,7 +17,7 @@ import yaml
 
 from mdscope.mechanisms.sdc4_mechanisms import SDC4Mechanisms
 
-DATA = Path(os.environ.get("MDSCOPE_REAL_DATA", "real_test_data")).resolve()
+DATA = Path(os.environ.get("MDSCOPE_REAL_DATA", "examples/data")).resolve()
 ROOT = Path(os.environ.get("MDSCOPE_REAL_OUTPUT", "real_test_results")).resolve()
 
 SYSTEMS = {
