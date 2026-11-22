@@ -106,6 +106,7 @@ def test_no_internal_consumer_imports_persistence_from_config():
 
 def test_group_and_named_run_capabilities_have_one_owner():
     from mdscope.config import GROUP_ANALYSES, MULTI_RUN_ANALYSES
+    from mdscope.config.validators.structure import validate_alignment_and_groups
     from mdscope.config_schema import option_schema
 
     analyses = option_schema(DEFAULTS)["analyses"]
@@ -118,7 +119,7 @@ def test_group_and_named_run_capabilities_have_one_owner():
     for name in GROUP_ANALYSES:
         cfg["analyses"][name]["groups"] = ["undeclared"]
         try:
-            resolve_config(cfg)
+            validate_alignment_and_groups(cfg)
         except ValueError as exc:
             assert f"analyses.{name}.groups" in str(exc)
         else:
