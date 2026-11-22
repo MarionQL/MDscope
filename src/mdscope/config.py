@@ -6,14 +6,12 @@ helpers.
 from __future__ import annotations
 
 import math
-import time
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-import pandas as pd
 import yaml
 
 from .errors import ConfigError, InputPathError
@@ -398,8 +396,10 @@ def profile_dir(repout: Path, analysis: str, run_id: str = DEFAULT_INSTANCE_ID) 
 
 
 # Preserve historical imports for existing extensions and HPC scripts.
-from .core.persistence import ensure_dir, atomic_json, atomic_text, atomic_parquet
-from .core.provenance import config_hash, environment_metadata
+from .core.persistence import (ensure_dir as ensure_dir, atomic_json as atomic_json,
+                               atomic_text as atomic_text, atomic_parquet as atomic_parquet)
+from .core.provenance import (config_hash as config_hash,
+                              environment_metadata as environment_metadata)
 
 
 def time_ps(ts, frame_index: int, cfg: dict) -> float:

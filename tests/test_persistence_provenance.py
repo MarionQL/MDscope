@@ -1,7 +1,6 @@
 """Issue #28: historical imports and crash-safe output contracts."""
 import hashlib
 import json
-from pathlib import Path
 
 import pandas as pd
 import pytest

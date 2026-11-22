@@ -1,8 +1,6 @@
 """Offline family selection and adversarial stale-figure integrity checks."""
 from copy import deepcopy
-import numpy as np
 import pandas as pd
-import pytest
 from PIL import Image
 from mdscope.reporting.figure_inventory import (
     record_generated_figures,figure_inventory,figure_status)

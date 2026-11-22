@@ -1,5 +1,4 @@
 """Point-only modes, incomplete profiles, and non-destructive statistical reruns."""
-from copy import deepcopy
 import json
 import hashlib
 import numpy as np

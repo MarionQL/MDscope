@@ -9,7 +9,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 from ..core.persistence import archive_output, atomic_text
 
 

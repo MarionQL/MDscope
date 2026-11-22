@@ -1,6 +1,5 @@
 """Bond-verified HS attachment discovery, including shared protein chain IDs."""
 import MDAnalysis as mda
-import numpy as np
 import pytest
 
 from mdscope.mechanisms.hs_topology import discover_covalent_hs

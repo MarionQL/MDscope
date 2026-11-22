@@ -19,8 +19,7 @@ from ..core.trajectory_sources import open_msd_universe, paired_frames
 from ..core.checkpoints import (validate_progress, validate_committed_parts,
                                 chunk_artifacts, validate_artifact_inventory,
                                 numbered_artifacts, prune_artifact_orphans)
-from ..core.coordinate_contracts import CoordinateSpace, require_coordinate_space, msd_source_space
-from ..observables.msd import initialize_msd
+from ..core.coordinate_contracts import CoordinateSpace, require_coordinate_space
 from .fused_membrane import FusedMembrane, enabled_names as fused_enabled_names
 from .fused_extensions import FusedExtensions, enabled_names as extension_enabled_names
 from .fused_distance import FusedDistances, enabled_names as distance_enabled_names
@@ -374,8 +373,6 @@ def run_streaming_pass(rep, cfg: dict, outroot: Path, cfg_hash=None):
         # Validate coordinate provenance before unaligned membrane observers.
         source_space = CoordinateSpace.SOURCE
         require_coordinate_space("membrane observers", source_space, CoordinateSpace.SOURCE)
-        # The MSD reader is independent when explicitly configured.
-        msd_space = msd_source_space(msd_universe is not None)
         # All raw observers run before fitted feature arrays are constructed.
         if fused is not None:
             profiler.call("fused_membrane_update", fused.update, ts, processed)

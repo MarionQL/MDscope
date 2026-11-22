@@ -34,7 +34,6 @@ from .progress import track
 
 
 from .analysis_selection import (
-    FUSED_MEMBRANE_ANALYSES as FUSED_ANALYSES,
     membrane_enabled_names as enabled_names,
 )
 

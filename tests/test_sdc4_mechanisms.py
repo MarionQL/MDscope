@@ -1,5 +1,4 @@
 """Synthetic PBC, output, restart and shared-state regression tests for SDC4."""
-from pathlib import Path
 from types import SimpleNamespace
 import json
 

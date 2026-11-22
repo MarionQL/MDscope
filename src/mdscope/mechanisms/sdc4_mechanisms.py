@@ -13,7 +13,6 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import json
 import re
 import time
 
@@ -591,7 +590,6 @@ class SDC4Mechanisms:
         mid_z = lower_z + .5 * _vector(
             [0., 0., lower_z], [0., 0., upper_z], box
         )[2]
-        tm_z = float(midpoint[2])
         local = np.linalg.norm(dxy, axis=1) <= self.local_A
         for name, (ca, atoms) in self.surface_sites.items():
             position = ca.positions[0]

@@ -685,7 +685,6 @@ def inspect_saved_plot_ids(cfg: dict, root: str | Path, config_path: str | Path,
     profiles read only their identity column. Figure contracts remain owned
     by reporting.plot_ids, not by this inspector.
     """
-    import json
     import pyarrow.parquet as pq
     from .reporting.plot_ids import DYNAMIC_VARIANTS
 

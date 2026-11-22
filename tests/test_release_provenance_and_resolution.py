@@ -1,5 +1,4 @@
 """Regression checks for #225, #226 and #227 without trajectory reads."""
-from pathlib import Path
 import subprocess
 
 import pytest
@@ -31,7 +30,6 @@ def test_source_identity_without_checkout(tmp_path, monkeypatch):
 
 def test_initialization_rejects_changed_config_without_modifying_saved_files(tmp_path, monkeypatch):
     from mdscope.pipeline.runner import initialize
-    from mdscope.core import provenance
     cfg = {"project": {"output": str(tmp_path / "out")}, "systems": {"a": {}}}
     config_file = tmp_path / "analysis.yaml"
     config_file.write_text("project: {}")

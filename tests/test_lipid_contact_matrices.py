@@ -1,7 +1,6 @@
 """Hand-counted undirected graphs, molecule identity, periodic geometry and replay."""
 import numpy as np
 import pandas as pd
-import pytest
 import MDAnalysis as mda
 from MDAnalysis.coordinates.memory import MemoryReader
 from mdscope.observables.lipid_contacts import contact_matrix

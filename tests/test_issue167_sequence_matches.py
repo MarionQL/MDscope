@@ -1,7 +1,6 @@
 """Regression coverage for shared topology-aware sequence motif matching (#167)."""
 from dataclasses import dataclass
 
-import numpy as np
 import pytest
 
 from mdscope.mechanisms.mechanistic_common import sequence_matches

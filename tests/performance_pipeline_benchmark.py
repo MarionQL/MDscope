@@ -18,10 +18,8 @@ import os
 from pathlib import Path
 import platform
 import resource
-import shutil
 from time import perf_counter
 
-import pandas as pd
 import yaml
 
 from mdscope.config import load_config

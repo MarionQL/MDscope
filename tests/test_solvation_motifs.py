@@ -1,5 +1,4 @@
 """Sequence-defined solvation targets must resolve topology identities safely."""
-import numpy as np
 import pytest
 import MDAnalysis as mda
 

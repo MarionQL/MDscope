@@ -1,7 +1,6 @@
 """Tiny trajectory regression: the streaming coordinator must still write RMSD and RMSF."""
 from copy import deepcopy
 import json
-from pathlib import Path
 import numpy as np
 import pandas as pd
 import MDAnalysis as mda
