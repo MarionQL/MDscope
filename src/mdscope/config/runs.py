@@ -100,7 +100,7 @@ def sdc4_enabled(cfg: dict) -> bool:
 
 def membrane_enabled_names(cfg):
     return tuple(
-        name for name in FUSED_MEMBRANE_ANALYSES
+        name for name in MEMBRANE_ANALYSES
         if cfg.get("analyses", {}).get(name, {}).get("enabled", False)
     )
 
