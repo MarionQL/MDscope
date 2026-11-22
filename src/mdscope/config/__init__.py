@@ -139,3 +139,16 @@ def statistics_family_config(cfg, family):
     if not result["statistics"].get("bootstrap", True):
         result["statistics"]["bootstrap_draws"] = 0
     return result
+
+# Export the historical public config API while modules are split.
+__all__ = [
+    "DEFAULTS", "DEFAULT_INSTANCE_ID", "MULTI_RUN_ANALYSES", "TAIL_PRESETS",
+    "AnalysisRun", "Replicate", "_validate_path_component", "analysis_runs",
+    "analysis_enabled", "analysis_groups", "group_label", "iter_replicates",
+    "profile_dir", "project_root", "replicate_label", "replicate_specs",
+    "system_label", "time_ps", "merge", "load_config", "resolve_config",
+    "normalize_analysis_booleans", "validate_config", "plot_enabled",
+    "figure_enabled", "residue_response_settings", "statistics_family_config",
+    "atomic_json", "atomic_parquet", "atomic_text", "ensure_dir",
+    "config_hash", "environment_metadata",
+]
