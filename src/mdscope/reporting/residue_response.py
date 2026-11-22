@@ -7,7 +7,8 @@ import pandas as pd
 from matplotlib.colors import TwoSlopeNorm
 from matplotlib.patches import Rectangle
 
-from ..config import ensure_dir, figure_enabled
+from ..config import figure_enabled
+from ..core.persistence import ensure_dir
 from .figure_inventory import current_statistics
 from .plot_ids import safe_plot_stem
 
