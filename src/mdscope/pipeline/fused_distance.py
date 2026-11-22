@@ -114,13 +114,21 @@ class FusedDistances:
 
     def finalize(self, rep):
         result = {}
-        for run_id, entry in self.runs.items():
-            result[run_id] = run_residue_membrane_distance(
-                rep, self.cfg, self.repout,
-                spec=entry["spec"], run_id=run_id,
-                precomputed_parts=self.cache / run_id,
-                _universe=self.u,
-            )
+        # The historical standalone metadata reader begins at trajectory frame
+        # zero. Preserve that selection context for coordinate-dependent
+        # selections, then restore the observer's final source frame.
+        frame = self.u.trajectory.frame
+        try:
+            self.u.trajectory[0]
+            for run_id, entry in self.runs.items():
+                result[run_id] = run_residue_membrane_distance(
+                    rep, self.cfg, self.repout,
+                    spec=entry["spec"], run_id=run_id,
+                    precomputed_parts=self.cache / run_id,
+                    _universe=self.u,
+                )
+        finally:
+            self.u.trajectory[frame]
         atomic_json(self.repout / "fused_distance_timings.json", {
             "enabled_instances": list(self.runs),
             "frames_processed_this_invocation": self.frames,
