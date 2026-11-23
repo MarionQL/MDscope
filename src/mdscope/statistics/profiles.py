@@ -15,6 +15,7 @@ from ..config import statistics_family_config
 from ..core.persistence import atomic_parquet, ensure_dir
 from ..observables.hydration import temporal_hs_hydration_profiles
 from ..mechanisms.residue_occlusion import temporal_residue_occlusion_profiles
+from ..mechanisms.protomer_contacts import temporal_interprotomer_profiles
 from ..observables.density_1d import align_density_profiles, temporal_density_profiles
 from ..observables.membrane_order import temporal_membrane_order_profiles
 from ..observables.residue_membrane_distance import temporal_residue_membrane_profiles
@@ -193,6 +194,7 @@ def collect_temporal_profiles(repout: Path, cfg: dict) -> dict[str, dict]:
     out.update(temporal_density_profiles(repout, cfg))
     out.update(temporal_structure_profiles(repout, cfg))
     out.update(temporal_residue_occlusion_profiles(repout, cfg))
+    out.update(temporal_interprotomer_profiles(repout, cfg))
     out.update(temporal_hs_hydration_profiles(repout, cfg))
     out.update(temporal_residue_membrane_profiles(repout, cfg))
     out.update(temporal_membrane_order_profiles(repout, cfg))
