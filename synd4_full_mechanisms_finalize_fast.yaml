@@ -245,6 +245,8 @@ analyses:
     enabled: true
     axis: z
     protein_selection: "protein"
+    # Primary discovery uses all protein residues: partner occlusion/hydration,
+    # whole-protomer contact pairs (if enabled), DSSP and SASA.
     residue_occlusion: true
     residue_water_cutoff_A: 3.5
     hs_sugar_water_cutoff_A: 3.5
