@@ -27,7 +27,6 @@ from MDAnalysis.coordinates.memory import MemoryReader
 from mdscope.config import DEFAULTS, resolve_config
 from mdscope.core.provenance import config_hash
 from mdscope.errors import ConfigError
-from mdscope.systems.sdc4.mechanisms import _normal_order_setup
 from mdscope.observables.membrane_order import (
     _order_sites,
     _tail_spec,
@@ -37,6 +36,7 @@ from mdscope.observables.membrane_order import (
 from mdscope.pipeline.fused_membrane import FusedMembrane
 from mdscope.pipeline.preflight import validate_selections
 from mdscope.planning import build_plan
+from mdscope.systems.sdc4.mechanisms import _normal_order_setup
 
 CHAIN_LENGTH = {"sn1": 16, "sn2": 18}  # palmitoyl, oleoyl
 DOUBLE_BOND = {"sn2": (9, 10)}
@@ -51,8 +51,14 @@ MACROG_TAILS = {
 # Four ectodomain and five GGIVG-containing TM residues per synthetic protomer.
 # Lipid-order assertions still select only POPC atoms.
 SDC4_DOMAINS = {
-    "tm_chains": {"A": "resid 9:13 and name CA", "B": "resid 18:22 and name CA"},
-    "ectodomains": {"A": "resid 5:8 and name CA", "B": "resid 14:17 and name CA"},
+    "tm_chains": {
+        "A": "protein and chainID A and resid 9:13 and name CA",
+        "B": "protein and chainID B and resid 18:22 and name CA",
+    },
+    "ectodomains": {
+        "A": "protein and chainID A and resid 5:8 and name CA",
+        "B": "protein and chainID B and resid 14:17 and name CA",
+    },
 }
 
 
