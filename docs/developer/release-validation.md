@@ -56,7 +56,8 @@ Record resource-blocked checks as **unverified**, never passed. A short referenc
 | CI `mdscope-tested-env-*` artifacts | Exact `pip freeze` of each tested job: the lock solution for that commit. Commit no hand-maintained lock. |
 | `environment.yml` | Representative conda-forge environment with the same floors; not solver-tested in CI. |
 
-**Fixed-seed reproducibility:** bootstrap/permutation draws use seeded `numpy.random.Generator`. NumPy does not guarantee identical random streams for Generator *distributions* across releases (NEP 19), so a fixed seed reproduces draws only with the same NumPy version (and worker allocation, `MDSCOPE_STATS_WORKERS`). Record the tested environment artifact with results; exact enumeration (small exact permutation tests) is version-independent.
+- Bootstrap/permutation draws use seeded `numpy.random.Generator`; pin NumPy and worker allocation (`MDSCOPE_STATS_WORKERS`) for reproducibility. Distribution streams can change across NumPy releases (NEP 19).
+- Save the tested-environment artifact with results. Exact small permutation enumeration is version-independent.
 
 ## Software releases and artifact identity
 
@@ -65,9 +66,8 @@ Record resource-blocked checks as **unverified**, never passed. A short referenc
 | Repository checkout | `git clone`, `git checkout <tag or SHA>` | `src/mdscope`, `pyproject.toml`, `scripts/`, tests, docs, examples | commit SHA (`git rev-parse HEAD`) |
 | sdist (`mdscope-X.Y.Z.tar.gz`) | `python -m build` | `src/mdscope`, `tests/`, `pyproject.toml`, README, LICENSE; no `scripts/`, `docs/` or examples | version + tag commit + SHA-256 |
 | Wheel (`mdscope-X.Y.Z-py3-none-any.whl`) | `python -m build` / `pip install` | installed `mdscope` package and `.dist-info` only; no `pyproject.toml`, `scripts/` or tests by design | version + tag commit + SHA-256 |
-| Git tag `test-data-v1` | `git checkout test-data-v1` (formerly also a GitHub release) | the **2026-10-27 tree at `79cf99b`** (root `analysis/`, no `pyproject.toml`, no `src/`), predating the #65 `src/` migration: **not a software release**. Its four TPR/XTC files are no longer hosted; they are kept locally in `examples/data/` | commit `79cf99b`; data files by `tests/data/real_test_data.sha256` |
 
-A reviewer report of `analysis/` without `pyproject.toml` matches the `test-data-v1` tag's source archive (offered while the release existed), but which file was inspected remains **unverified** until the reviewer confirms it (#182). Do not add `analysis` import aliases.
+Test-data assets are not software releases. Input availability and full-versus-short qualification: [Check policy](check-policy.md#real-gromacs-checks).
 
 **Release procedure** (software releases use `vX.Y.Z` tags; never reuse data tags):
 

@@ -80,52 +80,21 @@ Other lipid outputs: `extensions/bilayer_normal/`, `extensions/lipid_footprint/`
 ### Lipid-contact classes and statistics
 
 
-The observer stores per-frame unique undirected bonded-molecule pair counts by species and current leaflet in `<system>/<replicate>/extensions/lipid_contacts/matrix.parquet`; multiple atom contacts between one molecule pair count once per frame. These are geometric contacts, **not lipid hydrogen bonds**.
+- Input: per-frame unique undirected bonded-molecule pairs by species/leaflet in `extensions/lipid_contacts/matrix.parquet`. Multiple atom contacts count once; these are geometric contacts, not lipid H bonds.
+- `analyses.lipid_contacts.classes` assigns each species exactly once; missing/duplicate assignments fail statistics validation. The full SDC4 YAML owns the maintained class mapping.
+- Offline statistics count unordered pairs once before class aggregation, then mirror AB/BA cells for display. Same-class possible pairs are `N*(N-1)/2`; cross-class pairs are `N_A*N_B`.
+- `neighbors_per_molecule` stays directional; pair counts do not. Absent populations are unavailable; populated noncontacting pairs are zero.
+- Supported metrics: `pair_count_undirected`, `neighbors_per_molecule`, `enrichment` (formulas above).
+- Hierarchical bootstrap resamples correlated frames and replicas; conditions are independent unless configured paired. Block length is the maximum ACF-derived length across complete metrics within replica/leaflet/grouping.
+- Mean and pointwise intervals cover each leaflet × pair × metric, including system-2-minus-system-1 contrasts. Class grouping changes reporting identity, not cutoffs or affinity.
 
-`analyses.lipid_contacts.classes` maps each lipid species to exactly one
-lipid class. The default full SDC4 configuration distinguishes phosphatidylcholine,
-phosphatidylethanolamine, anionic phospholipids, sphingomyelin,
-cholesterol, glycosphingolipids, and free ceramide. Unmapped or duplicated
-species assignments fail validation during statistics.
+| Product | Location / identity |
+|---|---|
+| Replica/system statistics and contrasts | `project_summary/statistics/lipid_contacts/{replicate_statistics,system_statistics,system_comparisons}.parquet`; `level` distinguishes species/classes |
+| Contrast coverage | Shared statistics coverage audit |
+| Heatmaps | `project_summary/figures/lipid_contacts/lipid_contact_{matrix,difference}_...` and `lipid_contact_class_{matrix,difference}_...`; one per leaflet/metric |
 
-The offline `lipid_contacts` statistics family:
-- counts unordered species pairs only once **before** combining them into
-  classes, then renders mirrored AB/BA matrix cells for convenient reading;
-- sums instantaneous molecule populations within each class and recomputes
-  same-class possible pairs as `N*(N-1)/2` and cross-class possible pairs as
-  `N_A*N_B` before estimating random-mixing enrichment;
-- retains the directional `neighbors_per_molecule` normalization
-  (A→B and B→A may differ) but not directional pair counts;
-- treats an absent lipid class or species as **unavailable**, not zero; a
-  populated but noncontacting pair is measured zero;
-- bootstraps temporally correlated frames within each replicate and resamples
-  replicates hierarchically, using independent conditions unless intentionally
-  configured as paired. It reports the mean and **pointwise** confidence
-  interval for each leaflet × pair × metric, including conditions and
-  between-condition contrasts (system 2 minus system 1).
-
-The supported metrics are `pair_count_undirected` (unique pairs/frame),
-`neighbors_per_molecule` (per-reference-lipid contacts) and `enrichment`
-(observed contact share / finite-population possible-pair share). The
-sampled-frame block length is conservatively the maximum autocorrelation-based
-block length across complete metrics within each replica/leaflet/grouping.
-
-Statistics products under
-`project_summary/statistics/lipid_contacts/`:
-`replicate_statistics.parquet`, `system_statistics.parquet`,
-`system_comparisons.parquet`. Both species-level and class-level outputs
-are saved in the same tables, marked by `level`. The contrast coverage
-audit also includes this family.
-
-Figures under `project_summary/figures/lipid_contacts/` include
-`lipid_contact_{matrix,difference}_...` for species and
-`lipid_contact_class_{matrix,difference}_...` for classes, with one
-heatmap per leaflet and metric. Difference-map dots mark cells with a
-pointwise bootstrap interval excluding zero; **they are not FDR-significant
-results**. Colors use shared scales across panels of the same grouping
-and metric.
-
-The class grouping is a reporting identity, not a pooled interaction cutoff or a binding affinity.
+Difference-map dots mark pointwise CI exclusion, **not FDR significance**. Comparable panels share color scales.
 
 ## Syndecan-4 (SDC4) mechanisms
 
@@ -150,33 +119,25 @@ The class grouping is a reporting identity, not a pooled interaction cutoff or a
 - Outputs: `extensions/sdc4_mechanisms/timeseries.parquet`, `selection_audit.json`, `lipid_density_maps.npz`, `hs_conditioned_solvation.parquet` and optional residue/motif/hydration tables. Project states: `project_summary/shared_states/`.
 - A complete reference configuration is [`synd4_full_mechanisms.yaml`](../synd4_full_mechanisms.yaml). **Do not copy old-residue examples blindly.**
 
-**Lipid-region reporting CSVs.** Plot-only rerendering reads each replica's saved
-`extensions/sdc4_mechanisms/lipid_region_specificity.parquet` without
-rewriting scientific artifacts under replica directories. The derived display
-summary is published separately at
-`project_summary/reporting_exports/sdc4/<condition>/<replicate>/lipid_region_replicate_summary.csv`.
-It retains the legacy column names, per-replica frame means, non-missing
-observation counts and both legacy and matched-local normalization measures.
-Historical `extensions/sdc4_mechanisms/lipid_region_replicate_summary.csv`
-files are retained untouched for compatibility; rerendering does not update them.
-The reporting CSV is regenerated from saved Parquet rather than treated as a
-primary numerical or inference product.
+**Lipid-region reporting CSVs**
 
-If a previously reported replica/region has no current `any`-moiety data, its
-old presentation CSV moves to `.archives/project_summary/reporting_exports/`.
-Primary replica files and historical extension CSVs remain untouched.
+- Plotting reads saved `extensions/sdc4_mechanisms/lipid_region_specificity.parquet`; it does not rewrite replica science products.
+- Display summaries go to `project_summary/reporting_exports/sdc4/<condition>/<replicate>/lipid_region_replicate_summary.csv`.
+- Legacy columns, per-replica means, non-missing counts and legacy/matched-local normalizations are retained. Historical replica CSVs remain untouched.
+
+- If current `any`-moiety data disappear for a replica/region, stale display CSVs move to `.archives/project_summary/reporting_exports/`.
 
 ### Protein residue water and HS sugar hydration
 
-| Option | Definition | Saved output |
+| Option | Measurement | Output under `extensions/sdc4_mechanisms/` |
 |---|---|---|
-| `residue_occlusion: true` + `residue_water_cutoff_A: 3.5` | Distinct water oxygens within cutoff of any selected protein N/O; protein/HS/lipid/no-partner conditional means | `extensions/sdc4_mechanisms/residue_occlusion.parquet` |
-| `hs_sugar_water_cutoff_A: 3.5` | Distinct waters near **any oxygen per sugar**, numbered from attachment sugar outward along covalent HS chain | `extensions/sdc4_mechanisms/hs_sugar_hydration.parquet` |
+| `residue_occlusion: true`, `residue_water_cutoff_A: 3.5` | Unique water oxygens near protein N/O; protein/HS/lipid/no-partner conditional means | `residue_occlusion.parquet` |
+| `hs_sugar_water_cutoff_A: 3.5` | Unique waters near any sugar oxygen, numbered outward from covalent attachment | `hs_sugar_hydration.parquet` |
 
-- A water may count once for **multiple neighboring sugars**; per-sugar count is not a conserved chain total.
-- HS profiles: `hs_water_by_position__*` (chain/position) and `hs_water_by_sugar_type__*` (type mean per frame, with exact positions documented).
-- Residues without polar atoms have unavailable coordination. Conditional CIs preserve missing frames and require support across multiple temporal blocks.
-- HS sugar hydration is computed by the fused hydration observer (no extra trajectory pass); saved cutoff and frame-grid compatibility are checked before reuse. Change the cutoff using fresh output or controlled regeneration.
+- One water can count for multiple sugars; per-sugar sums are not chain totals.
+- HS profiles: `hs_water_by_position__*` by chain/position; `hs_water_by_sugar_type__*` by type mean per frame, with documented positions.
+- No polar atoms means unavailable coordination. Conditional CIs preserve missing frames and require multiple supported temporal blocks.
+- The fused hydration observer adds no trajectory pass. Reuse checks cutoff/frame-grid compatibility; change cutoffs with fresh output or controlled regeneration.
 
 ## Hydration of protein residues, HS sugars and membrane sites
 

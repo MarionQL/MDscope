@@ -7,7 +7,7 @@
 | Run/restart/finalize, Slurm, saved outputs | [Workflows](workflows.md) |
 | Configure analyses, runs, plots and statistics | [Configuration](configuration.md) |
 | Understand observables, assumptions and output tables | [Analyses](analyses.md) |
-| Package layout, ownership, execution and recovery | [Architecture](developer/architecture.md) · [Pipeline graphs](developer/pipeline-graphs.md) · [ADR-0002](developer/adr/0002-evidence-first-architecture.md) |
+| Package layout, ownership, execution and recovery | [Architecture](developer/architecture.md) · [ADR-0002](developer/adr/0002-evidence-first-architecture.md) |
 | Preserve units, PBC and numerical meaning | [Scientific contracts](developer/scientific-contracts.md) |
 | Scientific caveats, unverified claims and test coverage | [Scientific audit](developer/scientific-audit.md) |
 | Validate SDC4 fixtures and release evidence | [SDC4 fixtures](developer/sdc4-fixtures.md) · [Release checklist](developer/release-validation.md) |
