@@ -1,19 +1,17 @@
 """Statistics profiling is opt-in and leaves inference results unchanged."""
 import json
 
+from mdscope.contracts.statistics import STATISTICS_FAMILIES
 from mdscope.statistics.dispatch import analyze_project
 
 
 def test_statistics_family_profile_records_inventory_and_stage_timings(
         tmp_path, monkeypatch):
-    import mdscope.statistics.dispatch as statistics
     monkeypatch.setenv("MDSCOPE_PROFILE", "1")
-    monkeypatch.setattr(statistics, "write_contrast_coverage",
-                        lambda *args: None)
     cfg = {
         "progress": {"enabled": False},
         "statistics": {"enabled": True, "families": {
-            name: False for name in statistics.STATISTICS_FAMILIES
+            name: False for name in STATISTICS_FAMILIES
         }},
     }
     analyze_project(cfg, tmp_path, {})
@@ -28,14 +26,11 @@ def test_statistics_family_profile_records_inventory_and_stage_timings(
 
 
 def test_statistics_profile_disabled_has_no_extra_output(tmp_path, monkeypatch):
-    import mdscope.statistics.dispatch as statistics
     monkeypatch.delenv("MDSCOPE_PROFILE", raising=False)
-    monkeypatch.setattr(statistics, "write_contrast_coverage",
-                        lambda *args: None)
     cfg = {
         "progress": {"enabled": False},
         "statistics": {"enabled": True, "families": {
-            name: False for name in statistics.STATISTICS_FAMILIES
+            name: False for name in STATISTICS_FAMILIES
         }},
     }
     analyze_project(cfg, tmp_path, {})
