@@ -107,8 +107,104 @@ def validate_selections(cfg, base=Path("."), *, systems=None, emit=None):
         raise ConfigError(str(exc)) from exc
 
 
+def _validate_sdc4_topology(universe, cfg, system, emit, counts):
+    """Audit protein-domain and lipid topology selections for SDC4."""
+    mechanism = cfg.get("analyses", {}).get("sdc4_mechanisms", {})
+    if mechanism.get("enabled", False):
+        protein_selection = mechanism.get("protein_selection") or cfg["selections"]["protein"]
+        protein_indices = set(universe.select_atoms(protein_selection).indices)
+        for kind in ("tm_chains", "ectodomains"):
+            for label, selection in mechanism[kind].items():
+                atoms = universe.select_atoms(selection)
+                if len(atoms) < 4:
+                    raise ValueError(
+                        f"{system}: SDC4 {kind}.{label} matched only {len(atoms)} atoms"
+                    )
+                if not set(atoms.indices).issubset(protein_indices):
+                    raise ValueError(
+                        f"{system}: SDC4 {kind}.{label} includes atoms outside "
+                        "the configured protein selection"
+                    )
+                emit(f"    SDC4 {kind}.{label}: {len(atoms)} atoms")
+        ca = universe.select_atoms(
+            mechanism.get("motif_selection") or
+            cfg["selections"]["protein"] + " and name CA"
+        )
+        motifs = sequence_matches(ca, mechanism.get("motifs") or {"NxIP": "N.IP"})
+        if mechanism.get("require_motifs", True) and not motifs:
+            raise ValueError(f"{system}: no NxIP motif found in topology sequence")
+        emit(f"    SDC4 NxIP motifs: {list(motifs)}")
+        # Share the production matcher so a wrong TM range fails before
+        # expensive trajectory analysis begins.
+        from ..systems.sdc4.mechanisms import resolve_sdc4_gxxxg
+        tm_groups = {
+            chain: universe.select_atoms(selection)
+            for chain, selection in mechanism["tm_chains"].items()
+        }
+        mapped, sequences = resolve_sdc4_gxxxg(
+            universe, tm_groups, required=mechanism.get("require_gxxxg", False),
+        )
+        for chain, atoms in mapped.items():
+            emit(f"    SDC4 TM {chain}: sequence={sequences[chain]}, "
+                 f"GGIVG topology residues={sorted(set(map(int, atoms.resindices)))}")
+        lipid_owners = set()
+        for name, selection in mechanism["lipid_anchors"].items():
+            atoms = universe.select_atoms(selection)
+            if not len(atoms):
+                if mechanism.get("allow_absent_species", False):
+                    emit(f"    SDC4 lipid {name}: absent (permitted)")
+                    continue
+                raise ValueError(f"{system}: missing SDC4 lipid {name}")
+            ids = set(map(int, atoms.resindices))
+            if ids & lipid_owners:
+                raise ValueError(f"{system}: overlapping SDC4 lipid anchor selections")
+            lipid_owners.update(ids)
+            emit(f"    SDC4 lipid {name}: {len(ids)} molecules")
+        local_order = mechanism.get("local_order") or {}
+        if local_order.get("enabled"):
+            from ..observables.membrane_order import order_preflight
+            from ..systems.sdc4.mechanisms import local_order_options
+            try:
+                audit = order_preflight(
+                    universe, local_order_options(local_order, cfg["analyses"]["membrane_order"]),
+                    leaflets=False, anchor_residues=lipid_owners)
+            except ValueError as exc:
+                raise ValueError(f"{system}: SDC4 local_order: {exc}") from exc
+            counts["sdc4_local_order"] = audit
+            _emit_order_audit(emit, "SDC4 local_order", audit)
+            if audit["lipids_without_anchor"] == audit["lipids"]:
+                raise ValueError(
+                    f"{system}: no SDC4 local_order lipid is an SDC4 lipid anchor residue; "
+                    "local -S_CH would always be unavailable")
+            if audit["lipids_without_anchor"]:
+                emit(f"    SDC4 local_order: {audit['lipids_without_anchor']} order lipids "
+                     "have no SDC4 lipid anchor and enter only the bulk mean")
+        for name, selection in mechanism.get("ion_selections", {}).items():
+            count = len(universe.select_atoms(selection))
+            if not count:
+                raise ValueError(f"{system}: ion selection {name} matched zero atoms")
+            emit(f"    SDC4 ion {name}: {count} atoms")
+        if (mechanism.get("hs_auto") or {}).get("enabled"):
+            hs, sites, audit = discover_covalent_glycans(
+                universe, mechanism["hs_auto"]
+            )
+            for name, item in audit.items():
+                emit(
+                    f"    HS {name}: {item['glycan_residues']} glycan residues "
+                    f"covalently linked to {item['protein_chain']}:"
+                    f"{item['protein_resid']} {item['protein_atom']}"
+                )
+        elif mechanism.get("hs_chains"):
+            for name, selection in mechanism["hs_chains"].items():
+                if not len(universe.select_atoms(selection)):
+                    raise ValueError(f"{system}: HS chain {name} selection empty")
+        else:
+            emit("    WARNING: SDC4 has no mapped HS chains; HS metrics will be absent")
+
+
+
 def _validate_selections(cfg, base, *, systems, emit):
-    emit = emit or (lambda *args, **kwargs: None)
+    emit = emit or (lambda _: None)
     require_optional_backends(cfg)
     base = Path(base)
     resolved = {}
@@ -225,90 +321,7 @@ def _validate_selections(cfg, base, *, systems, emit):
             except ValueError as exc:
                 raise ValueError(f"{system}: {exc}") from exc
             _emit_order_audit(emit, "membrane_order", counts["membrane_order"])
-        mechanism = cfg.get("analyses", {}).get("sdc4_mechanisms", {})
-        if mechanism.get("enabled", False):
-            for kind in ("tm_chains", "ectodomains"):
-                for label, selection in mechanism[kind].items():
-                    atoms = universe.select_atoms(selection)
-                    if len(atoms) < 4:
-                        raise ValueError(
-                            f"{system}: SDC4 {kind}.{label} matched only {len(atoms)} atoms"
-                        )
-                    emit(f"    SDC4 {kind}.{label}: {len(atoms)} atoms")
-            ca = universe.select_atoms(
-                mechanism.get("motif_selection") or
-                cfg["selections"]["protein"] + " and name CA"
-            )
-            motifs = sequence_matches(ca, mechanism.get("motifs") or {"NxIP": "N.IP"})
-            if mechanism.get("require_motifs", True) and not motifs:
-                raise ValueError(f"{system}: no NxIP motif found in topology sequence")
-            emit(f"    SDC4 NxIP motifs: {list(motifs)}")
-            # Share the production matcher so a wrong TM range fails before
-            # expensive trajectory analysis begins.
-            from ..systems.sdc4.mechanisms import resolve_sdc4_gxxxg
-            tm_groups = {
-                chain: universe.select_atoms(selection)
-                for chain, selection in mechanism["tm_chains"].items()
-            }
-            mapped, sequences = resolve_sdc4_gxxxg(
-                universe, tm_groups, required=mechanism.get("require_gxxxg", False),
-            )
-            for chain, atoms in mapped.items():
-                emit(f"    SDC4 TM {chain}: sequence={sequences[chain]}, "
-                     f"GGIVG topology residues={sorted(set(map(int, atoms.resindices)))}")
-            lipid_owners = set()
-            for name, selection in mechanism["lipid_anchors"].items():
-                atoms = universe.select_atoms(selection)
-                if not len(atoms):
-                    if mechanism.get("allow_absent_species", False):
-                        emit(f"    SDC4 lipid {name}: absent (permitted)")
-                        continue
-                    raise ValueError(f"{system}: missing SDC4 lipid {name}")
-                ids = set(map(int, atoms.resindices))
-                if ids & lipid_owners:
-                    raise ValueError(f"{system}: overlapping SDC4 lipid anchor selections")
-                lipid_owners.update(ids)
-                emit(f"    SDC4 lipid {name}: {len(ids)} molecules")
-            local_order = mechanism.get("local_order") or {}
-            if local_order.get("enabled"):
-                from ..systems.sdc4.mechanisms import local_order_options
-                from ..observables.membrane_order import order_preflight
-                try:
-                    audit = order_preflight(
-                        universe, local_order_options(local_order, cfg["analyses"]["membrane_order"]),
-                        leaflets=False, anchor_residues=lipid_owners)
-                except ValueError as exc:
-                    raise ValueError(f"{system}: SDC4 local_order: {exc}") from exc
-                counts["sdc4_local_order"] = audit
-                _emit_order_audit(emit, "SDC4 local_order", audit)
-                if audit["lipids_without_anchor"] == audit["lipids"]:
-                    raise ValueError(
-                        f"{system}: no SDC4 local_order lipid is an SDC4 lipid anchor residue; "
-                        "local -S_CH would always be unavailable")
-                if audit["lipids_without_anchor"]:
-                    emit(f"    SDC4 local_order: {audit['lipids_without_anchor']} order lipids "
-                         "have no SDC4 lipid anchor and enter only the bulk mean")
-            for name, selection in mechanism.get("ion_selections", {}).items():
-                count = len(universe.select_atoms(selection))
-                if not count:
-                    raise ValueError(f"{system}: ion selection {name} matched zero atoms")
-                emit(f"    SDC4 ion {name}: {count} atoms")
-            if (mechanism.get("hs_auto") or {}).get("enabled"):
-                hs, sites, audit = discover_covalent_glycans(
-                    universe, mechanism["hs_auto"]
-                )
-                for name, item in audit.items():
-                    emit(
-                        f"    HS {name}: {item['glycan_residues']} glycan residues "
-                        f"covalently linked to {item['protein_chain']}:"
-                        f"{item['protein_resid']} {item['protein_atom']}"
-                    )
-            elif mechanism.get("hs_chains"):
-                for name, selection in mechanism["hs_chains"].items():
-                    if not len(universe.select_atoms(selection)):
-                        raise ValueError(f"{system}: HS chain {name} selection empty")
-            else:
-                emit("    WARNING: SDC4 has no mapped HS chains; HS metrics will be absent")
+        _validate_sdc4_topology(universe, cfg, system, emit, counts)
         for kind in ("bilayer_normal","lipid_enrichment"):
             extension=cfg.get("analyses",{}).get(kind,{})
             if not extension.get("enabled",False):
