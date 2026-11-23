@@ -21,7 +21,12 @@ import yaml
 from .. import __version__
 from ..config import analysis_enabled, iter_replicates, load_config, project_root
 from ..contracts.outputs import EXTENSION_ANALYSES, MEMBRANE_ANALYSES
-from ..core.persistence import atomic_json, atomic_parquet, ensure_dir, publish_directory
+from ..core.persistence import (
+    atomic_json,
+    atomic_parquet,
+    ensure_dir,
+    publish_directory,
+)
 from ..core.progress import stage_progress
 from ..core.provenance import config_hash, environment_metadata
 from ..errors import ConfigError, ReplicateIndexError
@@ -520,7 +525,7 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
             # With an exact allowlist, raw-data plots can be regenerated before
             # statistics. Check their actual source contracts, not plot names.
             from ..config import figure_enabled
-            from ..reporting.plot_ids import describe_plot
+            from ..reporting.plot_ids import describe_plot, requires_finalization
             requires_statistics = any(
                 describe_plot(identifier)["requires_statistics"]
                 for identifier in selected_figures if figure_enabled(cfg, identifier)
@@ -528,10 +533,10 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
         else:
             # Legacy family-wide plotting can dispatch statistical figures.
             requires_statistics = True
-        requires_finalization = selected_figures is None or any(
-            describe_plot(identifier)["requires_finalization"]
+        needs_finalization = selected_figures is None or any(
+            requires_finalization(identifier)
             for identifier in selected_figures if figure_enabled(cfg, identifier))
-        if requires_finalization:
+        if needs_finalization:
             from ..statistics.manifest import read_statistics_manifest
             manifest = root / "project_summary/statistics/manifest.json"
             facts = read_statistics_manifest(manifest)

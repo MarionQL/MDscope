@@ -132,12 +132,17 @@ def describe_plot(identifier: str) -> dict:
         }[family],
         "source_candidates": source,
         "requires_statistics": requires_statistics,
-        "requires_finalization": requires_statistics or family in {"diffusion", "shared_states"},
         "destination": destination,
         "units_note": unit_notes,
         "status": "conditional_on_saved_data",
         "available_overrides": ["dpi"],
     }
+
+
+def requires_finalization(identifier: str) -> bool:
+    """Derived descriptive figures need publication without requiring inference."""
+    descriptor = describe_plot(identifier)
+    return descriptor["requires_statistics"] or descriptor["family"] in {"diffusion", "shared_states"}
 
 
 def figure_family(path):

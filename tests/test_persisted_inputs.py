@@ -557,8 +557,8 @@ def test_failed_shared_state_preparation_invalidates_latest_publication(tmp_path
 
 @pytest.mark.parametrize("identifier", ["diffusion:diffusion_coefficients", "shared_states:state_populations"])
 def test_derived_descriptive_plot_rejects_unfinished_generation(tmp_path, identifier):
-    from mdscope.pipeline import runner
     from mdscope.core.persistence import atomic_json
+    from mdscope.pipeline import runner
 
     doc, cfg, root, _, _ = saved_project(tmp_path)
     cfg["plots"] = {"enabled": True, "include": [identifier]}

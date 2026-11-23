@@ -35,9 +35,7 @@ class StatisticsManifest:
         return self.state == "complete"
 
 
-def read_statistics_manifest(path: str | Path) -> StatisticsManifest:
-    """Separate parsing/shape/lifecycle facts from consumer admission policy."""
-    path = Path(path)
+def _project_publication(path):
     if path.parent.name == "statistics" and path.parent.parent.name == "project_summary":
         attempt = path.parents[2] / ".state/finalization.json"
         if attempt.exists():
@@ -49,6 +47,15 @@ def read_statistics_manifest(path: str | Path) -> StatisticsManifest:
                 return StatisticsManifest(path, "invalid", error=f"{attempt}: {exc}")
             if publication["status"] != "complete":
                 return StatisticsManifest(path, "incomplete", error="latest project finalization did not complete; previous results were preserved")
+    return None
+
+
+def read_statistics_manifest(path: str | Path) -> StatisticsManifest:
+    """Separate parsing/shape/lifecycle facts from consumer admission policy."""
+    path = Path(path)
+    publication = _project_publication(path)
+    if publication is not None:
+        return publication
     if not path.is_file():
         return StatisticsManifest(path, "missing")
     try:

@@ -1,5 +1,6 @@
 """Statistics profiling is opt-in and leaves inference results unchanged."""
 import json
+
 import pytest
 
 from mdscope.contracts.statistics import STATISTICS_FAMILIES

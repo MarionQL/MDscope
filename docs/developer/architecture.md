@@ -192,7 +192,7 @@ Contrast coverage is written to `statistics/coverage/contrast_coverage.parquet`.
 
 ## Reporting and Studio
 
-- `reporting.plot_ids.describe_plot` owns figure prerequisites; descriptive lipid species matrices can use raw saved products, while class, pair-count and comparison figures require completed statistics.
+- `reporting.plot_ids` owns figure prerequisites; descriptive lipid species matrices can use raw saved products, while class, pair-count and comparison figures require completed statistics.
 - `reporting/` renders saved results only. `table_reports` owns `statistics_tables.pdf` and its manifest; `record_generated_figures` alone writes `figure_provenance.json`; `figure_inventory` lists published figures and marks legacy PDFs without publication identity as unverified. Panels of the same observable share axis limits via `reporting.shared_scales`.
 - Studio authors YAML and never runs trajectories, inference or production rendering. `studio.model` owns the detached draft, group/run edits and export reconciliation; `studio.app` renders widgets; figure candidates come from `planning.authoring_catalog`, topology checks from `pipeline.preflight`, and saved-output checks from `pipeline.persisted_inputs`. User guide: [Studio](../studio.md).
 

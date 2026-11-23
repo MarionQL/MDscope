@@ -66,7 +66,10 @@ def test_cutoff_tie_is_detected_and_isolated_from_the_invariance_check():
 
 def test_genuine_pbc_error_still_fails_the_oracle():
     xyz, upper = _membrane()
-    huge = np.array([1e6, 1e6, 1e6, 90.0, 90.0, 90.0])
+    # Suppress minimum-image wrapping without allocating a million-Angstrom
+    # neighbor-search grid in the deliberately broken implementation.
+    huge = np.array([1000., 1000., 1000., 90.0, 90.0, 90.0])
+    assert np.all(np.ptp(np.vstack([xyz, _box_shift(xyz)]), axis=0) < huge[:3] / 2)
 
     def no_minimum_image(points, leaflet, box, **kwargs):
         return fit_local_normals(points, leaflet, huge, **kwargs)
