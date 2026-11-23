@@ -725,7 +725,7 @@ class SDC4Mechanisms:
             )
         axisA = _backbone_axis(self.tm[first].select_atoms("name CA"), box)
         axisB = _backbone_axis(self.tm[second].select_atoms("name CA"), box)
-        if s.get("tm_local_tilt", False):
+        if self.spec.get("tm_local_tilt", False):
             for chain, axis in ((first, axisA), (second, axisB)):
                 center = tm_centers[chain]
                 normals = [
