@@ -34,6 +34,7 @@ from ...core.lipid_geometry import (
     anchor_groups,
     circular_axis_mean,
     periodic_center,
+    local_leaflet_normal,
 )
 from ...core.persistence import (
     atomic_json,
@@ -724,6 +725,33 @@ class SDC4Mechanisms:
             )
         axisA = _backbone_axis(self.tm[first].select_atoms("name CA"), box)
         axisB = _backbone_axis(self.tm[second].select_atoms("name CA"), box)
+        if s.get("tm_local_tilt", False):
+            for chain, axis in ((first, axisA), (second, axisB)):
+                center = tm_centers[chain]
+                normals = [
+                    local_leaflet_normal(
+                        center, anchors[mask & self.surface_mask], box,
+                        self.local_A, min_anchors=5,
+                    )
+                    for mask in (leaf, ~leaf)
+                ]
+                normal = unit(np.sum(normals, axis=0)) if all(
+                    np.isfinite(n).all() for n in normals
+                ) else np.full(3, np.nan)
+                prefix = f"sdc4_tm_{chain}_"
+                global_angle = _angle(axis, [0., 0., 1.])
+                local_angle = _angle(axis, normal)
+                row[prefix + "tilt_global_deg"] = (
+                    min(global_angle, 180. - global_angle)
+                    if np.isfinite(global_angle) else np.nan
+                )
+                row[prefix + "tilt_local_deg"] = (
+                    min(local_angle, 180. - local_angle)
+                    if np.isfinite(local_angle) else np.nan
+                )
+                row[prefix + "local_normal_deviation_deg"] = _angle(
+                    normal, [0., 0., 1.]
+                )
         row["sdc4_tm_crossing_angle_deg"] = _angle(axisA, axisB)
         cross = np.cross(axisA, axisB)
         separation = unit(_vector(tm_centers[first], tm_centers[second], box))
