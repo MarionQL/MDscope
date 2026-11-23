@@ -245,18 +245,23 @@ def temporal_interprotomer_profiles(repout: Path, cfg: dict) -> dict:
     if labels.duplicated("topology_residue_index").any():
         raise ValueError(f"{path}: ambiguous residue labels")
     labels = labels.set_index("topology_residue_index")["residue"]
-    outputs = {}
-    for key, column in (
-        ("interprotomer_contact_occupancy", "any_contact"),
-        ("interprotomer_partner_count", "opposite_partner_residues"),
-        ("interprotomer_atom_contact_fraction", "contacting_heavy_atom_fraction"),
-    ):
-        pivot = data.pivot(index="time_ps", columns="topology_residue_index", values=column)
-        outputs[key] = {
-            "times": pivot.index.to_numpy(float),
-            "positions": np.arange(len(pivot.columns), dtype=float),
-            "labels": labels.loc[pivot.columns].to_numpy(str),
-            "values": pivot.to_numpy(float),
-            "reducer": "mean",
-        }
-    return outputs
+    measurements = {
+        "interprotomer_contact_occupancy": "any_contact",
+        "interprotomer_partner_count": "opposite_partner_residues",
+        "interprotomer_atom_contact_fraction": "contacting_heavy_atom_fraction",
+    }
+    pivot = data.pivot(
+        index="time_ps", columns="topology_residue_index",
+        values=list(measurements.values()),
+    )
+    cols = pivot["any_contact"].columns
+    common = {
+        "times": pivot.index.to_numpy(float),
+        "positions": np.arange(len(cols), dtype=float),
+        "labels": labels.loc[cols].to_numpy(str),
+        "reducer": "mean",
+    }
+    return {
+        key: {**common, "values": pivot[column].to_numpy(float)}
+        for key, column in measurements.items()
+    }
