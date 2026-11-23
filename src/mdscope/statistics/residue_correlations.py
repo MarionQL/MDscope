@@ -72,6 +72,9 @@ def _series(repout: Path, metric: str, *, sasa_runs=None, cache=None):
         values = frame[field].map({"H": 1.0, "E": 0.0, "C": 0.0})
     else:
         values = pd.to_numeric(frame[field], errors="coerce")
+        if metric == "water_count" and "polar_atom_count" in frame:
+            # A residue with no polar sites has undefined hydration, not zero.
+            values = values.where(pd.to_numeric(frame["polar_atom_count"], errors="coerce") > 0)
     series = pd.Series(values.to_numpy(float), index=pd.MultiIndex.from_frame(
         frame[["time_ps", "topology_residue_index"]]
     ), name=metric)
