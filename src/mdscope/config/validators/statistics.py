@@ -10,6 +10,7 @@ from .common import _validate_time_window
 def validate_statistics(cfg):
     stats = cfg.get("statistics", {})
     residue_response_settings(cfg)
+    residue_correlations_settings(cfg)
     from ...contracts.statistics import validate_metric_selection
     validate_metric_selection(stats)
     for field in ("block", "hypothesis_tests"):
@@ -172,4 +173,29 @@ def residue_response_settings(cfg):
     if (isinstance(cosine, bool) or not isinstance(cosine, (int, float)) or
             not math.isfinite(cosine) or not 0 <= cosine <= 1):
         raise ValueError("statistics.residue_response.minimum_cosine must be finite between 0 and 1")
+    return settings
+
+def residue_correlations_settings(cfg):
+    """Validate explicitly descriptive per-replica residue associations."""
+    supplied = cfg.get("statistics", {}).get("residue_correlations", {})
+    if not isinstance(supplied, dict):
+        raise ValueError("statistics.residue_correlations must be a mapping")
+    defaults = DEFAULTS["statistics"]["residue_correlations"]
+    unknown = set(supplied) - set(defaults)
+    if unknown:
+        raise ValueError(f"Unknown statistics.residue_correlations options: {sorted(unknown)}")
+    settings = {**deepcopy(defaults), **deepcopy(supplied)}
+    if type(settings["enabled"]) is not bool:
+        raise ValueError("statistics.residue_correlations.enabled must be boolean")
+    if type(settings["min_frames"]) is not int or settings["min_frames"] < 3:
+        raise ValueError("statistics.residue_correlations.min_frames must be an integer >= 3")
+    pairs = settings["pairs"]
+    if pairs is not None:
+        from ...contracts.statistics import RESIDUE_CORRELATION_METRICS
+        if (not isinstance(pairs, list) or any(
+                not isinstance(pair, (list, tuple)) or len(pair) != 2
+                or any(not isinstance(name, str) or name not in RESIDUE_CORRELATION_METRICS for name in pair)
+                or pair[0] == pair[1] for pair in pairs)
+                or len(set(tuple(pair) for pair in pairs)) != len(pairs)):
+            raise ValueError("statistics.residue_correlations.pairs must contain distinct supported metric pairs")
     return settings
