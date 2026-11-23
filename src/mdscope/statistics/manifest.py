@@ -35,9 +35,27 @@ class StatisticsManifest:
         return self.state == "complete"
 
 
+def _project_publication(path):
+    if path.parent.name == "statistics" and path.parent.parent.name == "project_summary":
+        attempt = path.parents[2] / ".state/finalization.json"
+        if attempt.exists():
+            try:
+                publication = json.loads(attempt.read_text())
+                if not isinstance(publication, dict) or publication.get("status") not in {"running", "complete"}:
+                    raise ValueError("invalid finalization status")
+            except (OSError, ValueError, TypeError) as exc:
+                return StatisticsManifest(path, "invalid", error=f"{attempt}: {exc}")
+            if publication["status"] != "complete":
+                return StatisticsManifest(path, "incomplete", error="latest project finalization did not complete; previous results were preserved")
+    return None
+
+
 def read_statistics_manifest(path: str | Path) -> StatisticsManifest:
     """Separate parsing/shape/lifecycle facts from consumer admission policy."""
     path = Path(path)
+    publication = _project_publication(path)
+    if publication is not None:
+        return publication
     if not path.is_file():
         return StatisticsManifest(path, "missing")
     try:

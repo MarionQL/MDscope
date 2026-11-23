@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,32 @@ def archive_output(source: Path, archive_root: Path, label: str) -> Path:
         index += 1
     source.rename(candidate)
     return candidate
+
+
+@contextmanager
+def publish_directory(generated: Path, destination: Path, archive_root: Path, label: str):
+    """Publish a generation and roll back if replacement or its commit fails.
+
+    Both directories must be on the same filesystem. The two renames are not
+    a cross-process atomic swap; callers must serialize writers.
+    """
+    if not generated.is_dir():
+        raise FileNotFoundError(f"Prepared generation does not exist: {generated}")
+    ensure_dir(destination.parent)
+    previous = archive_output(destination, archive_root, label) if destination.exists() else None
+    published = False
+    try:
+        generated.rename(destination)
+        published = True
+        yield destination
+    except BaseException:
+        # Also restore on cancellation: a dependent commit must succeed before
+        # the replacement can outlive this transaction.
+        if published:
+            destination.rename(generated)
+        if previous is not None:
+            previous.rename(destination)
+        raise
 
 
 def atomic_json(path: str | Path, obj: Any) -> None:

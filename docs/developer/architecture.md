@@ -172,6 +172,10 @@ A file's existence or a completion marker is not proof of validity: `registry.re
 
 ## Statistics
 
+- Finalization builds inference, shared states, diffusion summaries and findings in a same-filesystem staging directory. Successful publication archives the previous `project_summary`; computation failures leave it intact.
+- `.state/finalization.json` tracks the latest attempt. An unfinished attempt keeps prior files recoverable but prevents readers from advertising them as current. Rerun finalization to complete publication.
+- Serialize finalization/plotting writers. Directory publication uses two renames with rollback through the completion-record commit, not a cross-process atomic swap.
+
 All inference reads saved replica products. Replicas, not frames, are the independent units. `statistics/__init__.py` imports nothing heavy; `statistics/dispatch.py` owns project inference and imports estimators only when a family runs. `statistics/manifest.py` is the read-only manifest reader: planning, plotting and findings require an explicitly `complete` manifest.
 
 | Family | Input | Output folder |
@@ -188,6 +192,7 @@ Contrast coverage is written to `statistics/coverage/contrast_coverage.parquet`.
 
 ## Reporting and Studio
 
+- `reporting.plot_ids` owns figure prerequisites; descriptive lipid species matrices can use raw saved products, while class, pair-count and comparison figures require completed statistics.
 - `reporting/` renders saved results only. `table_reports` owns `statistics_tables.pdf` and its manifest; `record_generated_figures` alone writes `figure_provenance.json`; `figure_inventory` lists published figures and marks legacy PDFs without publication identity as unverified. Panels of the same observable share axis limits via `reporting.shared_scales`.
 - Studio authors YAML and never runs trajectories, inference or production rendering. `studio.model` owns the detached draft, group/run edits and export reconciliation; `studio.app` renders widgets; figure candidates come from `planning.authoring_catalog`, topology checks from `pipeline.preflight`, and saved-output checks from `pipeline.persisted_inputs`. User guide: [Studio](../studio.md).
 

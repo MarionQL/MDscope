@@ -117,3 +117,24 @@ def test_saved_statistics_catalog_covers_every_family(tmp_path):
     assert {key: identity[key] for key in ('level', 'leaflet', 'species_a', 'species_b', 'metric')} == {
         'level': 'class', 'leaflet': 'upper', 'species_a': 'PC',
         'species_b': 'CHOL', 'metric': 'enrichment'}
+
+
+def test_unfinished_finalization_does_not_advertise_previous_generation_as_current(tmp_path):
+    from mdscope.core.persistence import atomic_json
+
+    path = tmp_path / "project_summary/statistics/manifest.json"
+    path.parent.mkdir(parents=True)
+    previous = '{"status":"complete","methods":{},"families":{"profiles":"enabled"},"replicate_paths":[]}'
+    path.write_text(previous)
+    attempt = tmp_path / ".state/finalization.json"
+    atomic_json(attempt, {"status": "running", "config_hash": "new request"})
+    assert not read_statistics_manifest(path).complete
+    assert statistics_status({"statistics": {}}, tmp_path, "time_series") == "incomplete"
+    with pytest.raises(ValueError, match="complete"):
+        inspect_saved_statistics(tmp_path)
+    from mdscope.statistics.residue_regions import scan_saved_residue_regions
+    with pytest.raises(ValueError, match="completed profile statistics"):
+        scan_saved_residue_regions(path.parent)
+    assert path.read_text() == previous
+    atomic_json(attempt, {"status": "complete", "config_hash": "new request"})
+    assert read_statistics_manifest(path).complete

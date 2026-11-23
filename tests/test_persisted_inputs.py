@@ -109,11 +109,11 @@ def test_saved_only_source_can_feed_offline_statistics_without_changing_yaml(tmp
     current = resolve_config(doc, base=tmp_path)
     before = deepcopy(current)
     seen = {}
-    def consume(effective, *args):
+    def consume(effective, *args, **kwargs):
         seen["sasa"] = effective["analyses"]["sasa"]["enabled"]
     monkeypatch.setattr(runner, "analyze_project", consume)
     monkeypatch.setattr(runner, "fit_shared_states", lambda *a: None)
-    monkeypatch.setattr("mdscope.reporting.report.generate_report", lambda path: path / "Findings.md")
+    monkeypatch.setattr("mdscope.reporting.report.generate_report", lambda path, **kwargs: path / "Findings.md")
     runner.finalize_project(tmp_path / "analysis.yaml", cfg=current, results_dir=root)
     assert seen["sasa"] is True
     assert current == before
@@ -437,3 +437,154 @@ def test_integrity_reuse_is_scoped_to_unchanged_files(tmp_path, monkeypatch):
     import pytest
     with pytest.raises(Exception):
         check_artifact(path, verified=verified)
+
+
+def test_missing_diffusion_does_not_invalidate_independent_saved_sasa(tmp_path):
+    doc, _, root, _, _ = saved_project(tmp_path)
+    doc["analyses"]["membrane"] = {
+        "enabled": True, "axis": "z", "headgroup_selection": "name P",
+        "msd": {"enabled": True, "multi_origin": True},
+    }
+    rows = inspect_results_directory(doc, tmp_path, root)
+    sasa = next(row for row in rows if row["analysis"] == "sasa")
+    assert sasa["status"] == "verified_existing"
+    assert sasa["summary_valid"]
+    membrane = next(row for row in rows if row["analysis"] == "membrane")
+    assert membrane["status"] != "verified_existing"
+    with pytest.raises(RuntimeError, match="persisted|verified"):
+        finalize_project(tmp_path / "analysis.yaml", cfg=resolve_config(doc, base=tmp_path), results_dir=root)
+    assert not (root / "project_summary").exists()
+
+
+@pytest.mark.parametrize("failing_stage", ["statistics", "shared_states", "diffusion_summary", "multi_origin_summary", "findings"])
+def test_failed_finalization_keeps_previous_project_summary(tmp_path, monkeypatch, failing_stage):
+    from mdscope.pipeline import runner
+
+    doc, cfg, root, _, _ = saved_project(tmp_path)
+    cfg["statistics"]["enabled"] = True
+    summary = root / "project_summary"
+    summary.mkdir()
+    previous = summary / "previous-result.txt"
+    previous.write_bytes(b"complete previous generation")
+    stages = {
+        "statistics": "analyze_project", "shared_states": "publish_shared_states",
+        "diffusion_summary": "summarize_project_diffusion",
+        "multi_origin_summary": "summarize_project_multi_origin",
+    }
+
+    def check_previous(*args, **kwargs):
+        assert previous.read_bytes() == b"complete previous generation"
+
+    def fail(*args, **kwargs):
+        check_previous()
+        raise RuntimeError("injected finalization failure")
+
+    for stage, name in stages.items():
+        monkeypatch.setattr(runner, name, fail if stage == failing_stage else check_previous)
+    monkeypatch.setattr("mdscope.reporting.report.generate_report",
+                        fail if failing_stage == "findings" else check_previous)
+    with pytest.raises(RuntimeError, match="injected finalization failure"):
+        runner.finalize_project(tmp_path / "analysis.yaml", cfg=cfg, root=root)
+    assert previous.read_bytes() == b"complete previous generation"
+    assert list(summary.iterdir()) == [previous]
+    assert not (root / ".archives").exists()
+    assert not list(root.glob(".finalization-*"))
+
+
+def test_published_generation_retains_real_replica_paths(tmp_path):
+    doc, cfg, root, _, _ = saved_project(tmp_path)
+    cfg["statistics"]["enabled"] = True
+    cfg["progress"] = {"enabled": False}
+    old = root / "project_summary"
+    old.mkdir()
+    (old / "previous.txt").write_text("previous complete generation")
+    finalize_project(tmp_path / "analysis.yaml", cfg=cfg, root=root)
+    assert not (old / "previous.txt").exists()
+    assert len(list((root / ".archives/project_summary").rglob("previous.txt"))) == 1
+    statistics = old / "statistics"
+    manifest = json.loads((statistics / "manifest.json").read_text())
+    assert manifest["status"] == "complete"
+    assert manifest["replicate_paths"] == ["condition1/rep1"]
+    inventory = pd.read_parquet(statistics / "output_inventory.parquet")
+    assert inventory.path.str.contains("residue_sasa.parquet", regex=False).any()
+    assert not inventory.path.str.contains(".finalization-", regex=False).any()
+    assert all((statistics / path).is_file() for path in inventory.path)
+    assert not list(root.glob(".finalization-*"))
+
+
+def test_finalization_restores_previous_summary_when_publication_fails(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    doc, cfg, root, _, _ = saved_project(tmp_path)
+    cfg["statistics"]["enabled"] = False
+    old = root / "project_summary"
+    old.mkdir()
+    (old / "previous.txt").write_bytes(b"previous complete generation")
+    rename = Path.rename
+
+    def fail_publication(source, destination):
+        if source.name == "project_summary" and source.parent.name.startswith(".finalization-"):
+            raise OSError("injected publication failure")
+        return rename(source, destination)
+
+    monkeypatch.setattr(Path, "rename", fail_publication)
+    with pytest.raises(OSError, match="injected publication failure"):
+        finalize_project(tmp_path / "analysis.yaml", cfg=cfg, root=root)
+    assert (old / "previous.txt").read_bytes() == b"previous complete generation"
+    assert not list(root.glob(".finalization-*"))
+
+
+def test_failed_shared_state_preparation_invalidates_latest_publication(tmp_path, monkeypatch):
+    from mdscope.pipeline import runner
+    from mdscope.statistics.manifest import read_statistics_manifest
+
+    doc, cfg, root, _, _ = saved_project(tmp_path)
+    manifest = root / "project_summary/statistics/manifest.json"
+    manifest.parent.mkdir(parents=True)
+    previous = '{"status":"complete","methods":{}}'
+    manifest.write_text(previous)
+    cfg["analyses"]["shared_states"]["enabled"] = True
+
+    def fail(*args):
+        raise ValueError("injected model preparation failure")
+
+    monkeypatch.setattr(runner, "fit_shared_states", fail)
+    with pytest.raises(ValueError, match="injected model preparation failure"):
+        runner.finalize_project(tmp_path / "analysis.yaml", cfg=cfg, root=root)
+    assert manifest.read_text() == previous
+    assert not read_statistics_manifest(manifest).complete
+
+
+@pytest.mark.parametrize("identifier", ["diffusion:diffusion_coefficients", "shared_states:state_populations"])
+def test_derived_descriptive_plot_rejects_unfinished_generation(tmp_path, identifier):
+    from mdscope.core.persistence import atomic_json
+    from mdscope.pipeline import runner
+
+    doc, cfg, root, _, _ = saved_project(tmp_path)
+    cfg["plots"] = {"enabled": True, "include": [identifier]}
+    atomic_json(root / ".state/finalization.json", {"status": "running"})
+    with pytest.raises(RuntimeError, match="finalization did not complete"):
+        runner.finalize_project(tmp_path / "analysis.yaml", cfg=cfg, root=root, phase="plotting")
+    assert not list(root.rglob("*.png"))
+
+
+def test_finalization_restores_previous_summary_when_completion_record_fails(tmp_path, monkeypatch):
+    from mdscope.pipeline import runner
+
+    doc, cfg, root, _, _ = saved_project(tmp_path)
+    cfg["statistics"]["enabled"] = False
+    old = root / "project_summary"
+    old.mkdir()
+    (old / "previous.txt").write_bytes(b"previous complete generation")
+    write = runner.atomic_json
+
+    def fail_commit(path, payload):
+        if path == root / ".state/finalization.json" and payload["status"] == "complete":
+            raise OSError("injected completion record failure")
+        return write(path, payload)
+
+    monkeypatch.setattr(runner, "atomic_json", fail_commit)
+    with pytest.raises(OSError, match="injected completion record failure"):
+        runner.finalize_project(tmp_path / "analysis.yaml", cfg=cfg, root=root)
+    assert (old / "previous.txt").read_bytes() == b"previous complete generation"
+    assert not list(root.glob(".finalization-*"))

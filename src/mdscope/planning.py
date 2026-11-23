@@ -417,10 +417,6 @@ def build_plan(cfg: dict, config_path: str | Path, *,
         figures = []
         for identifier in ids:
             descriptor = describe_plot(identifier)
-            descriptor["requires_statistics"] = any(
-                path.startswith("project_summary/statistics/")
-                for path in descriptor["source_candidates"]
-            )
             descriptor["availability"] = (
                 "conditional_on_saved_data" if enabled else "disabled_by_configuration"
             )
@@ -792,10 +788,6 @@ def inspect_saved_plot_ids(cfg: dict, root: str | Path, config_path: str | Path,
     candidates = []
     for identifier in sorted(found):
         meta = describe_plot(identifier)
-        meta["requires_statistics"] = any(
-            source.startswith("project_summary/statistics/")
-            for source in meta["source_candidates"]
-        )
         meta["availability"] = (
             "conditional_on_saved_data" if plot_enabled(cfg, meta["family"])
             else "disabled_by_configuration"
@@ -845,7 +837,7 @@ def analysis_figure_candidates(cfg, name):
                            for metric in ("neighbors_per_molecule", "enrichment"))
     if name == "membrane" and cfg["analyses"]["membrane"].get("msd", {}).get("enabled"):
         identifiers.append("diffusion:diffusion_coefficients")
-    return [dict(describe_plot(identifier), requires_statistics=False,
+    return [dict(describe_plot(identifier),
                  availability="conditional_on_saved_data") for identifier in identifiers]
 
 
@@ -866,7 +858,7 @@ def statistical_figure_candidates(cfg):
         identifiers.append("solvation:shell_rdf")
     if any(item.get("metric", "").startswith("lipid_footprint_") for item in selection.get("time_series", []) or []):
         identifiers.extend(["lipid_enrichment:lipid_enrichment_heatmap", "lipid_enrichment:lipid_area_density_heatmap"])
-    return [dict(describe_plot(identifier), requires_statistics=True,
+    return [dict(describe_plot(identifier),
                  availability="conditional_on_saved_data") for identifier in dict.fromkeys(identifiers)]
 
 
@@ -913,7 +905,7 @@ def authoring_catalog(cfg, *, include_inactive=False):
     for variable in profiles:
         for variant in sorted(DYNAMIC_VARIANTS["profiles"]):
             identifier = f"profiles:{safe_plot_stem(variable['profile'])}:{variant}"
-            figures.setdefault("statistics", {})[identifier] = dict(describe_plot(identifier), requires_statistics=True)
+            figures.setdefault("statistics", {})[identifier] = describe_plot(identifier)
     for figure in statistical_figure_candidates(configured):
         figures.setdefault("statistics", {})[figure["id"]] = figure
     if not include_inactive:

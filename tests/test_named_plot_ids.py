@@ -479,3 +479,43 @@ def test_statistical_plot_still_requires_completed_statistics(tmp_path, project)
     with pytest.raises(RuntimeError, match="completed statistics"):
         finalize_project(path, phase="plotting")
     assert not list(root.rglob("*.png"))
+
+
+def test_exact_descriptive_lipid_matrix_can_render_without_statistics(tmp_path, project):
+    from mdscope.pipeline.runner import finalize_project, run_one
+    from mdscope.planning import build_plan
+
+    path, root = project("lipid_description", statistics=False)
+    options = yaml.safe_load(path.read_text())
+    import MDAnalysis as mda
+    from mdscope_test_support import membrane_universe
+
+    universe = membrane_universe()
+    universe.add_TopologyAttr("bonds", [(8, 9)])
+    topology, trajectory = tmp_path / "membrane.pdb", tmp_path / "membrane.dcd"
+    universe.atoms.write(topology)
+    with mda.Writer(str(trajectory), n_atoms=len(universe.atoms)) as writer:
+        for _ in universe.trajectory:
+            writer.write(universe.atoms)
+    for system_options in options["systems"].values():
+        system_options["topology"] = str(topology)
+        for replica in system_options["replicates"]:
+            replica["trajectory"] = str(trajectory)
+    for name in ("alignment", "rmsd", "rmsf"):
+        options["analyses"][name] = {"enabled": False}
+    options["trajectory"] = {"start": 0, "stop": 5, "stride": 1, "chunk_frames": 2}
+    options["analyses"]["lipid_contacts"] = {
+        "enabled": True, "selection": "resname POPC",
+        "species_selections": {"POPC": "resname POPC and name P"},
+    }
+    system = next(iter(options["systems"]))
+    identifier = f"lipid_contacts:lipid_contact_matrix_{system}_upper_neighbors_per_molecule"
+    options["plots"] = {"enabled": True, "include": [identifier]}
+    path.write_text(yaml.safe_dump(options))
+    run_one(path, 0)
+    finalize_project(path, phase="plotting")
+    assert (root / "project_summary/figures/lipid_contacts" / (identifier.split(":")[1] + ".png")).is_file()
+    assert not (root / "project_summary/statistics/manifest.json").exists()
+    plan = build_plan(load_config(path), path)
+    figure = next(f for family in plan["figure_families"] for f in family["specific_figures"] if f["id"] == identifier)
+    assert not figure["requires_statistics"]
