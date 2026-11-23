@@ -92,7 +92,7 @@ Metric-level inference controls: [Configuration](configuration.md#selective-metr
 ## SDC4 topology checkpoints
 
 - Audit both topologies: water/ions, lipid anchors, HS attachments, configured motifs and analysis frames. Release-specific identities and measurements: [SDC4 analyses](analyses.md#syndecan-4-sdc4-mechanisms).
-- The YAML owns the enabled measurement list and atom selectors. Validate rebuilt topologies; missing motifs must remain unavailable.
+- The YAML owns the enabled measurement list and atom selectors. Preflight audits both GGIVG TM sequences through the same resolver as runtime; `require_gxxxg: true` fails early when either is missing. Validate rebuilt topologies.
 - Geometry/SASA assumptions: [Scientific contracts](developer/scientific-contracts.md).
 - Adding fused measurements to completed runs replays only missing outputs in one shared pass. Re-finalize statistics afterwards.
 
