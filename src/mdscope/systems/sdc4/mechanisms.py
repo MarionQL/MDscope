@@ -280,6 +280,19 @@ def _order_by_residue(o, box, axis):
 
 
 
+def validate_sdc4_protein_domains(protein, tm_chains, ectodomains, *, system=None):
+    """Require each selected structural domain to belong to the protein."""
+    protein_residues = set(map(int, protein.resindices))
+    for kind, groups in (("tm_chains", tm_chains), ("ectodomains", ectodomains)):
+        for label, atoms in groups.items():
+            if not set(map(int, atoms.resindices)).issubset(protein_residues):
+                prefix = f"{system}: " if system else ""
+                raise ValueError(
+                    f"{prefix}SDC4 {kind}.{label} includes residues outside "
+                    "the configured protein selection"
+                )
+
+
 def resolve_sdc4_gxxxg(universe, tm_chains, *, required=False):
     """Resolve both TM motifs once using the shared sequence matcher.
 
@@ -495,6 +508,7 @@ class SDC4Mechanisms:
             universe, s.get("protein_selection") or cfg["selections"]["protein"],
             required=True,
         ))
+        validate_sdc4_protein_domains(self.protein, self.tm, self.ecto)
         self.interprotomer = (
             InterprotomerContacts(self.protein, self.tm, s.get("contact_cutoff_A", 5.))
             if s.get("interprotomer_contacts", False) else None
