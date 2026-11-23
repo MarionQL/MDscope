@@ -58,7 +58,7 @@ def analyze_project(cfg, root, system_repouts):
         "methods": cfg.get("statistics", {}),
         "input_analyses": cfg.get("analyses", {}),
         "status": "running",
-        "replicate_paths": [os.path.relpath(rep, root)
+        "replicate_paths": [Path(os.path.relpath(rep, root)).as_posix()
                             for reps in system_repouts.values() for rep in reps],
     }
     verbose = cfg.get("progress", {}).get("enabled", True)

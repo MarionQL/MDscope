@@ -653,7 +653,7 @@ def inspect_saved_statistics(root: str | Path, *, max_identities: int = 256) -> 
                     field.name: str(field.type) for field in schema
                 },
                 "rows": info.metadata.num_rows,
-                "path": str(path.relative_to(Path(root))),
+                "path": path.relative_to(Path(root)).as_posix(),
                 "row_grain": (
                     STATISTICS_METRIC_CONTRACTS[family][1]
                     if path.name == identity_file else None

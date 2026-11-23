@@ -76,7 +76,7 @@ def _inventory(statistics_dir, manifest, comparison_sources):
     }
     rows = []
     for path in sorted(files):
-        relative = relpath(path, statistics_dir)
+        relative = Path(relpath(path, statistics_dir)).as_posix()
         rows.append({
             "path": relative,
             "rows": read_metadata(path).num_rows if path.suffix == ".parquet" else None,
