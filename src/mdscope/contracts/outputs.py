@@ -263,6 +263,46 @@ def artifact_schema(entry, path: Path) -> dict:
             row_grain = "one chemical target/site class per solvent; diagnostic candidate, not binding inference"
         elif name == "rdf.parquet":
             row_grain = "one chemical target/site class per solvent per radial shell per replicate"
+    if analysis == "sdc4_mechanisms":
+        interface_fields = {
+            "interprotomer_pair_frames.parquet": [
+                "time_ps", "topology_residue_index_A", "residue_A",
+                "topology_residue_index_B", "residue_B",
+                "atom_contact_pairs", "min_distance_A", "cutoff_A",
+            ],
+            "interprotomer_residue_frames.parquet": [
+                "time_ps", "chain", "topology_residue_index", "residue",
+                "protein_heavy_atom_count", "contacting_heavy_atom_fraction",
+                "opposite_partner_residues", "atom_contact_pairs",
+                "any_contact", "cutoff_A",
+            ],
+            "interprotomer_pair_summary.parquet": [
+                "topology_residue_index_A", "residue_A",
+                "topology_residue_index_B", "residue_B",
+                "frames_present", "contact_occupancy",
+                "mean_atom_pairs_per_frame", "min_distance_observed_A",
+            ],
+            "interprotomer_residue_summary.parquet": [
+                "chain", "topology_residue_index", "residue", "frames",
+                "contact_occupancy", "mean_contacting_heavy_atom_fraction",
+                "mean_opposite_partner_residues", "mean_atom_contact_pairs",
+            ],
+            "ceramide_scaffold_pooled.parquet": [
+                "time_ps", "region", "leaflet", "moiety", "cohort",
+                "available_molecules", "locally_available_molecules",
+                "contacted_molecules", "locally_contacted_molecules",
+                "contact_fraction", "matched_local_contact_fraction",
+            ],
+        }
+        if name in interface_fields:
+            fields = interface_fields[name]
+            units = {"time_ps": "ps", "min_distance_A": "angstrom",
+                     "min_distance_observed_A": "angstrom", "cutoff_A": "angstrom"}
+            row_grain = ("one observed residue pair per sampled frame" if name ==
+                         "interprotomer_pair_frames.parquet" else
+                         "one protein residue per sampled frame" if name ==
+                         "interprotomer_residue_frames.parquet" else
+                         "raw per-replica summary or pooled scaffold molecule counts")
     if analysis == "sdc4_mechanisms" and name == "lipid_density_maps.npz":
         array_keys = {key: ["species_leaflet", "x_bin", "y_bin"] for key in ("counts", "density_per_nm2", "enrichment_fold")}
         array_keys.update(bulk_density_per_nm2=["species_leaflet"], species=["species_leaflet"],

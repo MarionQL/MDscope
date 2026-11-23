@@ -261,3 +261,27 @@ def lateral_distance(a,b,box,axis=2):
     lengths=np.asarray(box[:3])[dims]
     d-=np.rint(d/lengths)*lengths
     return np.linalg.norm(d,axis=-1)
+
+
+def local_leaflet_normal(position, anchor_positions, box, radius_A, *, min_anchors=5):
+    """Fit a local z(x,y) headgroup plane and return its upward unit normal.
+
+    Each anchor is first mapped to the minimum image around the query, so
+    rigid periodic translation cannot change the fit. This is a planar,
+    small-slope local reference, not an arbitrary curved-membrane normal.
+    Return NaNs for insufficient or ill-conditioned support.
+    """
+    center = np.asarray(position, float)
+    anchors = np.asarray(anchor_positions, float).reshape(-1, 3)
+    if not np.isfinite(center).all() or not np.isfinite(anchors).all():
+        return np.full(3, np.nan)
+    offsets = minimum_image_displacements(anchors-center, box)
+    near = offsets[np.linalg.norm(offsets[:, :2], axis=1) <= radius_A]
+    if len(near) < min_anchors:
+        return np.full(3, np.nan)
+    X = np.column_stack([near[:, 0], near[:, 1], np.ones(len(near))])
+    if np.linalg.matrix_rank(X) < 3 or np.linalg.cond(X) > 1e7:
+        return np.full(3, np.nan)
+    slope = np.linalg.lstsq(X, near[:, 2], rcond=None)[0]
+    normal = np.array([-slope[0], -slope[1], 1.], float)
+    return normal / np.linalg.norm(normal)

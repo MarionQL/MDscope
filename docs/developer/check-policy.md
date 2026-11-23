@@ -31,7 +31,7 @@ pytest -q -s -m benchmark tests/test_performance_benchmarks.py
 ## Automation
 
 - `MDscope checks`: Python 3.11–3.13, 3.11 minimum dependencies, packaging and `bash -n` for tracked shell scripts. Superseded runs cancel.
-- The 3.11 job also runs ShellCheck/Ruff and publishes `mdscope-coverage` (no minimum).
+- The 3.11 job runs blocking Ruff E9/F, plus review-only broader Ruff/Vulture diagnostics on PR-changed Python files; investigate candidates before deleting dynamic callers. It publishes `mdscope-coverage` (no minimum).
 - Workflows use `contents: read`; external actions are SHA-pinned and updated by Dependabot. Review release notes before merging bumps.
 - Figure review is the only `workflow_dispatch` job: Actions → MDscope figure review → Run workflow → PR branch. Review instructions: [Contributing](contributing.md#visual-review).
 - Real-data checks run locally; other scientific audits remain manual. No scheduled production computation.

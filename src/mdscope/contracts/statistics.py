@@ -7,9 +7,17 @@ RESIDUE_RESPONSE_PROFILE = re.compile(
     r"^(?:rmsf$|dssp_(?:helix|sheet|coil)_occupancy$|"
     r"sasa_mean(?:__|$)|sasa_buried_nm2__|"
     r"residue_occlusion__|residue_water_coordination__all$|"
+    r"interprotomer_(?:contact_occupancy|partner_count|atom_contact_fraction)$|"
     r"residue_membrane_distance__(?!.*__group_))"
 )
 
+
+# Raw within-replica association variables; correlations are not an inference family.
+RESIDUE_CORRELATION_METRICS = frozenset({
+    "water_count", "protein_fraction", "hs_fraction", "lipid_fraction",
+    "sasa_isolated", "sasa_environment", "helix_state",
+    "interprotomer_fraction",
+})
 
 # Every statistics family and its directory under project_summary/statistics/.
 # The one family list for YAML validation, the dispatcher and read-only planning.

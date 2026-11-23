@@ -541,6 +541,32 @@ These regions remain exploratory groupings of the same estimated effects.
 Pointwise CI exclusions do not validate discovered region boundaries or provide
 selection-adjusted region intervals.
 
+## Raw within-replica residue correlations
+
+```yaml
+statistics:
+  residue_correlations:
+    enabled: true
+    min_frames: 30
+    pairs: null  # curated hydration/packing/helix/SASA association pairs
+```
+
+This optional saved-data stage reads exact matching `time_ps` and
+`topology_residue_index` records from SDC4 residue occlusion, whole-protomer
+contact, DSSP and configured isolated/environment SASA runs. No trajectory pass
+or bootstrap is performed. Output:
+`project_summary/statistics/residue_correlations/replicate_correlations.parquet`.
+
+- Both raw Pearson `r` and rank-based Spearman `rho` are saved per residue,
+  metric pair and **replica**, with paired-frame counts and time bounds.
+- Missing series, insufficient paired frames and constant measurements are
+  reported explicitly; neither frame interpolation nor zero imputation occurs.
+- `pairs` can be a list of two-element supported metric names, or `[]` for
+  an explicitly empty selection. `null` selects curated defaults.
+- Correlations are descriptive and potentially autocorrelation-driven; they
+  are **not** independent-replica tests, condition effects or causal evidence.
+  Interpret individual replicate time traces before drawing conclusions.
+
 ## Existing results and readiness
 
 - Studio and offline finalization share registered-product, time-grid, checkpoint identity/frame-count and prerequisite checks.
