@@ -278,6 +278,41 @@ def _order_by_residue(o, box, axis):
     )
 
 
+
+def _tm_contact_metrics(pairs, tm_heavy, gxxxg, names):
+    """Aggregate TM and GGIVG labels from the measured interprotomer residue pairs.
+
+    The whole-protein contact table is the primary observable. Motifs only
+    filter its residue identities; no additional distance search is necessary.
+    """
+    first, second = names
+    a = pairs["topology_residue_index_A"].to_numpy(dtype=int)
+    b = pairs["topology_residue_index_B"].to_numpy(dtype=int)
+    atom_pairs = pairs["atom_contact_pairs"].to_numpy(dtype=int)
+    tm_a = np.isin(a, tm_heavy[first].resindices)
+    tm_b = np.isin(b, tm_heavy[second].resindices)
+    subset = tm_a & tm_b
+    motif_a = np.isin(a, gxxxg[first].resindices)
+    motif_b = np.isin(b, gxxxg[second].resindices)
+    both_mapped = bool(len(gxxxg[first]) and len(gxxxg[second]))
+    joint = motif_a & motif_b
+    return {
+        "sdc4_tm_interface_residue_pairs": int(subset.sum()),
+        f"sdc4_gxxxg_{first}_to_other_tm_residue_pairs": (
+            int((motif_a & tm_b).sum()) if len(gxxxg[first]) else np.nan
+        ),
+        f"sdc4_gxxxg_{second}_to_other_tm_residue_pairs": (
+            int((tm_a & motif_b).sum()) if len(gxxxg[second]) else np.nan
+        ),
+        "sdc4_gxxxg_interface_atom_contacts": (
+            int(atom_pairs[joint].sum()) if both_mapped else np.nan
+        ),
+        "sdc4_gxxxg_interface_residue_pairs": (
+            int(joint.sum()) if both_mapped else np.nan
+        ),
+    }
+
+
 class SDC4Mechanisms:
     def __init__(self, universe, cfg, repout, *, cache_dir=None):
         self.u, self.cfg, self.repout = universe, cfg, Path(repout)
@@ -599,6 +634,7 @@ class SDC4Mechanisms:
         t = time_ps(ts, frame_index, self.cfg)
         if self.residue_occlusion is not None:
             self.rows["residue_occlusion"].append(self.residue_occlusion.frame(box))
+        pair_frame = None
         if self.interprotomer is not None:
             pair_frame, residue_frame = self.interprotomer.frame(box, t)
             self.rows["interprotomer_pairs"].append(pair_frame)
@@ -760,32 +796,29 @@ class SDC4Mechanisms:
             float(np.sign(np.dot(cross, separation)))
             if np.all(np.isfinite(cross)) else np.nan
         )
-        tm1, tm2 = self.tm_heavy[first], self.tm_heavy[second]
-        interface_hits = _contacts(tm1, tm2, self.contact_A, box)
-        row["sdc4_tm_interface_residue_pairs"] = (
-            len(np.unique(np.column_stack((
-                tm1.resindices[interface_hits[:, 0]],
-                tm2.resindices[interface_hits[:, 1]],
-            )), axis=0)) if len(interface_hits) else 0
-        )
-        g1, g2 = self.gxxxg[first], self.gxxxg[second]
-        for name, motif, opposite in (
-            (first, g1, tm2), (second, g2, tm1)
-        ):
-            motif_hits = _contacts(motif, opposite, self.contact_A, box)
-            row[f"sdc4_gxxxg_{name}_to_other_tm_residue_pairs"] = (
-                len(np.unique(np.column_stack((
-                    motif.resindices[motif_hits[:, 0]],
-                    opposite.resindices[motif_hits[:, 1]],
-                )), axis=0)) if len(motif_hits) else 0 if len(motif) else np.nan
-            )
-        ghits = _contacts(g1, g2, self.contact_A, box)
-        row["sdc4_gxxxg_interface_atom_contacts"] = len(ghits) if len(g1) and len(g2) else np.nan
-        row["sdc4_gxxxg_interface_residue_pairs"] = (
-            len(np.unique(np.column_stack((
-                g1.resindices[ghits[:, 0]], g2.resindices[ghits[:, 1]]
-            )), axis=0)) if len(ghits) else 0 if len(g1) and len(g2) else np.nan
-        )
+        if pair_frame is None:
+            # When complete contacts are disabled, perform just one TM–TM
+            # search and reduce it exactly as the whole-interface pair table.
+            tm1, tm2 = self.tm_heavy[first], self.tm_heavy[second]
+            hits = _contacts(tm1, tm2, self.contact_A, box)
+            if len(hits):
+                residue_pairs, contact_counts = np.unique(
+                    np.column_stack((
+                        tm1.resindices[hits[:, 0]],
+                        tm2.resindices[hits[:, 1]],
+                    )), axis=0, return_counts=True,
+                )
+            else:
+                residue_pairs = np.empty((0, 2), dtype=int)
+                contact_counts = np.empty(0, dtype=int)
+            pair_frame = pd.DataFrame({
+                "topology_residue_index_A": residue_pairs[:, 0],
+                "topology_residue_index_B": residue_pairs[:, 1],
+                "atom_contact_pairs": contact_counts,
+            })
+        row.update(_tm_contact_metrics(
+            pair_frame, self.tm_heavy, self.gxxxg, self.chain_names,
+        ))
         for label, (phi_atoms, psi_atoms) in self.proline_torsions.items():
             for suffix, atom_group in (("phi_deg", phi_atoms), ("psi_deg", psi_atoms)):
                 value = np.nan
