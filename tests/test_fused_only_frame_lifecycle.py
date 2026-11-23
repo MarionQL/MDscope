@@ -5,8 +5,13 @@ from mdscope.pipeline import fused_all
 
 
 class _Frames:
+    closed = False
+
     def __getitem__(self, selection):
         return range(7)
+
+    def close(self):
+        self.closed = True
 
 
 class _Universe:
@@ -149,8 +154,9 @@ def test_only_lipid_footprint_is_a_valid_observer_only_recovery(tmp_path, monkey
         def flush(self, part): pass
         def finalize(self): return {}
 
+    made = []
     monkeypatch.setattr(fused_all.mda, "Universe",
-                        lambda *args: (opened.append(args) or _Universe(*args)))
+                        lambda *args: (opened.append(args) or made.append(_Universe(*args)) or made[-1]))
     monkeypatch.setattr(fused_all, "membrane_enabled",
                         lambda cfg: ("bilayer_normal", "lipid_enrichment"))
     monkeypatch.setattr(fused_all, "extension_enabled", lambda cfg: ())
@@ -164,3 +170,4 @@ def test_only_lipid_footprint_is_a_valid_observer_only_recovery(tmp_path, monkey
         rep, cfg, tmp_path, only=(fused_output(tmp_path, "lipid_enrichment"),))
     assert selected == [("lipid_enrichment",)]
     assert len(opened) == 1
+    assert made[0].trajectory.closed  # released, not left for the GC

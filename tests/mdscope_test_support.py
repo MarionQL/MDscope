@@ -6,8 +6,10 @@ scientific expectations or introduce a production dependency on test data.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
+import sysconfig
 import types
 from pathlib import Path
 
@@ -110,9 +112,26 @@ def solvation_universe():
     return u
 
 
+def mdscope_executable() -> str:
+    """The ``mdscope`` console script installed for the running interpreter.
+
+    Resolving it next to ``sys.executable`` keeps CLI tests on the same
+    environment as in-process tests, whatever ``PATH`` contains.
+    """
+    scripts = sysconfig.get_path("scripts")
+    found = shutil.which("mdscope", path=scripts)
+    if found is None:
+        raise RuntimeError(
+            f"No mdscope entry point in {scripts} for {sys.executable}; install the "
+            "package into this environment (python -m pip install -e '.[test]') "
+            "and set PYTHONPATH=<checkout>/src to test an uninstalled worktree."
+        )
+    return found
+
+
 def invoke_cli(tmp_path: Path, *args: str, stdin: str | None = None, ok: bool = True,
                env: dict[str, str] | None = None):
-    command = ["mdscope", *map(str, args)]
+    command = [mdscope_executable(), *map(str, args)]
     result = subprocess.run(
         command, input=stdin, text=True, capture_output=True,
         cwd=tmp_path, timeout=150, check=False,

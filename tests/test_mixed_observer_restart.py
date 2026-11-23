@@ -16,7 +16,7 @@ from mdscope.pipeline import runner, streaming
 
 
 def _final_tables(root):
-    return {str(p.relative_to(root)): pd.read_parquet(p) for p in root.rglob("*.parquet")
+    return {p.relative_to(root).as_posix(): pd.read_parquet(p) for p in root.rglob("*.parquet")
             if "cache" not in p.parts and "raw" not in p.parts}
 
 
@@ -108,7 +108,7 @@ def test_invalid_persisted_times_fail_before_archiving_existing_results(tmp_path
 
 
 def _bytes_snapshot(root):
-    return {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
+    return {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
             for p in root.rglob("*") if p.is_file()}
 
 
@@ -339,7 +339,7 @@ def test_run_adds_missing_occlusion_and_reuses_completed_replica(tmp_path, monke
     assert table.time_ps.nunique() == 4
     assert table.groupby("time_ps").size().eq(24).all()
     after = _bytes_snapshot(repout)
-    assert after.keys() - before.keys() == {str(path.relative_to(repout))}
+    assert after.keys() - before.keys() == {path.relative_to(repout).as_posix()}
     assert all(after[key] == value for key, value in before.items() if key != "stage_timings.json")
 
     monkeypatch.setattr(mda, "Universe", forbidden)
@@ -409,3 +409,28 @@ def test_completed_run_adds_only_footprint_and_rebuilds_summary(tmp_path, monkey
 
     monkeypatch.setattr(mda, "Universe", forbidden)
     runner.run_replicate(rep, cfg, root, state)
+
+
+def test_streaming_pass_closes_its_reader_on_success_and_failure(tmp_path, monkeypatch):
+    rep, cfg = make_project(tmp_path, 2)
+    closed = []
+    construct = mda.Universe
+
+    def universe(*args, **kwargs):
+        u = construct(*args, **kwargs)
+        close = u.trajectory.close
+        u.trajectory.close = lambda: (closed.append(True), close())
+        return u
+
+    monkeypatch.setattr(streaming.mda, "Universe", universe)
+    streaming.run_streaming_pass(rep, cfg, tmp_path / "done")
+    assert closed == [True]
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("injected")
+
+    monkeypatch.setattr(streaming, "compute_rg", fail)
+    with pytest.raises(RuntimeError, match="injected"):
+        streaming.run_streaming_pass(rep, cfg, tmp_path / "failed")
+    assert closed == [True, True]
+    rep.trajectory.unlink()  # not locked, even on Windows

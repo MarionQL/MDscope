@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from mdscope_test_support import mdscope_executable
 
 ROOT = Path(__file__).resolve().parents[1]
 DOC = ROOT/"docs/quickstart.md"
@@ -28,6 +29,8 @@ def test_documented_quickstart_reaches_findings(tmp_path):
         argv = [token.replace(DESTINATION, destination) for token in shlex.split(line)]
         if argv[0] == "python":
             argv[0] = sys.executable
+        elif argv[0] == "mdscope":
+            argv[0] = mdscope_executable()
         result = subprocess.run(argv, cwd=ROOT, capture_output=True, text=True, timeout=300, check=False)
         assert result.returncode == 0, f"{line}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     assert "radius_of_gyration_A" in result.stdout

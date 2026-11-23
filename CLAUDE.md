@@ -16,7 +16,7 @@ git ls-files -z '*.sh' | xargs -0 shellcheck   # CI-blocking on the 3.11 job
 python scripts/architecture_map.py --output /tmp/mdscope-architecture   # AST module/call graph
 ```
 
-- CLI tests (`tests/mdscope_test_support.py::invoke_cli`) spawn the `mdscope` executable from `PATH`. When testing a worktree without installing it, put the venv's scripts dir on `PATH` and set `PYTHONPATH=<worktree>/src` (inherited by the subprocess) so the right source is exercised.
+- CLI tests (`tests/mdscope_test_support.py::invoke_cli`) spawn the `mdscope` console script installed for the running interpreter (its `sysconfig` scripts dir, not `PATH`). When testing a worktree without installing it, run that venv's `python -m pytest` with `PYTHONPATH=<worktree>/src` (inherited by the subprocess) so the right source is exercised.
 - Intentional re-exports must use `import name as name` (Ruff F401 is blocking).
 - CI (`.github/workflows/mdscope-checks.yml`) runs Python 3.11/3.12/3.13 plus a 3.11 minimum-dependency job. Figure review (`figure-review.yml`) is the only `workflow_dispatch` job; dispatch it for renderer/figure changes.
 

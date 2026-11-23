@@ -61,7 +61,7 @@ def write_contrast_coverage(dest: Path, systems, families):
     pairs = list(combinations(systems, 2))
     for family, folder, replica_file, contrast_file, keys, estimators in SOURCES:
         path = dest / folder / f"{contrast_file}.parquet"
-        source = str(path.relative_to(dest))
+        source = path.relative_to(dest).as_posix()
         if family not in families:
             continue
         enabled = families[family] == "enabled"

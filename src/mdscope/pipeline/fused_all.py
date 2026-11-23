@@ -64,11 +64,12 @@ def run_fused_only(rep, cfg, repout, *, only=None, validate_summary_grid=False,
 
     repout = ensure_dir(Path(repout))
     u = mda.Universe(str(rep.topology), str(rep.trajectory))
-    tr = cfg["trajectory"]
-    start = 0 if tr.get("start") is None else int(tr["start"])
-    u.trajectory[start]
     observers = []
     with ExitStack() as stack:
+        stack.callback(u.trajectory.close)  # an open reader locks the file on Windows
+        tr = cfg["trajectory"]
+        start = 0 if tr.get("start") is None else int(tr["start"])
+        u.trajectory[start]
         def staging(name):
             return Path(stack.enter_context(
                 TemporaryDirectory(dir=repout, prefix=f".fused-only-{name}-")
