@@ -41,7 +41,7 @@ def test_scaffold_contrast_weights_replicas_not_frames_or_molecules(tmp_path):
         ],
     }
     replicas = summarize_scaffold_replicates(systems)
-    assert len(replicas) == 4
+    assert len(replicas) == 8
     assert set(replicas.n_valid_frames) == {2}
     comparisons = scaffold_condition_comparisons(replicas, systems)
     contact = comparisons.loc[comparisons.metric == "contact_fraction"].iloc[0]
@@ -55,7 +55,7 @@ def test_scaffold_contrast_weights_replicas_not_frames_or_molecules(tmp_path):
     cfg = {"analyses": {"sdc4_mechanisms": {"ceramide_scaffold_pooling": True}}}
     assert write_scaffold_condition_summary(cfg, tmp_path, systems) == 2
     outdir = tmp_path / "project_summary/statistics/ceramide_scaffold"
-    assert len(pd.read_parquet(outdir / "replicate_means.parquet")) == 4
+    assert len(pd.read_parquet(outdir / "replicate_means.parquet")) == 8
     assert len(pd.read_parquet(outdir / "condition_comparisons.parquet")) == 2
 
 
