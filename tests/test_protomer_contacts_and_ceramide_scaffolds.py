@@ -30,7 +30,7 @@ def test_complete_interprotomer_interface_has_zero_residues_and_pair_occupancy(t
     u.trajectory[0]
     a = u.select_atoms("protein and chainID PROA")
     b = u.select_atoms("protein and chainID PROB")
-    tm = {"A": a.select_atoms("resid 6:12"), "B": b.select_atoms("resid 6:12")}
+    tm = {"A": a.select_atoms("name CA"), "B": b.select_atoms("name CA")}
     contacts = InterprotomerContacts(u.select_atoms("protein"), tm, cutoff=5.)
     # Same-z positions are 4 A apart. Every protein residue is included.
     b.positions = b.positions - np.array([4., 0., 0.])
