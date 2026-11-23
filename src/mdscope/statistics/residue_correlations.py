@@ -17,6 +17,9 @@ DEFAULT_PAIRS = (
     ("water_count", "sasa_isolated"),
     ("water_count", "sasa_environment"),
     ("water_count", "helix_state"),
+    ("water_count", "interprotomer_fraction"),
+    ("interprotomer_fraction", "helix_state"),
+    ("interprotomer_fraction", "sasa_isolated"),
     ("helix_state", "protein_fraction"),
     ("helix_state", "hs_fraction"),
     ("helix_state", "sasa_isolated"),
@@ -31,11 +34,21 @@ METRIC_SOURCES = {
     "sasa_isolated": ("profiles/sasa/isolated/residue_sasa.parquet", "sasa_nm2"),
     "sasa_environment": ("profiles/sasa/environment/residue_sasa.parquet", "sasa_nm2"),
     "helix_state": ("profiles/dssp/assignments.parquet", "dssp"),
+    "interprotomer_fraction": (
+        "extensions/sdc4_mechanisms/interprotomer_residue_frames.parquet",
+        "contacting_heavy_atom_fraction",
+    ),
 }
 
 
-def _series(repout: Path, metric: str):
+def _series(repout: Path, metric: str, *, sasa_runs=None):
     relative, field = METRIC_SOURCES[metric]
+    if metric.startswith("sasa_") and sasa_runs:
+        run = sasa_runs.get(metric)
+        if run is None:
+            return None, {}
+        relative = ("profiles/sasa/" + (run + "/" if run != "default" else "")
+                    + "residue_sasa.parquet")
     path = repout / relative
     if not path.is_file():
         return None, {}
@@ -67,13 +80,14 @@ COLUMNS = (
 )
 
 
-def correlate_replica(repout: Path, pairs=DEFAULT_PAIRS, *, min_frames=30):
+def correlate_replica(repout: Path, pairs=DEFAULT_PAIRS, *, min_frames=30,
+                      sasa_runs=None):
     """Return one descriptive row per residue and configured metric pair."""
     metrics = sorted({m for pair in pairs for m in pair})
     sources = {}
     labels = {}
     for metric in metrics:
-        series, mapping = _series(Path(repout), metric)
+        series, mapping = _series(Path(repout), metric, sasa_runs=sasa_runs)
         if series is None:
             continue
         for index, name in mapping.items():
@@ -132,10 +146,18 @@ def write_raw_residue_correlations(cfg, root, system_repouts):
     from ..config.validators.statistics import residue_correlations_settings
     settings = residue_correlations_settings(cfg)
     pairs = settings["pairs"] if settings["pairs"] is not None else DEFAULT_PAIRS
+    mechanism = cfg.get("analyses", {}).get("sdc4_mechanisms", {})
+    sasa_runs = {
+        "sasa_isolated": mechanism.get("sasa_run", "default"),
+        "sasa_environment": mechanism.get("environment_sasa_run"),
+    } if mechanism.get("enabled") else None
     rows = []
     for system, reps in system_repouts.items():
         for repout in reps:
-            table = correlate_replica(Path(repout), pairs, min_frames=settings["min_frames"])
+            table = correlate_replica(
+                Path(repout), pairs, min_frames=settings["min_frames"],
+                sasa_runs=sasa_runs,
+            )
             if not table.empty:
                 table.insert(0, "replicate", Path(repout).name)
                 table.insert(0, "system", system)
