@@ -149,6 +149,10 @@ def required_artifacts(entry: FusedOutput, cfg: dict) -> tuple[Path, ...]:
             paths.extend(directory/f for f in ('residue_burial.parquet', 'residue_burial_summary.parquet'))
     if name == 'sdc4_mechanisms' and spec.get('residue_occlusion', False):
         paths.append(directory / RESIDUE_OCCLUSION_FILE)
+    if name == 'sdc4_mechanisms' and spec.get('interprotomer_contacts', False):
+        paths.extend(directory/f for f in (
+            'interprotomer_pair_frames.parquet', 'interprotomer_residue_frames.parquet',
+            'interprotomer_pair_summary.parquet', 'interprotomer_residue_summary.parquet'))
     if name == 'sdc4_mechanisms' and spec.get('motif_lipid_residence', False):
         paths.extend(directory/f for f in ('motif_lipid_contact_events.parquet',
             'motif_lipid_residence.parquet', 'motif_lipid_residence_intermittent.parquet',
