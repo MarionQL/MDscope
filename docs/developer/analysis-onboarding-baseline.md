@@ -54,3 +54,27 @@ YAML interpretation, scientific numerical kernels, checkpoint-safe execution, pe
 3. Output schema is centralized in `contracts/outputs.py`, but `registry.required_artifacts()` resolves conditional companions, while `planning.ANALYSIS_METADATA` and `analysis_figure_candidates()` advertise optional capabilities. Avoid duplicated facts without pretending production and figure routing are the same responsibility.
 4. **Runtime baseline not yet measured**: full XTC reader/pass counts, no-op I/O, wall time, RSS and import latency need representative local/ARC runs. Existing logic intends one shared source-frame streaming pass, or one selected fused-only pass, with additional fallback passes if products remain missing; this is a code-path statement, not measured efficiency.
 5. **Next scorecard:** after #279/#269 P3, repeat the same two probes and report code owner touchpoints, duplicate registration sites, unexpected unavailable outputs, exact YAML/plan/config parity, and real trajectory pass counts. Do not attribute P1's layer cleanup a measured speedup.
+
+## Scorecard after #279 / #269 P3–P4 (2026-11-22)
+
+Measured on branches `refactor/279-replica-execution-ownership` and `refactor/269-analysis-onboarding-owners` (both from `main` `3d90241`), Linux/WSL Python 3.12.
+
+| Gate | Baseline | Now |
+|---|---|---|
+| Architecture map | 134 modules, 422 edges, 1 cycle | 132 modules, 419 edges, **0 cycles** (`figure_family` moved to `reporting/plot_ids.py`) |
+| Statistics/figure family identities | `planning`, `statistics.families`, two validators | one owner each in `contracts` (`STATISTICS_FAMILIES`, `FIGURE_FAMILIES`); `statistics.families.lipid_contacts` was rejected by YAML validation and missing from the saved-statistics catalog, now accepted and catalogued |
+| Group-filter analyses (`rmsd`, `radius_of_gyration`) | 9 literal copies in config, schema, streaming, planning, Studio | `config.defaults.GROUP_ANALYSES` |
+| Replica replay dispatch | 4 family-specific replay/fallback branches | one `run_fused_only` replay; specialized tasks declare `produces` and rerun only when a registered output is missing |
+| YAML / plan / config parity | — | 6/6 maintained configs MATCH |
+
+**Probe A** (`radius_of_gyration`-like scalar): owners unchanged — defaults, kernel, streaming binding, registry, planning — but group support is now one edit instead of five. **Probe B** (`residue_membrane_distance`-like named profile): `fused_distance.py` no longer has its own replay entry point; recovery is registry-driven through `fused_all`. Remaining per-family code in `runner.mark_fused` only chooses the persisted `fused_into` provenance label (pinned by `tests/test_unified_fused_replay.py`), so it was left in place.
+
+**Real-trajectory recovery** (carb_sdc4 rep1, 40 frames, chunk 10; one product each deleted from membrane, extensions and residue distance on a copy of a completed smoke project):
+
+| Revision | XTC reader opens | Decoded frames | Wall | Output parity | Completed siblings |
+|---|---|---|---|---|---|
+| pre-#285 `2faacb0` | 4 | 126 | 63.1 s | 14/14 exact | unchanged |
+| #279 branch | 1 | 44 | 22.7 s | 14/14 exact | unchanged |
+
+Full-run `performance` benchmark wall times are unchanged within noise (160 frames carb: 128.8 s `main` vs 125.4 s branch); the gain is in recovery, not the first run. Not moved, with no evidence of duplicated ownership: `observables.multi_origin_pipeline`, the SDC4 observer, `reporting/plotting.py`, `state_outcomes` (size alone is not a reason, ADR-0002).
+

@@ -27,8 +27,9 @@ def validate_statistics(cfg):
     _validate_time_window(stats.get("scalar_window_ps"), "statistics.scalar_window_ps")
     if stats.get("matched_window_ps") != "auto":
         _validate_time_window(stats.get("matched_window_ps"), "statistics.matched_window_ps")
+    from ...contracts.metric_selection import STATISTICS_FAMILIES
     families = stats.get("families", {})
-    if not isinstance(families, dict) or set(families) - {"time_series", "profiles", "interactions", "solvation_rdfs", "diffusion", "coupling"}:
+    if not isinstance(families, dict) or set(families) - set(STATISTICS_FAMILIES):
         raise ValueError("statistics.families has unknown families or is not a mapping")
     for name, option in families.items():
         if isinstance(option, bool):

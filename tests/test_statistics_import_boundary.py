@@ -14,9 +14,8 @@ import mdscope.planning
 for module in ('mdscope.statistics.time_series', 'mdscope.statistics.profiles',
                'mdscope.statistics.interactions', 'mdscope.statistics.solvation'):
     assert module not in sys.modules, module
-from mdscope.statistics import STATISTICS_FAMILIES
-from mdscope.statistics.families import STATISTICS_FAMILIES as canonical
-assert STATISTICS_FAMILIES is canonical
+from mdscope.contracts.metric_selection import STATISTICS_FAMILIES
+assert STATISTICS_FAMILIES
 import importlib.util
 for old in ('statistics_contracts', 'statistics_families', 'statistics_manifest',
             'statistics_selection', 'permutation_resolution', 'state_feature_spec'):
@@ -29,6 +28,6 @@ for old in ('statistics_contracts', 'statistics_families', 'statistics_manifest'
 
 def test_dispatcher_stays_explicit():
     from mdscope.statistics.dispatch import analyze_project
-    from mdscope.statistics.families import STATISTICS_FAMILIES
+    from mdscope.contracts.metric_selection import STATISTICS_FAMILIES
     assert callable(analyze_project)
     assert "time_series" in STATISTICS_FAMILIES

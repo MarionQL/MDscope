@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import (
+    GROUP_ANALYSES,
     analysis_runs,
     iter_replicates,
     plot_enabled,
@@ -34,8 +35,9 @@ from .reporting.plot_ids import (
     describe_plot,
     safe_plot_stem,
 )
+from .contracts.metric_selection import STATISTICS_FAMILIES
+from .contracts.plot_validation import FIGURE_FAMILIES
 from .contracts.state_feature_spec import SDC4_FEATURES
-from .statistics.families import STATISTICS_FAMILIES
 from .statistics.selection import ESTIMATOR_FLAGS
 
 # Interpretation of coordinates, not a claim about PBC or bulk density.
@@ -43,19 +45,6 @@ from .statistics.selection import ESTIMATOR_FLAGS
 FITTED_ANALYSES = frozenset({"rmsd", "rmsf"})
 SAVED_DATA_ANALYSES = frozenset({"shared_states", "coupling_screen"})
 CONTROL_ANALYSES = frozenset({"alignment", "lifetimes"})
-FIGURE_FAMILIES = (
-    "time_series", "profiles", "interactions", "solvation", "sdc4",
-    "shared_states", "diffusion", "lipid_enrichment", "lipid_contacts", "other",
-)
-STATISTICS_DIRS = {
-    "time_series": "time_series",
-    "profiles": "profiles",
-    "interactions": "interactions",
-    "solvation_rdfs": "solvation",
-    "diffusion": "diffusion",
-    "coupling": "coupling",
-    "lipid_contacts": "lipid_contacts",
-}
 
 
 # Per-analysis semantics describe *eligibility*, never promise supported CIs.
@@ -360,8 +349,8 @@ def build_plan(cfg: dict, config_path: str | Path, *,
             "family": family,
             "status": ("enabled_conditional" if statistics_family_config(cfg, family) is not None
                        else "disabled"),
-            "output_directory": f"project_summary/statistics/{STATISTICS_DIRS[family]}/",
-            "files": [f"project_summary/statistics/{STATISTICS_DIRS[family]}/{file}"
+            "output_directory": f"project_summary/statistics/{STATISTICS_FAMILIES[family]}/",
+            "files": [f"project_summary/statistics/{STATISTICS_FAMILIES[family]}/{file}"
                       for file in STATISTICS_CANDIDATES[family]],
             "files_status": "conditional_candidates_from_statistics_writers",
             "independent_condition_units": "simulation_replicates",
@@ -618,6 +607,10 @@ SAVED_STATISTICS_IDENTITY = {
     ),
     "diffusion": ("replicate_common_lag_slopes.parquet", ("metric",)),
     "coupling": ("replicate_correlations.parquet", ("mechanism",)),
+    "lipid_contacts": (
+        "replicate_statistics.parquet",
+        ("level", "leaflet", "species_a", "species_b", "metric"),
+    ),
 }
 
 
@@ -645,7 +638,7 @@ def inspect_saved_statistics(root: str | Path, *, max_identities: int = 256) -> 
         raise ValueError("Statistics are incomplete; cannot claim an output catalog")
     result = {}
     for family, (identity_file, columns) in SAVED_STATISTICS_IDENTITY.items():
-        folder = dest / STATISTICS_DIRS[family]
+        folder = dest / STATISTICS_FAMILIES[family]
         if facts.family_disabled(family):
             result[family] = {'status':'disabled','files':{},'identities':[],
                               'identities_truncated':False}
@@ -941,7 +934,7 @@ def authoring_catalog(cfg, *, include_inactive=False):
         membrane = configured["analyses"]["membrane"]
         for field in ("area_per_lipid", "thickness", "msd"):
             membrane.setdefault(field, {})["enabled"] = True
-        for name in ("rmsd", "radius_of_gyration"):
+        for name in GROUP_ANALYSES:
             configured["analyses"][name].pop("groups", None)
         distance = configured["analyses"]["residue_membrane_distance"]
         for spec in [distance, *(distance.get("runs") or {}).values()]:

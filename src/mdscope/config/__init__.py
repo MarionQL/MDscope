@@ -7,8 +7,9 @@ from typing import Any
 
 import yaml
 
+from ..contracts.metric_selection import STATISTICS_FAMILIES
 from ..errors import ConfigError, InputPathError
-from .defaults import DEFAULTS, DEFAULT_INSTANCE_ID, MULTI_RUN_ANALYSES, TAIL_PRESETS, merge
+from .defaults import DEFAULTS, DEFAULT_INSTANCE_ID, GROUP_ANALYSES, MULTI_RUN_ANALYSES, TAIL_PRESETS, merge
 from .runs import (
     AnalysisRun, Replicate, _validate_path_component,
     analysis_runs, analysis_enabled, analysis_groups,
@@ -114,7 +115,7 @@ def statistics_family_config(cfg, family):
     option = {"enabled": option} if isinstance(option, bool) else option
     if not stats.get("enabled", True) or not option.get("enabled", True):
         return None
-    if family in {"time_series", "interactions", "profiles", "solvation_rdfs", "diffusion", "coupling", "lipid_contacts"}:
+    if family in STATISTICS_FAMILIES:
         selection = stats.get("metric_selection")
         if selection is not None and selection.get(family) == []:
             return None
@@ -134,7 +135,7 @@ def statistics_family_config(cfg, family):
 
 # Export the historical public config API while modules are split.
 __all__ = [
-    "DEFAULTS", "DEFAULT_INSTANCE_ID", "MULTI_RUN_ANALYSES", "TAIL_PRESETS",
+    "DEFAULTS", "DEFAULT_INSTANCE_ID", "GROUP_ANALYSES", "MULTI_RUN_ANALYSES", "TAIL_PRESETS",
     "AnalysisRun", "Replicate", "_validate_path_component", "analysis_runs",
     "analysis_enabled", "analysis_groups", "group_label", "iter_replicates",
     "profile_dir", "project_root", "replicate_label", "replicate_specs",

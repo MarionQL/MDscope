@@ -5,6 +5,8 @@ from copy import deepcopy
 
 DEFAULT_INSTANCE_ID = "default"
 MULTI_RUN_ANALYSES = {"density_1d", "residue_membrane_distance", "sasa"}
+# Analyses whose summaries accept ``analyses.<name>.groups`` (named selection groups).
+GROUP_ANALYSES = ("rmsd", "radius_of_gyration")
 
 # Opt-in acyl-tail naming presets (``membrane_order.tail_preset``); never
 # inferred from residue names. CHARMM36 glycerophospholipids: glycerol C3

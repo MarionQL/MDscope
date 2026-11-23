@@ -19,6 +19,7 @@ from pathlib import Path
 from matplotlib.backends.backend_pdf import PdfPages
 
 from ..core.persistence import archive_output
+from .plot_ids import figure_family
 
 _ACTIVE = ContextVar('mdscope_table_reports', default=None)
 REPORT_NAME = 'statistics_tables.pdf'
@@ -106,7 +107,6 @@ class TableReports:
     def _empty_status(self, report, superseded):
         """Classify a report without pages from the pages it last published."""
         from ..config import figure_enabled, plot_enabled
-        from .figure_inventory import figure_family
         if not self.enabled or (self.cfg is not None and not plot_enabled(
                 {**self.cfg, 'plots':{**self.cfg.get('plots', {}), 'include':None}}, figure_family(report))):
             return 'disabled'
