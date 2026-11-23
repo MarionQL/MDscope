@@ -471,6 +471,19 @@ def test_sdc4_local_order_uses_membrane_order_naming(tmp_path):
     assert counts["s"]["sdc4_local_order"]["lipids_without_anchor"] == 0
 
 
+@pytest.mark.parametrize("domain", ["tm_chains", "ectodomains"])
+def test_sdc4_preflight_rejects_lipid_residues_as_protein_domains(tmp_path, domain):
+    cfg, _, _, _ = _validated(
+        tmp_path, bilayer("macrog"),
+        {"tails": MACROG_TAILS, "lipid_selection": "resname POPC"},
+        local_order={"enabled": True, "lipid_selection": "resname POPC"},
+    )
+    # The old fixture used POPC residues as fake protein domains.
+    cfg["analyses"]["sdc4_mechanisms"][domain]["A"] = "resid 1"
+    with pytest.raises(ConfigError, match=rf"SDC4 {domain}\.A includes residues outside"):
+        validate_selections(cfg, tmp_path)
+
+
 def test_tail_preset_resolution_precedence_and_round_trip():
     explicit = {"carbon_names": ["C32", "C33", "C34", "C35"]}
     cfg = _resolved({"tail_preset": "charmm36", "tails": {"sn1": explicit,
