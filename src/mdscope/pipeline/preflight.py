@@ -243,6 +243,19 @@ def _validate_selections(cfg, base, *, systems, emit):
             if mechanism.get("require_motifs", True) and not motifs:
                 raise ValueError(f"{system}: no NxIP motif found in topology sequence")
             emit(f"    SDC4 NxIP motifs: {list(motifs)}")
+            # Share the production matcher so a wrong TM range fails before
+            # expensive trajectory analysis begins.
+            from ..systems.sdc4.mechanisms import resolve_sdc4_gxxxg
+            tm_groups = {
+                chain: universe.select_atoms(selection)
+                for chain, selection in mechanism["tm_chains"].items()
+            }
+            mapped, sequences = resolve_sdc4_gxxxg(
+                universe, tm_groups, required=mechanism.get("require_gxxxg", False),
+            )
+            for chain, atoms in mapped.items():
+                emit(f"    SDC4 TM {chain}: sequence={sequences[chain]}, "
+                     f"GGIVG topology residues={sorted(set(map(int, atoms.resindices)))}")
             lipid_owners = set()
             for name, selection in mechanism["lipid_anchors"].items():
                 atoms = universe.select_atoms(selection)
