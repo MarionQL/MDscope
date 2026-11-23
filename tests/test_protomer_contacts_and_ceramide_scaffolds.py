@@ -9,7 +9,20 @@ from mdscope.mechanisms.protomer_contacts import (
 )
 from mdscope.mechanisms.ceramide_scaffold import pool_ceramide_scaffolds
 
-from test_sdc4_mechanisms import _synthetic
+import MDAnalysis as mda
+
+
+def _synthetic():
+    universe = mda.Universe.empty(4, n_residues=4,
+                                  atom_resindex=[0, 1, 2, 3], trajectory=True)
+    universe.add_TopologyAttr("names", ["CA"] * 4)
+    universe.add_TopologyAttr("resnames", ["ALA", "GLY", "SER", "LEU"])
+    universe.add_TopologyAttr("resids", [1, 2, 1, 2])
+    universe.add_TopologyAttr("chainIDs", ["PROA", "PROA", "PROB", "PROB"])
+    universe.atoms.positions = np.array([[0., 0., 0.], [0., 0., 10.],
+                                         [8., 0., 0.], [8., 0., 10.]])
+    universe.dimensions = np.array([100., 100., 100., 90., 90., 90.])
+    return universe
 
 
 def test_complete_interprotomer_interface_has_zero_residues_and_pair_occupancy(tmp_path):
