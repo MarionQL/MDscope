@@ -145,7 +145,7 @@ DEFAULTS = {
             "water_oxygen_selection": None, "ion_selections": {},
             "motif_selection": None, "motifs": {"NxIP": "N.IP"},
             "require_motifs": True, "require_gxxxg": False,
-            "interprotomer_contacts": False,
+            "interprotomer_contacts": False, "tm_local_tilt": False,
             "map_extent_A": 40.0, "map_bin_A": 2.0,
             "local_radius_A": 20.0, "local_min_lipids": 8,
             "contact_cutoff_A": 5.0, "hydration_cutoff_A": 3.5,
