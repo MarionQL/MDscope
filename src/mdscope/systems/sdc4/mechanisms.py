@@ -46,6 +46,7 @@ from ...core.persistence import (
 from ...core.progress import track
 from ...core.sequence import AA3, sequence_matches
 from ...mechanisms.mechanistic_common import heavy, nearest, selected, unit
+from ...mechanisms.ceramide_scaffold import pool_ceramide_scaffolds
 from ...mechanisms.protomer_contacts import (
     InterprotomerContacts, summarize_interprotomer_contacts,
 )
@@ -1327,6 +1328,11 @@ class SDC4Mechanisms:
                 specificity, "available_molecules"
             )
             atomic_parquet(out / "lipid_region_specificity.parquet", specificity)
+            if {"ceramide_head", "ceramide_tail"}.issubset(self.lipid_moiety_membership):
+                atomic_parquet(
+                    out / "ceramide_scaffold_pooled.parquet",
+                    pool_ceramide_scaffolds(specificity),
+                )
             residue_parts = sorted(self.cache.glob("residue-contacts-*.parquet"))
             residue_contacts = pd.concat(
                 (pd.read_parquet(part) for part in residue_parts),
