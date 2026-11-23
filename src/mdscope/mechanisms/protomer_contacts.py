@@ -172,7 +172,7 @@ def summarize_interprotomer_contacts(outdir: Path, pair_parts, residue_parts, ti
         if identities is None:
             identities = signature
         elif not signature.equals(identities):
-            raise ValueError("Inconsistent interprotomer residue identities between chunks")
+            raise ValueError("Incomplete or inconsistent interprotomer residue identities between chunks")
         per_id = residue.groupby(residue_keys, sort=True, as_index=False).agg(
             frames=("time_ps", "size"), **measures,
         )
