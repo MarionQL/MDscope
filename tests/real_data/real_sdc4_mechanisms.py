@@ -238,7 +238,12 @@ def run():
         assert np.all(np.isfinite(df["sdc4_tm_crossing_angle_deg"]))
         assert np.all(np.isfinite(df["sdc4_ectodomain_A_height_A"]))
         assert result["n_hs_chains"] == 6
-        from mdscope.mechanisms.motif_residence import COLUMNS
+        # Assert the persisted schema independently of the episode implementation.
+        required_residence_columns = {
+            "motif", "species", "molecule_id", "start_ps", "end_ps", "duration_ps",
+            "n_frames", "left_censored", "right_censored", "occupancy_fraction",
+            "episode_contact_fraction", "observed_span_ps", "duration_convention",
+        }
         events_path = out / "extensions/sdc4_mechanisms/motif_lipid_contact_events.parquet"
         residence_path = out / "extensions/sdc4_mechanisms/motif_lipid_residence.parquet"
         assert events_path.exists() and residence_path.exists()
@@ -247,10 +252,10 @@ def run():
         )
         assert intermittent_path.exists()
         intermittent = pd.read_parquet(intermittent_path)
-        assert set(COLUMNS).issubset(intermittent.columns)
+        assert required_residence_columns.issubset(intermittent.columns)
         assert (intermittent["n_frames"] > 0).all()
 
-        assert set(COLUMNS).issubset(pd.read_parquet(residence_path).columns)
+        assert required_residence_columns.issubset(pd.read_parquet(residence_path).columns)
         residence_audit = json.loads(
             (out / "extensions/sdc4_mechanisms/selection_audit.json").read_text()
         )
