@@ -327,6 +327,15 @@ def configured_profile_variables(cfg, *, include_optional=False):
                 for group in analysis_groups(cfg):
                     add("density_1d", f"density_1d__{run.run_id}__{key}__{group}", unit,
                         "Conditional: target/group intersection must be nonempty; compatible grids required", run.run_id)
+    sdc4 = cfg["analyses"].get("sdc4_mechanisms", {})
+    if sdc4.get("enabled") and sdc4.get("interprotomer_contacts"):
+        for metric, unit in (
+            ("interprotomer_contact_occupancy", "fraction"),
+            ("interprotomer_partner_count", "residues"),
+            ("interprotomer_atom_contact_fraction", "fraction"),
+        ):
+            add("sdc4_mechanisms", metric, unit,
+                "Saved frame-resolved full-protomer interface required")
     for run in analysis_runs(cfg, "residue_membrane_distance"):
         names = [("mean_min_distance_A", "angstrom"), ("median_min_distance_A", "angstrom")]
         if include_optional or run.spec.get("contact_cutoff_A") is not None:
