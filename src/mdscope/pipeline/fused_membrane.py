@@ -13,39 +13,41 @@ import os
 import re
 import time
 from collections import defaultdict
+from contextlib import ExitStack
 from pathlib import Path
+from tempfile import TemporaryFile
 
 import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import minimize_vectors
 
 from ..config import time_ps
-from ..core.persistence import atomic_parquet, ensure_dir
+from ..config.runs import membrane_enabled_names as enabled_names
 from ..core.lipid_geometry import (
     aligned_leaflets,
     anchor_groups,
     centers,
     planar_box,
 )
+from ..core.persistence import (
+    atomic_npz,
+    atomic_parquet,
+    atomic_parquet_parts,
+    ensure_dir,
+)
 from ..observables.bilayer_normal import fit_local_normals
 from ..observables.lipid_enrichment import FOOTPRINT_OUTPUT, LipidFootprint
 from ..observables.membrane_order import (
     AXIS_INDEX,
-    _atomic_npz,
     _metric_name,
     _profile_values,
     _valid_box,
     order_setup,
 )
-from ..config.runs import membrane_enabled_names as enabled_names
 
 
 def _parts(path, suffix):
     return sorted(path.glob("part-*" + suffix))
-
-
-def _concat(parts):
-    return pd.concat((pd.read_parquet(p) for p in parts), ignore_index=True) if parts else pd.DataFrame()
 
 
 def _profile_batches(profiles, frame_count, budget_bytes):
@@ -266,7 +268,7 @@ class FusedMembrane:
                     self.profile_frames[index], np.float32
                 ).reshape((-1, len(profile.positions)))
                 self.profile_frames[index].clear()
-            _atomic_npz(
+            atomic_npz(
                 ensure_dir(self.cache / "order_profiles") / f"part-{part:06d}.npz",
                 **arrays,
             )
@@ -300,27 +302,27 @@ class FusedMembrane:
         if "bilayer_normal" in self.names:
             state = self.geometry["bilayer_normal"]["state"]
             out = ensure_dir(self.repout / "extensions" / "bilayer_normal")
-            series = _concat(_parts(self.cache / "bilayer_normal", ".parquet"))
-            atomic_parquet(out / "timeseries.parquet", series)
+            frame_count = atomic_parquet_parts(out / "timeseries.parquet",
+                                               _parts(self.cache / "bilayer_normal", ".parquet"))
             if self.geometry["bilayer_normal"]["spec"].get("save_lipid_angles", False):
                 detail_dir = ensure_dir(out / "per_lipid")
                 for path in _parts(self.cache / "angles", ".parquet"):
                     atomic_parquet(detail_dir / ("angles_" + path.name), pd.read_parquet(path))
             result["bilayer_normal"] = {
-                "frames": len(series), "n_lipids": len(state["species"])
+                "frames": frame_count, "n_lipids": len(state["species"])
             }
         if "lipid_enrichment" in self.names:
             state = self.geometry["lipid_enrichment"]["state"]
             out = ensure_dir(self.repout / FOOTPRINT_OUTPUT)
-            series = _concat(_parts(self.cache / "footprint_series", ".parquet"))
-            times = series["time_ps"]
+            chunks = _parts(self.cache / "footprint_series", ".parquet")
+            times = pd.concat((pd.read_parquet(path, columns=["time_ps"])["time_ps"]
+                               for path in chunks), ignore_index=True)
             if times.empty or not times.is_unique or not times.is_monotonic_increasing:
                 raise ValueError("Lipid footprint has an incomplete or invalid frame grid")
             (out / "reference.json").unlink(missing_ok=True)
-            atomic_parquet(out / "timeseries.parquet", series)
-            atomic_parquet(
-                out / "counts.parquet",
-                _concat(_parts(self.cache / "footprint_counts", ".parquet"))
+            frame_count = atomic_parquet_parts(out / "timeseries.parquet", chunks)
+            atomic_parquet_parts(
+                out / "counts.parquet", _parts(self.cache / "footprint_counts", ".parquet")
             )
             atomic_parquet(out / "selection_audit.parquet", pd.DataFrame({
                 "species": state["species"], "resindex": state["indices"],
@@ -328,14 +330,14 @@ class FusedMembrane:
             }))
             self.footprint.write_reference(out)
             result["lipid_enrichment"] = {
-                "frames": len(series), "n_lipids": len(state["species"]),
+                "frames": frame_count, "n_lipids": len(state["species"]),
                 "n_species": len(np.unique(state["species"])),
             }
         if self.order is not None:
             o = self.order
             out = ensure_dir(self.repout / "profiles" / "membrane_order")
-            series = _concat(_parts(self.cache / "membrane_order", ".parquet"))
-            atomic_parquet(out / "timeseries.parquet", series)
+            frame_count = atomic_parquet_parts(out / "timeseries.parquet",
+                                               _parts(self.cache / "membrane_order", ".parquet"))
             sites = o["sites"]
             mapping = pd.DataFrame([
                 {
@@ -360,11 +362,37 @@ class FusedMembrane:
                 "MDSCOPE_ORDER_FINALIZE_MEMORY_MB", "256"
             )))
             batches = _profile_batches(
-                o["profiles"], len(series), limit_mb * 1024 * 1024
+                o["profiles"], frame_count, limit_mb * 1024 * 1024
             )
             index_rows = []
             all_times = np.array([], float)
             for batch_id, indices in enumerate(batches):
+                if len(indices) == 1 and (frame_count * len(o["profiles"][indices[0]].positions) * 8
+                                          > limit_mb * 1024 * 1024):
+                    i = indices[0]
+                    profile = o["profiles"][i]
+                    with TemporaryFile(dir=out) as backing, ExitStack() as resources:
+                        values = np.memmap(backing, mode="w+", dtype=np.float32,
+                                           shape=(frame_count, len(profile.positions)))
+                        resources.callback(values._mmap.close)
+                        cursor = 0
+                        time_chunks = []
+                        for path in parts:
+                            with np.load(path, allow_pickle=False) as data:
+                                chunk = data[f"profile_{i:04d}"]
+                                values[cursor:cursor + len(chunk)] = chunk
+                                cursor += len(chunk)
+                                if batch_id == 0:
+                                    time_chunks.append(data["time_ps"].astype(float))
+                        if cursor != frame_count:
+                            raise ValueError("Order-profile frame count disagrees with time series")
+                        if batch_id == 0:
+                            all_times = np.concatenate(time_chunks)
+                        filename = f"profile-{i:04d}.npz"
+                        atomic_npz(out / filename, time_ps=all_times, values=values,
+                                   positions=profile.positions, labels=profile.labels)
+                    index_rows.append({"profile": profile.profile_id, "file": filename})
+                    continue
                 profile_chunks = {i: [] for i in indices}
                 time_chunks = []
                 for path in parts:
@@ -384,7 +412,7 @@ class FusedMembrane:
                     profile = o["profiles"][i]
                     arrays = profile_chunks.pop(i)
                     filename = f"profile-{i:04d}.npz"
-                    _atomic_npz(
+                    atomic_npz(
                         out / filename,
                         time_ps=all_times,
                         values=np.concatenate(arrays, axis=0) if arrays else np.empty(
@@ -396,7 +424,7 @@ class FusedMembrane:
                     index_rows.append({"profile": profile.profile_id, "file": filename})
             atomic_parquet(out / "profile_index.parquet", pd.DataFrame(index_rows))
             result["membrane_order"] = {
-                "frames": len(series), "carbon_sites": len(sites),
+                "frames": frame_count, "carbon_sites": len(sites),
                 "ch_bonds": len(o["pairs"]), "profiles": len(o["profiles"]),
             }
         self.timings["finalize"] += time.perf_counter() - start

@@ -88,3 +88,57 @@ def atomic_parquet(path: str | Path, df: pd.DataFrame) -> None:
             tmp.unlink()
 
 
+def atomic_npz(path: str | Path, **arrays) -> None:
+    """Publish a compressed array archive without exposing partial output."""
+    import numpy as np
+
+    path = Path(path)
+    ensure_dir(path.parent)
+    fd, temporary = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            np.savez_compressed(handle, **arrays)
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def atomic_parquet_parts(path: str | Path, parts, *, fill_missing=None) -> int:
+    """Atomically join saved chunks using bounded Arrow record batches.
+
+    Missing columns retain nulls unless the caller explicitly supplies a value
+    (e.g. zero for a measured contact class absent from a particular chunk).
+    """
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    path = Path(path)
+    parts = list(parts)
+    if not parts:
+        atomic_parquet(path, pd.DataFrame())
+        return 0
+    schema = pa.unify_schemas([pq.read_schema(part) for part in parts],
+                             promote_options="permissive")
+    ensure_dir(path.parent)
+    fd, temporary = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=path.parent)
+    os.close(fd)
+    rows = 0
+    try:
+        with pq.ParquetWriter(temporary, schema) as writer:
+            for part in parts:
+                for batch in pq.ParquetFile(part).iter_batches(batch_size=65536):
+                    columns = [
+                        batch.column(batch.schema.get_field_index(field.name)).cast(field.type)
+                        if field.name in batch.schema.names else
+                        pa.nulls(batch.num_rows, type=field.type) if fill_missing is None else
+                        pa.array([fill_missing] * batch.num_rows, type=field.type)
+                        for field in schema
+                    ]
+                    writer.write_batch(pa.RecordBatch.from_arrays(columns, schema=schema))
+                    rows += batch.num_rows
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    return rows

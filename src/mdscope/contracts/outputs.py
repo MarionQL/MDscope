@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+
 # One entry per output-producing analysis. Preserve historic path and ordering
 # contracts; conditional extras are resolved by registry.required_artifacts.
 @dataclass(frozen=True)
@@ -322,3 +323,19 @@ def artifact_schema(entry, path: Path) -> dict:
     }
 
 
+# Legacy products have intentionally smaller reuse requirements than the full
+# writer schema. Keep this compatibility policy beside that schema.
+MINIMUM_REUSE_COLUMNS = {
+    "solvation": ("frame", "time_ps", "target_id", "n_solvent"),
+    "dssp": ("time_ps", "topology_residue_index", "residue", "dssp"),
+    "sasa": ("time_ps", "topology_residue_index", "residue", "sasa_nm2"),
+    "hydrogen_bonds": ("time_ps", "donor", "acceptor"),
+    "lipid_hydrogen_bonds": ("time_ps", "donor", "acceptor"),
+}
+
+
+def reuse_columns(entry, path):
+    """Required columns for an existing product, preserving legacy reuse."""
+    if Path(path) == entry.path:
+        return MINIMUM_REUSE_COLUMNS.get(entry.name, ("time_ps",))
+    return artifact_schema(entry, path)["columns"]

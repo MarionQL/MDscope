@@ -4,21 +4,23 @@ Box-density-normalized radial distributions are NOT corrected for inaccessible v
 All distances are Å and times ps; the actual water/ion atom selections are
 explicit to avoid guessing CHARMM lipid and glycan atom chemistry.
 """
-import os
-import tempfile
 from collections import defaultdict
 from itertools import combinations, product
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pyarrow.parquet as pq
 from MDAnalysis.lib.distances import capped_distance
 from MDAnalysis.lib.mdamath import triclinic_vectors
 
-from ..core.persistence import atomic_json, atomic_parquet, ensure_dir
 from ..contracts.outputs import SOLVATION_COUNT_COLUMNS
 from ..core.geometry import minimum_image_displacements
+from ..core.persistence import (
+    atomic_json,
+    atomic_parquet,
+    atomic_parquet_parts,
+    ensure_dir,
+)
 from .solvation_common import EPISODE_COLUMNS, rdf_from_counts
 
 PRESETS = {"standard": (False, False), "detailed": (True, True),
@@ -680,20 +682,7 @@ class SolvationObserver:
         for name in ("counts", "events", "bridges", "water_hbond_bridges"):
             files = sorted(cache.glob(f"{name}-*.parquet"))
             if files:
-                # Keep the single-Parquet public output but stream chunk
-                # row groups without concatenating every frame in RAM.
-                target = dest / f"{name}.parquet"
-                with tempfile.NamedTemporaryFile(dir=dest, suffix=".parquet",
-                                                 delete=False) as handle:
-                    temporary = Path(handle.name)
-                try:
-                    with pq.ParquetWriter(str(temporary),
-                                          pq.read_schema(files[0])) as writer:
-                        for chunk in files:
-                            writer.write_table(pq.read_table(chunk))
-                    os.replace(temporary, target)
-                finally:
-                    temporary.unlink(missing_ok=True)
+                atomic_parquet_parts(dest / f"{name}.parquet", files)
             elif name == "counts":
                 atomic_parquet(dest / "counts.parquet",
                                pd.DataFrame(columns=COUNT_COLUMNS))
@@ -833,4 +822,3 @@ class SolvationObserver:
             "residence_limitation": "Episodes represent consecutive sampled contacts; temporal resolution is trajectory frame interval.",
         })
         return {"frames": len(read("frames")), "fused": True}
-

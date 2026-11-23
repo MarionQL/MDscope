@@ -10,13 +10,49 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from MDAnalysis.lib.distances import distance_array
+from MDAnalysis.lib.distances import capped_distance, distance_array
 
-from ..biophysical_common import box_of, heavy, residue_pairs
 from ..config import time_ps
-from ..core.persistence import atomic_parquet, ensure_dir
+from ..core.atom_selection import select_heavy_atoms
 from ..core.motifs import resolve_motifs
+from ..core.persistence import atomic_parquet, ensure_dir
 from ..core.sequence import sequence_chain_label
+
+
+def box_of(u):
+    b = np.asarray(u.dimensions, dtype=float)
+    return b if b.shape==(6,) and np.all(b[:3]>0) else None
+
+def heavy(ag):
+    return select_heavy_atoms(ag, policy="biophysical")
+
+def atom_contacts(a,b,cutoff,box=None):
+    if len(a)==0 or len(b)==0: return np.empty((0,2),int)
+    return capped_distance(a.positions,b.positions,max_cutoff=float(cutoff),box=box,return_distances=False)
+
+def collapse_atom_pairs_to_residues(atom_pairs, left_resindices, right_resindices):
+    """Unique topology-residue pairs from local atom-pair indices.
+
+    Inputs are array indices into the *selected* left and right atom groups;
+    residue IDs are topology indices, never potentially repeated resid labels.
+    Returns a stable lexicographically sorted (n_pairs, 2) integer array.
+    """
+    pairs = np.asarray(atom_pairs, dtype=np.intp).reshape(-1, 2)
+    if not len(pairs):
+        return np.empty((0, 2), dtype=np.intp)
+    left = np.asarray(left_resindices, dtype=np.intp)
+    right = np.asarray(right_resindices, dtype=np.intp)
+    return np.unique(
+        np.column_stack((left[pairs[:, 0]], right[pairs[:, 1]])), axis=0
+    )
+
+
+def residue_pairs(a,b,cutoff,box=None):
+    """Unique topology-residue contacts within cutoff (Å), with optional PBC."""
+    return collapse_atom_pairs_to_residues(
+        atom_contacts(a,b,cutoff,box), a.resindices, b.resindices
+    )
+
 
 DEFAULT_MOTIFS = {"nxip": "N.IP", "gxxxg": "G...G", "hs_candidate": "SG"}
 

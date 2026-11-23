@@ -470,7 +470,7 @@ def set_statistics_exact_family(document, family, entries, *, catalog_complete=F
     family, but converting an unrestricted family would otherwise silently
     exclude dynamic identities absent from the Studio planning catalog.
     """
-    from ..statistics.selection import validate_metric_selection
+    from ..contracts.statistics import validate_metric_selection
     before = statistics_family_mode(document, family)
     if before == "all" and not catalog_complete:
         raise ValueError(
@@ -492,7 +492,7 @@ def set_statistics_exact_family(document, family, entries, *, catalog_complete=F
 
 def statistics_selector_fields(family):
     """Guided table columns from backend identity and estimator contracts."""
-    from ..statistics.selection import ESTIMATOR_FLAGS, SIMPLE_FAMILY_KEYS
+    from ..contracts.statistics import ESTIMATOR_FLAGS, SIMPLE_FAMILY_KEYS
     keys = (("kind", "interaction", "metric") if family == "interactions"
             else SIMPLE_FAMILY_KEYS[family])
     return [*keys, "inference", *sorted(ESTIMATOR_FLAGS[family])]

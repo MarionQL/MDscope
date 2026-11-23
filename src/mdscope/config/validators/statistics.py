@@ -1,6 +1,7 @@
 """Cohesive statistics, shared-state and residue-response configuration validation."""
 import math
 from copy import deepcopy
+
 from ..defaults import DEFAULTS
 from ..runs import replicate_specs
 from .common import _validate_time_window
@@ -9,7 +10,7 @@ from .common import _validate_time_window
 def validate_statistics(cfg):
     stats = cfg.get("statistics", {})
     residue_response_settings(cfg)
-    from ...contracts.metric_selection import validate_metric_selection
+    from ...contracts.statistics import validate_metric_selection
     validate_metric_selection(stats)
     for field in ("block", "hypothesis_tests"):
         if stats.get(field) is not None and not isinstance(stats[field], dict):
@@ -27,7 +28,7 @@ def validate_statistics(cfg):
     _validate_time_window(stats.get("scalar_window_ps"), "statistics.scalar_window_ps")
     if stats.get("matched_window_ps") != "auto":
         _validate_time_window(stats.get("matched_window_ps"), "statistics.matched_window_ps")
-    from ...contracts.metric_selection import STATISTICS_FAMILIES
+    from ...contracts.statistics import STATISTICS_FAMILIES
     families = stats.get("families", {})
     if not isinstance(families, dict) or set(families) - set(STATISTICS_FAMILIES):
         raise ValueError("statistics.families has unknown families or is not a mapping")
@@ -159,7 +160,7 @@ def residue_response_settings(cfg):
                 any(not isinstance(v, str) or not v.strip() for v in values) or
                 len(set(values)) != len(values)):
             raise ValueError(f"statistics.residue_response.{key} must be null or distinct nonempty strings")
-    from ...contracts.metric_selection import RESIDUE_RESPONSE_PROFILE
+    from ...contracts.statistics import RESIDUE_RESPONSE_PROFILE
     unsupported = [name for name in settings["profiles"] or []
                    if not RESIDUE_RESPONSE_PROFILE.match(name)]
     if unsupported:

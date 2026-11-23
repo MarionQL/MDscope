@@ -73,3 +73,36 @@ def test_absent_temporal_cache_saves_fft_calls(monkeypatch):
         )
     assert len(calls) == 1
     assert len(metadata) == 1
+
+
+def test_disk_backed_weight_cache_preserves_all_estimates_and_rng(monkeypatch):
+    import mdscope.statistics.interactions as interactions
+
+    times = np.arange(128, dtype=float) * 5
+    lifetimes = pd.DataFrame({'start_ps': [10., 30., 65.],
+                              'lifetime_ps': [10., 25., 15.],
+                              'left_censored': [False, False, False],
+                              'completed': [True, True, True]})
+    cfg = {'statistics': {'block': {'length': 4},
+                          'hierarchy': {'block_within_replicate': True}}}
+
+    def run(budget):
+        monkeypatch.setattr(interactions, '_WEIGHT_CACHE_BYTES', budget)
+        rng = np.random.default_rng(456)
+        cache, records = {}, []
+        for rep in ('one', 'two', 'one', 'three'):
+            records.append(_interaction_bootstrap(
+                times, times[::3], lifetimes, cfg, 65, rng, cache, rep,
+            ))
+        resident = sum(v.nbytes for v in cache.values() if not isinstance(v, np.memmap))
+        assert resident <= budget
+        return records, rng.integers(1000000, size=20)
+
+    expected, expected_rng = run(1024 * 1024)
+    actual, actual_rng = run(0)
+    np.testing.assert_array_equal(actual_rng, expected_rng)
+    for (a, am), (b, bm) in zip(actual, expected):
+        for key in a:
+            np.testing.assert_array_equal(a[key], b[key])
+        for key in am:
+            np.testing.assert_array_equal(am[key], bm[key])

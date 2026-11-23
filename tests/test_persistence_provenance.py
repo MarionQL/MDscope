@@ -70,3 +70,26 @@ def test_config_hash_matches_previous_deterministic_contract():
     expected = hashlib.sha256(json.dumps(obj, sort_keys=True, default=str).encode()).hexdigest()[:16]
     assert provenance.config_hash(obj) == expected
     assert provenance.config_hash({"a": {"value": 1}, "b": [2, 3]}) == expected
+
+
+def test_chunk_publication_unifies_missing_columns_and_preserves_output_on_failure(tmp_path):
+    import pyarrow.parquet as pq
+
+    chunks = []
+    for i, table in enumerate((pd.DataFrame({'time_ps': [0., 1.], 'a': [1, 2]}),
+                               pd.DataFrame({'time_ps': [2.], 'b': [3]}))):
+        path = tmp_path / f'part-{i}.parquet'
+        table.to_parquet(path, index=False)
+        chunks.append(path)
+    target = tmp_path / 'result.parquet'
+    assert persistence.atomic_parquet_parts(target, chunks, fill_missing=0) == 3
+    pd.testing.assert_frame_equal(pd.read_parquet(target), pd.DataFrame({
+        'time_ps': [0., 1., 2.], 'a': [1, 2, 0], 'b': [0, 0, 3],
+    }))
+    assert pq.read_metadata(target).num_row_groups == 2
+    before = target.read_bytes()
+    chunks[1].write_bytes(b'corrupt')
+    with pytest.raises(Exception, match='Parquet'):
+        persistence.atomic_parquet_parts(target, chunks)
+    assert target.read_bytes() == before
+    assert set(tmp_path.iterdir()) == {*chunks, target}

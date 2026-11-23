@@ -3,7 +3,7 @@ import MDAnalysis as mda
 import numpy as np
 from MDAnalysis.lib.distances import capped_distance
 
-from mdscope.biophysical_common import (
+from mdscope.mechanisms.local_environment import (
     atom_contacts,
     collapse_atom_pairs_to_residues,
     residue_pairs,

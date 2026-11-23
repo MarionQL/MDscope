@@ -11,37 +11,39 @@ import re
 import time
 from collections import defaultdict
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import numpy as np
 import pandas as pd
 from MDAnalysis.analysis.hydrogenbonds.hbond_analysis import HydrogenBondAnalysis
 
 from ..config import time_ps
-from ..core.persistence import atomic_parquet, ensure_dir
+from ..config.runs import extensions_enabled_names as enabled_names
+from ..core.persistence import (
+    atomic_npz,
+    atomic_parquet,
+    atomic_parquet_parts,
+    ensure_dir,
+)
 from ..core.profiling import _residue_label
 from ..interactions.hydrogen_bonds import write_hydrogen_bonds
 from ..interactions.lipid_hydrogen_bonds import (
     lipid_molecule_map,
     write_lipid_hydrogen_bonds,
 )
-from ..observables.hydration import HydrationObserver
 from ..mechanisms.local_environment import (
     local_environment_frame,
     prepare_local_environment,
 )
-from ..observables.membrane_order import _atomic_npz
+from ..observables.hydration import HydrationObserver
 from ..observables.sasa import sasa_instances, sasa_residue_rows, write_sasa_burial
 from ..observables.solvation import SolvationObserver
-from ..config.runs import extensions_enabled_names as enabled_names
 
 
 def _part_paths(path, extension):
     return sorted(path.glob("part-*" + extension))
 
 
-def _concat(path):
-    parts = _part_paths(path, ".parquet")
-    return pd.concat((pd.read_parquet(p) for p in parts), ignore_index=True) if parts else pd.DataFrame()
 
 
 class FusedExtensions:
@@ -262,7 +264,7 @@ class FusedExtensions:
             hba = entry["hba"]
             hba._conclude()
             raw = np.asarray(hba.results.hbonds, dtype=float).reshape(-1, 6)
-            _atomic_npz(
+            atomic_npz(
                 ensure_dir(self.cache / name) / f"part-{part:06d}.npz",
                 events=raw, frames=np.asarray(entry["frames"], dtype=int),
                 times=np.asarray(entry["times"], dtype=float),
@@ -336,36 +338,62 @@ class FusedExtensions:
                 if match and int(match.group(1)) >= next_part and path.is_file():
                     path.unlink()
 
+    def _finalize_hb(self, name, entry):
+        """Tabulate bounded event chunks, then publish the same public products."""
+        import pyarrow.parquet as pq
+
+        event_parts, count_parts = [], []
+        frames = 0
+        species = set()
+        audit = None
+        with TemporaryDirectory(dir=self.repout, prefix=".hbond-publish-") as temporary:
+            for i, path in enumerate(_part_paths(self.cache / name, ".npz")):
+                with np.load(path, allow_pickle=False) as data:
+                    root = Path(temporary) / str(i)
+                    if name == "hydrogen_bonds":
+                        write_hydrogen_bonds(self.u, self.cfg, root, data["events"],
+                                             data["frames"], data["times"], sample_offset=frames)
+                    else:
+                        write_lipid_hydrogen_bonds(
+                            self.u, self.cfg, root, data["events"], data["frames"], data["times"],
+                            entry["atoms"], entry["molecule_ids"], entry["atom_species"],
+                            sample_offset=frames,
+                        )
+                    frames += len(data["times"])
+                folder = root / "interactions" / name
+                event_parts.append(folder / "events.parquet")
+                count_parts.append(folder / "count_timeseries.parquet")
+                if name == "lipid_hydrogen_bonds":
+                    row = pd.read_parquet(folder / "molecule_audit.parquet").iloc[0]
+                    if audit is None:
+                        audit = row.copy()
+                    else:
+                        audit.iloc[:5] += row.iloc[:5]
+                    for batch in pq.ParquetFile(event_parts[-1]).iter_batches(columns=["species_pair"]):
+                        species.update(batch.column(0).to_pylist())
+            out = self.repout / "interactions" / name
+            events = atomic_parquet_parts(out / "events.parquet", event_parts)
+            atomic_parquet_parts(out / "count_timeseries.parquet", count_parts, fill_missing=0)
+            if name == "lipid_hydrogen_bonds":
+                if audit is None:
+                    raise ValueError("Missing lipid hydrogen-bond chunks")
+                atomic_parquet(out / "molecule_audit.parquet", pd.DataFrame([audit]))
+                return {"frames": frames, "events": events, "species_pairs": len(species),
+                        "same_molecule_removed": int(audit["cross_residue_same_molecule_events"])}
+        return None
+
     def finalize(self):
         start = time.perf_counter()
         results = {}
         for name, entry in self.hb.items():
-            parts = _part_paths(self.cache / name, ".npz")
-            events, frames, times = [], [], []
-            for path in parts:
-                with np.load(path, allow_pickle=False) as data:
-                    events.append(data["events"])
-                    frames.append(data["frames"])
-                    times.append(data["times"])
-            arr = np.concatenate(events) if events else np.empty((0, 6))
-            frame_arr = np.concatenate(frames) if frames else np.array([], int)
-            time_arr = np.concatenate(times) if times else np.array([], float)
-            if name == "hydrogen_bonds":
-                results[name] = write_hydrogen_bonds(
-                    self.u, self.cfg, self.repout, arr, frame_arr, time_arr
-                )
-            else:
-                results[name] = write_lipid_hydrogen_bonds(
-                    self.u, self.cfg, self.repout, arr, frame_arr, time_arr,
-                    entry["atoms"], entry["molecule_ids"], entry["atom_species"]
-                )
+            results[name] = self._finalize_hb(name, entry)
         for name, output in (
             ("dssp", self.repout / "profiles" / "dssp" / "assignments.parquet"),
             ("sasa", self.repout / "profiles" / "sasa" / "residue_sasa.parquet"),
             ("local_environment", self.repout / "extensions" / "local_environment" / "timeseries.parquet"),
         ):
             if name in self.names and (name != "sasa" or "default" in self.sasa):
-                atomic_parquet(output, _concat(self.cache / name))
+                atomic_parquet_parts(output, _part_paths(self.cache / name, ".parquet"))
                 results[name] = {"frames": self.frames, "fused": True}
         if self.sasa is not None:
             for run_id in self.sasa:
@@ -373,21 +401,21 @@ class FusedExtensions:
                     continue
                 name = f"sasa__{run_id}"
                 output = self.repout / "profiles" / "sasa" / run_id / "residue_sasa.parquet"
-                atomic_parquet(output, _concat(self.cache / name))
+                atomic_parquet_parts(output, _part_paths(self.cache / name, ".parquet"))
                 results[name] = {"frames": self.frames, "fused": True}
             for run_id, state in self.sasa.items():
                 if len(state["atom_positions"]):
                     output = (self.repout / "profiles" / "sasa" /
                               (run_id if run_id != "default" else "") /
                               "atom_sasa.parquet")
-                    atomic_parquet(output, _concat(self.cache / f"sasa_atoms_{run_id}"))
+                    atomic_parquet_parts(output, _part_paths(self.cache / f"sasa_atoms_{run_id}", ".parquet"))
                 if state["reference_run"] is not None:
                     write_sasa_burial(self.repout, run_id, state["reference_run"])
         if self.local is not None:
             if _part_paths(self.cache / "local_residue", ".parquet"):
-                atomic_parquet(
+                atomic_parquet_parts(
                     self.repout / "extensions" / "local_environment" / "residue_contacts.parquet",
-                    _concat(self.cache / "local_residue")
+                    _part_paths(self.cache / "local_residue", ".parquet")
                 )
             if self.local["meta"]:
                 atomic_parquet(

@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from mdscope.config import load_config
-from mdscope.output_paths import FUSED_OUTPUTS as CANONICAL_OUTPUT_PATHS
+from mdscope.contracts.outputs import FUSED_OUTPUTS as CANONICAL_OUTPUT_PATHS
 from mdscope.pipeline.replica_tasks import additional_time_series, specialized_tasks
 from mdscope.registry import FUSED_OUTPUTS, analysis_output_plan
 
@@ -136,13 +136,13 @@ def test_optional_scalar_collection_keeps_missing_files_missing(tmp_path, projec
 
 def test_output_plan_uses_lightweight_production_predicates(project):
     """Registry and execution share the config.runs scheduling predicates."""
-    from mdscope.systems.sdc4.mechanisms import enabled as sdc4_producer
     from mdscope.config.runs import (
         distance_enabled_names,
         extensions_enabled_names,
         membrane_enabled_names,
+        sdc4_enabled,
     )
-    from mdscope.config.runs import sdc4_enabled
+    from mdscope.systems.sdc4.mechanisms import enabled as sdc4_producer
 
     assert sdc4_enabled is sdc4_producer
 
@@ -252,8 +252,7 @@ def test_foundational_imports_do_not_load_configuration_or_pipeline():
         "for name in sys.modules), sorted(name for name in sys.modules "
         "if name.startswith('mdscope.pipeline'))\n"
         "from mdscope.contracts.outputs import SAVED_SCALAR_SOURCE_FILES as canonical\n"
-        "from mdscope.output_paths import SAVED_SCALAR_SOURCE_FILES as facade\n"
-        "assert canonical is facade\n"
+        "assert canonical\n"
     )
     result = subprocess.run([sys.executable, "-c", code],
                             capture_output=True, text=True, check=False, timeout=60)

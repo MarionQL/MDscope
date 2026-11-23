@@ -21,20 +21,18 @@ import yaml
 from .. import __version__
 from ..config import analysis_enabled, iter_replicates, load_config, project_root
 from ..contracts.outputs import EXTENSION_ANALYSES, MEMBRANE_ANALYSES
-from ..core.persistence import atomic_json, atomic_parquet, ensure_dir
-from ..core.provenance import config_hash, environment_metadata
 from ..core.persistence import archive_output as _archive_previous_output
+from ..core.persistence import atomic_json, atomic_parquet, ensure_dir
 from ..core.progress import stage_progress
+from ..core.provenance import config_hash, environment_metadata
 from ..errors import ConfigError, ReplicateIndexError
 from ..interactions import postprocess_interactions
-from ..observables.hydration import temporal_hs_hydration_profiles
 from ..mechanisms.residue_occlusion import (
     OCCLUSION_FILE,
     residue_environment_pending,
 )
-from ..systems.sdc4.mechanisms import complete_residue_occlusion
-from ..systems.sdc4.mechanisms import enabled as sdc4_enabled
 from ..observables.density_1d import missing_membrane_density_runs
+from ..observables.hydration import temporal_hs_hydration_profiles
 from ..observables.lipid_enrichment import (
     footprint_pending,
     summarize_lipid_composition,
@@ -50,6 +48,8 @@ from ..observables.structure_profiles import postprocess_structure_profiles
 from ..registry import analysis_output_plan, fused_output, fused_output_plan
 from ..statistics.dispatch import analyze_project
 from ..statistics.shared_states import fit_shared_states, publish_shared_states
+from ..systems.sdc4.mechanisms import complete_residue_occlusion
+from ..systems.sdc4.mechanisms import enabled as sdc4_enabled
 from .fused_all import run_fused_only
 from .persisted_inputs import (
     check_artifact as _check_artifact,
@@ -288,13 +288,15 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
     # Resolve the registered inventory once for both preflight and the final
     # audit: no independent re-selection after the trajectory has run.
     registered = analysis_output_plan(cfg, repout)
+    verified_artifacts = {}
     # Reject damaged existing products before a reader can overwrite them.
     # The new occlusion companion can be calculated independently if absent.
     for entry in registered:
         if entry.name == "lipid_enrichment" and not (entry.path.parent / "reference.json").is_file():
             continue  # An interrupted publication has no committed footprint.
         if entry.path.exists():
-            _validate_analysis_output(entry, cfg, allow_missing_occlusion=True)
+            _validate_analysis_output(entry, cfg, allow_missing_occlusion=True,
+                                      verified=verified_artifacts)
     streaming_analyses = [
         "rmsd",
         "rmsf",
@@ -337,7 +339,8 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
         if entry in pending_set and entry not in published:
             # Validate the committed companions before marking this output.
             # SDC4 residue occlusion remains a separate completion stage.
-            _validate_analysis_output(entry, cfg, allow_missing_occlusion=True)
+            _validate_analysis_output(entry, cfg, allow_missing_occlusion=True,
+                                      verified=verified_artifacts)
         key = prefix + "-" + entry.checkpoint_key
         if not state.complete(key):
             if entry.name in MEMBRANE_ANALYSES:
@@ -409,7 +412,7 @@ def run_replicate(rep, cfg: dict, root: Path, state: RunState):
             stage_timings.append({"stage": "residue-occlusion", "seconds": perf_counter() - t0})
 
     for entry in registered:
-        _validate_analysis_output(entry, cfg)
+        _validate_analysis_output(entry, cfg, verified=verified_artifacts)
     whole = repout / "summary" / "timeseries.parquet"
     grouped = repout / "summary" / "group_timeseries.parquet"
     summary_paths = tuple(
@@ -673,4 +676,3 @@ def run_all(config_path: str | Path):
         run_replicate(rep, cfg, root, state)
     finalize_project(config_path, cfg, root, state)
     return root
-

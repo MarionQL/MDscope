@@ -628,7 +628,7 @@ def main():
                     plan, _ = preview_document(yaml.safe_dump(doc, sort_keys=False), base)
                 import pandas as pd
 
-                from mdscope.statistics.selection import validate_metric_selection
+                from mdscope.contracts.statistics import validate_metric_selection
                 from mdscope.studio.model import (
                     set_statistics_exact_family,
                     set_statistics_family_mode,

@@ -23,3 +23,30 @@ def test_workflow_benchmark_aggregates_nonoverlapping_scopes(tmp_path):
     assert rows[0]["stage"]=="streaming"
     assert {row["scope"] for row in rows}=={
         "streaming_phase","replicate_stage","finalization"}
+
+
+def test_performance_benchmark_rejects_short_inputs_before_analysis(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    import MDAnalysis as mda
+
+    source = tmp_path / 'input'
+    source.mkdir()
+    u = mda.Universe.empty(1, trajectory=True)
+    u.atoms.positions = [[1., 2., 3.]]
+    for condition in ('carb', 'nocarb'):
+        with mda.Writer(str(source / f'{condition}-sdc4-rep1_test.xtc'), n_atoms=1) as writer:
+            writer.write(u.atoms)
+            writer.write(u.atoms)
+    script = Path(__file__).resolve().parent / 'real_data/performance_pipeline_benchmark.py'
+    result = subprocess.run(
+        [sys.executable, str(script), '--frames', '3', '--draws', '2'],
+        env={**os.environ, 'MDSCOPE_REAL_DATA': str(source),
+             'MDSCOPE_REAL_OUTPUT': str(tmp_path / 'results')},
+        text=True, capture_output=True, check=False,
+    )
+    assert result.returncode == 2
+    assert 'requested 3 frames but only 2 are available' in result.stderr
+    assert not list((tmp_path / 'results').glob('benchmark_frames_*'))

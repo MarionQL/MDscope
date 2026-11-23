@@ -103,7 +103,7 @@ def test_saved_statistics_catalog_covers_every_family(tmp_path):
     """lipid_contacts statistics were written but absent from the catalog."""
     import pandas as pd
 
-    from mdscope.contracts.metric_selection import STATISTICS_FAMILIES
+    from mdscope.contracts.statistics import STATISTICS_FAMILIES
     root = tmp_path/'project_summary/statistics'
     (root/'lipid_contacts').mkdir(parents=True)
     (root/'manifest.json').write_text(json.dumps({'status': 'complete', 'methods': {},

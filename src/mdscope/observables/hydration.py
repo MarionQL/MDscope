@@ -5,13 +5,17 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import capped_distance
 
-from ..core.persistence import atomic_parquet
 from ..contracts.outputs import (
-    GLYCAN_ATTACHMENTS_FILE, HS_SUGAR_HYDRATION_PATH,
-    HYDRATION_AGGREGATE_COLUMNS, HYDRATION_ATTACHMENT_COLUMNS,
-    HYDRATION_COUNT_COLUMNS, HYDRATION_SUGAR_COLUMNS, HYDRATION_TARGET_COLUMNS,
+    GLYCAN_ATTACHMENTS_FILE,
+    HS_SUGAR_HYDRATION_PATH,
+    HYDRATION_AGGREGATE_COLUMNS,
+    HYDRATION_ATTACHMENT_COLUMNS,
+    HYDRATION_COUNT_COLUMNS,
+    HYDRATION_SUGAR_COLUMNS,
+    HYDRATION_TARGET_COLUMNS,
 )
 from ..core.glycans import glycan_definition, glycan_sugars
+from ..core.persistence import atomic_parquet, atomic_parquet_parts
 from ..core.sequence import sequence_chain_label
 from .solvation import unique_target_solvent_pairs
 
@@ -270,43 +274,23 @@ class HydrationObserver:
             if number >= part:
                 path.unlink()
 
-    @staticmethod
-    def _consolidate(parts, destination):
-        """Stream record batches to one atomic public Parquet product."""
-        import os
-        import tempfile
-
-        import pyarrow as pa
-        import pyarrow.parquet as pq
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        if not parts:
-            raise ValueError(f"Missing hydration cache chunks for {destination}")
-        with tempfile.NamedTemporaryFile(
-                dir=destination.parent, suffix=".parquet", delete=False) as tmp:
-            temporary = Path(tmp.name)
-        try:
-            schema = pq.read_schema(parts[0])
-            with pq.ParquetWriter(temporary, schema) as writer:
-                for part in parts:
-                    for batch in pq.ParquetFile(part).iter_batches(batch_size=65536):
-                        writer.write_table(pa.Table.from_batches([batch], schema=schema))
-            os.replace(temporary, destination)
-        finally:
-            temporary.unlink(missing_ok=True)
-
     def finalize(self):
         cache = self.cache
         dest = self.repout / "extensions" / "hydration"
-        for name, output in (("counts", "counts.parquet"),
-                             ("aggregates", "aggregate_counts.parquet")):
-            self._consolidate(sorted(cache.glob(f"{name}-*.parquet")), dest / output)
+        products = [(dest / output, sorted(cache.glob(f"{name}-*.parquet")))
+                    for name, output in (("counts", "counts.parquet"),
+                                         ("aggregates", "aggregate_counts.parquet"))]
+        if self.hs_enabled:
+            products.append((self.repout / OUTPUT, sorted(cache.glob("hs-*.parquet"))))
+        for output, parts in products:
+            if not parts:
+                raise ValueError(f"Missing hydration cache chunks for {output}")
+        for output, parts in products:
+            atomic_parquet_parts(output, parts)
         atomic_parquet(dest / "target_metadata.parquet",
                        pd.DataFrame(self.targets, columns=self.TARGET_COLUMNS))
         if self.attachments:
             atomic_parquet(dest / ATTACHMENTS, pd.DataFrame(
                 self.attachments, columns=self.ATTACHMENT_COLUMNS))
-        if self.hs_enabled:
-            self._consolidate(
-                sorted(cache.glob("hs-*.parquet")), self.repout / OUTPUT)
         return {"frames": self.frames, "fused": True,
                 "targets": len(self.targets)}

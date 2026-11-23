@@ -336,18 +336,25 @@ def bridge_residence(bridges, frame_times, gap_frames=0):
     observed target pairs enter this table; no observed pair is not proof of
     zero occupancy for an unconfigured or untracked target pair.
     """
-    from ..mechanisms.motif_residence import summarize_lipid_residence
-    columns = ['target_a','target_b']
+    from ..core.residence import summarize_contact_residence
+    columns = ['target_a', 'target_b']
     if bridges.empty:
-        return pd.DataFrame(columns=columns + ['species','molecule_id','duration_ps',
-            'observed_span_ps','left_censored','right_censored'])
+        return pd.DataFrame(columns=columns + ['species', 'molecule_id', 'duration_ps',
+            'observed_span_ps', 'left_censored', 'right_censored'])
+    # Retain the persisted bridge labels and column order for existing readers.
     pairs = bridges[columns].drop_duplicates().sort_values(columns).reset_index(drop=True)
     pairs['motif'] = [f'bridge_{i}' for i in range(len(pairs))]
-    events = bridges.merge(pairs, on=columns, validate='many_to_one').rename(
-        columns={'solvent':'species', 'solvent_id':'molecule_id'})
-    events = events[['time_ps','motif','species','molecule_id']].drop_duplicates()
-    episodes = summarize_lipid_residence(events, frame_times, gap_frames=gap_frames)
-    return episodes.merge(pairs, on='motif', validate='many_to_one')
+    events = bridges.rename(columns={'solvent': 'species', 'solvent_id': 'molecule_id'})
+    events = events[['time_ps', *columns, 'species', 'molecule_id']].drop_duplicates()
+    episodes = summarize_contact_residence(
+        events, frame_times, identity_columns=columns, species_column='species',
+        molecule_column='molecule_id', gap_frames=gap_frames,
+    )
+    episodes = episodes.merge(pairs, on=columns, validate='many_to_one')
+    episodes = episodes.sort_values(["motif", "molecule_id", "start_ps"]).reset_index(drop=True)
+    ordered = ['motif', 'species', 'molecule_id']
+    ordered += [column for column in episodes if column not in {*columns, *ordered}]
+    return episodes[ordered + columns]
 
 
 def bridge_pair_occupancy(bridges, frame_times, eligible_pairs, solvents):

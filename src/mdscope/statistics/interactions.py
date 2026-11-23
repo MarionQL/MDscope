@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 from itertools import combinations
 from pathlib import Path
+from tempfile import TemporaryFile
 from time import perf_counter
 
 import numpy as np
@@ -19,11 +20,6 @@ from ..interactions.interaction_tables import (
     interaction_key_columns,
     interaction_tables,
     sample_dt,
-)
-from .selection import (
-    interaction_selection,
-    metric_estimator_enabled,
-    selected_interaction_metrics,
 )
 from .common import (
     _block_weights,
@@ -38,7 +34,14 @@ from .common import (
     _temporal,
 )
 from .common import selected_rng as _selected_rng
+from .selection import (
+    interaction_selection,
+    metric_estimator_enabled,
+    selected_interaction_metrics,
+)
 
+_WEIGHT_CACHE_BYTES = 128 * 1024 * 1024
+_WEIGHT_BATCH = 32
 
 def _interaction_labels(table: pd.DataFrame, keys: list[str]) -> np.ndarray:
     """Format a label once per unique identity, preserving persisted key semantics."""
@@ -107,10 +110,21 @@ def _interaction_bootstrap(
             cache.pop(next(iter(cache)))
         weight_rng = (rng if selected_seed is None else
                       _selected_rng(selected_seed, "block", *rep_key, n, key[2]))
-        cache[key] = _block_weights(n, key[2], draws, weight_rng) if draws else np.empty((0, n), np.uint16)
+        dtype = np.uint16 if (n + key[2] - 1) // key[2] < 65535 else np.uint32
+        resident = sum(value.nbytes for value in cache.values()
+                       if not isinstance(value, np.memmap))
+        required = draws * n * np.dtype(dtype).itemsize
+        storage = None
+        if required and resident + required > _WEIGHT_CACHE_BYTES:
+            # An unnamed disk-backed mapping retains identical cached draws
+            # without changing the eight-key eviction/RNG schedule.
+            with TemporaryFile() as backing:
+                storage = np.memmap(backing, mode="w+", dtype=dtype, shape=(draws, n))
+        cache[key] = (_block_weights(n, key[2], draws, weight_rng, out=storage)
+                      if draws else np.empty((0, n), np.uint16))
     weights = cache[key]
     duration_ns = n * dt / 1000 if dt else np.nan
-    occupancy = weights.dot(presence) / max(1, n)
+    occupancy = np.empty(draws, dtype=np.result_type(weights.dtype, presence.dtype))
     starts = np.zeros(n, np.float32)
     complete_frames, durations = [], []
     if lifetimes is not None and not lifetimes.empty:
@@ -126,28 +140,33 @@ def _interaction_bootstrap(
         keep = valid & completed
         complete_frames = indices[keep].tolist()
         durations = lifetimes.loc[keep, "lifetime_ps"].to_numpy(float).tolist()
-    event_rate = (
-        weights.dot(starts) / duration_ns if np.isfinite(duration_ns)
-        and duration_ns > 0 else np.full(draws, np.nan)
-    )
-    if complete_frames:
-        ew = weights[:, np.asarray(complete_frames, int)].astype(float)
-        durations = np.asarray(durations, float)
-        counts = ew.sum(axis=1)
-        mean_life = np.divide(
-            ew.dot(durations),
-            counts,
-            out=np.full(draws, np.nan),
-            where=counts > 0
-        )
-        order = np.argsort(durations)
-        sorted_w, sorted_d = ew[:, order], durations[order]
-        totals = sorted_w.sum(axis=1)
-        med_life = sorted_d[np.argmax(np.cumsum(sorted_w, axis=1) >= totals[:, None] / 2, axis=1)]
-        med_life[totals == 0] = np.nan
-    else:
-        durations = np.array([], float)
-        mean_life = med_life = np.full(draws, np.nan)
+    event_rate = np.full(draws, np.nan, dtype=(np.result_type(weights.dtype, starts.dtype)
+                         if np.isfinite(duration_ns) and duration_ns > 0 else float))
+    mean_life = np.full(draws, np.nan)
+    med_life = np.full(draws, np.nan)
+    durations = np.asarray(durations, float)
+    order = np.argsort(durations)
+    sorted_d = durations[order]
+    for first in range(0, draws, _WEIGHT_BATCH):
+        stop = min(draws, first + _WEIGHT_BATCH)
+        batch = weights[first:stop]
+        occupancy[first:stop] = batch.dot(presence) / max(1, n)
+        if np.isfinite(duration_ns) and duration_ns > 0:
+            event_rate[first:stop] = batch.dot(starts) / duration_ns
+        if complete_frames:
+            ew = batch[:, np.asarray(complete_frames, int)].astype(float)
+            counts = ew.sum(axis=1)
+            mean_life[first:stop] = np.divide(
+                ew.dot(durations), counts,
+                out=np.full(stop - first, np.nan), where=counts > 0,
+            )
+            sorted_w = ew[:, order]
+            totals = sorted_w.sum(axis=1)
+            median = sorted_d[np.argmax(
+                np.cumsum(sorted_w, axis=1) >= totals[:, None] / 2, axis=1,
+            )]
+            median[totals == 0] = np.nan
+            med_life[first:stop] = median
     point = {"occupancy": float(presence.mean()) if n else np.nan,
              "event_rate_per_ns": float(starts.sum() / duration_ns) if np.isfinite(duration_ns)
              and duration_ns > 0 else np.nan,
@@ -523,6 +542,3 @@ def analyze_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[P
             entry["unique_identities"] for entry in detail["kinds"]
         )
         atomic_json(outdir / "interaction_phase_profile.json", detail)
-
-
-

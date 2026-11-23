@@ -1,17 +1,18 @@
 """Replicate-aware MDscope statistics with explicit functional ownership."""
+from importlib import import_module
+
+from ..contracts.statistics import STATISTICS_FAMILIES
 from ..core.progress import stage_progress
-from ..contracts.metric_selection import STATISTICS_FAMILIES
-from .common import finite as finite  # re-exported for reporting.plotting
-from .coupling import analyze_coupling
-from .coverage import write_contrast_coverage
-from .diffusion import analyze_multi_origin_diffusion
-from .interactions import analyze_interactions
-from .lipid_contacts import analyze_lipid_contacts
-from .profiles import analyze_profiles
-from .solvation import analyze_solvation_rdfs
-from .time_series import analyze_time_series
-from .time_series import collect_time_series as collect_time_series
-from .windows import matched_grid
+
+_ANALYZERS = {
+    "time_series": ("time_series", "analyze_time_series"),
+    "profiles": ("profiles", "analyze_profiles"),
+    "interactions": ("interactions", "analyze_interactions"),
+    "solvation_rdfs": ("solvation", "analyze_solvation_rdfs"),
+    "diffusion": ("diffusion", "analyze_multi_origin_diffusion"),
+    "coupling": ("coupling", "analyze_coupling"),
+    "lipid_contacts": ("lipid_contacts", "analyze_lipid_contacts"),
+}
 
 
 def _input_snapshot(root, replicate_paths):
@@ -68,6 +69,7 @@ def analyze_project(cfg, root, system_repouts):
         if matched:
             manifest["families"]["matched_time_series"] = manifest["families"]["time_series"]
             if manifest["families"]["matched_time_series"] == "enabled":
+                from .windows import matched_grid
                 grid = matched_grid(cfg, system_repouts)
                 bounds = [float(grid[0]), float(grid[-1])]
                 manifest["matched_scalar_window_ps"] = bounds
@@ -75,15 +77,7 @@ def analyze_project(cfg, root, system_repouts):
             "input_inventory", _input_snapshot, root, manifest["replicate_paths"]
         )
         atomic_json(dest / "manifest.json", manifest)
-    for family, analyze in (
-        ("time_series", analyze_time_series),
-        ("profiles", analyze_profiles),
-        ("interactions", analyze_interactions),
-        ("solvation_rdfs", analyze_solvation_rdfs),
-        ("diffusion", analyze_multi_origin_diffusion),
-        ("coupling", analyze_coupling),
-        ("lipid_contacts", analyze_lipid_contacts),
-    ):
+    for family in STATISTICS_FAMILIES:
         folder = STATISTICS_FAMILIES[family]
         if (dest / folder).exists():
             archive_output(dest / folder, Path(root) / ".archives/statistics" / folder,
@@ -93,11 +87,14 @@ def analyze_project(cfg, root, system_repouts):
                 print(f"Statistics {family}: skipped (disabled)", flush=True)
             continue
         with stage_progress(f"Statistics {family}", enabled=verbose):
+            module, function = _ANALYZERS[family]
+            analyze = getattr(import_module(f".{module}", __package__), function)
             profiler.call(family, analyze, cfg, root, system_repouts)
     matched_folder = dest / "matched_time_series"
     if matched_folder.exists():
         archive_output(matched_folder, Path(root) / ".archives/statistics/matched_time_series", "previous")
     if bounds is not None:
+        from .time_series import analyze_time_series
         matched_cfg = {**cfg, "statistics": {**cfg["statistics"], "scalar_window_ps": bounds}}
         with stage_progress("Statistics matched_time_series", enabled=verbose):
             profiler.call(
@@ -107,6 +104,7 @@ def analyze_project(cfg, root, system_repouts):
     coverage_folder = dest / "coverage"
     if coverage_folder.exists():
         archive_output(coverage_folder, Path(root) / ".archives/statistics/coverage", "previous")
+    from .coverage import write_contrast_coverage
     with stage_progress("Statistics contrast coverage", enabled=verbose):
         profiler.call(
             "contrast_coverage", write_contrast_coverage,

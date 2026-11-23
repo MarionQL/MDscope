@@ -118,6 +118,14 @@ def main():
         parser.error("frames and draws must be at least 2")
     if any(not 0 <= value <= 1 for value in args.occupancies):
         parser.error("occupancy must be between zero and one")
+    from MDAnalysis.coordinates.XTC import XTCReader
+
+    requested = max(args.frames)
+    for system, (_, trajectory) in SYSTEMS.items():
+        with XTCReader(str(DATA / trajectory)) as reader:
+            available = len(reader)
+        if requested > available:
+            parser.error(f"{system}: requested {requested} frames but only {available} are available")
     ROOT.mkdir(parents=True, exist_ok=True)
     os.environ["MDSCOPE_PROFILE"] = "1"
     os.environ["MDSCOPE_STATS_WORKERS"] = "1"

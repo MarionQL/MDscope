@@ -2,12 +2,15 @@
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
+import pytest
 
 from mdscope.config import Replicate
 from mdscope.interactions.lipid_hydrogen_bonds import run_lipid_hydrogen_bonds
+from mdscope.pipeline.fused_extensions import FusedExtensions
 
 
-def test_run_lipid_hb_on_bonded_pair(tmp_path):
+@pytest.mark.parametrize("dt_ps", [None, .1])
+def test_run_lipid_hb_on_bonded_pair(tmp_path, dt_ps):
     u=mda.Universe.empty(4,n_residues=2,atom_resindex=[0,0,1,1],trajectory=True)
     u.add_TopologyAttr("names",["O","H","O","H"])
     u.add_TopologyAttr("resnames",["POPC","POPE"])
@@ -29,7 +32,7 @@ def test_run_lipid_hb_on_bonded_pair(tmp_path):
     source=mda.Universe(str(pdb),str(dcd))
     assert len(source.bonds)==2
     cfg={"trajectory":{"start":None,"stop":None,"stride":1},
-         "progress":{"enabled":False},"time":{"dt_ps":None},
+         "progress":{"enabled":False},"time":{"dt_ps":dt_ps},
          "analyses":{"lipid_hydrogen_bonds":{
              "lipid_selection":"resname POPC POPE","hydrogens_sel":"name H",
              "acceptors_sel":"name O", "donors_sel":None,
@@ -43,3 +46,17 @@ def test_run_lipid_hb_on_bonded_pair(tmp_path):
     assert len(events)==4
     assert set(events["species_pair"])=={"POPC__POPE"}
     assert (out/"interactions/lipid_hydrogen_bonds/count_timeseries.parquet").exists()
+
+    observer = FusedExtensions(source, cfg, tmp_path / "fused", names=("lipid_hydrogen_bonds",))
+    for i, ts in enumerate(source.trajectory):
+        observer.update(ts, i)
+        if (i + 1) % 2 == 0:
+            observer.flush(i // 2)
+    observer.finalize()
+    for filename in ("events.parquet", "count_timeseries.parquet", "molecule_audit.parquet"):
+        pd.testing.assert_frame_equal(
+            pd.read_parquet(out / "interactions/lipid_hydrogen_bonds" / filename),
+            pd.read_parquet(tmp_path / "fused/interactions/lipid_hydrogen_bonds" / filename),
+            check_exact=True,
+        )
+    source.trajectory.close()

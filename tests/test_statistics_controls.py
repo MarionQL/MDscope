@@ -7,8 +7,8 @@ import pandas as pd
 import pytest
 
 from mdscope.config import DEFAULTS, statistics_family_config, validate_config
-from mdscope.statistics.dispatch import analyze_project
 from mdscope.statistics.common import _block_bootstrap, _permutation
+from mdscope.statistics.dispatch import analyze_project
 from mdscope.statistics.time_series import analyze_time_series
 
 
@@ -82,8 +82,8 @@ def test_invalid_statistics_controls_fail_before_processing(tmp_path, bad):
 
 def test_every_statistics_and_figure_family_is_configurable(tmp_path):
     """lipid_contacts statistics were dispatched but rejected by validation."""
-    from mdscope.contracts.metric_selection import STATISTICS_FAMILIES
     from mdscope.contracts.plot_validation import FIGURE_FAMILIES
+    from mdscope.contracts.statistics import STATISTICS_FAMILIES
     cfg = deepcopy(DEFAULTS)
     top = tmp_path/'a.pdb'; top.touch()
     traj = tmp_path/'a.xtc'; traj.touch()
