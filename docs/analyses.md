@@ -127,6 +127,40 @@ Difference-map dots mark pointwise CI exclusion, **not FDR significance**. Compa
 
 - If current `any`-moiety data disappear for a replica/region, stale display CSVs move to `.archives/project_summary/reporting_exports/`.
 
+### Whole-protomer contacts and individual TM tilt
+
+With `sdc4_mechanisms.interprotomer_contacts: true`, the configured protein
+selection is partitioned by the **two TM chain identities**; the full protein
+sequences, not only the GGIVG motif or TM spans, are compared. The source-frame
+observer writes `interprotomer_pair_frames.parquet` (sparse, observed residue
+pairs with unique heavy-atom contact counts and minimum distances) and
+`interprotomer_residue_frames.parquet` (every selected protein residue in
+every sampled frame, including measured zeros). Two summary tables report pair
+occupancy and per-residue partner counts/fractions. Identical residue numbers
+on different chains remain distinct through topology indices and chain labels.
+An unobserved residue pair is absent from the sparse event table but contributes
+zero to the complete per-residue frame table. All distances are geometric,
+not binding energies. The three interface residue profiles enter the existing
+exploratory residue-response analysis.
+
+With `tm_local_tilt: true`, each fitted TM axis is compared separately to the
+locally fitted normals of **both** phosphate-reference leaflets around its TM
+center (averaged after upward orientation). The emitted
+`sdc4_tm_{A,B}_tilt_local_deg` and `tilt_global_deg` are acute inclinations
+(0–90 degrees). The preexisting crossing angle between axes is unchanged.
+Local normals become unavailable if either leaflet lacks five well-conditioned
+anchor positions within `local_radius_A`. This is a local plane approximation,
+not a general curved-membrane normal.
+
+When `motif_lipid_residence` and explicit `ceramide_head`/
+`ceramide_tail` moiety selections are configured, the saved
+`ceramide_scaffold_pooled.parquet` combines GM1a and BGAL **molecule counts**
+before calculating contact fractions; CER160 remains a separate cohort.
+The same ceramide scaffold moiety is compared in both cohorts; glycan-only
+contacts are not made comparable to an absent CER160 sugar population.
+Zero availability produces undefined fractions, not fabricated zero contacts.
+These are per-replica raw measurements, not pooled-replica inference.
+
 ### Protein residue water and HS sugar hydration
 
 | Option | Measurement | Output under `extensions/sdc4_mechanisms/` |
