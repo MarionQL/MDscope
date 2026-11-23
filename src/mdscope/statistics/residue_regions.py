@@ -1,5 +1,4 @@
 """Discover contiguous residue changes from complete replica profiles."""
-import json
 from itertools import combinations
 from pathlib import Path
 
@@ -7,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from ..core.persistence import atomic_parquet
+from .manifest import read_statistics_manifest
 
 _COLUMNS = [
     "profile", "system_1", "system_2", "chain", "start_residue", "end_residue",
@@ -85,8 +85,9 @@ def scan_residue_regions(profiles, system_replicates):
 
 def scan_saved_residue_regions(statistics_dir: Path, *, cfg=None) -> Path:
     """Scan an existing statistics export without accessing replica directories."""
-    manifest = json.loads((statistics_dir / "manifest.json").read_text())
-    if manifest.get("status") != "complete" or manifest.get("families", {}).get("profiles") != "enabled":
+    facts = read_statistics_manifest(statistics_dir / "manifest.json")
+    manifest = facts.payload
+    if not facts.complete or manifest.get("families", {}).get("profiles") != "enabled":
         raise ValueError("Residue region scanning requires completed profile statistics")
     replicas = {}
     for entry in manifest["replicate_paths"]:

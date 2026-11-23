@@ -124,7 +124,7 @@ def test_unfinished_finalization_does_not_advertise_previous_generation_as_curre
 
     path = tmp_path / "project_summary/statistics/manifest.json"
     path.parent.mkdir(parents=True)
-    previous = '{"status":"complete","methods":{}}'
+    previous = '{"status":"complete","methods":{},"families":{"profiles":"enabled"},"replicate_paths":[]}'
     path.write_text(previous)
     attempt = tmp_path / ".state/finalization.json"
     atomic_json(attempt, {"status": "running", "config_hash": "new request"})
@@ -132,6 +132,9 @@ def test_unfinished_finalization_does_not_advertise_previous_generation_as_curre
     assert statistics_status({"statistics": {}}, tmp_path, "time_series") == "incomplete"
     with pytest.raises(ValueError, match="complete"):
         inspect_saved_statistics(tmp_path)
+    from mdscope.statistics.residue_regions import scan_saved_residue_regions
+    with pytest.raises(ValueError, match="completed profile statistics"):
+        scan_saved_residue_regions(path.parent)
     assert path.read_text() == previous
     atomic_json(attempt, {"status": "complete", "config_hash": "new request"})
     assert read_statistics_manifest(path).complete
