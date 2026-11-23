@@ -112,7 +112,6 @@ def test_analytic_dimer_and_membrane_geometry(tmp_path, separation, tm_pairs, mo
         assert len(pairs) >= tm_pairs
 
 
-@pytest.mark.parametrize("whole_interface", [False, True])
 def test_tm_motif_resolver_provides_same_mapping_for_preflight_and_runtime():
     u, cfg = _fixture()
     selections = cfg["analyses"]["sdc4_mechanisms"]["tm_chains"]
@@ -132,6 +131,7 @@ def test_tm_motif_resolver_provides_same_mapping_for_preflight_and_runtime():
     assert len(optional["B"]) == 0
 
 
+@pytest.mark.parametrize("whole_interface", [False, True])
 def test_optional_missing_motif_is_unavailable_not_physical_zero(tmp_path, whole_interface):
     u, cfg = _fixture(separation=8.)
     cfg["analyses"]["sdc4_mechanisms"]["interprotomer_contacts"] = whole_interface
