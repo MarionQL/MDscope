@@ -30,6 +30,21 @@ of reusing possibly incompatible numerical products. To intentionally change
 paths or move an existing results folder, start a new run in a separate output
 directory; no automated saved-product migration is provided.
 
+## Frames, time and coordinate cache
+
+```yaml
+trajectory: {start: null, stop: null, stride: 1, chunk_frames: 1000}
+time: {dt_ps: null, origin_ps: 0.0}
+cache: {aligned_coordinates: true, dtype: float32}
+```
+
+| Key | Meaning |
+|---|---|
+| `trajectory.start` / `stop` / `stride` | Frame-index window, Python-slice semantics (`stop` exclusive, `null` = trajectory end); `stop` must exceed `start`, `stride` ≥ 1. Choose the production window explicitly: equilibration is never trimmed automatically |
+| `trajectory.chunk_frames` | Frames per committed chunk (≥ 1). Sets the restart granularity and peak memory, not the science; solvation `shell_stability` is the one diagnostic that treats chunks as time windows |
+| `time.dt_ps`, `time.origin_ps` | When `dt_ps` is set, time = `origin_ps + i · dt_ps` for the *i*-th **analyzed** frame (after `stride`); otherwise the trajectory's own times are used and a trajectory without usable times fails |
+| `cache.aligned_coordinates`, `cache.dtype` | Save fitted feature coordinates (`float32` by default) for RMSF and reuse. Enabling it requires the primary streaming pass |
+
 ## Analysis options at a glance
 
 | Feature | YAML key | Output / rule |
@@ -369,10 +384,10 @@ plots:
 
 - **Dynamic IDs:** `time_series:<saved_metric_or_group_stem>:<timeseries|distribution|autocorrelation|bootstrap_table|comparison_table>`; `profiles:<saved_profile_stem>:<profile|distribution|system_difference|bootstrap_table|comparison_table>`; `interactions:<kind>:<occupancy_heatmap|lifetime_distribution>`, with an additional `:<metric>:<bootstrap_table|comparison_table>` for interaction statistics tables.
 - **Distance heatmaps:** `profiles:residue_membrane_distance__<run_id>:<system_id>:distance_heatmap`.
-- **Named static figures:** `solvation:shell_rdf`, `solvation:water_and_ions`, `solvation:contact_survival`, `diffusion:diffusion_coefficients`, `lipid_enrichment:lipid_enrichment_heatmap`, `lipid_enrichment:lipid_area_density_heatmap`.
+- **Named static figures:** `profiles:residue_response:heatmap`, `solvation:shell_rdf`, `solvation:water_and_ions`, `solvation:contact_survival`, `diffusion:diffusion_coefficients`, `lipid_enrichment:lipid_enrichment_heatmap`, `lipid_enrichment:lipid_area_density_heatmap`.
 - **Shared-state figures:** `shared_states:state_populations`, `shared_states:state_sampling_diagnostics`.
-- **SDC4 condition figures:** `sdc4:<system_id>:<figure_stem>`; supported stems include `nxip_height_occlusion_joint`, `vvhplvpl_proline_ramachandran`, `lipid_density_maps`, `lipid_enrichment_maps`, and the five `lipid_region_*` charts. A single PNG is saved under `project_summary/figures/sdc4/<system_id>/`; each independent replica appears as an explicitly labelled panel or trace. The *numerical* Parquet/NPZ measurements remain per replica in `systems/<replicate>/extensions/sdc4_mechanisms/`. Previous per-rep diagnostic PNGs from older runs are not automatically deleted; archive them when regenerating plots. No trajectories or statistical CIs are pooled to draw these condition diagnostics.
-- **Lipid-contact figures:** `lipid_contacts:<figure_stem>` for each saved `lipid_contact_matrix_*` or `lipid_contact_difference_*` figure; valid endings are `_neighbors_per_molecule` or `_enrichment`.
+- **SDC4 condition figures:** `sdc4:<system_id>:<figure_stem>`; supported stems include `nxip_height_occlusion_joint`, `vvhplvpl_proline_ramachandran`, `lipid_density_maps`, `lipid_enrichment_maps`, and the five `lipid_region_*` charts. A single PNG is saved under `project_summary/figures/sdc4/<system_id>/`; each independent replica appears as an explicitly labelled panel or trace. The *numerical* Parquet/NPZ measurements remain per replica in `<system_id>/<replicate>/extensions/sdc4_mechanisms/`. Previous per-rep diagnostic PNGs from older runs are not automatically deleted; archive them when regenerating plots. No trajectories or statistical CIs are pooled to draw these condition diagnostics.
+- **Lipid-contact figures:** `lipid_contacts:<figure_stem>` for each saved `lipid_contact_matrix_*`, `lipid_contact_difference_*`, `lipid_contact_class_matrix_*` or `lipid_contact_class_difference_*` figure; valid endings are `_pair_count_undirected`, `_neighbors_per_molecule` or `_enrichment`.
 
 Per-figure `plots.options.<plot ID>.dpi` is supported for resolution overrides (integer 50–600); it does not change scientific results, axis definitions or statistical estimands. Unsupported per-plot keys fail configuration validation.
 
@@ -477,6 +492,21 @@ statistics:
 | `interaction_include_kinds` / `exclude_kinds` | Filter before Parquet loading; exclusions win |
 | `hypothesis_families` | Predefine BH correction families; unlisted metrics are exploratory |
 | `matched_window_ps` | `auto` or `[start, stop]`; preserve a separate full-window series |
+
+Project-wide statistics settings (each family can override `bootstrap_draws`, `ci` and `hierarchy`):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `statistics.enabled` | `true` | Run offline statistics at finalization |
+| `bootstrap_draws` | 2000 | Bootstrap draws (≥ 100) |
+| `ci` | 0.95 | Interval level, strictly between 0 and 1 |
+| `seed` | 2026 | Seed for bootstrap and permutation draws; reproducible only with the same NumPy version and `MDSCOPE_STATS_WORKERS` |
+| `block.method` / `length` | `moving` / `auto` | Moving-block bootstrap within each replica; `auto` derives the length from the autocorrelation time, or set an integer ≥ 1 |
+| `block.tau_multiplier`, `block.max_acf_lag` | 2.0, `null` | Block length = multiplier × integrated autocorrelation time; optional ACF lag cap (≥ 1) |
+| `hierarchy.block_within_replicate`, `hierarchy.resample_replicates` | `true`, `true` | Two-stage resampling: frames within replicas, then replicas |
+| `hypothesis_tests.design` | `independent` | `paired` requires identical replicate labels across systems |
+| `hypothesis_tests.method`, `permutation_draws`, `exact_max_assignments` | `permutation`, 10000, 100000 | Exact enumeration when the assignments fit under the limit, Monte Carlo permutation (≥ 100 draws) otherwise |
+| `hypothesis_tests.multiple_testing` | `fdr_bh` | Benjamini–Hochberg within each `hypothesis_families` family, or `none` |
 
 Optional `statistics.families.time_series.adaptive_hierarchy`:
 

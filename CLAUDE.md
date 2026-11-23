@@ -14,6 +14,7 @@ pytest -q tests/test_solvation.py::test_hs_chain_grouping_reuses_covalent_topolo
 pytest -q -s -m benchmark tests/test_performance_benchmarks.py
 git ls-files -z '*.sh' | xargs -0 shellcheck   # CI-blocking on the 3.11 job
 python scripts/architecture_map.py --output /tmp/mdscope-architecture   # AST module/call graph
+python scripts/architecture_map.py --write-docs   # regenerate the package diagram in docs/developer/architecture.md
 ```
 
 - CLI tests (`tests/mdscope_test_support.py::invoke_cli`) spawn the `mdscope` console script installed for the running interpreter (its `sysconfig` scripts dir, not `PATH`). When testing a worktree without installing it, run that venv's `python -m pytest` with `PYTHONPATH=<worktree>/src` (inherited by the subprocess) so the right source is exercised.
@@ -43,8 +44,8 @@ Contracts that span several files:
 - **Persisted-output contract.** `contracts/outputs.py` (canonical per-analysis paths, static companions, schemas and producer constants), `output_paths.py` (existing path exports), `registry.py` (`analysis_output_plan`, configuration-dependent `required_artifacts`) and `planning.py` (introspection) are the single source for what a run must produce. Restart/resume and `statistics`/`finalize` read saved products only and rely on these; a new output file must be registered there, and changing a required companion affects resumability of existing outputs.
 - **Writes are atomic** via `core/persistence.py` / `core/checkpoints.py`; scientific kernels should not write files directly.
 - **Statistics are replica-aware.** Replicas, not frames, are the independent units (`statistics/`).
-- **YAML generalization.** User-selectable scientific choices go in the shared validated YAML (defaults in `config.py`, schema in `config_schema.py`, surfaced by `planning.py` and Studio), while the maintained `synd4_*.yaml` SDC4 configurations must load and reproduce unchanged. See the [YAML contract](docs/configuration.md#yaml-contract-for-generalization).
-- **Package layering.** `core` → `observables`/`interactions` → `mechanisms` → `statistics`/`reporting` → `pipeline` → `cli`/`studio`; lower packages never import higher ones (`tests/test_import_layering.py`). Shared residue-identity and progress helpers live in `core/sequence.py` and `core/progress.py`.
+- **YAML generalization.** User-selectable scientific choices go in the shared validated YAML (defaults in `config/defaults.py`, schema in `config_schema.py`, surfaced by `planning.py` and Studio), while the maintained `synd4_*.yaml` SDC4 configurations must load and reproduce unchanged. See the [YAML contract](docs/configuration.md#yaml-contract-for-generalization).
+- **Package layering.** `contracts` (dependency-free) and `config`/`core` → `observables`/`interactions` → `mechanisms` → `systems` → `statistics`/`reporting` → `pipeline` → `cli`/`studio`; lower packages never import higher ones (`tests/test_import_layering.py`). Each fact (family lists, capability sets, enabled predicates, output identities) has one owner: see the ownership table in [architecture](docs/developer/architecture.md).
 - **No internal aliases.** Old internal module paths are not kept; CLI/YAML/output compatibility is the public contract.
 - Similar-looking helpers are sometimes deliberately distinct (e.g. `biophysical_common.heavy` vs `mechanistic_common.heavy`); check [architecture](docs/developer/architecture.md) before merging "duplicates".
 

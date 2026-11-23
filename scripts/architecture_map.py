@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Reproducible, approximate static import/call maps for an installed MDscope checkout.
+"""Reproducible, approximate static import/call maps for an MDscope checkout.
+
+``--output DIR`` writes the JSON inventory and DOT graphs; ``--write-docs``
+regenerates the package-dependency diagram in docs/developer/architecture.md
+and ``--check-docs`` fails if it is stale (a test runs the check).
 
 No MDscope import, trajectory I/O, or third-party graph packages are required.
 Import edges include conditional and function-local imports. Call edges include
@@ -206,17 +210,128 @@ def git_revision(repo_root: Path) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
+REPO = Path(__file__).resolve().parents[1]
+ARCHITECTURE_DOC = REPO / "docs/developer/architecture.md"
+LAYERING_TEST = REPO / "tests/test_import_layering.py"
+BEGIN = ("<!-- BEGIN GENERATED package dependencies; "
+         "regenerate with: python scripts/architecture_map.py --write-docs -->")
+END = "<!-- END GENERATED package dependencies -->"
+
+
+def layering_exceptions(test_path: Path = LAYERING_TEST) -> set[tuple[str, str]]:
+    """Module imports the layering test allows, as (importer, imported) names."""
+    tree = ast.parse(test_path.read_text(encoding="utf-8"))
+    allowed = next(ast.literal_eval(node.value) for node in tree.body
+                   if isinstance(node, ast.Assign)
+                   and any(getattr(t, "id", None) == "ALLOWED" for t in node.targets))
+    return {("mdscope." + path.removesuffix(".py").replace("/", "."), "mdscope." + module)
+            for path, module in allowed}
+
+
+def _unit(module: str) -> str:
+    """The top-level subpackage or module that contains *module*."""
+    parts = module.split(".")
+    return parts[1] if len(parts) > 1 else parts[0]
+
+
+def package_dependency_mermaid(graph: dict, exceptions: set[tuple[str, str]]) -> str:
+    """Deterministic Mermaid graph of top-level units, transitively reduced.
+
+    Units that import each other are merged, an edge implied by a longer path
+    is dropped, and allowed layering exceptions are listed instead of drawn
+    so they do not distort the layer order.
+    """
+    modules = set(graph["modules"])
+    packages = {_unit(m) for m in modules if m.count(".") > 1}
+    units = {_unit(m) for m in modules} - {"mdscope"}
+    # An excepted import statement also records its parent packages: skip the line.
+    excepted = {(s["source"], s["line"]) for s in graph["import_sites"]
+                if (s["source"], s["target"]) in exceptions}
+    phases: dict[tuple[str, str], set[str]] = {}
+    for site in graph["import_sites"]:
+        source, target = _unit(site["source"]), _unit(site["target"])
+        if source != target and "mdscope" not in (source, target) and \
+                (site["source"], site["line"]) not in excepted:
+            phases.setdefault((source, target), set()).add(site["phase"])
+    merged = {m: tuple(group) for group in cycles(units, set(phases)) for m in group}
+    node = {u: merged.get(u, (u,)) for u in units}
+    edges: dict[tuple[tuple, tuple], set[str]] = {}
+    for (source, target), phase in phases.items():
+        if node[source] != node[target]:
+            edges.setdefault((node[source], node[target]), set()).update(phase)
+    adjacency: dict[tuple, set[tuple]] = {}
+    for source, target in edges:
+        adjacency.setdefault(source, set()).add(target)
+
+    def implied(source, target):
+        stack, seen = [n for n in adjacency[source] if n != target], set()
+        while stack:
+            current = stack.pop()
+            if current == target:
+                return True
+            if current not in seen:
+                seen.add(current)
+                stack.extend(adjacency.get(current, ()))
+        return False
+
+    def ident(group):
+        return "_".join(group)
+
+    def label(group):
+        return " + ".join(f"{u}/" if u in packages else f"{u}.py" for u in group)
+
+    lines = ["```mermaid", "flowchart TD"]
+    lines += [f'    {ident(g)}["{label(g)}"]' for g in sorted(set(node.values()))]
+    for (source, target), phase in sorted(edges.items()):
+        if not implied(source, target):
+            arrow = "-->" if "module_load" in phase else "-.->"
+            lines.append(f"    {ident(source)} {arrow} {ident(target)}")
+    lines.append("```")
+    notes = [f"- `{label(g)}` import each other and are drawn as one node."
+             for g in sorted(set(merged.values()))]
+    notes += [f"- Allowed layering exception, not drawn: `{a.removeprefix('mdscope.')}` → "
+              f"`{b.removeprefix('mdscope.')}`." for a, b in sorted(exceptions)]
+    return "\n".join(lines + [""] + notes)
+
+
+def update_docs(graph: dict, path: Path = ARCHITECTURE_DOC, *, check: bool = False) -> bool:
+    """Rewrite the generated block in *path*; return whether it was out of date."""
+    raw = path.read_bytes().decode("utf-8")
+    newline = "\r\n" if "\r\n" in raw else "\n"
+    text = raw.replace("\r\n", "\n")
+    start, end = text.index(BEGIN), text.index(END) + len(END)
+    block = "\n".join((BEGIN, package_dependency_mermaid(graph, layering_exceptions()), END))
+    updated = text[:start] + block + text[end:]
+    if updated != text and not check:
+        path.write_bytes(updated.replace("\n", newline).encode("utf-8"))
+    return updated != text
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--package-root", type=Path,
-                        default=Path(__file__).resolve().parents[1] / "src/mdscope")
-    parser.add_argument("--output", type=Path, required=True,
+    parser.add_argument("--package-root", type=Path, default=REPO / "src/mdscope")
+    parser.add_argument("--output", type=Path,
                         help="Directory for DOT graphs and machine-readable inventory")
+    docs = parser.add_mutually_exclusive_group()
+    docs.add_argument("--write-docs", action="store_true",
+                      help=f"Regenerate the package diagram in {ARCHITECTURE_DOC.name}")
+    docs.add_argument("--check-docs", action="store_true",
+                      help="Exit 1 if the package diagram in the docs is out of date")
     args = parser.parse_args()
     root = args.package_root.resolve()
     if not (root / "__init__.py").is_file():
         parser.error(f"Not a Python package: {root}")
+    if not (args.output or args.write_docs or args.check_docs):
+        parser.error("Give --output, --write-docs or --check-docs")
     graph = inspect_package(root)
+    if args.write_docs or args.check_docs:
+        stale = update_docs(graph, check=args.check_docs)
+        print(f"{ARCHITECTURE_DOC.name}: {'out of date' if stale else 'current'}"
+              + (" (rewritten)" if stale and args.write_docs else ""))
+        if stale and args.check_docs:
+            return 1
+        if args.output is None:
+            return 0
     try:
         installed_version = metadata.version(root.name)
     except metadata.PackageNotFoundError:
