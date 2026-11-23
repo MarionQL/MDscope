@@ -33,8 +33,8 @@ from ...core.lipid_geometry import (
     aligned_leaflets,
     anchor_groups,
     circular_axis_mean,
-    periodic_center,
     local_leaflet_normal,
+    periodic_center,
 )
 from ...core.persistence import (
     atomic_json,
@@ -45,10 +45,11 @@ from ...core.persistence import (
 )
 from ...core.progress import track
 from ...core.sequence import AA3, sequence_matches
-from ...mechanisms.mechanistic_common import heavy, nearest, selected, unit
 from ...mechanisms.ceramide_scaffold import pool_ceramide_scaffolds
+from ...mechanisms.mechanistic_common import heavy, nearest, selected, unit
 from ...mechanisms.protomer_contacts import (
-    InterprotomerContacts, summarize_interprotomer_contacts,
+    InterprotomerContacts,
+    summarize_interprotomer_contacts,
 )
 from ...mechanisms.residue_occlusion import (
     OCCLUSION_FILE,
