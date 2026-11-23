@@ -1,5 +1,6 @@
 """Failure-injection checks for actionable, non-destructive stage boundaries (#183)."""
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import MDAnalysis as mda
@@ -37,7 +38,8 @@ def test_missing_replica_summary_error_names_file_and_preserves_outputs(tmp_path
     rep = SimpleNamespace(system="example", label="rep1")
     with pytest.raises(RuntimeError, match="example/rep1") as failure:
         _validate_replica_products(DEFAULTS, root, [rep])
-    assert "summary/timeseries.parquet" in str(failure.value)
+    # The message names the native path the user must inspect.
+    assert str(Path("summary/timeseries.parquet")) in str(failure.value)
     assert "finish the replica" in str(failure.value)
     assert sentinel.read_bytes() == b"saved findings"
     assert sorted(root.iterdir()) == [sentinel]

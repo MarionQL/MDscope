@@ -648,7 +648,9 @@ def test_app_named_sasa_runs_update_output_and_statistic_identity(tmp_path, monk
     assert not at.exception
     raw = yaml.safe_load(next(item.value for item in at.code if "analyses:" in item.value))
     assert raw["analyses"]["sasa"]["runs"] == {"isolated": {}}
-    assert any("sasa/isolated/residue_sasa.parquet" in item.value for item in at.code)
+    # Studio displays native absolute paths.
+    assert any("sasa/isolated/residue_sasa.parquet" in item.value.replace("\\", "/")
+               for item in at.code)
     at.checkbox(key="stats:master").check().run()
     assert not at.checkbox(key="stats:profile:sasa_mean__isolated").value
     at.checkbox(key="stats:profile:sasa_mean__isolated").check().run()
