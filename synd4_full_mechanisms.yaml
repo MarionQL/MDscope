@@ -249,6 +249,7 @@ analyses:
     protein_selection: "protein"
     residue_occlusion: true
     interprotomer_contacts: true  # whole PROA-PROB interface, all protein residues
+    tm_local_tilt: true  # both TM helix axes versus locally fitted phosphate normals
     residue_water_cutoff_A: 3.5
     hs_sugar_water_cutoff_A: 3.5
     tm_chains:
