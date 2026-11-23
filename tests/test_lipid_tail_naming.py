@@ -48,9 +48,12 @@ MACROG_TAILS = {
 }
 
 
-# Only the configuration/preflight contract is exercised: domains are lipid atoms.
-SDC4_DOMAINS = {"tm_chains": {"A": "resid 1", "B": "resid 2"},
-                "ectodomains": {"A": "resid 3", "B": "resid 4"}}
+# Four ectodomain and five GGIVG-containing TM residues per synthetic protomer.
+# Lipid-order assertions still select only POPC atoms.
+SDC4_DOMAINS = {
+    "tm_chains": {"A": "resid 9:13 and name CA", "B": "resid 18:22 and name CA"},
+    "ectodomains": {"A": "resid 5:8 and name CA", "B": "resid 14:17 and name CA"},
+}
 
 
 def _candidate_sites(universe, spec):
@@ -372,7 +375,16 @@ def test_leaflet_anchor_must_cover_every_order_lipid():
 
 
 def _validated(tmp_path, builder, raw_order, *, local_order=None):
+    if local_order is not None:
+        for x in (0., 10.):
+            for position, name in enumerate(
+                ("ALA",) * 4 + ("GLY", "GLY", "ILE", "VAL", "GLY")
+            ):
+                residue = builder.residue(name)
+                builder.atom(residue, "CA", "C", [x, 0., 40. - position])
     u = builder.universe(frames=1)
+    if local_order is not None:
+        u.atoms[-18:].chainIDs = ["A"] * 9 + ["B"] * 9
     topology = tmp_path / "bilayer.pdb"
     with mda.Writer(str(topology), n_atoms=len(u.atoms), bonds="all") as writer:
         writer.write(u.atoms)
@@ -381,12 +393,14 @@ def _validated(tmp_path, builder, raw_order, *, local_order=None):
     analyses["membrane_order"] = {"enabled": True, **raw_order}
     if local_order is not None:
         analyses["sdc4_mechanisms"] = {
-            "enabled": True, **SDC4_DOMAINS, "require_motifs": False, "motif_selection": "name CA",
+            "enabled": True, **SDC4_DOMAINS, "require_motifs": False, "require_gxxxg": True,
+            "motif_selection": "name CA",
             "lipid_contact_selection": "resname POPC",
             "lipid_anchors": {"POPC": "resname POPC and name P P8"}, "local_order": local_order}
     raw = {"systems": {"s": {"topology": topology.name,
                              "replicates": [{"trajectory": topology.name}]}},
-           "selections": {"protein": "resname POPC"}, "analyses": analyses}
+           "selections": {"protein": "protein" if local_order is not None else "resname POPC"},
+           "analyses": analyses}
     path = tmp_path / "analysis.yaml"
     path.write_text(yaml.safe_dump(raw))
     cfg = resolve_config(raw, base=tmp_path)
@@ -446,6 +460,8 @@ def test_sdc4_local_order_uses_membrane_order_naming(tmp_path):
     _, _, counts, text = _validated(tmp_path, bilayer("macrog"), {"tails": MACROG_TAILS,
                                     "lipid_selection": "resname POPC"}, local_order=local)
     assert "SDC4 local_order POPC sn2: 4/4 lipids, positions 2-18" in text
+    assert "SDC4 TM A: sequence=GGIVG" in text
+    assert "SDC4 TM B: sequence=GGIVG" in text
     assert counts["s"]["sdc4_local_order"]["lipids_without_anchor"] == 0
 
 
