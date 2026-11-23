@@ -11,6 +11,12 @@ RESIDUE_RESPONSE_PROFILE = re.compile(
 )
 
 
+# Raw within-replica association variables; correlations are not an inference family.
+RESIDUE_CORRELATION_METRICS = frozenset({
+    "water_count", "protein_fraction", "hs_fraction", "lipid_fraction",
+    "sasa_isolated", "sasa_environment", "helix_state",
+})
+
 # Every statistics family and its directory under project_summary/statistics/.
 # The one family list for YAML validation, the dispatcher and read-only planning.
 STATISTICS_FAMILIES = {
