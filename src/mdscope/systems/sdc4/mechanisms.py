@@ -45,6 +45,9 @@ from ...core.persistence import (
 from ...core.progress import track
 from ...core.sequence import AA3, sequence_matches
 from ...mechanisms.mechanistic_common import heavy, nearest, selected, unit
+from ...mechanisms.protomer_contacts import (
+    InterprotomerContacts, summarize_interprotomer_contacts,
+)
 from ...mechanisms.residue_occlusion import (
     OCCLUSION_FILE,
     ResidueOcclusion,
@@ -425,6 +428,10 @@ class SDC4Mechanisms:
             universe, s.get("protein_selection") or cfg["selections"]["protein"],
             required=True,
         ))
+        self.interprotomer = (
+            InterprotomerContacts(self.protein, self.tm, s.get("contact_cutoff_A", 5.))
+            if s.get("interprotomer_contacts", False) else None
+        )
         self.water = selected(
             universe, s.get("water_oxygen_selection"),
             required=bool(self.hs) or s.get("residue_water_cutoff_A") is not None,
@@ -590,6 +597,10 @@ class SDC4Mechanisms:
         t = time_ps(ts, frame_index, self.cfg)
         if self.residue_occlusion is not None:
             self.rows["residue_occlusion"].append(self.residue_occlusion.frame(box))
+        if self.interprotomer is not None:
+            pair_frame, residue_frame = self.interprotomer.frame(box, t)
+            self.rows["interprotomer_pairs"].append(pair_frame)
+            self.rows["interprotomer_residues"].append(residue_frame)
         anchors = self.tracker.positions()
         leaf, changed = aligned_leaflets(anchors[:, 2], box[2], self.initial_leaf)
         tm_centers = {k: _center(g, box) for k, g in self.tm.items()}
@@ -1048,6 +1059,14 @@ class SDC4Mechanisms:
 
     def flush(self, part):
         start = time.perf_counter()
+        if self.interprotomer is not None and self.rows["interprotomer_residues"]:
+            for key, prefix in (("interprotomer_pairs", "interprotomer-pairs"),
+                                ("interprotomer_residues", "interprotomer-residues")):
+                atomic_parquet(
+                    self.cache / f"{prefix}-{part:06d}.parquet",
+                    pd.concat(self.rows[key], ignore_index=True),
+                )
+                self.rows[key].clear()
         if self.rows["residue_occlusion"]:
             atomic_parquet(
                 self.cache / f"residue-occlusion-{part:06d}.parquet",
@@ -1104,7 +1123,7 @@ class SDC4Mechanisms:
 
     def prune_from(self, part):
         for path in self.cache.glob("*"):
-            match = re.match(r"(?:part|map|residence|specificity|residue-contacts|residue-occlusion)-(\d+)\.(?:parquet|npz)$", path.name)
+            match = re.match(r"(?:part|map|residence|specificity|residue-contacts|residue-occlusion|interprotomer-pairs|interprotomer-residues)-(\d+)\.(?:parquet|npz)$", path.name)
             if match and int(match.group(1)) >= part:
                 path.unlink()
 
@@ -1115,6 +1134,21 @@ class SDC4Mechanisms:
             raise ValueError("No SDC4 mechanism frames were processed")
         df = pd.concat((pd.read_parquet(p) for p in parts), ignore_index=True)
         df = df.sort_values("time_ps").reset_index(drop=True)
+        if self.interprotomer is not None:
+            pair_parts = [
+                part.with_name(f"interprotomer-pairs-{part.name.removeprefix('part-')}")
+                for part in parts
+            ]
+            residue_parts = [
+                part.with_name(f"interprotomer-residues-{part.name.removeprefix('part-')}")
+                for part in parts
+            ]
+            if not all(p.is_file() for p in (*pair_parts, *residue_parts)):
+                raise ValueError("Committed SDC4 chunks lack complete interprotomer contact companions")
+            summarize_interprotomer_contacts(
+                self.repout / "extensions/sdc4_mechanisms", pair_parts, residue_parts,
+                df["time_ps"].to_numpy(float),
+            )
         if self.residue_occlusion is not None:
             occlusion_parts = [
                 part.with_name(f"residue-occlusion-{part.name.removeprefix('part-')}")
