@@ -48,6 +48,31 @@ jobs:
       - name: Compare resolved YAML, hash and CLI plan JSON against main
         if: matrix.python-version == '3.11'
         run: python scripts/check_config_parity.py
+      - name: Changed-code maintainability diagnostics (review only)
+        if: matrix.python-version == '3.11'
+        run: |
+          python -m pip install vulture==2.16
+          changed=()
+          sources=()
+          while IFS= read -r -d '' file; do
+            [[ "$file" == *.py ]] || continue
+            changed+=("$file")
+            if [[ "$file" == src/* || "$file" == scripts/* ]]; then
+              sources+=("$file")
+            fi
+          done < <(git diff --name-only -z --diff-filter=ACMR FETCH_HEAD HEAD -- src tests scripts)
+          if (('${#changed[@]}' > 0)); then
+            echo "Ruff broader review of changed Python files: ${changed[*]}"
+            if ! ruff check --select F,I,C90,SIM,RET,UP "${changed[@]}"; then
+              echo "Broader Ruff findings require review; not yet a project-wide gate." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          if (('${#sources[@]}' > 0)); then
+            echo "Vulture diagnostic of changed production files: ${sources[*]}"
+            if ! vulture "${sources[@]}" --min-confidence 80; then
+              echo "Vulture candidates require caller and dynamic-dispatch review before removal." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
       - name: Install real FreeSASA for analytic geometry references
         if: matrix.python-version == '3.11'
         run: python -m pip install freesasa
