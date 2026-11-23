@@ -7,6 +7,7 @@ RESIDUE_RESPONSE_PROFILE = re.compile(
     r"^(?:rmsf$|dssp_(?:helix|sheet|coil)_occupancy$|"
     r"sasa_mean(?:__|$)|sasa_buried_nm2__|"
     r"residue_occlusion__|residue_water_coordination__all$|"
+    r"interprotomer_(?:contact_occupancy|partner_count|atom_contact_fraction)$|"
     r"residue_membrane_distance__(?!.*__group_))"
 )
 
