@@ -102,16 +102,17 @@ Difference-map dots mark pointwise CI exclusion, **not FDR significance**. Compa
 
 | Endpoint | Reported quantities | Interpret with care |
 |---|---|---|
+| Protein residues (full protomers) | Per-residue protein/HS/lipid occlusion, water coordination, SASA and secondary structure | Primary site-discovery data, not a claim of binding affinity or causal coupling |
 | Ectodomain | Height, outward tilt, membrane-contact state and contact fraction | Terminal orientation assumes ordered CA selection; not full flexible-surface fitting |
-| TM dimer | Crossing angle, handedness, GGIVG/GXXXG contacts and full interface contacts | Missing motif ≠ zero contact; PCA axes can become unavailable |
-| NxIP/motifs | Chain-specific sequence matches; fraction of heavy atoms occluded by protein/HS/lipid; optional motif SASA | **Steric occlusion proxy**, not ligand-binding energy; protein-only SASA omits HS/lipid shielding |
+| TM dimer | Crossing angle, handedness and full interprotomer residue-pair contacts | GGIVG is an optional annotation/subset of the same interface; PCA axes can become unavailable |
+| Predefined motifs | Optional focused contact, occlusion, exposure and proline torsion summaries | Legacy/hypothesis-driven views, not the source of discovered important residues |
 | Individual HS chains | Attachment orientation, extension, Rg, anisotropy, lipid contact and membrane proximity | Bond topology; compact-chain minimum image; branches need appropriate endpoints |
 | Hydration/ions | Unique oxygen/ion neighbors, per-residue states and conditioned means | Coordination, **not** electrostatic free energy |
 | Local membrane | Thickness, quadratic curvature, local `-S_CH` | Comparable phosphate anchors, planar/small-slope approximation |
 | Lipid density maps | TM-centered, per-leaflet maps, molecule density and fold | Maps do **not** divide by protein-excluded accessible area |
 | Shared states | Replica-balanced standardized k-means; population, transitions and first/second-half diagnostics | Geometric clusters, not validated metastable states or thermodynamic free energies |
 
-**Release topology:** each protomer has three **covalently attached** HS chains. Attachments: PROA **S39/S61/S63**, PROB **S309/S331/S333**. HS sugars share protein chain IDs, so `hs_auto` follows the **bonded glycan components**, requiring one protein attachment per chain. Rebuilt topologies need re-auditing. The older release found GGIVG in **PROA but not PROB**; absent optional motifs are unavailable, not measured zero.
+**Release topology:** each protomer has three **covalently attached** HS chains. Attachments: PROA **S39/S61/S63**, PROB **S309/S331/S333**. HS sugars share protein chain IDs, so `hs_auto` follows the **bonded glycan components**, requiring one protein attachment per chain. Rebuilt topologies need re-auditing. The audited six-replica release reports **GGIVG in both protomers**, at topology residue indices PROA 152–156 and PROB 422–426. These are zero-based topology indices, not YAML `resid` selections. A missing required motif indicates a topology/selection mismatch and should fail validation, not be treated as a missing biological motif.
 
 - Local thickness/curvature use `surface_anchor_species` of comparable lipid headgroup heights. Quadratic curvature is a small-slope proxy in Å⁻¹.
 - Protein occlusion excludes same-chain neighbors within ±2 sequence positions; partner fractions can overlap, and union fractions count each target atom once.
@@ -141,7 +142,20 @@ on different chains remain distinct through topology indices and chain labels.
 An unobserved residue pair is absent from the sparse event table but contributes
 zero to the complete per-residue frame table. All distances are geometric,
 not binding energies. The three interface residue profiles enter the existing
-exploratory residue-response analysis.
+exploratory residue-response analysis. When complete interprotomer contacts are enabled,
+TM-interface and GGIVG scalars are filtered from these *same residue-pair
+events*; the observer does not repeat atom-distance searches for each motif.
+With the complete observer disabled, a single TM–TM search retains the
+legacy scalars.
+
+**Domain-first interpretation:** inspect all-residue profiles and complete
+PROA–PROB pair maps before annotating predefined sequences such as GGIVG,
+NxIP or the acidic patch. Full-protein residue occlusion distinguishes the
+protein, HS and lipid partner classes; full-protein SASA/DSSP and hydration
+provide complementary measurements. Motif summaries and acidic-patch bridge
+targets remain available as explicitly hypothesis-driven views; they are not
+a substitute for residue-wide partner *identity* or full-ectodomain
+lipid-residence measurements, which are not yet implemented.
 
 With `tm_local_tilt: true`, each fitted TM axis is compared separately to the
 locally fitted normals of **both** phosphate-reference leaflets around its TM
