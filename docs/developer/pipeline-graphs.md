@@ -1,24 +1,13 @@
 # Pipeline graphs
 
-Three different questions need separate diagrams: **execution** (where
-frames pass), **recovery** (when saved products are reused or replayed),
-and **imports** (Python source dependencies). An import edge does not mean
-an analysis opened a trajectory.
-
-Regenerate all diagrams from a checkout:
-
-```bash
-python scripts/pipeline_graphs.py --output /tmp/mdscope-graphs
-# Graphviz's dot executable is optional for SVG rendering.
-# Open execution.svg, recovery.svg and imports_focused.svg (or their DOT files).
-```
-
-The script regenerates the existing AST inventory using
-`scripts/architecture_map.py`; it also writes `recovery.dot`, `imports_full.dot`, and all four SVGs when
-Graphviz is installed. Execution and recovery diagrams are **code-reviewed
-conceptual flow maps**, not instrumented traces. Its
-conditions must be reviewed when `runner.py`, `streaming.py` or
-`fused_all.py` scheduling changes.
+Two questions need separate diagrams: **execution** (where frames pass) and
+**recovery** (when saved products are reused or replayed). Both are
+**code-reviewed conceptual flow maps**, not instrumented traces, and this page
+is their only copy: review them whenever `runner.py`, `streaming.py` or
+`fused_all.py` scheduling changes. Python import dependencies are a third,
+unrelated question (an import does not mean a trajectory was opened); their
+diagram is generated from the source in
+[Architecture](architecture.md#packages-and-dependency-direction).
 
 ## Execution: where trajectories are read
 
@@ -103,43 +92,6 @@ Scratch replay chunks are discarded after successful publication; completed
 outputs are not regenerated just because another run in the same family is
 missing. This diagram is conceptual: see `runner.py`,
 `fused_all.py` and each observer's validation for exact failure modes.
-
-## Dependencies: what imports what
-
-Package ownership and the reasons for it are in [Architecture](architecture.md); `tests/test_import_layering.py` enforces the direction shown here.
-
-This compact graph shows the relevant layers; the generated DOT/SVG files above
-contain **actual current import edges**, including conditional imports and
-cycles, rather than this intentionally simplified overview.
-
-```mermaid
-flowchart TD
-    CLI["cli / studio"] -.-> RUN["pipeline"]
-    CLI -.-> PLAN["planning (read-only)"]
-    RUN --> SYS["systems/sdc4"]
-    RUN --> REPORT["reporting"]
-    RUN --> REG["registry"]
-    PLAN --> REG
-    PLAN -.-> REPORT
-    REPORT --> STATS["statistics"]
-    STATS --> MECH["mechanisms"]
-    SYS --> MECH
-    MECH --> OBS["observables / interactions"]
-    OBS --> CORE["core"]
-    REG --> CONF["config"]
-    CONF --> CORE
-    CONF --> CON["contracts (imports nothing from mdscope)"]
-    REG --> CON
-```
-
-Simplified: higher packages also import lower ones directly (for example `pipeline` imports `observables`, and `statistics` reads saved-output readers in `observables`). The one tracked exception to the layering rule is `observables.solvation_postprocess` → `mechanisms.motif_residence`. The generated DOT/SVG files contain the exact current edges.
-
-**Dependency legend:** solid arrows represent architectural dependencies in
-this simplified diagram; dashed arrows represent deferred/command-specific
-imports. In generated import graphs, a solid arrow means a module-load import
-and a dashed arrow means a deferred import. A purple edge (when present)
-identifies a multi-module strongly connected component. An import does **not**
-prove that an analysis ran or a trajectory was opened.
 
 ## Boundary diagnostics and safe recovery
 

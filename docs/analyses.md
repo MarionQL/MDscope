@@ -390,7 +390,7 @@ Heatmaps are saved under `project_summary/figures/profiles/residue_response/` (f
 
 1. Validate **both topologies** first: actual atom names, six HS attachments, intact lipid fragments, one anchor/molecule, target overlaps, water/ion identities and frame timing.
 2. Run small standard solvation windows; inspect per-species counts, RDF shape, reference density, SASA and cutoff stability. Then activate limited kinetics/bridge sites.
-3. Record total observer throughput, RSS and Parquet bytes on representative real frames. Optional benchmark: `scripts/benchmark_solvation_real.py`; batch/contact benchmarks live under `scripts/`.
+3. Record total observer throughput, RSS and Parquet bytes on representative real frames. Optional benchmarks: `scripts/benchmark_solvation_real.py` (real frames) and `scripts/benchmark_lipid_contacts.py` (`batch_atoms` memory/time trade-off).
 4. Check all individual replicas, frame windows, direct measured zeros versus missing fields, blocked/censored episodes and small-n test resolution.
 5. Use [Scientific audit](developer/scientific-audit.md) for **measured** historical microbenchmarks; they do not predict six-replica runtime.
 

@@ -14,6 +14,7 @@ pytest -q tests/test_solvation.py::test_hs_chain_grouping_reuses_covalent_topolo
 pytest -q -s -m benchmark tests/test_performance_benchmarks.py
 git ls-files -z '*.sh' | xargs -0 shellcheck   # CI-blocking on the 3.11 job
 python scripts/architecture_map.py --output /tmp/mdscope-architecture   # AST module/call graph
+python scripts/architecture_map.py --write-docs   # regenerate the package diagram in docs/developer/architecture.md
 ```
 
 - CLI tests (`tests/mdscope_test_support.py::invoke_cli`) spawn the `mdscope` console script installed for the running interpreter (its `sysconfig` scripts dir, not `PATH`). When testing a worktree without installing it, run that venv's `python -m pytest` with `PYTHONPATH=<worktree>/src` (inherited by the subprocess) so the right source is exercised.

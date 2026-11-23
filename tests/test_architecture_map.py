@@ -119,33 +119,36 @@ def test_interactions_package_exports_are_explicit_without_changing_named_api():
     assert not any(name in package.__all__ for name in ("np", "pd", "Path", "atomic_parquet"))
 
 
-def test_pipeline_graphs_reuse_live_architecture_inventory(tmp_path):
-    """Diagram builder must work from a checkout, without trajectories."""
-    script = ROOT / "scripts/pipeline_graphs.py"
-    output = tmp_path / "pipeline-graphs"
-    result = subprocess.run(
-        [sys.executable, str(script), "--output", str(output)],
-        capture_output=True, text=True, check=False, timeout=60,
-    )
-    assert result.returncode == 0, result.stderr
-    inventory = json.loads((output / "architecture.json").read_text())
-    assert "mdscope.pipeline.streaming" in inventory["modules"]
-    execution = (output / "execution.dot").read_text()
-    recovery = (output / "recovery.dot").read_text()
-    assert "digraph recovery" in recovery
-    assert '"invalid" -> "abort"' in recovery
-    assert '"pending" -> "shared"' in recovery
-    assert '"checkpoint" -> "replay_stream"' in recovery
-    assert "streaming: shared primary frame pass" in execution
-    assert '"fusedonly" [' in execution
-    assert '"choice" -> "audit"' in execution
-    assert '"audit" -> "fusedonly"' in execution
-    assert "FusedMembrane" in execution and "FusedExtensions" in execution
-    focused = (output / "imports_focused.dot").read_text()
-    assert '"mdscope.pipeline.runner"' in focused
-    assert '"mdscope.pipeline.fused_all"' in focused
-    assert '"mdscope.observables.solvation"' in focused
-    assert '"mdscope.observables.solvation_common"' in focused
-    full = (output / "imports_full.dot").read_text()
-    assert '"mdscope.pipeline.streaming"' in full
-    assert '"mdscope.observables.lipid_enrichment"' in full
+def test_package_diagram_is_transitively_reduced_and_lists_exceptions(tmp_path):
+    """Upward exceptions are listed, mutual imports merge, implied edges drop."""
+    package = tmp_path / "mdscope"
+    for name in ("base", "mid", "top"):
+        (package / name).mkdir(parents=True)
+        (package / name / "__init__.py").write_text("")
+    (package / "__init__.py").write_text("")
+    (package / "base" / "kernel.py").write_text("from mdscope.mid import helper\n")
+    (package / "mid" / "helper.py").write_text("from mdscope.base import kernel\n")
+    (package / "top" / "run.py").write_text(
+        "from mdscope.mid import helper\nfrom mdscope import tool\n"
+        "def later():\n    from mdscope.base import kernel\n")
+    (package / "tool.py").write_text("from mdscope.base.kernel import x\n")
+    namespace = run_path(str(SCRIPT))
+    graph = namespace["inspect_package"](package)
+    merged = namespace["package_dependency_mermaid"](graph, set())
+    assert "base_mid[\"base/ + mid/\"]" in merged
+    assert "top --> tool" in merged and "tool --> base_mid" in merged
+    assert "top --> base_mid" not in merged and "top -.-> base_mid" not in merged
+    excepted = namespace["package_dependency_mermaid"](
+        graph, {("mdscope.base.kernel", "mdscope.mid.helper")})
+    assert "base_mid" not in excepted and "mid --> base" in excepted
+    assert "not drawn: `base.kernel` → `mid.helper`" in excepted
+
+
+def test_architecture_doc_package_diagram_is_current():
+    namespace = run_path(str(SCRIPT))
+    graph = namespace["inspect_package"](ROOT / "src/mdscope")
+    diagram = namespace["package_dependency_mermaid"](graph, namespace["layering_exceptions"]())
+    assert "    contracts -->" not in diagram  # contracts imports nothing from mdscope
+    assert not namespace["update_docs"](graph, check=True), (
+        "Package diagram in docs/developer/architecture.md is stale; "
+        "run: python scripts/architecture_map.py --write-docs")

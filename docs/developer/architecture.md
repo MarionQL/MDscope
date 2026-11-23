@@ -42,6 +42,58 @@ cli.py, studio/ user entry points; planning.py, registry.py, config_schema.py ar
 
 Allowed direction: `contracts` ← `config`/`core` ← `observables`/`interactions` ← `mechanisms` ← `systems` ← `statistics`/`reporting` ← `pipeline` ← `cli`/`studio`. `contracts/` imports nothing from `mdscope`, which keeps planning, validation and Studio import-light; `config/` may import only `core` and `contracts`. The one tracked exception (`observables.solvation_postprocess` → `mechanisms.motif_residence`) is listed in the layering test.
 
+The diagram below is generated from the source, so it cannot drift: an arrow means the upper unit imports the lower one (dashed: only inside functions), and an import already implied by a longer path is not drawn. `tests/test_architecture_map.py` fails when it is stale; regenerate it with `python scripts/architecture_map.py --write-docs`.
+
+<!-- BEGIN GENERATED package dependencies; regenerate with: python scripts/architecture_map.py --write-docs -->
+```mermaid
+flowchart TD
+    biophysical_common["biophysical_common.py"]
+    cli["cli.py"]
+    config_config_schema["config/ + config_schema.py"]
+    contracts["contracts/"]
+    core["core/"]
+    errors["errors.py"]
+    interactions["interactions/"]
+    mechanisms["mechanisms/"]
+    observables["observables/"]
+    output_paths["output_paths.py"]
+    pipeline["pipeline/"]
+    planning["planning.py"]
+    registry["registry.py"]
+    reporting["reporting/"]
+    statistics["statistics/"]
+    studio["studio/"]
+    systems["systems/"]
+    biophysical_common --> core
+    cli -.-> pipeline
+    cli -.-> planning
+    config_config_schema --> contracts
+    config_config_schema --> core
+    config_config_schema --> errors
+    interactions --> core
+    mechanisms --> biophysical_common
+    mechanisms --> config_config_schema
+    mechanisms --> interactions
+    observables --> config_config_schema
+    observables --> output_paths
+    output_paths --> contracts
+    pipeline --> registry
+    pipeline --> systems
+    planning --> registry
+    registry -.-> reporting
+    reporting --> statistics
+    statistics --> mechanisms
+    statistics --> observables
+    studio -.-> pipeline
+    studio --> planning
+    systems --> mechanisms
+    systems --> observables
+```
+
+- `config/ + config_schema.py` import each other and are drawn as one node.
+- Allowed layering exception, not drawn: `observables.solvation_postprocess` → `mechanisms.motif_residence`.
+<!-- END GENERATED package dependencies -->
+
 **Why this layout and not another** ([ADR-0002](adr/0002-evidence-first-architecture.md)):
 
 - **Role packages, not one folder per analysis.** A scientific analysis legitimately has several owners (YAML, kernel, output contract, scheduling, statistics, figures) that change for different reasons. The goal is that each *fact* has one owner, not that each analysis has one folder. A mandatory `analyses/`, `engine/`, `interfaces/` migration was evaluated and rejected: it moved files without reducing the number of edits a new analysis needs.
@@ -153,7 +205,7 @@ Which checks a change needs before merge: [Check policy](check-policy.md).
 
 ```bash
 python scripts/architecture_map.py --output /tmp/mdscope-architecture   # modules, imports, calls, cycles
-python scripts/pipeline_graphs.py --output /tmp/mdscope-graphs          # execution, recovery, import diagrams
+python scripts/architecture_map.py --write-docs                         # regenerate the package diagram above
 ```
 
 `architecture.json` records the source revision, module imports (including deferred ones), statically resolved calls and multi-module import cycles; CI publishes it as the `mdscope-architecture-map` artifact. The current map has no import cycles. Edges are *possible* dependencies, not observed execution; do not gate CI on edge or module counts.
