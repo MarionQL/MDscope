@@ -102,3 +102,58 @@ def test_ceramide_scaffold_pools_counts_before_ratios_and_leaves_absent_unavaila
     raw.loc[2] = [0., "TM_A", "upper", "ceramide_head", "CER160", 5, 5, 0, 0]
     with_cer = pool_ceramide_scaffolds(raw)
     assert with_cer.loc[with_cer.cohort == "CER160", "contact_fraction"].iloc[0] == 0.
+
+
+def test_interprotomer_incomplete_frame_does_not_publish_over_prior_data(tmp_path):
+    u = _synthetic()
+    a = u.select_atoms("protein and chainID PROA")
+    b = u.select_atoms("protein and chainID PROB")
+    contact = InterprotomerContacts(
+        u.select_atoms("protein"),
+        {"A": a.select_atoms("name CA"), "B": b.select_atoms("name CA")},
+        cutoff=5.,
+    )
+    pair_parts, residue_parts = [], []
+    for frame_index in range(2):
+        pairs, residues = contact.frame(u.dimensions, frame_index * 10.)
+        if frame_index == 1:
+            residues = residues.iloc[1:]  # One residue silently dropped in chunk 2.
+        pair_path = tmp_path / f"pairs-{frame_index}.parquet"
+        residue_path = tmp_path / f"residues-{frame_index}.parquet"
+        pairs.to_parquet(pair_path, index=False)
+        residues.to_parquet(residue_path, index=False)
+        pair_parts.append(pair_path)
+        residue_parts.append(residue_path)
+
+    output = tmp_path / "results"
+    output.mkdir()
+    old = output / "interprotomer_pair_frames.parquet"
+    old.write_bytes(b"existing output must survive bad input")
+    with pytest.raises(ValueError, match="Incomplete or inconsistent"):
+        summarize_interprotomer_contacts(output, pair_parts, residue_parts, [0., 10.])
+    assert old.read_bytes() == b"existing output must survive bad input"
+    assert not (output / "interprotomer_residue_summary.parquet").exists()
+
+
+def test_interprotomer_all_zero_contacts_are_measured_not_missing(tmp_path):
+    u = _synthetic()
+    a = u.select_atoms("protein and chainID PROA")
+    b = u.select_atoms("protein and chainID PROB")
+    contact = InterprotomerContacts(
+        u.select_atoms("protein"),
+        {"A": a.select_atoms("name CA"), "B": b.select_atoms("name CA")},
+        cutoff=5.,
+    )
+    pairs, residues = contact.frame(u.dimensions, 0.)
+    assert pairs.empty
+    assert (residues.any_contact == 0).all()
+    pair_path = tmp_path / "pair-chunk.parquet"
+    residue_path = tmp_path / "residue-chunk.parquet"
+    pairs.to_parquet(pair_path, index=False)
+    residues.to_parquet(residue_path, index=False)
+    out = tmp_path / "out"
+    summarize_interprotomer_contacts(out, [pair_path], [residue_path], [0.])
+    summary = pd.read_parquet(out / "interprotomer_residue_summary.parquet")
+    assert len(summary) == len(a.residues) + len(b.residues)
+    assert (summary.contact_occupancy == 0.).all()
+    assert pd.read_parquet(out / "interprotomer_pair_summary.parquet").empty
