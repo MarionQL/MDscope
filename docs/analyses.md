@@ -152,7 +152,7 @@ Local normals become unavailable if either leaflet lacks five well-conditioned
 anchor positions within `local_radius_A`. This is a local plane approximation,
 not a general curved-membrane normal.
 
-When `motif_lipid_residence` and explicit `ceramide_head`/
+When `ceramide_scaffold_pooling: true`, `motif_lipid_residence` and explicit `ceramide_head`/
 `ceramide_tail` moiety selections are configured, the saved
 `ceramide_scaffold_pooled.parquet` combines GM1a and BGAL **molecule counts**
 before calculating contact fractions; CER160 remains a separate cohort.
