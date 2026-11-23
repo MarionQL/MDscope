@@ -159,7 +159,13 @@ before calculating contact fractions; CER160 remains a separate cohort.
 The same ceramide scaffold moiety is compared in both cohorts; glycan-only
 contacts are not made comparable to an absent CER160 sugar population.
 Zero availability produces undefined fractions, not fabricated zero contacts.
-These are per-replica raw measurements, not pooled-replica inference.
+The per-frame cohort measurements are summarized in
+`project_summary/statistics/ceramide_scaffold/replicate_means.parquet`;
+`condition_comparisons.parquet` reports equally weighted replica means
+and a system-2-minus-system-1 descriptive contrast when each system has
+one unambiguous chemically distinct cohort with complete replica coverage.
+There is no bootstrap or condition-level significance claim; sparse local
+availability remains explicit. The per-replica raw fractions remain available.
 
 ### Protein residue water and HS sugar hydration
 
