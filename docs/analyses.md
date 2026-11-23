@@ -77,6 +77,56 @@ No contacts anywhere → undefined fold; present species → zero contact fracti
 
 Other lipid outputs: `extensions/bilayer_normal/`, `extensions/lipid_footprint/`, `interactions/lipid_hydrogen_bonds/`. Framewise ratios enter ordinary replicate-aware statistics. Check grid resolution, slab width, disk radius and anchor chemistry before interpreting small differences.
 
+### Lipid-contact classes and statistics
+
+
+The observer stores per-frame unique undirected bonded-molecule pair counts by species and current leaflet in `<system>/<replicate>/extensions/lipid_contacts/matrix.parquet`; multiple atom contacts between one molecule pair count once per frame. These are geometric contacts, **not lipid hydrogen bonds**.
+
+`analyses.lipid_contacts.classes` maps each lipid species to exactly one
+lipid class. The default full SDC4 configuration distinguishes phosphatidylcholine,
+phosphatidylethanolamine, anionic phospholipids, sphingomyelin,
+cholesterol, glycosphingolipids, and free ceramide. Unmapped or duplicated
+species assignments fail validation during statistics.
+
+The offline `lipid_contacts` statistics family:
+- counts unordered species pairs only once **before** combining them into
+  classes, then renders mirrored AB/BA matrix cells for convenient reading;
+- sums instantaneous molecule populations within each class and recomputes
+  same-class possible pairs as `N*(N-1)/2` and cross-class possible pairs as
+  `N_A*N_B` before estimating random-mixing enrichment;
+- retains the directional `neighbors_per_molecule` normalization
+  (A→B and B→A may differ) but not directional pair counts;
+- treats an absent lipid class or species as **unavailable**, not zero; a
+  populated but noncontacting pair is measured zero;
+- bootstraps temporally correlated frames within each replicate and resamples
+  replicates hierarchically, using independent conditions unless intentionally
+  configured as paired. It reports the mean and **pointwise** confidence
+  interval for each leaflet × pair × metric, including conditions and
+  between-condition contrasts (system 2 minus system 1).
+
+The supported metrics are `pair_count_undirected` (unique pairs/frame),
+`neighbors_per_molecule` (per-reference-lipid contacts) and `enrichment`
+(observed contact share / finite-population possible-pair share). The
+sampled-frame block length is conservatively the maximum autocorrelation-based
+block length across complete metrics within each replica/leaflet/grouping.
+
+Statistics products under
+`project_summary/statistics/lipid_contacts/`:
+`replicate_statistics.parquet`, `system_statistics.parquet`,
+`system_comparisons.parquet`. Both species-level and class-level outputs
+are saved in the same tables, marked by `level`. The contrast coverage
+audit also includes this family.
+
+Figures under `project_summary/figures/lipid_contacts/` include
+`lipid_contact_{matrix,difference}_...` for species and
+`lipid_contact_class_{matrix,difference}_...` for classes, with one
+heatmap per leaflet and metric. Difference-map dots mark cells with a
+pointwise bootstrap interval excluding zero; **they are not FDR-significant
+results**. Colors use shared scales across panels of the same grouping
+and metric.
+
+The class grouping is a reporting identity, not a pooled interaction cutoff or a binding affinity.
+
 ## Syndecan-4 (SDC4) mechanisms
 
 `analyses.sdc4_mechanisms` joins the **shared source-coordinate pass**. `analyses.shared_states` fits **one** model across saved replicas during offline finalization. Its default `sdc4` preset retains the legacy geometry model; `preset: null` selects explicit generic saved scalar features without SDC4 (see [configuration](configuration.md#shared-motifs-and-saved-feature-states)). Validate topology selections before running.
@@ -100,6 +150,22 @@ Other lipid outputs: `extensions/bilayer_normal/`, `extensions/lipid_footprint/`
 - Outputs: `extensions/sdc4_mechanisms/timeseries.parquet`, `selection_audit.json`, `lipid_density_maps.npz`, `hs_conditioned_solvation.parquet` and optional residue/motif/hydration tables. Project states: `project_summary/shared_states/`.
 - A complete reference configuration is [`synd4_full_mechanisms.yaml`](../synd4_full_mechanisms.yaml). **Do not copy old-residue examples blindly.**
 
+**Lipid-region reporting CSVs.** Plot-only rerendering reads each replica's saved
+`extensions/sdc4_mechanisms/lipid_region_specificity.parquet` without
+rewriting scientific artifacts under replica directories. The derived display
+summary is published separately at
+`project_summary/reporting_exports/sdc4/<condition>/<replicate>/lipid_region_replicate_summary.csv`.
+It retains the legacy column names, per-replica frame means, non-missing
+observation counts and both legacy and matched-local normalization measures.
+Historical `extensions/sdc4_mechanisms/lipid_region_replicate_summary.csv`
+files are retained untouched for compatibility; rerendering does not update them.
+The reporting CSV is regenerated from saved Parquet rather than treated as a
+primary numerical or inference product.
+
+If a previously reported replica/region has no current `any`-moiety data, its
+old presentation CSV moves to `.archives/project_summary/reporting_exports/`.
+Primary replica files and historical extension CSVs remain untouched.
+
 ### Protein residue water and HS sugar hydration
 
 | Option | Definition | Saved output |
@@ -111,6 +177,54 @@ Other lipid outputs: `extensions/bilayer_normal/`, `extensions/lipid_footprint/`
 - HS profiles: `hs_water_by_position__*` (chain/position) and `hs_water_by_sugar_type__*` (type mean per frame, with exact positions documented).
 - Residues without polar atoms have unavailable coordination. Conditional CIs preserve missing frames and require support across multiple temporal blocks.
 - HS sugar hydration is computed by the fused hydration observer (no extra trajectory pass); saved cutoff and frame-grid compatibility are checked before reuse. Change the cutoff using fresh output or controlled regeneration.
+
+## Hydration of protein residues, HS sugars and membrane sites
+
+`analyses.hydration` shares the existing fused frame loop and unique-water
+counting kernel. It does **not** fit coordinates or reread the trajectory.
+The configured water selection must contain exactly one oxygen per water
+molecule; each selected target is measured against that water population.
+
+```yaml
+analyses:
+  hydration:
+    enabled: true
+    water_oxygen_selection: "resname TIP3 and name OH2"
+    cutoff_A: 3.5
+    protein_selection: "protein"   # entire protein, not only the ectodomain
+    membrane_selection: "resname POPC POPE POPS DOPC PSM and name O*"
+  sdc4_mechanisms:
+    hs_sugar_water_cutoff_A: 3.5   # existing opt-in, with hs_auto configured
+```
+
+`membrane_selection` selects the **hydration sites**, not merely the lipid
+species. Prefer an explicitly audited chemistry-specific selection; avoid
+comparing different oxygen/site populations as if they were identical.
+`glycans` lists [shared glycan definitions](configuration.md#shared-glycan-definitions)
+measured per sugar, chain and definition with `cutoff_A`.
+When omitted, an existing `sdc4_mechanisms.lipid_contact_selection` or
+`membrane.headgroup_selection` is reused if configured. HS sugar hydration
+can be enabled independently through the existing
+`sdc4_mechanisms.hs_sugar_water_cutoff_A` setting even when generic
+hydration is disabled.
+
+| Output | Scope |
+|---|---|
+| `extensions/hydration/counts.parquet` | Water counts by frame, compartment, protein residue, HS sugar or selected membrane residue |
+| `extensions/hydration/aggregate_counts.parquet` | Unique water unions by glycan chain, chain sugar type, whole glycan definition (HS: `hs`), whole protein, whole membrane and membrane residue name |
+| `extensions/hydration/target_metadata.parquet` | Topology residue index, glycan chain and attachment-relative position, residue chemistry, site count and cutoff |
+| `extensions/hydration/glycan_attachments.parquet` | Per glycan chain: protein chain/residue/atom, topology indices and sugar sequence (required when `hydration.glycans` is set) |
+| `extensions/sdc4_mechanisms/hs_sugar_hydration.parquet` | Unchanged HS per-sugar schema for the existing position/type statistics |
+
+A water shared by two sugars contributes one count to **each** sugar, but
+only one to their HS-chain union. Thus aggregate counts cannot be computed
+by summing per-residue counts. Membrane targets are topology residues;
+a multi-residue glycolipid is **not** automatically a single lipid molecule
+in this table. For direct molecule-level lipid contacts, use the bonded
+lipid-specific analyses. Raw coordination counts scale with the number
+and chemistry of selected sites; compare matched selections and use
+`n_sites` from metadata for site-normalized analyses. Times are ps,
+cutoffs Å, and all measurements use source coordinates with PBC.
 
 ## Single- and multi-origin diffusion
 
@@ -245,6 +359,33 @@ python scripts/audit_potassium_bridges.py \
 - Compare eligible-ion populations and observed-versus-shifted reference under identical steric rules. This is geometric sensitivity, **not** insertion energy or chemical binding free energy.
 - Release files have only one trajectory per condition; use independent production replicas for condition inference.
 
+## Residue-response heatmap
+
+
+The ordinary profile statistics phase now writes
+`project_summary/statistics/profiles/residue_response_matrix.parquet` and
+`residue_response_regions.parquet` when saved residue-profile contrasts exist.
+These are **descriptive, data-selected regions**, not functional sequence
+motifs or independently tested region-level confidence intervals.
+
+- Per-residue contrasts retain their original units and the pointwise
+  confidence bounds produced by the existing hierarchical bootstrap.
+- `standardized_effect` divides each point estimate by the **median
+  positive within-residue replica SD** for that profile (pooled across
+  systems and positions). Undefined scales remain missing, not zero.
+- Neighboring residue fingerprint vectors are joined only within the
+  same chain and consecutive residue numbers, with at least two shared
+  finite metrics and cosine similarity >= 0.7. Regions require at least
+  three residues and two wholly observed metrics.
+- The heatmap shades standardized changes (clipped to ±3 for display),
+  marks pointwise CI exclusions as dots, and outlines **exploratory**
+  contiguous regions. No inference is performed after selecting regions.
+- Existing profile exports use residue display labels. Ambiguous duplicate
+  labels fail; authoritative cross-system topology-index mappings and
+  out-of-sample region validation are follow-ups in #203.
+
+Heatmaps are saved under `project_summary/figures/profiles/residue_response/` (figure ID `profiles:residue_response:heatmap`). Settings: [configuration](configuration.md#residue-response-discovery).
+
 ## Practical validation and performance
 
 1. Validate **both topologies** first: actual atom names, six HS attachments, intact lipid fragments, one anchor/molecule, target overlaps, water/ion identities and frame timing.
@@ -255,59 +396,8 @@ python scripts/audit_potassium_bridges.py \
 
 ## Adding an analysis
 
-- Choose output contract first: scalar series, labeled time×position profile, interaction/event identities, or one estimate **per replicate**.
-- Implement under the owning `src/mdscope/{observables,interactions,mechanisms}/` package; share geometry and sparse MDAnalysis kernels.
-- Register outputs/tasks and **required companions** in `src/mdscope/registry.py`. Feed `summary/timeseries.parquet`, shared profile collectors or interaction tables.
-- Cheap per-frame observables join the fused pass; expensive separate readers must be restartable. Do not add a custom statistical bootstrap or frame-pooled hypothesis test.
-- Test a hand-calculated numerical case, invalid/missingness and required artifact behavior, then real TPR/XTC before production interpretation.
+Where each piece goes and how to test it: [Architecture → Adding an analysis](developer/architecture.md#adding-an-analysis). Cheap per-frame observables join the shared pass; do not add a custom bootstrap or a frame-pooled hypothesis test.
 
-[Workflows](workflows.md) · [Scientific contracts](developer/scientific-contracts.md) · [Validation gaps](developer/validation-gaps.md)
+[Workflows](workflows.md) · [Scientific contracts](developer/scientific-contracts.md) · [Scientific audit](developer/scientific-audit.md)
 
 
-## Fused hydration by HS sugar, protein residue and membrane residue
-
-`analyses.hydration` shares the existing fused frame loop and unique-water
-counting kernel. It does **not** fit coordinates or reread the trajectory.
-The configured water selection must contain exactly one oxygen per water
-molecule; each selected target is measured against that water population.
-
-```yaml
-analyses:
-  hydration:
-    enabled: true
-    water_oxygen_selection: "resname TIP3 and name OH2"
-    cutoff_A: 3.5
-    protein_selection: "protein"   # entire protein, not only the ectodomain
-    membrane_selection: "resname POPC POPE POPS DOPC PSM and name O*"
-  sdc4_mechanisms:
-    hs_sugar_water_cutoff_A: 3.5   # existing opt-in, with hs_auto configured
-```
-
-`membrane_selection` selects the **hydration sites**, not merely the lipid
-species. Prefer an explicitly audited chemistry-specific selection; avoid
-comparing different oxygen/site populations as if they were identical.
-`glycans` lists [shared glycan definitions](configuration.md#shared-glycan-definitions)
-measured per sugar, chain and definition with `cutoff_A`.
-When omitted, an existing `sdc4_mechanisms.lipid_contact_selection` or
-`membrane.headgroup_selection` is reused if configured. HS sugar hydration
-can be enabled independently through the existing
-`sdc4_mechanisms.hs_sugar_water_cutoff_A` setting even when generic
-hydration is disabled.
-
-| Output | Scope |
-|---|---|
-| `extensions/hydration/counts.parquet` | Water counts by frame, compartment, protein residue, HS sugar or selected membrane residue |
-| `extensions/hydration/aggregate_counts.parquet` | Unique water unions by glycan chain, chain sugar type, whole glycan definition (HS: `hs`), whole protein, whole membrane and membrane residue name |
-| `extensions/hydration/target_metadata.parquet` | Topology residue index, glycan chain and attachment-relative position, residue chemistry, site count and cutoff |
-| `extensions/hydration/glycan_attachments.parquet` | Per glycan chain: protein chain/residue/atom, topology indices and sugar sequence (required when `hydration.glycans` is set) |
-| `extensions/sdc4_mechanisms/hs_sugar_hydration.parquet` | Unchanged HS per-sugar schema for the existing position/type statistics |
-
-A water shared by two sugars contributes one count to **each** sugar, but
-only one to their HS-chain union. Thus aggregate counts cannot be computed
-by summing per-residue counts. Membrane targets are topology residues;
-a multi-residue glycolipid is **not** automatically a single lipid molecule
-in this table. For direct molecule-level lipid contacts, use the bonded
-lipid-specific analyses. Raw coordination counts scale with the number
-and chemistry of selected sites; compare matched selections and use
-`n_sites` from metadata for site-normalized analyses. Times are ps,
-cutoffs Å, and all measurements use source coordinates with PBC.
