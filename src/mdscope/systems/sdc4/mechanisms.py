@@ -732,7 +732,7 @@ class SDC4Mechanisms:
                 normals = [
                     local_leaflet_normal(
                         center, anchors[mask & self.surface_mask], box,
-                        self.local_A, min_anchors=5,
+                        self.local_A, min_anchors=self.min_lipids,
                     )
                     for mask in (leaf, ~leaf)
                 ]
