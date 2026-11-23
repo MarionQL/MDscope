@@ -122,6 +122,7 @@ def main() -> int:
         additive_defaults = {
             ("analyses", "sdc4_mechanisms", "interprotomer_contacts"): False,
             ("analyses", "sdc4_mechanisms", "tm_local_tilt"): False,
+            ("analyses", "sdc4_mechanisms", "ceramide_scaffold_pooling"): False,
             ("statistics", "residue_correlations"): {
                 "enabled": False, "pairs": None, "min_frames": 30,
             },
