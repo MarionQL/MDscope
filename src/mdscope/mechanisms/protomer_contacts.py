@@ -127,75 +127,100 @@ class InterprotomerContacts:
 
 
 def summarize_interprotomer_contacts(outdir: Path, pair_parts, residue_parts, times):
-    """Validate the complete contact grid before publishing replica products."""
+    """Validate frame completeness and aggregate bounded chunks before publishing."""
     from ..core.persistence import atomic_parquet_parts
 
-    outdir = Path(outdir)
     pair_parts, residue_parts = list(pair_parts), list(residue_parts)
-    if not pair_parts or not residue_parts:
-        raise ValueError("Interprotomer summary requires pair and residue chunks")
     times = np.asarray(times, float)
-    if (not len(times) or not np.isfinite(times).all()
+    if (not pair_parts or len(pair_parts) != len(residue_parts)
+            or not len(times) or not np.isfinite(times).all()
             or len(np.unique(times)) != len(times)):
-        raise ValueError("Interprotomer summary needs unique, finite frame times")
+        raise ValueError("Interprotomer summary requires matching chunks and unique finite times")
 
-    # Read the committed chunks before writing any destination. This prevents a
-    # malformed or incomplete frame grid from replacing valid saved products.
-    pairs = pd.concat((pd.read_parquet(p) for p in pair_parts), ignore_index=True)
-    residue = pd.concat((pd.read_parquet(p) for p in residue_parts), ignore_index=True)
-    if not set(PAIR_COLUMNS).issubset(pairs) or not set(RESIDUE_COLUMNS).issubset(residue):
-        raise ValueError("Interprotomer chunks lack required contact columns")
-    if residue.empty or set(residue.time_ps.unique()) != set(times):
+    expected_times = set(times)
+    seen_times = set()
+    identities = None
+    residue_summaries, pair_summaries = [], []
+    pair_keys = ["topology_residue_index_A", "residue_A",
+                 "topology_residue_index_B", "residue_B"]
+    residue_keys = ["chain", "topology_residue_index", "residue"]
+    measures = {
+        "contact_frames": ("any_contact", "sum"),
+        "contact_atom_fraction": ("contacting_heavy_atom_fraction", "sum"),
+        "partner_count": ("opposite_partner_residues", "sum"),
+        "atom_pairs": ("atom_contact_pairs", "sum"),
+    }
+    for pair_part, residue_part in zip(pair_parts, residue_parts):
+        residue = pd.read_parquet(residue_part)
+        pairs = pd.read_parquet(pair_part)
+        if not set(RESIDUE_COLUMNS).issubset(residue) or not set(PAIR_COLUMNS).issubset(pairs):
+            raise ValueError("Interprotomer chunks lack required contact columns")
+        chunk_times = set(residue.time_ps.unique())
+        if not chunk_times or not chunk_times <= expected_times or chunk_times & seen_times:
+            raise ValueError("Interprotomer chunk contains missing, unexpected or repeated times")
+        seen_times.update(chunk_times)
+        if (residue.duplicated(["time_ps", "topology_residue_index"]).any()
+                or not pairs.time_ps.isin(chunk_times).all()
+                or pairs.duplicated(["time_ps", *pair_keys[:1], pair_keys[2]]).any()):
+            raise ValueError("Duplicate or out-of-grid interprotomer contact rows")
+        signature = residue[[
+            "chain", "topology_residue_index", "residue",
+            "protein_heavy_atom_count", "cutoff_A",
+        ]].drop_duplicates().sort_values("topology_residue_index").reset_index(drop=True)
+        if signature.topology_residue_index.duplicated().any():
+            raise ValueError("Changing interprotomer residue identity within a chunk")
+        if identities is None:
+            identities = signature
+        elif not signature.equals(identities):
+            raise ValueError("Inconsistent interprotomer residue identities between chunks")
+        per_id = residue.groupby(residue_keys, sort=True, as_index=False).agg(
+            frames=("time_ps", "size"), **measures,
+        )
+        if not per_id.frames.eq(len(chunk_times)).all():
+            raise ValueError("Incomplete interprotomer residue frame grid")
+        residue_summaries.append(per_id)
+        if not pairs.empty:
+            pair_summaries.append(pairs.groupby(pair_keys, sort=True, as_index=False).agg(
+                frames_present=("time_ps", "size"),
+                total_atom_pairs=("atom_contact_pairs", "sum"),
+                min_distance_observed_A=("min_distance_A", "min"),
+            ))
+    if seen_times != expected_times:
         raise ValueError("Interprotomer frame grid differs from SDC4 timeseries")
-    if residue.duplicated(["time_ps", "topology_residue_index"]).any():
-        raise ValueError("Duplicate interprotomer residue within a frame")
-    if not pairs.empty and (
-            not pairs.time_ps.isin(times).all() or
-            pairs.duplicated([
-                "time_ps", "topology_residue_index_A",
-                "topology_residue_index_B",
-            ]).any()):
-        raise ValueError("Duplicate or out-of-grid interprotomer residue pair")
 
-    identities = residue.groupby("topology_residue_index", sort=True).agg(
-        frames=("time_ps", "nunique"),
-        chains=("chain", "nunique"),
-        labels=("residue", "nunique"),
-        atom_counts=("protein_heavy_atom_count", "nunique"),
-        cutoffs=("cutoff_A", "nunique"),
-    )
-    if (identities.empty or not identities.frames.eq(len(times)).all()
-            or not identities[["chains", "labels", "atom_counts", "cutoffs"]]
-            .eq(1).all().all()):
-        raise ValueError("Incomplete or inconsistent interprotomer residue identities")
-
-    by_residue = residue.groupby(
-        ["chain", "topology_residue_index", "residue"], as_index=False,
-        sort=True,
-    ).agg(
-        frames=("any_contact", "size"),
-        contact_occupancy=("any_contact", "mean"),
-        mean_contacting_heavy_atom_fraction=("contacting_heavy_atom_fraction", "mean"),
-        mean_opposite_partner_residues=("opposite_partner_residues", "mean"),
-        mean_atom_contact_pairs=("atom_contact_pairs", "mean"),
-    )
-    fields = ["topology_residue_index_A", "residue_A",
-              "topology_residue_index_B", "residue_B"]
-    if pairs.empty:
-        by_pair = pd.DataFrame(columns=[
-            *fields, "frames_present", "contact_occupancy",
-            "mean_atom_pairs_per_frame", "min_distance_observed_A",
-        ])
-    else:
-        by_pair = pairs.groupby(fields, as_index=False, sort=True).agg(
-            frames_present=("time_ps", "size"),
-            total_atom_pairs=("atom_contact_pairs", "sum"),
-            min_distance_observed_A=("min_distance_A", "min"),
+    by_residue = pd.concat(residue_summaries).groupby(
+        residue_keys, sort=True, as_index=False,
+    ).agg({name: "sum" for name in ["frames", *measures]})
+    if not by_residue.frames.eq(len(times)).all():
+        raise ValueError("Incomplete interprotomer residue frame grid")
+    for name, source in (
+        ("contact_occupancy", "contact_frames"),
+        ("mean_contacting_heavy_atom_fraction", "contact_atom_fraction"),
+        ("mean_opposite_partner_residues", "partner_count"),
+        ("mean_atom_contact_pairs", "atom_pairs"),
+    ):
+        by_residue[name] = by_residue[source] / by_residue.frames
+    by_residue = by_residue[[*residue_keys, "frames", "contact_occupancy",
+                             "mean_contacting_heavy_atom_fraction",
+                             "mean_opposite_partner_residues", "mean_atom_contact_pairs"]]
+    if pair_summaries:
+        by_pair = pd.concat(pair_summaries).groupby(
+            pair_keys, sort=True, as_index=False,
+        ).agg(
+            frames_present=("frames_present", "sum"),
+            total_atom_pairs=("total_atom_pairs", "sum"),
+            min_distance_observed_A=("min_distance_observed_A", "min"),
         )
         by_pair["contact_occupancy"] = by_pair.frames_present / len(times)
         by_pair["mean_atom_pairs_per_frame"] = by_pair.total_atom_pairs / len(times)
         by_pair = by_pair.drop(columns="total_atom_pairs")
+    else:
+        by_pair = pd.DataFrame(columns=[
+            *pair_keys, "frames_present", "contact_occupancy",
+            "mean_atom_pairs_per_frame", "min_distance_observed_A",
+        ])
 
+    outdir = Path(outdir)
     atomic_parquet_parts(outdir / "interprotomer_pair_frames.parquet", pair_parts)
     atomic_parquet_parts(outdir / "interprotomer_residue_frames.parquet", residue_parts)
     atomic_parquet(outdir / "interprotomer_residue_summary.parquet", by_residue)
