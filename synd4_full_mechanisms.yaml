@@ -248,6 +248,7 @@ analyses:
     axis: z
     protein_selection: "protein"
     residue_occlusion: true
+    interprotomer_contacts: true  # whole PROA-PROB interface, all protein residues
     residue_water_cutoff_A: 3.5
     hs_sugar_water_cutoff_A: 3.5
     tm_chains:
@@ -493,6 +494,10 @@ analyses:
 
 statistics:
   interaction_min_occupancy: 0.20
+  residue_correlations:
+    enabled: true
+    min_frames: 30
+    pairs: null  # curated raw per-residue Pearson/Spearman associations
   matched_window_ps: auto
   enabled: true
   bootstrap_draws: 5000
