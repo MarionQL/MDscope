@@ -41,7 +41,7 @@ METRIC_SOURCES = {
 }
 
 
-def _series(repout: Path, metric: str, *, sasa_runs=None):
+def _series(repout: Path, metric: str, *, sasa_runs=None, cache=None):
     relative, field = METRIC_SOURCES[metric]
     if metric.startswith("sasa_") and sasa_runs:
         run = sasa_runs.get(metric)
@@ -52,7 +52,13 @@ def _series(repout: Path, metric: str, *, sasa_runs=None):
     path = repout / relative
     if not path.is_file():
         return None, {}
-    frame = pd.read_parquet(path)
+    # Occlusion provides several metrics; read its saved table only once per replica.
+    if cache is not None and path in cache:
+        frame = cache[path]
+    else:
+        frame = pd.read_parquet(path)
+        if cache is not None:
+            cache[path] = frame
     needed = {"time_ps", "topology_residue_index", "residue", field}
     if not needed.issubset(frame):
         return None, {}
@@ -86,8 +92,9 @@ def correlate_replica(repout: Path, pairs=DEFAULT_PAIRS, *, min_frames=30,
     metrics = sorted({m for pair in pairs for m in pair})
     sources = {}
     labels = {}
+    cache = {}
     for metric in metrics:
-        series, mapping = _series(Path(repout), metric, sasa_runs=sasa_runs)
+        series, mapping = _series(Path(repout), metric, sasa_runs=sasa_runs, cache=cache)
         if series is None:
             continue
         for index, name in mapping.items():
