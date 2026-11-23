@@ -1328,7 +1328,7 @@ class SDC4Mechanisms:
                 specificity, "available_molecules"
             )
             atomic_parquet(out / "lipid_region_specificity.parquet", specificity)
-            if {"ceramide_head", "ceramide_tail"}.issubset(self.lipid_moiety_membership):
+            if self.spec.get("ceramide_scaffold_pooling", False):
                 atomic_parquet(
                     out / "ceramide_scaffold_pooled.parquet",
                     pool_ceramide_scaffolds(specificity),
