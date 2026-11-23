@@ -15,6 +15,7 @@ RESIDUE_RESPONSE_PROFILE = re.compile(
 RESIDUE_CORRELATION_METRICS = frozenset({
     "water_count", "protein_fraction", "hs_fraction", "lipid_fraction",
     "sasa_isolated", "sasa_environment", "helix_state",
+    "interprotomer_fraction",
 })
 
 # Every statistics family and its directory under project_summary/statistics/.
