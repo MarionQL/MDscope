@@ -7,6 +7,8 @@ It requires a Git checkout with the remote main ref available or fetchable.
 from __future__ import annotations
 
 import io
+import copy
+import hashlib
 import json
 import os
 import subprocess
@@ -98,18 +100,69 @@ def main() -> int:
         with tarfile.open(fileobj=io.BytesIO(archive.stdout), mode="r:") as tar:
             tar.extractall(baseline, filter="data")
 
+        # Old code must consume the *main-branch* YAML, not changed YAML from
+        # the PR: new user opt-ins are intentionally unknown to main. Feed the
+        # same archived historical config to both versions, at one stable path.
+        legacy = scratch / "legacy_configs"
+        legacy.mkdir()
+        for path in maintained:
+            historical = baseline / path.name
+            if not historical.is_file():
+                raise RuntimeError(f"Missing maintained main-branch config: {path.name}")
+            legacy_path = legacy / path.name
+            legacy_path.write_bytes(historical.read_bytes())
+            inputs[path.name] = str(legacy_path)
+
         before = snapshot(baseline, inputs)
         after = snapshot(REPO, inputs)
+
+        # Newly introduced disabled-by-default opt-ins may add resolved keys
+        # and therefore change the ordinary full config hash. Compare the
+        # preexisting scientific contract exactly; do not waive changed values.
+        additive_defaults = {
+            ("analyses", "sdc4_mechanisms", "interprotomer_contacts"): False,
+            ("analyses", "sdc4_mechanisms", "tm_local_tilt"): False,
+            ("statistics", "residue_correlations"): {
+                "enabled": False, "pairs": None, "min_frames": 30,
+            },
+        }
         problems = []
         for name in sorted(inputs):
-            for key in ("resolved", "hash", "plan"):
-                if before[name][key] != after[name][key]:
-                    problems.append(f"{name}: {key} differs from main")
+            historical = before[name]["resolved"]
+            current = copy.deepcopy(after[name]["resolved"])
+            for path, expected in additive_defaults.items():
+                base_node, current_node = historical, current
+                for part in path[:-1]:
+                    base_node = base_node.get(part, {})
+                    current_node = current_node.get(part, {})
+                field = path[-1]
+                if field not in base_node and field in current_node:
+                    if current_node[field] != expected:
+                        problems.append(f"{name}: nondefault new setting {'.'.join(path)}")
+                    else:
+                        current_node.pop(field)
+            if historical != current:
+                problems.append(f"{name}: legacy resolved science differs from main")
+            # The normalized legacy hash must remain identical to main even
+            # though a new project records new disabled options in its hash.
+            legacy_hash = hashlib.sha256(
+                json.dumps(current, sort_keys=True, default=str).encode()
+            ).hexdigest()[:16]
+            if before[name]["hash"] != legacy_hash:
+                problems.append(f"{name}: legacy config hash differs from main")
+            if before[name]["plan"] != after[name]["plan"]:
+                problems.append(f"{name}: legacy plan differs from main")
             print(f"{name}: {'MATCH' if not any(p.startswith(name + ':') for p in problems) else 'DIFF'}")
+
+        # The modified maintained YAML must also resolve via the *new* code's
+        # CLI and planning API, although it cannot be read by historical code.
+        modern_inputs = {path.name: str(path) for path in maintained}
+        snapshot(REPO, modern_inputs)
         if problems:
             print("\n".join(problems), file=sys.stderr)
             return 1
-        print(f"Parity confirmed for {len(inputs)} configurations against main")
+        print(f"Legacy parity confirmed for {len(inputs)} configs; "
+              f"{len(modern_inputs)} current YAML files also validated")
         return 0
 
 
