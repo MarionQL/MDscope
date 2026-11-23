@@ -23,6 +23,14 @@ def validate_sdc4(cfg):
         raise ValueError("sdc4_mechanisms.interprotomer_contacts must be a boolean")
     if type(mechanisms.get("tm_local_tilt", False)) is not bool:
         raise ValueError("sdc4_mechanisms.tm_local_tilt must be a boolean")
+    if type(mechanisms.get("ceramide_scaffold_pooling", False)) is not bool:
+        raise ValueError("sdc4_mechanisms.ceramide_scaffold_pooling must be a boolean")
+    if mechanisms.get("ceramide_scaffold_pooling") and (
+            not mechanisms.get("motif_lipid_residence")
+            or not {"ceramide_head", "ceramide_tail"} <= set(
+                mechanisms.get("lipid_moiety_selections") or {})):
+        raise ValueError("sdc4_mechanisms.ceramide_scaffold_pooling requires "
+                         "motif_lipid_residence and ceramide_head/tail moieties")
     surface_sites = mechanisms.get("residue_surface_sites", {})
     if not isinstance(surface_sites, dict) or any(
             not isinstance(name, str) or not name.strip()
