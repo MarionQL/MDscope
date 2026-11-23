@@ -21,6 +21,8 @@ def validate_sdc4(cfg):
         raise ValueError("sdc4_mechanisms.residue_occlusion must be a boolean")
     if type(mechanisms.get("interprotomer_contacts", False)) is not bool:
         raise ValueError("sdc4_mechanisms.interprotomer_contacts must be a boolean")
+    if type(mechanisms.get("tm_local_tilt", False)) is not bool:
+        raise ValueError("sdc4_mechanisms.tm_local_tilt must be a boolean")
     surface_sites = mechanisms.get("residue_surface_sites", {})
     if not isinstance(surface_sites, dict) or any(
             not isinstance(name, str) or not name.strip()
