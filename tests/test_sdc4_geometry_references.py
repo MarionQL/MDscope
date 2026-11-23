@@ -76,8 +76,10 @@ def _observe(u, cfg, out):
 
 @pytest.mark.parametrize("separation,tm_pairs,motif_pairs,other_pairs", [(3., 19, 13, 14), (8., 0, 0, 0)])
 @pytest.mark.parametrize("transform", ["identity", "rotate_z", "wrap_translate"])
-def test_analytic_dimer_and_membrane_geometry(tmp_path, separation, tm_pairs, motif_pairs, other_pairs, transform):
+@pytest.mark.parametrize("whole_interface", [False, True])
+def test_analytic_dimer_and_membrane_geometry(tmp_path, separation, tm_pairs, motif_pairs, other_pairs, transform, whole_interface):
     u, cfg = _fixture(separation, transform)
+    cfg["analyses"]["sdc4_mechanisms"]["interprotomer_contacts"] = whole_interface
     row, obs = _observe(u, cfg, tmp_path)
     assert row.sdc4_tm_crossing_angle_deg == pytest.approx(0., abs=1e-6)
     assert row.sdc4_tm_interface_residue_pairs == tm_pairs
@@ -96,10 +98,23 @@ def test_analytic_dimer_and_membrane_geometry(tmp_path, separation, tm_pairs, mo
     assert row.sdc4_hs_A1_attachment_lipid_contact_pairs == 0
     assert row.sdc4_hs_A1_membrane_contact_state == 0
     assert obs.audit["gxxxg_resindices"] == {"A": list(range(17, 22)), "B": list(range(5, 10))}
+    if whole_interface:
+        pairs = pd.read_parquet(
+            tmp_path / "extensions/sdc4_mechanisms/interprotomer_pair_frames.parquet"
+        )
+        # Ectodomain pairs are included in the complete interface but must
+        # never inflate either TM-only or pre-annotated motif-only summaries.
+        tm_mask = pairs.topology_residue_index_A.isin(range(17, 24)) & (
+            pairs.topology_residue_index_B.isin(range(5, 12))
+        )
+        assert int(tm_mask.sum()) == tm_pairs
+        assert len(pairs) >= tm_pairs
 
 
-def test_optional_missing_motif_is_unavailable_not_physical_zero(tmp_path):
+@pytest.mark.parametrize("whole_interface", [False, True])
+def test_optional_missing_motif_is_unavailable_not_physical_zero(tmp_path, whole_interface):
     u, cfg = _fixture(separation=8.)
+    cfg["analyses"]["sdc4_mechanisms"]["interprotomer_contacts"] = whole_interface
     u.residues[6].resname = "ALA"
     cfg["analyses"]["sdc4_mechanisms"]["require_gxxxg"] = False
     row, _ = _observe(u, cfg, tmp_path)
