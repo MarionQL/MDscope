@@ -279,6 +279,35 @@ def _order_by_residue(o, box, axis):
 
 
 
+def resolve_sdc4_gxxxg(universe, tm_chains, *, required=False):
+    """Resolve both TM motifs once using the shared sequence matcher.
+
+    Used by topology preflight and execution; topology selections, not fixed
+    residue numbers, define the available motif. Returns (atoms, sequences).
+    """
+    motifs, sequences = {}, {}
+    for chain, tm in tm_chains.items():
+        ca = tm.select_atoms("name CA")
+        if not len(ca):
+            raise ValueError(f"TM selection for {chain} must contain CA atoms")
+        matches = sequence_matches(ca, {"GGIVG": "GGIVG"})
+        if len(matches) > 1:
+            raise ValueError(
+                f"TM chain {chain} has ambiguous GGIVG mapping ({len(matches)} matches); "
+                "select one protein chain and one TM motif"
+            )
+        sequence = "".join(AA3.get(atom.resname.upper(), "X") for atom in ca)
+        sequences[chain] = sequence
+        if not matches and required:
+            raise ValueError(
+                f"No GGIVG found in TM chain {chain} (sequence={sequence!r}); "
+                "verify topology chain IDs and TM residue range"
+            )
+        indices = np.concatenate(list(matches.values())) if matches else np.empty(0, int)
+        motifs[chain] = heavy(universe.atoms[np.isin(universe.atoms.resindices, indices)])
+    return motifs, sequences
+
+
 def _tm_contact_metrics(pairs, tm_heavy, gxxxg, names):
     """Aggregate TM and GGIVG labels from the measured interprotomer residue pairs.
 
@@ -521,31 +550,9 @@ class SDC4Mechanisms:
         # topology's actual sequence does not contain the motif.
         if s.get("require_motifs", True) and not self.motifs:
             raise ValueError("No NxIP motif matched; verify the mature SDC4 sequence/chain selections")
-        self.gxxxg = {}
-        self.gxxxg_sequences = {}
-        for chain, tm in self.tm.items():
-            ca_tm = tm.select_atoms("name CA")
-            if not len(ca_tm):
-                raise ValueError(f"TM selection for {chain} must contain CA atoms")
-            # Match the known SDC4 GGIVG sequence; generic G...G matches can
-            # select an unrelated glycine pair and mask a wrong TM selection.
-            matches = sequence_matches(ca_tm, {"GGIVG": "GGIVG"})
-            if len(matches) > 1:
-                raise ValueError(
-                    f"TM chain {chain} has ambiguous GGIVG mapping ({len(matches)} matches); "
-                    "select one protein chain and one TM motif"
-                )
-            indices = np.unique(np.concatenate(list(matches.values()))) if matches else np.empty(0, int)
-            sequence = "".join(
-                AA3.get(atom.resname.upper(), "X") for atom in ca_tm
-            )
-            self.gxxxg_sequences[chain] = sequence
-            if not len(indices) and s.get("require_gxxxg", False):
-                raise ValueError(
-                    f"No GGIVG found in TM chain {chain} (sequence={sequence!r}); "
-                    "verify topology chain IDs and TM residue range"
-                )
-            self.gxxxg[chain] = heavy(universe.atoms[np.isin(universe.atoms.resindices, indices)])
+        self.gxxxg, self.gxxxg_sequences = resolve_sdc4_gxxxg(
+            universe, self.tm, required=s.get("require_gxxxg", False),
+        )
         self.local_order = _normal_order_setup(universe, s.get("local_order") or {},
                                                cfg["analyses"].get("membrane_order"))
         self.extent = float(s.get("map_extent_A", 40.))
