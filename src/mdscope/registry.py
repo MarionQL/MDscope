@@ -153,8 +153,7 @@ def required_artifacts(entry: FusedOutput, cfg: dict) -> tuple[Path, ...]:
         paths.extend(directory/f for f in (
             'interprotomer_pair_frames.parquet', 'interprotomer_residue_frames.parquet',
             'interprotomer_pair_summary.parquet', 'interprotomer_residue_summary.parquet'))
-    if (name == 'sdc4_mechanisms' and spec.get('motif_lipid_residence', False)
-            and {'ceramide_head', 'ceramide_tail'} <= set(spec.get('lipid_moiety_selections') or {})):
+    if name == 'sdc4_mechanisms' and spec.get('ceramide_scaffold_pooling', False):
         paths.append(directory/'ceramide_scaffold_pooled.parquet')
     if name == 'sdc4_mechanisms' and spec.get('motif_lipid_residence', False):
         paths.extend(directory/f for f in ('motif_lipid_contact_events.parquet',
