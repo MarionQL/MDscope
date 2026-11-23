@@ -13,8 +13,8 @@ import numpy as np
 import pandas as pd
 
 from ..config import analysis_runs
+from ..contracts.outputs import reuse_columns
 from ..core.provenance import config_hash
-from ..observables.hydration import temporal_hs_hydration_profiles
 from ..mechanisms.residue_occlusion import (
     FRACTION_COLUMNS,
     IDENTITY_COLUMNS,
@@ -23,13 +23,23 @@ from ..mechanisms.residue_occlusion import (
     residue_environment_pending,
 )
 from ..observables.density_1d import missing_membrane_density_runs
+from ..observables.hydration import temporal_hs_hydration_profiles
 from ..observables.lipid_enrichment import footprint_pending
-from ..registry import artifact_schema, core_saved_contracts, required_artifacts, saved_output_plan
+from ..registry import (
+    artifact_schema,
+    core_saved_contracts,
+    required_artifacts,
+    saved_output_plan,
+)
 
 
-def check_artifact(path: Path) -> int:
+def check_artifact(path: Path, *, verified=None) -> int:
     """Check a required product using its metadata only."""
-    size = path.stat().st_size
+    stat = path.stat()
+    fingerprint = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+    if verified is not None and verified.get(path) == fingerprint:
+        return stat.st_size
+    size = stat.st_size
     if not path.is_file() or not size:
         raise ValueError(f"Missing or empty artifact: {path}")
     if path.suffix == ".parquet":
@@ -45,10 +55,15 @@ def check_artifact(path: Path) -> int:
                 raise ValueError(f"Invalid NPZ payload: {path}")
     elif path.suffix == ".json" and not isinstance(json.loads(path.read_text()), dict):
         raise ValueError(f"Expected a JSON object: {path}")
+    after = path.stat()
+    if fingerprint != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+        raise ValueError(f"Artifact changed during validation: {path}")
+    if verified is not None:
+        verified[path] = fingerprint
     return size
 
 
-def validate_analysis_output(entry, cfg, *, allow_missing_occlusion=False):
+def validate_analysis_output(entry, cfg, *, allow_missing_occlusion=False, verified=None):
     """Check enabled primary/companion products before reuse or finalization."""
     try:
         occlusion = entry.path.parent / OCCLUSION_FILE
@@ -60,35 +75,21 @@ def validate_analysis_output(entry, cfg, *, allow_missing_occlusion=False):
         for path in required_artifacts(entry, cfg):
             if may_add_occlusion and path == occlusion:
                 continue
-            check_artifact(path)
-            if path != entry.path and path.suffix == ".parquet":
-                # Companions must satisfy the registry's existing column
-                # contracts too; metadata readability alone misses damaged tables.
+            check_artifact(path, verified=verified)
+            if path.suffix == ".parquet":
                 from pyarrow.parquet import read_schema
-                expected_columns = artifact_schema(entry, path)["columns"]
+                expected_columns = reuse_columns(entry, path)
                 if expected_columns is not None:
                     missing = set(expected_columns) - set(read_schema(path).names)
                     if missing:
                         raise ValueError(f"{path}: missing columns {sorted(missing)}")
-        if entry.path.suffix == ".parquet":
-            from pyarrow.parquet import read_schema
-            columns = set(read_schema(entry.path).names)
-            expected = {
-                "solvation": {"frame", "time_ps", "target_id", "n_solvent"},
-                "dssp": {"time_ps", "topology_residue_index", "residue", "dssp"},
-                "sasa": {"time_ps", "topology_residue_index", "residue", "sasa_nm2"},
-                "hydrogen_bonds": {"time_ps", "donor", "acceptor"},
-                "lipid_hydrogen_bonds": {"time_ps", "donor", "acceptor"},
-            }.get(entry.name, {"time_ps"})
-            if not expected <= columns:
-                raise ValueError(f"{entry.path}: missing columns {sorted(expected - columns)}")
         if entry.name == "membrane_order":
             index = pd.read_parquet(entry.path.parent / "profile_index.parquet")
             for filename in index["file"]:
                 path = entry.path.parent / str(filename)
                 if path.parent != entry.path.parent:
                     raise ValueError(f"Invalid profile filename: {filename}")
-                check_artifact(path)
+                check_artifact(path, verified=verified)
                 with np.load(path, allow_pickle=False) as profile:
                     if not {"time_ps", "values", "positions", "labels"} <= set(profile.files):
                         raise ValueError(f"{path}: missing order-profile arrays")

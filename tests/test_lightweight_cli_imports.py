@@ -3,7 +3,7 @@
 import subprocess
 import sys
 
-from mdscope.contracts.metric_selection import STATISTICS_FAMILIES
+from mdscope.contracts.statistics import STATISTICS_FAMILIES
 
 
 def test_cli_import_keeps_execution_modules_unloaded():
@@ -25,7 +25,7 @@ def test_planner_import_does_not_load_statistical_estimators():
     code = (
         "import sys\n"
         "from mdscope.planning import build_plan\n"
-        "from mdscope.contracts.metric_selection import STATISTICS_FAMILIES\n"
+        "from mdscope.contracts.statistics import STATISTICS_FAMILIES\n"
         "assert STATISTICS_FAMILIES\n"
         "for module in ('mdscope.statistics.dispatch', 'mdscope.statistics.profiles',\n"
         "               'mdscope.statistics.time_series', 'mdscope.pipeline.runner',\n"
@@ -39,7 +39,7 @@ def test_planner_import_does_not_load_statistical_estimators():
 
 
 def test_statistics_dispatcher_uses_same_family_identifiers():
-    from mdscope.contracts.metric_selection import ESTIMATOR_FLAGS
+    from mdscope.contracts.statistics import ESTIMATOR_FLAGS
     from mdscope.statistics import dispatch
 
     assert dispatch.STATISTICS_FAMILIES is STATISTICS_FAMILIES

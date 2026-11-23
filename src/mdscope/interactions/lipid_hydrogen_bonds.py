@@ -160,11 +160,11 @@ def run_lipid_hydrogen_bonds(rep, cfg, repout):
     return write_lipid_hydrogen_bonds(universe, cfg, repout, hba.results.hbonds, hba.frames, hba.times, atoms, molecule_ids, atom_species)
 
 
-def write_lipid_hydrogen_bonds(universe, cfg, repout, raw, frames, times, atoms, molecule_ids, atom_species):
+def write_lipid_hydrogen_bonds(universe, cfg, repout, raw, frames, times, atoms, molecule_ids, atom_species, *, sample_offset=0):
     spec = cfg["analyses"]["lipid_hydrogen_bonds"]
     times = np.asarray(times, float)
     if cfg.get("time", {}).get("dt_ps") is not None:
-        times = cfg["time"].get("origin_ps", 0.) + np.arange(len(times)) * float(cfg["time"]["dt_ps"])
+        times = cfg["time"].get("origin_ps", 0.) + (np.arange(len(times)) + sample_offset) * float(cfg["time"]["dt_ps"])
     raw = np.asarray(raw)
     if raw.size:
         donors = raw[:, 1].astype(int)

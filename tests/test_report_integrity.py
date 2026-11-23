@@ -8,7 +8,7 @@ from mdscope.statistics.dispatch import analyze_project
 
 
 def test_inputs_changed_during_statistics_leave_an_incomplete_manifest(tmp_path, monkeypatch):
-    import mdscope.statistics.dispatch as statistics
+    import mdscope.statistics.profiles as statistics
     cfg, paths, _ = _fixture(tmp_path)
     cfg['statistics']['bootstrap_draws']=20
     source=paths['condition'][0]/'summary/timeseries.parquet'

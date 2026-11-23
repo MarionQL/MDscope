@@ -2,8 +2,8 @@
 import MDAnalysis as mda
 import pytest
 
-from mdscope.biophysical_common import heavy as biophysical_heavy
 from mdscope.core.atom_selection import heavy_atom_mask, select_heavy_atoms
+from mdscope.mechanisms.local_environment import heavy as biophysical_heavy
 from mdscope.mechanisms.mechanistic_common import heavy as mechanistic_heavy
 
 

@@ -27,7 +27,6 @@ from MDAnalysis.lib.distances import (
 )
 
 from ...config import DEFAULTS, profile_dir, time_ps
-from ...core.persistence import atomic_json, atomic_parquet, ensure_dir
 from ...core.glycans import discover_covalent_glycans
 from ...core.lipid_geometry import (
     accessible_area_grid,
@@ -36,15 +35,22 @@ from ...core.lipid_geometry import (
     circular_axis_mean,
     periodic_center,
 )
+from ...core.persistence import (
+    atomic_json,
+    atomic_npz,
+    atomic_parquet,
+    atomic_parquet_parts,
+    ensure_dir,
+)
 from ...core.progress import track
 from ...core.sequence import AA3, sequence_matches
-from ...observables.membrane_order import _atomic_npz, _order_sites
 from ...mechanisms.mechanistic_common import heavy, nearest, selected, unit
 from ...mechanisms.residue_occlusion import (
     OCCLUSION_FILE,
     ResidueOcclusion,
     residue_environment_pending,
 )
+from ...observables.membrane_order import _order_sites
 
 
 def _leaflet_plane_height(position, anchors, box, side, radius, minimum):
@@ -1086,7 +1092,7 @@ class SDC4Mechanisms:
                 ]),
             )
             self.rows["lipid_residence"].clear()
-        _atomic_npz(
+        atomic_npz(
             self.cache / f"map-{part:06d}.npz",
             counts=self.map_counts, baselines=self.map_baselines,
             nframes=np.asarray(self.map_frames, dtype=int),
@@ -1117,18 +1123,20 @@ class SDC4Mechanisms:
             if not all(part.is_file() for part in occlusion_parts):
                 raise ValueError("Committed SDC4 chunks lack residue occlusion. "
                                  "Finish with the original options, then enable residue occlusion and rerun MDscope.")
-            occlusion = pd.concat((pd.read_parquet(part) for part in occlusion_parts),
-                                  ignore_index=True)
-            expected_times = np.repeat(df["time_ps"].to_numpy(), len(self.residue_occlusion.resindices))
-            expected_residues = np.tile(self.residue_occlusion.resindices, len(df))
-            if (not np.array_equal(occlusion["time_ps"].to_numpy(), expected_times)
-                    or not np.array_equal(occlusion["topology_residue_index"], expected_residues)
-                    or not occlusion["contact_cutoff_A"].eq(self.residue_occlusion.cutoff).all()
-                    or (self.residue_occlusion.water_cutoff is not None
-                        and ("water_cutoff_A" not in occlusion
-                             or not occlusion["water_cutoff_A"].eq(self.residue_occlusion.water_cutoff).all()))):
-                raise ValueError("Residue occlusion chunks disagree on frames, residues or cutoff")
-            atomic_parquet(self.repout / "extensions/sdc4_mechanisms" / OCCLUSION_FILE, occlusion)
+            for part, occlusion_part in zip(parts, occlusion_parts):
+                times = pd.read_parquet(part, columns=["time_ps"])["time_ps"].to_numpy()
+                occlusion = pd.read_parquet(occlusion_part)
+                expected_times = np.repeat(times, len(self.residue_occlusion.resindices))
+                expected_residues = np.tile(self.residue_occlusion.resindices, len(times))
+                if (not np.array_equal(occlusion["time_ps"].to_numpy(), expected_times)
+                        or not np.array_equal(occlusion["topology_residue_index"], expected_residues)
+                        or not occlusion["contact_cutoff_A"].eq(self.residue_occlusion.cutoff).all()
+                        or (self.residue_occlusion.water_cutoff is not None
+                            and ("water_cutoff_A" not in occlusion
+                                 or not occlusion["water_cutoff_A"].eq(self.residue_occlusion.water_cutoff).all()))):
+                    raise ValueError("Residue occlusion chunks disagree on frames, residues or cutoff")
+            atomic_parquet_parts(self.repout / "extensions/sdc4_mechanisms" / OCCLUSION_FILE,
+                                 occlusion_parts)
         # Optional direct motif SASA endpoint, using the *existing*
         # FreeSASA calculation instead of recomputing SASA or reading XTC.
         # Interpretation follows the atom selection used for global SASA.
@@ -1206,7 +1214,7 @@ class SDC4Mechanisms:
         fold = np.divide(density, bulk[:, None, None],
                          out=np.full_like(density, np.nan),
                          where=bulk[:, None, None] > 0)
-        _atomic_npz(
+        atomic_npz(
             out / "lipid_density_maps.npz",
             counts=counts, density_per_nm2=density, enrichment_fold=fold,
             bulk_density_per_nm2=bulk,

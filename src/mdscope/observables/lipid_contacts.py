@@ -11,9 +11,14 @@ import numpy as np
 import pandas as pd
 from MDAnalysis.lib.distances import capped_distance
 
-from ..core.persistence import atomic_json, atomic_parquet, ensure_dir
 from ..core.atom_selection import select_heavy_atoms
 from ..core.lipid_geometry import aligned_leaflets, anchor_groups, planar_box
+from ..core.persistence import (
+    atomic_json,
+    atomic_parquet,
+    atomic_parquet_parts,
+    ensure_dir,
+)
 
 
 def contact_matrix(species, upper, molecule_pairs, categories=None):
@@ -125,6 +130,5 @@ class LipidContacts:
     def finalize(self):
         for key in ('matrix', 'timeseries'):
             paths = sorted(self.cache.glob(f'{key}-*.parquet'))
-            table = pd.concat([pd.read_parquet(p) for p in paths], ignore_index=True) if paths else pd.DataFrame()
-            atomic_parquet(self.out/f'{key}.parquet', table)
+            atomic_parquet_parts(self.out/f'{key}.parquet', paths)
         return {'fused':True}

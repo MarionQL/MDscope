@@ -408,3 +408,32 @@ def test_saved_inventory_and_finalizer_share_companion_schema_verdict(tmp_path):
     with pytest.raises(RuntimeError, match="atom_sasa.parquet.*missing columns"):
         finalize_project(tmp_path / "analysis.yaml", cfg=cfg, results_dir=root)
     assert snapshot == {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+
+
+def test_integrity_reuse_is_scoped_to_unchanged_files(tmp_path, monkeypatch):
+    from zipfile import ZipFile
+
+    import numpy as np
+
+    from mdscope.pipeline.persisted_inputs import check_artifact
+
+    path = tmp_path / 'profile.npz'
+    np.savez_compressed(path, values=np.arange(128))
+    verified, scans = {}, []
+    original = ZipFile.testzip
+
+    def scan(archive):
+        scans.append(1)
+        return original(archive)
+
+    monkeypatch.setattr(ZipFile, 'testzip', scan)
+    check_artifact(path, verified=verified)
+    check_artifact(path, verified=verified)
+    assert len(scans) == 1
+    np.savez_compressed(path, values=np.arange(128) + 1)
+    check_artifact(path, verified=verified)
+    assert len(scans) == 2
+    path.write_bytes(b'broken')
+    import pytest
+    with pytest.raises(Exception):
+        check_artifact(path, verified=verified)

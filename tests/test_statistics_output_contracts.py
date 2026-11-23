@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from mdscope.config import DEFAULTS
-from mdscope.statistics.contracts import statistics_output_contract
+from mdscope.contracts.statistics import statistics_output_contract
 
 
 @pytest.mark.parametrize("family", ["time_series", "profiles", "interactions", "solvation_rdfs", "diffusion", "coupling"])

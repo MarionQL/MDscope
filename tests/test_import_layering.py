@@ -21,10 +21,7 @@ FORBIDDEN = {
     "systems": {"pipeline", "statistics", "reporting", "studio"},
 }
 # (importing module, imported module): reason. Remove entries as they are fixed.
-ALLOWED = {
-    ("observables/solvation_postprocess.py", "mechanisms.motif_residence"):
-        "generic episode summary still lives in mechanisms; relocate with #258",
-}
+ALLOWED = {}
 
 
 def _imports(path: Path):

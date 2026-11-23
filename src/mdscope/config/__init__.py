@@ -7,16 +7,34 @@ from typing import Any
 
 import yaml
 
-from ..contracts.metric_selection import STATISTICS_FAMILIES
+from ..contracts.statistics import STATISTICS_FAMILIES
 from ..errors import ConfigError, InputPathError
-from .defaults import DEFAULTS, DEFAULT_INSTANCE_ID, GROUP_ANALYSES, MULTI_RUN_ANALYSES, TAIL_PRESETS, merge
-from .runs import (
-    AnalysisRun, Replicate, _validate_path_component,
-    analysis_runs, analysis_enabled, analysis_groups,
-    group_label, iter_replicates, profile_dir, project_root,
-    replicate_label, replicate_specs, system_label, time_ps,
+from .defaults import (
+    DEFAULT_INSTANCE_ID,
+    DEFAULTS,
+    GROUP_ANALYSES,
+    MULTI_RUN_ANALYSES,
+    TAIL_PRESETS,
+    merge,
 )
-from .validation import validate_config, residue_response_settings
+from .runs import (
+    AnalysisRun,
+    Replicate,
+    _validate_path_component,
+    analysis_enabled,
+    analysis_groups,
+    analysis_runs,
+    group_label,
+    iter_replicates,
+    profile_dir,
+    project_root,
+    replicate_label,
+    replicate_specs,
+    system_label,
+    time_ps,
+)
+from .validation import residue_response_settings, validate_config
+
 
 def load_config(path: str | Path, *, check_paths: bool = True) -> dict[str, Any]:
     """Load a user YAML file; any parse or validation failure is a ``ConfigError``."""

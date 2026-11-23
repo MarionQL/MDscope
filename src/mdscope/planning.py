@@ -18,6 +18,14 @@ from .config import (
     project_root,
     statistics_family_config,
 )
+from .contracts.plot_validation import FIGURE_FAMILIES
+from .contracts.state_feature_spec import SDC4_FEATURES
+from .contracts.statistics import (
+    ESTIMATOR_FLAGS,
+    STATISTICS_CANDIDATES,
+    STATISTICS_FAMILIES,
+    STATISTICS_METRIC_CONTRACTS,
+)
 from .core.glycans import glycan_definition
 from .registry import (
     analysis_output_plan,
@@ -35,10 +43,6 @@ from .reporting.plot_ids import (
     describe_plot,
     safe_plot_stem,
 )
-from .contracts.metric_selection import STATISTICS_FAMILIES
-from .contracts.plot_validation import FIGURE_FAMILIES
-from .contracts.state_feature_spec import SDC4_FEATURES
-from .statistics.selection import ESTIMATOR_FLAGS
 
 # Interpretation of coordinates, not a claim about PBC or bulk density.
 # See docs/developer/scientific-contracts.md for the actual estimator contracts.
@@ -94,56 +98,6 @@ REQUIRED_TOPOLOGY = {
 }
 
 
-# File names below come from the current statistics writers. They are possible
-# products, not completeness requirements: some are only written with data.
-# Minimal writer-verified statistical identity and supported estimator catalog.
-# Figure patterns are conditional, never guaranteed concrete figure IDs.
-STATISTICS_METRIC_CONTRACTS = {
-    "time_series": (["group", "metric"], "per-replica observable",
-                    ["temporal_summary", "block_bootstrap", "hierarchical_ci",
-                     "replicate_permutation", "bh_fdr"], ["time_series:{metric}:{variant}"]),
-    "profiles": (["profile"], "per-replica position within profile",
-                 ["position_summary", "temporal_block_bootstrap",
-                  "hierarchical_ci", "replicate_permutation", "bh_fdr"],
-                 ["profiles:{profile}:{variant}"]),
-    "interactions": (["kind", "interaction", "metric"], "per-replica interaction metric",
-                     ["occupancy_and_event_summary", "block_bootstrap",
-                      "hierarchical_ci", "replicate_permutation", "bh_fdr"],
-                     ["interactions:{kind}:{variant}",
-                      "interactions:{kind}:{metric}:{variant}"]),
-    "solvation_rdfs": (["solvent", "target_class", "site_class"],
-                       "per-replica radial bin",
-                       ["descriptive_mean_sd", "shell_replicate_contrast"],
-                       ["solvation:shell_rdf"]),
-    "diffusion": (["metric"], "per-replica shared-lag slope",
-                  ["shared_lag_fit", "replicate_contrast"],
-                  ["diffusion:diffusion_coefficients"]),
-    "coupling": (["mechanism"], "per-replica mechanism pair",
-                 ["block_correlation", "replicate_contrast"], []),
-    "lipid_contacts": (["level", "leaflet", "species_a", "species_b", "metric"],
-                       "one molecular pair class per leaflet and independent replicate",
-                       ["temporal_block_bootstrap", "hierarchical_ci"],
-                       ["lipid_contacts:lipid_contact_{matrix,difference}_*"]),
-}
-
-STATISTICS_CANDIDATES = {
-    "time_series": ("replicate_statistics.parquet", "autocorrelation.parquet",
-                    "system_statistics.parquet", "system_comparisons.parquet",
-                    "hs_contact_episodes.parquet"),
-    "profiles": ("replicate_profiles.parquet", "residue_regions.parquet",
-                 "replicate_profile_statistics.parquet", "system_profiles.parquet",
-                 "system_profile_statistics.parquet", "system_comparisons.parquet"),
-    "interactions": ("replicate_interaction_metrics.parquet",
-                     "system_interaction_metrics.parquet",
-                     "system_interaction_comparisons.parquet"),
-    "solvation_rdfs": ("replicate_rdf.parquet", "system_rdf.parquet",
-                      "replicate_rdf_shells.parquet", "rdf_shell_comparisons.parquet"),
-    "diffusion": ("replicate_common_lag_slopes.parquet",
-                  "common_lag_comparisons.parquet"),
-    "coupling": ("replicate_correlations.parquet", "system_comparisons.parquet"),
-    "lipid_contacts": ("replicate_statistics.parquet", "system_statistics.parquet",
-                       "system_comparisons.parquet"),
-}
 
 
 def _format(path: str) -> str:
@@ -342,7 +296,7 @@ def build_plan(cfg: dict, config_path: str | Path, *,
             "descriptive_figures": analysis_figure_candidates(cfg, "hydration"),
         })
 
-    from .statistics.contracts import statistics_output_contract
+    from .contracts.statistics import statistics_output_contract
     project_statistics = []
     for family in STATISTICS_FAMILIES:
         project_statistics.append({

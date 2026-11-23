@@ -12,8 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from ..config import analysis_runs, time_ps
-from ..core.persistence import atomic_json
-from ..observables.membrane_order import _atomic_npz
+from ..core.persistence import atomic_json, atomic_npz
 from ..observables.residue_membrane_distance import (
     DEFAULT_LIPID_RESNAMES,
     _minimum_by_residue_hybrid,
@@ -91,7 +90,7 @@ class FusedDistances:
         for run_id, entry in self.runs.items():
             directory = self.cache / run_id
             directory.mkdir(parents=True, exist_ok=True)
-            _atomic_npz(
+            atomic_npz(
                 directory / f"part-{part:06d}.npz",
                 time_ps=np.asarray(entry["times"], dtype=float),
                 values=np.asarray(entry["values"], dtype=np.float32).reshape(

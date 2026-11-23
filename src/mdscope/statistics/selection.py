@@ -1,10 +1,12 @@
 """Select descriptive metrics and eligible inferential estimators."""
 from __future__ import annotations
 
-from ..contracts.metric_selection import (
-    ESTIMATOR_FLAGS, INTERACTION_METRICS, SIMPLE_FAMILY_KEYS,
-    _valid_estimator_flags as _valid_estimator_flags, validate_metric_selection as validate_metric_selection,
+from ..contracts.statistics import (
+    ESTIMATOR_FLAGS,
+    INTERACTION_METRICS,
+    SIMPLE_FAMILY_KEYS,
 )
+
 
 def time_series_selection(cfg):
     """None = legacy all metrics; set() = explicit none."""
@@ -95,4 +97,3 @@ def metric_estimator_enabled(cfg, family, identity, estimator):
             if tuple(row.get(key) for key in keys) == tuple(identity)
         ]
     return any(row.get(estimator, row.get("inference", True)) for row in matches)
-

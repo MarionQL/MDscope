@@ -155,13 +155,13 @@ def _block_bootstrap(
     return out
 
 
-def _block_weights(n: int, block: int, draws: int, rng: np.random.Generator) -> np.ndarray:
+def _block_weights(n: int, block: int, draws: int, rng: np.random.Generator, *, out=None) -> np.ndarray:
     # Interaction statistics need event locations as well as occupancy.
     # Frame multiplicities reproduce a block bootstrap without copying
     # binary trajectories.
     block = min(max(1, int(block)), max(1, n))
     dtype = np.uint16 if (n + block - 1) // block < 65535 else np.uint32
-    weights = np.empty((draws, n), dtype=dtype)
+    weights = np.empty((draws, n), dtype=dtype) if out is None else out
     if not n:
         return weights
     if block == n:
@@ -448,5 +448,3 @@ def _range_meta(rows) -> dict:
                 f"{key}_max": float(np.max(x)),
             })
     return out
-
-

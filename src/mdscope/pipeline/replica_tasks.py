@@ -1,6 +1,6 @@
 """Execution-only specialized replica tasks and saved scalar collection.
 
-Output paths stay authoritative in mdscope.output_paths and are also
+Output paths stay authoritative in mdscope.contracts.outputs and are also
 reexported by the registry. The read-only planner does not import this module
 or its executable analysis implementations.
 """
@@ -13,9 +13,9 @@ from pathlib import Path
 import pandas as pd
 
 from ..config import analysis_enabled
-from ..systems.sdc4.potassium_bridge_audit import run_potassium_bridge_audit
+from ..contracts.outputs import FUSED_OUTPUTS
 from ..observables.structure_profiles import run_structure_profiles
-from ..output_paths import FUSED_OUTPUTS
+from ..systems.sdc4.potassium_bridge_audit import run_potassium_bridge_audit
 
 
 @dataclass(frozen=True)
@@ -58,4 +58,3 @@ def additional_time_series(repout: Path, cfg):
         if path.exists():
             output.append(pd.read_parquet(path))
     return output
-

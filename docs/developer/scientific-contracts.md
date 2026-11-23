@@ -20,7 +20,7 @@ These are regression invariants, **not** proof of sampling convergence or biolog
 | Contract | Preserve |
 |---|---|
 | `core.geometry.minimum_image_displacements` | Shared triclinic displacement kernel, validated box and shape; caller dtype policy matters |
-| `biophysical_common.lateral_distance` | **All-pairs** N×M lateral matrix, orthorhombic only |
+| `core.lipid_geometry.lateral_distance` | **All-pairs** N×M lateral matrix, orthorhombic only |
 | `mechanistic_common.planar_distances` / `core.lipid_geometry.lateral_distances` | Point-to-anchor lateral distances; different projection/shape and PBC policies |
 | `AnchorTracker.positions` | Molecule-owner, PBC-aware center; not the same as simple arithmetic COG |
 | `observables.msd._residue_centers` | Mass-weighted COM, with missing-mass COG fallback |

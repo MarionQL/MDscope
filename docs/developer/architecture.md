@@ -40,14 +40,13 @@ pipeline/       when and how analyses run: streaming, replay, tasks, restart, fi
 cli.py, studio/ user entry points; planning.py, registry.py, config_schema.py are read-only views
 ```
 
-Allowed direction: `contracts` ← `config`/`core` ← `observables`/`interactions` ← `mechanisms` ← `systems` ← `statistics`/`reporting` ← `pipeline` ← `cli`/`studio`. `contracts/` imports nothing from `mdscope`, which keeps planning, validation and Studio import-light; `config/` may import only `core` and `contracts`. The one tracked exception (`observables.solvation_postprocess` → `mechanisms.motif_residence`) is listed in the layering test.
+Allowed direction: `contracts` ← `config`/`core` ← `observables`/`interactions` ← `mechanisms` ← `systems` ← `statistics`/`reporting` ← `pipeline` ← `cli`/`studio`. `contracts/` imports nothing from `mdscope`, which keeps planning, validation and Studio import-light; `config/` may import only `core` and `contracts`. Generic sampled contact episodes live in `core/residence.py`, below both solvation and motif residence.
 
 The diagram below is generated from the source, so it cannot drift: an arrow means the upper unit imports the lower one (dashed: only inside functions), and an import already implied by a longer path is not drawn. `tests/test_architecture_map.py` fails when it is stale; regenerate it with `python scripts/architecture_map.py --write-docs`.
 
 <!-- BEGIN GENERATED package dependencies; regenerate with: python scripts/architecture_map.py --write-docs -->
 ```mermaid
 flowchart TD
-    biophysical_common["biophysical_common.py"]
     cli["cli.py"]
     config_config_schema["config/ + config_schema.py"]
     contracts["contracts/"]
@@ -56,7 +55,6 @@ flowchart TD
     interactions["interactions/"]
     mechanisms["mechanisms/"]
     observables["observables/"]
-    output_paths["output_paths.py"]
     pipeline["pipeline/"]
     planning["planning.py"]
     registry["registry.py"]
@@ -64,19 +62,15 @@ flowchart TD
     statistics["statistics/"]
     studio["studio/"]
     systems["systems/"]
-    biophysical_common --> core
     cli -.-> pipeline
     cli -.-> planning
     config_config_schema --> contracts
     config_config_schema --> core
     config_config_schema --> errors
     interactions --> core
-    mechanisms --> biophysical_common
     mechanisms --> config_config_schema
     mechanisms --> interactions
     observables --> config_config_schema
-    observables --> output_paths
-    output_paths --> contracts
     pipeline --> registry
     pipeline --> systems
     planning --> registry
@@ -91,7 +85,6 @@ flowchart TD
 ```
 
 - `config/ + config_schema.py` import each other and are drawn as one node.
-- Allowed layering exception, not drawn: `observables.solvation_postprocess` → `mechanisms.motif_residence`.
 <!-- END GENERATED package dependencies -->
 
 **Why this layout and not another** ([ADR-0002](adr/0002-evidence-first-architecture.md)):
@@ -111,8 +104,8 @@ flowchart TD
 | Editor option schema | `config_schema.py` | Studio, unknown-key validation |
 | Persisted paths, companions, column/array schemas, producer constants | `contracts/outputs.py` | producers, registry, persisted-input checks |
 | Configuration-dependent outputs and required companions | `registry.py` (`analysis_output_plan`, `fused_output_plan`, `saved_output_plan`, `required_artifacts`) | runner, planning, Studio |
-| Statistics families → output folders; figure families | `contracts/metric_selection.STATISTICS_FAMILIES`, `contracts/plot_validation.FIGURE_FAMILIES` | YAML validation, `statistics/dispatch.py`, planning |
-| Saved statistics catalog and analysis display metadata | `planning.py` (`SAVED_STATISTICS_IDENTITY`, `ANALYSIS_METADATA`, `authoring_catalog`) | `mdscope plan`, Studio |
+| Statistics families → output folders; figure families | `contracts/statistics.STATISTICS_FAMILIES`, `contracts/plot_validation.FIGURE_FAMILIES` | YAML validation, `statistics/dispatch.py`, planning |
+| Saved statistics catalog and analysis display metadata | `contracts/statistics.py` (statistics metadata), `planning.py` (`ANALYSIS_METADATA`, `authoring_catalog`) | `mdscope plan`, Studio |
 | Figure IDs and renderer destinations | `reporting/plot_ids.py` | plotting, inventory, planning |
 | Validity of existing outputs (schema, time grid, provenance) | `pipeline/persisted_inputs.py` | runner, Studio, finalization |
 | Atomic writes, archiving, checkpoint inventory | `core/persistence.py`, `core/checkpoints.py` | all producers (kernels never write files directly) |
@@ -120,7 +113,7 @@ flowchart TD
 
 Tests pin the single-owner rules that have regressed before: every statistics and figure family is configurable and catalogued, the group-filter and named-run capability sets match the schema, and analysis metadata names only contract-owned families.
 
-`output_paths.py` currently only re-exports three names from `contracts/outputs.py` for five internal callers; new code should import `contracts.outputs` directly.
+Static statistics schemas, identities, estimator capabilities and candidate filenames live together in `contracts/statistics.py`; planning and runtime selection consume that owner directly.
 
 ## Replica execution and recovery
 
@@ -132,7 +125,7 @@ Tests pin the single-owner rules that have regressed before: every statistics an
 4. **Specialized tasks** (`replica_tasks.specialized_tasks`) run work that cannot share the stream (DSSP/SASA profiles, potassium-bridge audit). Each `AnalysisTask` declares the registered outputs it `produces` and runs only when one of them is absent, the same readiness rule as fused outputs; a missing marker alone does not force recomputation.
 5. **Summary** consolidates saved chunks; `finalize_project` runs statistics from saved products.
 
-Every function that opens a trajectory closes its reader (`tests/test_trajectory_reader_lifecycle.py`); MDAnalysis keeps Universes reachable, and an open reader locks the file on Windows. Measured on real data, deleting three products from a completed project and resuming decodes 44 frames in one pass instead of 126 frames in four passes, with identical outputs ([#279](https://github.com/MarionQL/MDscope/issues/279)).
+The primary stream and fused replay close their readers; MDAnalysis keeps Universes reachable, and an open reader locks the file on Windows. Measured on real data, deleting three products from a completed project and resuming decodes 44 frames in one pass instead of 126 frames in four passes, with identical outputs ([#279](https://github.com/MarionQL/MDscope/issues/279)).
 
 ## Adding an analysis
 
@@ -209,3 +202,23 @@ python scripts/architecture_map.py --write-docs                         # regene
 ```
 
 `architecture.json` records the source revision, module imports (including deferred ones), statically resolved calls and multi-module import cycles; CI publishes it as the `mdscope-architecture-map` artifact. The current map has no import cycles. Edges are *possible* dependencies, not observed execution; do not gate CI on edge or module counts.
+
+## Memory and integrity reuse
+
+Shared persistence streams saved Parquet chunks in record batches and publishes
+NPZ archives atomically. Fused H-bond tabulation operates one committed chunk at
+a time. Large individual order profiles use disk-backed staging; ordinary
+profiles retain the existing batched fast path. Derived scientific aggregations
+may still materialize their required tables; this does not claim constant memory
+for every postprocessor.
+
+Interaction bootstrap weights retain the eight-key eviction and RNG schedule.
+The in-memory cache has a 128 MiB budget; additional arrays use unnamed disk-backed
+mappings. Reductions operate in batches rather than converting an entire mapped
+weight matrix into floating-point temporaries.
+
+Replica preflight and the final audit share successful integrity scans only
+within that invocation, while device/inode, size, modification and change times
+remain identical. Changed files are rescanned; missing products and schema/time
+checks still fail before completion is recorded. No integrity cache survives a
+run or replaces scientific validation.

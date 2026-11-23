@@ -10,13 +10,17 @@ from pathlib import Path
 
 from .config import analysis_enabled, analysis_runs
 from .contracts.outputs import (
+    FUSED_OUTPUTS,
     GLYCAN_ATTACHMENTS_FILE,
     HS_SUGAR_HYDRATION_PATH,
     OUTPUT_DESCRIPTORS,
     RESIDUE_OCCLUSION_FILE,
+)
+from .contracts.outputs import RUN_SCOPED_OUTPUTS as RUN_SCOPED_OUTPUTS
+from .contracts.outputs import (
     artifact_schema as artifact_schema,
 )
-from .output_paths import FUSED_OUTPUTS, RUN_SCOPED_OUTPUTS as RUN_SCOPED_OUTPUTS
+
 
 # Static schemas live in contracts.outputs. Missing column/shape metadata
 # means the producer's output is dynamic or not yet catalogued, not empty.
@@ -57,8 +61,14 @@ def fused_output_plan(cfg: dict, repout: Path) -> tuple[FusedOutput, ...]:
     # Share production scheduling predicates without importing heavy producers.
     from .config.runs import (
         distance_enabled_names as distance_enabled,
+    )
+    from .config.runs import (
         extensions_enabled_names as extensions_enabled,
+    )
+    from .config.runs import (
         membrane_enabled_names as membrane_enabled,
+    )
+    from .config.runs import (
         sdc4_enabled,
     )
     entries = [fused_output(repout, name) for name in membrane_enabled(cfg)]
@@ -354,7 +364,7 @@ def state_feature_catalog(cfg):
     Topology-dependent molecule/bridge identities are templates until the common
     scalar reader discovers saved rows; they are never advertised as measured.
     """
-    from .output_paths import SAVED_SCALAR_SOURCE_FILES
+    from .contracts.outputs import SAVED_SCALAR_SOURCE_FILES
     candidates = []
     for scalar in scalar_contracts(cfg):
         if scalar["path_within_replica"].startswith("summary/"):

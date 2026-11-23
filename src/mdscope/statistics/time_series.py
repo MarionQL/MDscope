@@ -12,10 +12,9 @@ import numpy as np
 import pandas as pd
 
 from ..config import statistics_family_config
+from ..contracts.outputs import SAVED_SCALAR_SOURCE_FILES
 from ..core.persistence import atomic_parquet, ensure_dir
 from ..interactions.interaction_tables import event_lifetimes
-from ..output_paths import SAVED_SCALAR_SOURCE_FILES
-from .selection import metric_estimator_enabled, time_series_selection
 from .common import (
     _adaptive_intervals,
     _block_bootstrap,
@@ -34,6 +33,7 @@ from .common import (
     finite,
     selected_rng,
 )
+from .selection import metric_estimator_enabled, time_series_selection
 
 LOCAL_GEOMETRY = {
     "sdc4_local_upper_height_A", "sdc4_local_upper_curvature_Ainv", "sdc4_local_thickness_A",
@@ -559,6 +559,3 @@ def analyze_time_series(
             comp = _fdr(comp, "mean_p_value", "mean_q_value", family_columns)
             comp = _fdr(comp, "median_p_value", "median_q_value", family_columns)
         atomic_parquet(outdir / "system_comparisons.parquet", comp)
-
-
-

@@ -215,3 +215,24 @@ def test_sasa_replay_filters_validated_named_runs(monkeypatch):
     observer.sasa_run_ids = ("environment",)
     observer._setup_sasa()
     assert list(observer.sasa) == ["environment"]
+
+
+def test_chunked_hbonds_preserve_exact_fractional_time_grid(tmp_path):
+    u, cfg = _universe(), _cfg()
+    coords = np.repeat(u.atoms.positions[None, ...], 12, axis=0)
+    u.load_new(coords, format=MemoryReader,
+               dimensions=np.tile([50., 50., 50., 90., 90., 90.], (12, 1)))
+    cfg['time'] = {'dt_ps': .1, 'origin_ps': 0.}
+    cfg['analyses']['local_environment']['enabled'] = False
+    observer = FusedExtensions(u, cfg, tmp_path)
+    for i, ts in enumerate(u.trajectory):
+        observer.update(ts, i)
+        if (i + 1) % 6 == 0:
+            observer.flush(i // 6)
+    observer.finalize()
+    folder = tmp_path / 'interactions/hydrogen_bonds'
+    expected = np.arange(12) * .1
+    np.testing.assert_array_equal(pd.read_parquet(folder / 'count_timeseries.parquet').time_ps,
+                                  expected)
+    events = pd.read_parquet(folder / 'events.parquet')
+    np.testing.assert_array_equal(events.time_ps.unique(), expected)

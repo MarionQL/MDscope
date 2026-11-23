@@ -200,3 +200,16 @@ def test_hydration_scratch_replay_does_not_prune_stream_chunks(tmp_path):
             pd.read_parquet(replay / relative),
             check_dtype=False,
         )
+
+
+def test_missing_hydration_chunks_cannot_replace_a_committed_product(tmp_path):
+    import pytest
+
+    observer = FusedExtensions(_universe(), _cfg(), tmp_path).hydration
+    target = tmp_path / 'extensions/hydration/counts.parquet'
+    target.parent.mkdir(parents=True)
+    pd.DataFrame({'previous': [1]}).to_parquet(target, index=False)
+    before = target.read_bytes()
+    with pytest.raises(ValueError, match='Missing hydration cache chunks'):
+        observer.finalize()
+    assert target.read_bytes() == before

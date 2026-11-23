@@ -8,8 +8,8 @@ import pytest
 from test_solvation_motifs import _protein
 
 from mdscope.config import resolve_config
-from mdscope.statistics.shared_states import fit_shared_states
 from mdscope.observables.solvation import _targets
+from mdscope.statistics.shared_states import fit_shared_states
 
 
 def _spec():
@@ -396,7 +396,7 @@ def test_production_finalize_failure_preserves_model_and_saved_configuration(tmp
 
 
 def test_state_feature_catalog_exposes_sources_identities_and_prerequisites():
-    from mdscope.output_paths import SAVED_SCALAR_SOURCE_FILES
+    from mdscope.contracts.outputs import SAVED_SCALAR_SOURCE_FILES
     from mdscope.planning import authoring_catalog, build_plan
     from mdscope.studio.model import new_document
     doc = new_document()

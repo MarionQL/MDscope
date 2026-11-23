@@ -7,10 +7,10 @@ import pandas as pd
 from MDAnalysis.exceptions import NoDataError
 from scipy.spatial import cKDTree
 
-from ..core.persistence import atomic_json, atomic_parquet
+from ..contracts.outputs import FUSED_OUTPUTS
 from ..core.atom_selection import select_heavy_atoms
 from ..core.lipid_geometry import circular_axis_mean
-from ..output_paths import FUSED_OUTPUTS
+from ..core.persistence import atomic_json, atomic_parquet
 
 # Use the registry's persisted contract; do not duplicate the directory name.
 FOOTPRINT_OUTPUT = Path(FUSED_OUTPUTS["lipid_enrichment"]).parent.as_posix()

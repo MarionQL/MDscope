@@ -13,8 +13,8 @@ from MDAnalysis.exceptions import NoDataError
 from MDAnalysis.lib.distances import capped_distance, minimize_vectors
 
 from ..config import time_ps
-from ..core.persistence import atomic_parquet, ensure_dir
 from ..core.lipid_geometry import classify_leaflets, planar_box
+from ..core.persistence import atomic_npz, atomic_parquet, ensure_dir
 from ..core.progress import progress
 
 AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
@@ -375,12 +375,6 @@ def _profile_values(site_values: np.ndarray, profile: OrderProfile) -> np.ndarra
     )
 
 
-def _atomic_npz(path: Path, **arrays) -> None:
-    ensure_dir(path.parent)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with open(tmp, "wb") as handle:
-        np.savez_compressed(handle, **arrays)
-    tmp.replace(path)
 
 
 def _metric_name(profile_id: str) -> str:
@@ -601,7 +595,7 @@ def run_membrane_order(rep, cfg: dict, repout: Path) -> dict:
     index_rows = []
     for i, profile in enumerate(profiles):
         filename = f"profile-{i:04d}.npz"
-        _atomic_npz(
+        atomic_npz(
             out / filename,
             time_ps=np.asarray(times, float),
             values=np.asarray(profile_values[profile.profile_id], np.float32),

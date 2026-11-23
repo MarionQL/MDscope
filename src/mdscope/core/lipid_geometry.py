@@ -250,3 +250,14 @@ def accessible_area_grid(center_xy, surface_z, protein_xyz, box,
     tree = cKDTree(wrapped, boxsize=lengths)
     distances = tree.query(samples % lengths, k=1)[0]
     return float(np.count_nonzero(distances > exclusion_A)*spacing_A**2)
+
+
+def lateral_distance(a,b,box,axis=2):
+    """Planar distances for orthorhombic boxes; fails explicitly for triclinic."""
+    if not np.allclose(box[3:],90,atol=0.05):
+        raise ValueError("Lateral planar analysis requires orthorhombic box")
+    dims=[i for i in range(3) if i!=axis]
+    d=np.asarray(a)[:,None,dims]-np.asarray(b)[None,:,dims]
+    lengths=np.asarray(box[:3])[dims]
+    d-=np.rint(d/lengths)*lengths
+    return np.linalg.norm(d,axis=-1)

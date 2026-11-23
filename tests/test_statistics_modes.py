@@ -142,7 +142,7 @@ def test_reruns_archive_empty_or_disabled_outputs_and_reject_partial_statistics(
     assert list((tmp_path/".archives/statistics/time_series").rglob("system_statistics.parquet"))
     cfg["statistics"]["families"]["time_series"] = True
     cfg["statistics"]["families"]["profiles"] = True
-    import mdscope.statistics.dispatch as module
+    import mdscope.statistics.profiles as module
     def crash(*a, **k): raise RuntimeError("injected statistical failure")
     monkeypatch.setattr(module,"analyze_profiles",crash)
     with pytest.raises(RuntimeError,match="injected"): analyze_project(cfg,tmp_path,paths)
