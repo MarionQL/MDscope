@@ -325,17 +325,9 @@ def fit_shared_states(cfg, root, system_repouts):
 
 def publish_shared_states(generated, root):
     """Publish a prepared generation; keep prior scientific outputs archived."""
-    from ..core.persistence import archive_output
+    from ..core.persistence import publish_directory
     if generated is None:
         return None
     destination = ensure_dir(Path(root) / "project_summary") / "shared_states"
-    previous = None
-    if destination.exists():
-        previous = archive_output(destination, destination.parent / "archive", "shared_states")
-    try:
-        generated.rename(destination)
-    except OSError:
-        if previous is not None:
-            previous.rename(destination)
-        raise
-    return destination
+    with publish_directory(generated, destination, destination.parent / "archive", "shared_states") as published:
+        return published

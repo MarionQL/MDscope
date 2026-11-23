@@ -165,22 +165,24 @@ def validate_saved_analysis(entry, cfg, times):
                 selected = table.loc[table["group"] == item["group"]] if item.get("group") is not None else table
                 if not np.array_equal(selected["time_ps"].to_numpy(float), times):
                     raise ValueError(f"{path}: time grid or group coverage disagrees with summary")
+        validate_additional_products(entry.path.parent.parent, cfg, times, analysis=entry.name)
         return
     validate_analysis_output(entry, cfg)
     if entry.name == "lipid_enrichment" and footprint_pending(
             entry.path, cfg["analyses"]["lipid_enrichment"]):
         raise ValueError("lipid footprint settings changed; run MDscope with this config")
-    if entry.name == "hydration":
+    if entry.name in {"hydration", "sdc4_mechanisms"}:
         temporal_hs_hydration_profiles(entry.path.parents[2], cfg, times)
 
 
-def validate_additional_products(repout, cfg, times):
+def validate_additional_products(repout, cfg, times, *, analysis=None):
     """Check derived prerequisites not represented by registered primary products."""
-    temporal_hs_hydration_profiles(repout, cfg, times)
-    if missing_membrane_density_runs(repout, cfg):
+    if analysis is None or analysis in {"hydration", "sdc4_mechanisms"}:
+        temporal_hs_hydration_profiles(repout, cfg, times)
+    if analysis in {None, "density_1d"} and missing_membrane_density_runs(repout, cfg):
         raise ValueError("missing membrane-relative density; run MDscope with this config")
     msd = cfg.get("analyses", {}).get("membrane", {}).get("msd", {})
-    if msd.get("enabled") and msd.get("multi_origin"):
+    if analysis in {None, "membrane"} and msd.get("enabled") and msd.get("multi_origin"):
         for name in ("multi_origin_diffusion.parquet", "multi_origin_msd.parquet"):
             check_artifact(repout / "summary" / name)
 
@@ -288,7 +290,6 @@ def inspect_results_directory(document, base, results_directory):
         replica_root = root / replica.system / replica.label
         try:
             times = validate_replica_summary(replica_root, replica)
-            validate_additional_products(replica_root, cfg, times)
             summary_error = None
         except (OSError, ValueError, KeyError, TypeError, EOFError, BadZipFile, RuntimeError) as exc:
             times, summary_error = None, str(exc)

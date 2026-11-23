@@ -22,7 +22,8 @@ def _input_snapshot(root, replicate_paths):
     records = []
     for relative in replicate_paths:
         rep = root / relative
-        for folder in ('summary', 'extensions', 'interactions', 'cache', 'profiles'):
+        # Grouped temporal RMSF also consumes atom membership from raw/.
+        for folder in ('raw', 'summary', 'extensions', 'interactions', 'cache', 'profiles'):
             for path in sorted((rep / folder).rglob('*')):
                 if path.suffix not in {'.parquet', '.npz', '.npy'} or not path.is_file():
                     continue
@@ -33,7 +34,7 @@ def _input_snapshot(root, replicate_paths):
     return records
 
 
-def analyze_project(cfg, root, system_repouts):
+def analyze_project(cfg, root, system_repouts, *, output_root=None):
     import os
     from pathlib import Path
     from time import perf_counter
@@ -44,9 +45,10 @@ def analyze_project(cfg, root, system_repouts):
     profiler = PhaseProfiler.from_environment()
     started_total = perf_counter()
     families = STATISTICS_FAMILIES
-    dest = Path(root) / "project_summary/statistics"
+    output_root = Path(output_root) if output_root is not None else Path(root)
+    dest = output_root / "project_summary/statistics"
     if (dest / "manifest.json").exists():
-        archive_output(dest / "manifest.json", Path(root) / ".archives/statistics/manifests",
+        archive_output(dest / "manifest.json", output_root / ".archives/statistics/manifests",
                        "previous.json")
     manifest = {
         "families": {
@@ -80,7 +82,7 @@ def analyze_project(cfg, root, system_repouts):
     for family in STATISTICS_FAMILIES:
         folder = STATISTICS_FAMILIES[family]
         if (dest / folder).exists():
-            archive_output(dest / folder, Path(root) / ".archives/statistics" / folder,
+            archive_output(dest / folder, output_root / ".archives/statistics" / folder,
                            "previous")
         if manifest["families"][family] == "disabled":
             if verbose:
@@ -89,21 +91,21 @@ def analyze_project(cfg, root, system_repouts):
         with stage_progress(f"Statistics {family}", enabled=verbose):
             module, function = _ANALYZERS[family]
             analyze = getattr(import_module(f".{module}", __package__), function)
-            profiler.call(family, analyze, cfg, root, system_repouts)
+            profiler.call(family, analyze, cfg, output_root, system_repouts)
     matched_folder = dest / "matched_time_series"
     if matched_folder.exists():
-        archive_output(matched_folder, Path(root) / ".archives/statistics/matched_time_series", "previous")
+        archive_output(matched_folder, output_root / ".archives/statistics/matched_time_series", "previous")
     if bounds is not None:
         from .time_series import analyze_time_series
         matched_cfg = {**cfg, "statistics": {**cfg["statistics"], "scalar_window_ps": bounds}}
         with stage_progress("Statistics matched_time_series", enabled=verbose):
             profiler.call(
-                "matched_time_series", analyze_time_series, matched_cfg, root,
+                "matched_time_series", analyze_time_series, matched_cfg, output_root,
                 system_repouts, output_name="matched_time_series",
             )
     coverage_folder = dest / "coverage"
     if coverage_folder.exists():
-        archive_output(coverage_folder, Path(root) / ".archives/statistics/coverage", "previous")
+        archive_output(coverage_folder, output_root / ".archives/statistics/coverage", "previous")
     from .coverage import write_contrast_coverage
     with stage_progress("Statistics contrast coverage", enabled=verbose):
         profiler.call(

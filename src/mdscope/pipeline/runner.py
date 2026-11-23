@@ -21,8 +21,7 @@ import yaml
 from .. import __version__
 from ..config import analysis_enabled, iter_replicates, load_config, project_root
 from ..contracts.outputs import EXTENSION_ANALYSES, MEMBRANE_ANALYSES
-from ..core.persistence import archive_output as _archive_previous_output
-from ..core.persistence import atomic_json, atomic_parquet, ensure_dir
+from ..core.persistence import atomic_json, atomic_parquet, ensure_dir, publish_directory
 from ..core.progress import stage_progress
 from ..core.provenance import config_hash, environment_metadata
 from ..errors import ConfigError, ReplicateIndexError
@@ -523,18 +522,20 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
             from ..config import figure_enabled
             from ..reporting.plot_ids import describe_plot
             requires_statistics = any(
-                any(source.startswith("project_summary/statistics/")
-                    for source in describe_plot(identifier)["source_candidates"])
+                describe_plot(identifier)["requires_statistics"]
                 for identifier in selected_figures if figure_enabled(cfg, identifier)
             )
         else:
             # Legacy family-wide plotting can dispatch statistical figures.
             requires_statistics = True
-        if requires_statistics:
+        requires_finalization = selected_figures is None or any(
+            describe_plot(identifier)["requires_finalization"]
+            for identifier in selected_figures if figure_enabled(cfg, identifier))
+        if requires_finalization:
             from ..statistics.manifest import read_statistics_manifest
             manifest = root / "project_summary/statistics/manifest.json"
             facts = read_statistics_manifest(manifest)
-            if facts.state == "missing":
+            if requires_statistics and facts.state == "missing":
                 raise RuntimeError(
                     f"Plotting requires completed statistics for selected statistical figures: "
                     f"missing {manifest}. Run 'mdscope statistics' first; existing plots were preserved."
@@ -545,13 +546,13 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
                     f"invalid {manifest} ({facts.error}). Inspect the saved statistics manifest "
                     "before retrying; existing plots were preserved."
                 )
-            if not facts.complete:
+            if (requires_statistics and not facts.complete) or facts.state == "incomplete":
                 raise RuntimeError(
                     f"Plotting requires completed statistics for selected statistical figures: "
-                    f"{manifest} has status {facts.status!r}. Finish statistics first; "
+                    f"{manifest}: {facts.error or ('status ' + repr(facts.status))}. Finish statistics first; "
                     "existing plots were preserved."
                 )
-        else:
+        if not requires_statistics:
             # Even descriptive figures must not read incomplete, stale or
             # corrupted per-replica products.
             _validate_replica_products(cfg, root, replicates)
@@ -564,6 +565,10 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
         for system in cfg["systems"]
     }
     with ExitStack() as preparation:
+        if phase == "statistics":
+            atomic_json(root / ".state/finalization.json", {
+                "status": "running", "config_hash": config_hash(cfg),
+            })
         shared_generation = None
         shared_preparation_seconds = 0.
         if phase == "statistics" and cfg["analyses"].get("shared_states", {}).get("enabled"):
@@ -575,10 +580,11 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
         if initialize_after_validation:
             with stage_progress("Statistics project initialization", enabled=verbose):
                 root, _ = initialize(config_path, cfg)
-        project_summary = root / "project_summary"
-        if phase != "plotting" and project_summary.exists():
-            archived=_archive_previous_output(project_summary,root/".archives"/"project_summary","previous")
-            print(f"Archived previous project summary: {archived}")
+        generation_root = root
+        if phase == "statistics":
+            generation_root = Path(preparation.enter_context(
+                TemporaryDirectory(prefix=".finalization-", dir=ensure_dir(root))))
+        project_summary = generation_root / "project_summary"
         # Finalization always provides a project summary directory, even when
         # optional statistics and plots are disabled.
         ensure_dir(project_summary)
@@ -592,13 +598,13 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
                 finalization_timings = []
         else:
             finalization_timings = []
-        def timed(stage, fn, *args):
+        def timed(stage, fn, *args, **kwargs):
             started = perf_counter()
             try:
                 # Statistics reports its own active family and heartbeat.
                 with stage_progress(f"Finalize {stage}", enabled=verbose and phase == "statistics"
                                     and stage != "statistics"):
-                    return fn(*args)
+                    return fn(*args, **kwargs)
             finally:
                 seconds = perf_counter() - started
                 if stage == "shared_states":
@@ -616,14 +622,20 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
                     for paths in system_repouts.values():
                         for repout in paths:
                             summarize_lipid_composition(repout)
-            timed("statistics", analyze_project, cfg, root, system_repouts)
-            timed("shared_states", publish_shared_states, shared_generation, root)
-            timed("diffusion_summary", summarize_project_diffusion, root, system_repouts)
-            timed("multi_origin_summary", summarize_project_multi_origin, root, system_repouts, cfg)
+            timed("statistics", analyze_project, cfg, root, system_repouts, output_root=generation_root)
+            timed("shared_states", publish_shared_states, shared_generation, generation_root)
+            timed("diffusion_summary", summarize_project_diffusion, generation_root, system_repouts)
+            timed("multi_origin_summary", summarize_project_multi_origin, generation_root, system_repouts, cfg)
             if cfg.get("statistics", {}).get("enabled", True):
                 from ..reporting.report import generate_report
-                report = timed("findings", generate_report, project_summary / "statistics")
-                print(f"FINDINGS: {report}", flush=True)
+                timed("findings", generate_report, project_summary / "statistics", project_root=root)
+            with publish_directory(project_summary, root / "project_summary",
+                                   root / ".archives/project_summary", "previous"):
+                atomic_json(root / ".state/finalization.json", {
+                    "status": "complete", "config_hash": config_hash(cfg),
+                })
+            if cfg.get("statistics", {}).get("enabled", True):
+                print(f"FINDINGS: {root / 'project_summary/statistics/findings.md'}", flush=True)
             return root
 
         from ..reporting.figure_inventory import (

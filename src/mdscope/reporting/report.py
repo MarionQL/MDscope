@@ -55,13 +55,13 @@ def _shared_state_coverage(statistics_dir):
     return sources
 
 
-def _inventory(statistics_dir, manifest, comparison_sources):
+def _inventory(statistics_dir, manifest, comparison_sources, project_root=None):
     # Inventory numerical files by metadata. Raw trajectories and working
     # caches are intentionally outside the report input.
     roots = [statistics_dir, statistics_dir.parent / "shared_states",
              statistics_dir.parent / "diffusion", statistics_dir.parent / "coupling"]
     if statistics_dir.name == "statistics" and statistics_dir.parent.name == "project_summary":
-        project = statistics_dir.parent.parent
+        project = Path(project_root) if project_root is not None else statistics_dir.parent.parent
         for entry in manifest.get("replicate_paths", []):
             rel = Path(entry)
             if not rel.is_absolute() and len(rel.parts) == 2 and ".." not in rel.parts:
@@ -76,7 +76,13 @@ def _inventory(statistics_dir, manifest, comparison_sources):
     }
     rows = []
     for path in sorted(files):
-        relative = Path(relpath(path, statistics_dir)).as_posix()
+        if project_root is None:
+            relative = Path(relpath(path, statistics_dir)).as_posix()
+        else:
+            staging_root = statistics_dir.parent.parent
+            logical = (Path(project_root) / path.relative_to(staging_root)
+                       if path.is_relative_to(staging_root) else path)
+            relative = Path(relpath(logical, Path(project_root) / "project_summary/statistics")).as_posix()
         rows.append({
             "path": relative,
             "rows": read_metadata(path).num_rows if path.suffix == ".parquet" else None,
@@ -238,7 +244,7 @@ def _markdown(coverage, findings, inventory, *, design=None, alpha=.05):
     return "\n".join(lines) + "\n"
 
 
-def generate_report(statistics_dir: Path) -> Path:
+def generate_report(statistics_dir: Path, *, project_root=None) -> Path:
     """Build a findings review without loading trajectories or rendering figures."""
     statistics_dir = Path(statistics_dir)
     from ..statistics.manifest import read_statistics_manifest
@@ -297,7 +303,7 @@ def generate_report(statistics_dir: Path) -> Path:
         table["min_attainable_p"] = [value for value, _ in resolutions]
         table["p_resolution_kind"] = [kind for _, kind in resolutions]
     sources = set(coverage.loc[coverage.observable.notna(), "source_table"])
-    inventory = _inventory(statistics_dir, manifest, sources)
+    inventory = _inventory(statistics_dir, manifest, sources, project_root)
     alpha = manifest.get("methods", {}).get("hypothesis_tests", {}).get("alpha", .05)
     markdown = _markdown(coverage, findings, inventory, design=(counts, floor), alpha=float(alpha))
     atomic_parquet(statistics_dir / "findings.parquet", findings)

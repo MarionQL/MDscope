@@ -26,12 +26,14 @@ def describe_plot(identifier: str) -> dict:
     family = parts[0]
     source = []
     destination = None
+    requires_statistics = False
     unit_notes = "Metric-dependent units shown on output axes"
     if family == "time_series":
         stem, variant = parts[1:]
         source = ["{system}/{replicate}/summary/timeseries.parquet",
                   "{system}/{replicate}/summary/group_timeseries.parquet"]
-        if variant in {"autocorrelation", "bootstrap_table", "comparison_table"}:
+        requires_statistics = variant in {"autocorrelation", "bootstrap_table", "comparison_table"}
+        if requires_statistics:
             source.append("project_summary/statistics/time_series/")
         destination = f"project_summary/figures/time_series/{stem}__{variant}.png"
     elif family == "profiles":
@@ -42,6 +44,7 @@ def describe_plot(identifier: str) -> dict:
             destination = f"project_summary/figures/profiles/{parts[1]}/{parts[2]}__distance_heatmap.png"
             unit_notes = "Distance in Å; time in ns"
         else:
+            requires_statistics = True
             stem, variant = parts[1:]
             source = ["project_summary/statistics/profiles/replicate_profiles.parquet",
                       "project_summary/statistics/profiles/system_profiles.parquet"]
@@ -54,10 +57,12 @@ def describe_plot(identifier: str) -> dict:
             destination = f"project_summary/figures/interactions/{kind}/{parts[2]}.png"
             unit_notes = "Occupancy fraction or observed duration in ns"
         else:
+            requires_statistics = True
             source = ["project_summary/statistics/interactions/"]
             destination = f"project_summary/figures/interactions/{kind}/{parts[2]}__{parts[3]}.png"
     elif family == "solvation":
         stem = parts[1]
+        requires_statistics = stem == "shell_rdf"
         source = {
             "shell_rdf": ["project_summary/statistics/solvation/system_rdf.parquet"],
             "water_and_ions": ["{system}/{replicate}/extensions/solvation/species_timeseries.parquet"],
@@ -70,10 +75,16 @@ def describe_plot(identifier: str) -> dict:
         destination = "project_summary/diffusion/diffusion_coefficients.png"
         unit_notes = "nm²/ns"
     elif family == "lipid_enrichment":
+        requires_statistics = True
         source = ["project_summary/statistics/time_series/replicate_statistics.parquet"]
         destination = f"project_summary/figures/membrane/{parts[1]}.png"
         unit_notes = "Local/leaflet or area-corrected ratio (dimensionless)"
     elif family == "lipid_contacts":
+        # Species neighbor/enrichment matrices have a descriptive saved-data
+        # fallback. Class, pair-count and comparison figures require inference.
+        requires_statistics = not (
+            parts[1].startswith("lipid_contact_matrix_")
+            and parts[1].endswith(("_neighbors_per_molecule", "_enrichment")))
         source = ["{system}/{replicate}/extensions/lipid_contacts/matrix.parquet",
                   "project_summary/statistics/lipid_contacts/system_statistics.parquet",
                   "project_summary/statistics/lipid_contacts/system_comparisons.parquet"]
@@ -120,6 +131,8 @@ def describe_plot(identifier: str) -> dict:
             "sdc4": "reporting.sdc4_figures.plot_sdc4_mechanisms",
         }[family],
         "source_candidates": source,
+        "requires_statistics": requires_statistics,
+        "requires_finalization": requires_statistics or family in {"diffusion", "shared_states"},
         "destination": destination,
         "units_note": unit_notes,
         "status": "conditional_on_saved_data",

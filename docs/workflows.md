@@ -86,7 +86,8 @@ Metric-level inference controls: [Configuration](configuration.md#selective-metr
 - Committed parts are validated by identity, metadata/inventory and required companion files; incomplete or corrupt products fail safely.
 - Only **uncommitted** parts are pruned/replayed. Keep restart caches until the stream completion marker is written.
 - `fused_*_timings.json` and `stage_timings.json` record where time is spent.
-- Numerical reruns archive prior results in `.archives/`; archives can consume disk. Do not treat a completed marker alone as scientific validation.
+- Successful numerical finalization archives the previous project summary in `.archives/`; failed preparation preserves it. An unfinished attempt is not current publication: rerun finalization before downstream reuse. Archives can consume disk.
+- Run one finalization/plotting writer per project. Completion markers alone do not establish scientific validity.
 
 ## SDC4 topology checkpoints
 
