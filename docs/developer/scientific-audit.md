@@ -1,6 +1,6 @@
 # Scientific audit
 
-**2026-11-02 checkpoint:** numerical oracles and short release tests exist; **six-production-replica convergence and biological conclusions remain unverified**. A passing numerical test is not evidence of physical mechanism.
+Numerical oracles and short release tests exist; **six-production-replica convergence and biological conclusions remain unverified**. A passing numerical test is not evidence of physical mechanism.
 
 ## Priority findings
 
@@ -33,17 +33,37 @@
 
 Definitions and numerical contracts: [Scientific contracts](scientific-contracts.md) · [Analyses](../analyses.md).
 
-## Historical performance evidence
+## Verification coverage
 
-| Evidence | Observation | Cannot establish |
-|---|---|---|
-| PR #117, `1110e89` | Real release smoke, 4 mechanism frames/topology | Production condition effect |
-| `936dfe5` | 257 local tests; 120-frame solvation, ~1,074/1,056 MiB RSS and ~4.85 fps | Whole MDscope production speed |
-| 100,000 episodes | Postprocessing 4.714 → 0.815 s (5.79×); 47.30 → 48.58 MiB Python allocations | Whole-process RSS, physical lifetimes |
-| Sparse motif search | 160 → 80 queries; 2.384 → 1.105 s (2.16×) | Full-run speedup |
-| 1,000-carbon SASA | 0.0245 → 0.0325 s with crash prevention | Whole-run cost |
+CI uploads an `mdscope-coverage` report on the Python 3.11 job; line coverage is not a scientific-validity score.
 
-References include PBC, contact populations, SASA sphere/cap, sampled residence, RDF excluded-volume counterexamples, MSD and exact permutation/bootstrap arithmetic. Synthetic results do not certify convergence.
+### Hand-tested mutations
+
+Six **isolated code-copy** changes were caught by numerical assertions, not import failures. This is **not** a global mutation score.
+
+| Deliberate error | Test |
+|---|---|
+| Omit particle normalization in FFT MSD | `test_multi_origin_msd.py::test_fft_matches_independent_direct_sum` |
+| Omit minimum-image step | `test_core_geometry_contracts.py::test_minimum_image_matches_independent_mdanalysis_reference` |
+| All lipids assigned lower leaflet | `test_physical_validation.py::test_anchor_groups_vectorized_mapping` |
+| Reverse isolated/environment SASA subtraction | `test_scientific_reference_oracles.py::test_sasa_burial_subtraction_and_exact_reference_identity` |
+| Reverse paired bootstrap labels | `test_publication_references.py::test_nonconstant_paired_hierarchy_preserves_labels_and_draws` |
+| Replace unavailable enrichment with zero | `test_scientific_reference_oracles.py::test_composition_reference_two_species_and_missing_denominator` |
+
+Real FreeSASA sphere/cap geometry and fake-FreeSASA streaming parity verify **different** contracts.
+
+### Highest-value remaining checks
+
+| Gap | Next check |
+|---|---|
+| Subprocess CLI code not covered in parent process | Trace spawned executions before inferring missing verification |
+| SDC4/HS chemistry and selection preflight | Validate real TPRs; toy topologies are not exhaustive |
+| Non-SDC4 glycan topologies | Audit a real N-/O-glycoprotein TPR/PSF (naming, linkage atoms, branches) |
+| Long-event and large interaction memory | Measure peak RSS, output size, wall time on real six-replica work |
+| Convergence/sensitivity | Inspect independent replicas, time windows, cutoff, RDF and diffusion behavior |
+| Completed-stage artifact failure | Fault-inject missing/corrupt companion; require safe failure or rebuild |
+| Irregular/missing time grids | Preserve partial valid observations, distinguish NaN from measured zero |
+| Scientific interpretation | Challenge physical assumptions with independent reference models |
 
 ## Six-replica acceptance on ARC
 
@@ -56,7 +76,7 @@ python - <<'PY'
 from pathlib import Path
 import yaml
 cfg = yaml.safe_load(Path("synd4_full_mechanisms.yaml").read_text())
-cfg["project"]["output"] = "results_memb_scientific_validation_20261102"
+cfg["project"]["output"] = "results_scientific_validation_<date>"
 Path("synd4_scientific_validation.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
 PY
 mdscope validate synd4_scientific_validation.yaml

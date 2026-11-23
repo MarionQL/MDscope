@@ -6,11 +6,10 @@ Read only the guides relevant to the change; do not duplicate them here.
 |---|---|
 | Ownership, minimal changes, reviews | [Contributing](docs/developer/contributing.md) |
 | Module boundaries, persisted flow | [Architecture](docs/developer/architecture.md) |
-| Architecture decision criteria, cohesion and migration priority | [ADR-0002](docs/developer/adr/0002-evidence-first-architecture.md) ([historical ADR-0001](docs/developer/adr/0001-target-package-architecture.md)) |
+| Architecture decision criteria and hard gates | [ADR-0002](docs/developer/adr/0002-evidence-first-architecture.md) |
 | Coordinate frames, PBC, units, numerical semantics | [Scientific contracts](docs/developer/scientific-contracts.md) |
-| Known scientific limitations | [Scientific audit](docs/developer/scientific-audit.md) |
+| Known scientific limitations, test effectiveness | [Scientific audit](docs/developer/scientific-audit.md) |
 | Which checks to run and when | [Check policy](docs/developer/check-policy.md) |
-| Test effectiveness, remaining coverage | [Validation gaps](docs/developer/validation-gaps.md) |
 | SDC4-specific reference cases | [SDC4 fixtures](docs/developer/sdc4-fixtures.md) |
 | Generalizing analyses while preserving system-specific choices | [YAML generalization contract](docs/configuration.md#yaml-contract-for-generalization) |
 | YAML, observable options, workflows | [Configuration](docs/configuration.md) · [Analyses](docs/analyses.md) · [Workflows](docs/workflows.md) |

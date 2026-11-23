@@ -24,21 +24,7 @@ Use **GitHub Flow**: `main` is the integration branch; each issue or focused cha
 
 ## Where code belongs
 
-| Module | Owns |
-|---|---|
-| `contracts/` | Dependency-free output, figure-option, state-feature and statistics-selection schemas |
-| `core/` | Geometry, atom selections, trajectory sources, persistence, checkpoints |
-| `observables/` | RMSD/RMSF/MSD, membrane/lipid/structural observables |
-| `interactions/` | Molecular contacts and H bonds |
-| `mechanisms/` | Generic mechanistic analyses and postprocessors |
-| `systems/sdc4/` | SDC4-specific mechanistic observers and potassium audits |
-| `statistics/` | Replicate-level inference and comparisons |
-| `reporting/` | Findings, scientific figures and exports |
-| `pipeline/` | Shared streaming, orchestration, finalization |
-| `config/` | YAML defaults, resolved configuration and ordered per-analysis validators |
-| `cli.py`, `planning.py`, `studio/` | User-facing commands, planning and Studio |
-| `output_paths.py`, `registry.py` | Shared output path constants, persisted artifact schemas and required companions |
-| `pipeline/replica_tasks.py` | Specialized executable task dispatch and saved scalar inputs |
+See [Architecture](architecture.md): package roles, dependency direction, the owner of each fact, and how to add an analysis.
 
 ## Comparable subplot scales
 
@@ -90,6 +76,6 @@ Previews call the **production** figure renderers using deterministic fake saved
 - **Validation:** run relevant targeted tests and applicable Python 3.11–3.13 CI; run real GROMACS checks for affected behavior. Distinguish passed, failed, skipped and unavailable checks.
 - **Documentation:** one authoritative location per concept. Prefer short tables and bullets; remove stale guides and avoid mass formatting.
 
-See [Scientific contracts](scientific-contracts.md), [Scientific audit](scientific-audit.md) and [Validation gaps](validation-gaps.md) for the detailed acceptance criteria.
+See [Scientific contracts](scientific-contracts.md) and [Scientific audit](scientific-audit.md) for the detailed acceptance criteria.
 
 **AI-assisted changes:** review behavior and scientific evidence, not the origin of the code. For substantive fixes, demonstrate the prior failure or a targeted fault-injection/mutation detection where practical. A green CI run is not evidence of physical convergence.
