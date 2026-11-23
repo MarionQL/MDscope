@@ -76,3 +76,22 @@ def test_correlation_config_rejects_unsupported_pairs():
         residue_correlations_settings(cfg)
     cfg["statistics"]["residue_correlations"]["pairs"] = [["water_count", "protein_fraction"]]
     assert residue_correlations_settings(cfg)["enabled"] is True
+
+
+def test_raw_water_correlations_exclude_residues_without_polar_sites(tmp_path):
+    frame = pd.DataFrame({
+        "time_ps": [0., 10., 20.] * 2,
+        "topology_residue_index": [2] * 3 + [3] * 3,
+        "residue": ["PROA:GLY2"] * 3 + ["PROA:SER3"] * 3,
+        "water_count": [0, 0, 0, 0, 1, 2],
+        "polar_atom_count": [0] * 3 + [1] * 3,
+        "protein_fraction": [0., .5, 1.] * 2,
+    })
+    _write(tmp_path / "extensions/sdc4_mechanisms/residue_occlusion.parquet", frame)
+    result = correlate_replica(
+        tmp_path, [("water_count", "protein_fraction")], min_frames=3,
+    ).set_index("topology_residue_index")
+    assert result.loc[2, "n_paired_frames"] == 0
+    assert result.loc[2, "status"] == "insufficient_paired_frames"
+    assert result.loc[3, "n_paired_frames"] == 3
+    assert result.loc[3, "pearson_r"] == pytest.approx(1.)
