@@ -111,21 +111,23 @@ def _validate_sdc4_topology(universe, cfg, system, emit, counts):
     """Audit protein-domain and lipid topology selections for SDC4."""
     mechanism = cfg.get("analyses", {}).get("sdc4_mechanisms", {})
     if mechanism.get("enabled", False):
-        protein_selection = mechanism.get("protein_selection") or cfg["selections"]["protein"]
-        protein_indices = set(universe.select_atoms(protein_selection).indices)
+        from ..systems.sdc4.mechanisms import validate_sdc4_protein_domains
+
+        domains = {}
         for kind in ("tm_chains", "ectodomains"):
+            domains[kind] = {}
             for label, selection in mechanism[kind].items():
                 atoms = universe.select_atoms(selection)
                 if len(atoms) < 4:
                     raise ValueError(
                         f"{system}: SDC4 {kind}.{label} matched only {len(atoms)} atoms"
                     )
-                if not set(atoms.indices).issubset(protein_indices):
-                    raise ValueError(
-                        f"{system}: SDC4 {kind}.{label} includes atoms outside "
-                        "the configured protein selection"
-                    )
+                domains[kind][label] = atoms
                 emit(f"    SDC4 {kind}.{label}: {len(atoms)} atoms")
+        validate_sdc4_protein_domains(
+            universe.select_atoms(mechanism.get("protein_selection") or cfg["selections"]["protein"]),
+            domains["tm_chains"], domains["ectodomains"], system=system,
+        )
         ca = universe.select_atoms(
             mechanism.get("motif_selection") or
             cfg["selections"]["protein"] + " and name CA"
@@ -137,12 +139,8 @@ def _validate_sdc4_topology(universe, cfg, system, emit, counts):
         # Share the production matcher so a wrong TM range fails before
         # expensive trajectory analysis begins.
         from ..systems.sdc4.mechanisms import resolve_sdc4_gxxxg
-        tm_groups = {
-            chain: universe.select_atoms(selection)
-            for chain, selection in mechanism["tm_chains"].items()
-        }
         mapped, sequences = resolve_sdc4_gxxxg(
-            universe, tm_groups, required=mechanism.get("require_gxxxg", False),
+            universe, domains["tm_chains"], required=mechanism.get("require_gxxxg", False),
         )
         for chain, atoms in mapped.items():
             emit(f"    SDC4 TM {chain}: sequence={sequences[chain]}, "
