@@ -4,7 +4,9 @@
 
 ## Context
 
-MDscope's real cost was never folder names. It was how many independent edits a scientific analysis needed before it was runnable, resumable, visible in Studio, statistically selectable and plotted, and how many separate code paths decided whether to reread a trajectory. Earlier refactors moved modules and added forwarding layers without reducing either. A full domain-folder migration (ADR-0001) was scored against alternatives and rejected: moving files alone neither shortens the edit list for a new analysis nor reduces trajectory passes.
+- Repeated ownership required many edits to add one runnable, resumable, selectable and plottable analysis.
+- Independent scheduling paths reread trajectories; folder moves and forwarding layers did not reduce either cost.
+- Reject mandatory domain-folder migration: moving files alone does not reduce edit count or trajectory passes.
 
 ## Decision
 
@@ -25,7 +27,13 @@ Keep role-based packages and fix *ownership* instead:
 
 ## Design test before adding a module or abstraction
 
-Who owns this? Which independent change would touch only this module? Does it remove real duplication or a forbidden dependency? Would a teammate find the feature faster? Will it force adapters? If the answers are not specific, keep the code in its cohesive owner. Plugin entry points, per-analysis base classes and registries are not warranted while all analyses ship in this package.
+Before adding a module or abstraction, identify:
+
+- Its owner and independent reason to change.
+- The duplication/dependency it removes and navigation cost it saves.
+- Any adapters it would require.
+
+Without specific benefits, keep the cohesive owner. All analyses ship together; plugin entry points, per-analysis base classes and extra registries have no demonstrated need.
 
 ## Outcome (measured, 2026-11-22)
 

@@ -17,13 +17,13 @@ mdscope statistics synd4_full_mechanisms.yaml
 mdscope plotting synd4_full_mechanisms.yaml
 ```
 
-`run` performs replica processing **and** numerical finalization; `replicate --index N` processes one replica without project finalization.
+- `run`: replica processing and numerical finalization.
+- `replicate --index N`: one replica, no project finalization.
+- Saved-data recomputation: [commands below](#recompute-statistics-and-figures-without-rereading-trajectories).
 
 ## Environment variables
 
-All variables read by MDscope source code or shipped runner scripts are listed
-here. YAML remains the primary interface for scientific settings; these
-variables control logging, environment setup, resource use and test tooling.
+Scientific settings belong in YAML; these variables control logging, resources, environment setup and test tooling.
 
 | Variable | Reader | Default when unset | Effect |
 |---|---|---|---|
@@ -45,7 +45,9 @@ settings, not MDscope-specific environment variables.
 
 ## Slurm jobs
 
-Submit `slurm/run_mdscope.sh`, `slurm/finalize_mdscope.sh`, `slurm/statistics_mdscope.sh` and `slurm/plotting_mdscope.sh` from the MDscope checkout (they source `slurm/job_env.sh`) with your validated YAML. Jobs **never install** MDscope: install it once, before submitting, into the environment the jobs activate (`python -m pip install -e '.[sasa]'`). Each job first checks that `python` imports MDscope, logs its version, source directory and commit, and otherwise exits with setup instructions.
+- Submit `slurm/{run,finalize,statistics,plotting}_mdscope.sh` from the checkout with validated YAML; each sources `slurm/job_env.sh`.
+- Install once in the job environment with `python -m pip install -e '.[sasa]'`; jobs never install packages.
+- Jobs verify importability and log version, source path and commit; setup failures exit with instructions.
 
 | Setting | ARC example (script default) | Other sites |
 |---|---|---|
@@ -64,75 +66,9 @@ Every task repeats this derivation and exits before analysis, printing the expec
 
 The statistics job reports its current stage and elapsed time in `slurm-out/mdscope/mdscope_statistics-<jobid>.out`. Long stages print a heartbeat every minute. Set `progress.enabled: false` to suppress progress messages.
 
-## Selective statistics
-
-Use exact **saved** metric identities. Omitting `statistics.metric_selection`
-preserves legacy inference; a family set to `[]` skips its statistics without
-disabling raw analyses.
-
-```yaml
-statistics:
-  metric_selection:
-    time_series:
-      - {group: PROA, metric: rmsd_A, ci: true, hypothesis_tests: false}
-      - {metric: membrane_thickness_A, inference: false}
-    interactions:
-      - {kind: salt_bridges, metric: occupancy}
-    profiles:
-      - {profile: rmsf}
-    solvation_rdfs:
-      - {solvent: water, target_class: protein, site_class: acidic}
-    diffusion:
-      - {metric: DOPC}
-    coupling:
-      - {mechanism: membrane_coupling}
-plots:
-  include: ["time_series:rmsd_A:bootstrap_table"]
-```
-
-| Family | Identity | Selectable inference |
-|---|---|---|
-| `time_series` | `group`, `metric` | CI, hypothesis tests |
-| `interactions` | `kind`, optional `interaction`, optional `metric` | CI, hypothesis tests |
-| `profiles` | `profile` | CI, hypothesis tests |
-| `solvation_rdfs` | `solvent`, `target_class`, `site_class` | Shell contrast |
-| `diffusion` | `metric` | Replicate contrast |
-| `coupling` | `mechanism` | Replicate contrast |
-| `lipid_contacts` | `level`, `leaflet`, `species_a`, `species_b`, `metric` | CI |
-
-Selectors default to `inference: true`. Use `inference: false` for
-descriptive-only statistics; for the first three families, `ci` and
-`hypothesis_tests` can be toggled separately. Unsupported estimator
-combinations fail validation. All requested identities must exist in saved
-data; example IDs above are illustrative. An omitted interaction identity
-selects every identity of that kind, and an omitted interaction metric
-selects all five supported interaction statistics. The existing occupancy
-threshold still applies.
-
-`mdscope plan` exposes analysis/run candidates, identity fields, estimator
-eligibility, conditional files, and figure-ID patterns without reading XTCs.
-For completed outputs, `mdscope.planning.inspect_saved_statistics(root)`
-reads actual Parquet schemas and saved IDs with a bounded identity limit.
-Dynamic IDs are never invented.
-
-Raw analyses, metric inference, and `plots.include` are independently
-controlled. CIs and p/q-values are null when inference is disabled; paired
-design and replica-level uncertainty rules are unchanged. Selective
-Monte Carlo streams are identity-stable; BH q-values may change when the
-hypothesis family changes. Statistics reruns archive previous products.
+Metric-level inference controls: [Configuration](configuration.md#selective-metric-inference).
 
 ## Data flow
-
-```mermaid
-flowchart LR
-  A["TPR/XTC + YAML"] --> B["Validate selections"]
-  B --> C["Raw-frame fused observers"]
-  C --> D["Per-replica Parquet / NPZ"]
-  B --> E["Optional extra trajectory passes"]
-  E --> D
-  D --> F["Summaries + replicate-aware statistics"]
-  F --> G["Coverage, findings, optional plots"]
-```
 
 | Stage | Operations | Extra XTC pass? |
 |---|---|---|
@@ -146,17 +82,6 @@ flowchart LR
 
 ## Restart and file retention
 
-```mermaid
-flowchart TD
-  A["Read chunk"] --> B["Write atomic observer parts"]
-  B --> C["Commit stream checkpoint"]
-  C --> D{"Finished?"}
-  D -->|No| A
-  D -->|Yes| E["Finalize replica products"]
-  A -. "Crash before commit" .-> F["Verify inventory; prune uncommitted parts"]
-  F --> A
-```
-
 - Parts: `<replica>/cache/fused_{membrane,extensions,distance}/`, with numbered Parquet/NPZ files.
 - Committed parts are validated by identity, metadata/inventory and required companion files; incomplete or corrupt products fail safely.
 - Only **uncommitted** parts are pruned/replayed. Keep restart caches until the stream completion marker is written.
@@ -165,16 +90,10 @@ flowchart TD
 
 ## SDC4 topology checkpoints
 
-HS attachments, `hs_auto` and motif availability for the release topologies are described under [Release topology](analyses.md#syndecan-4-sdc4-mechanisms); rebuilt topologies need a new attachment audit.
-
-Before production, check selections for water/ions, NxIP, GGIVG, lipid anchors, six HS chains and valid analysis frames. In the older topology, GGIVG was found in PROA, not PROB; a missing motif must not become a measured zero.
-
-The full SDC4 workflow includes protein/TM geometry, HS hydration/contact/ion measures, lipid organization and maps, isolated/environment SASA, water/ion RDFs, bridge evidence, multi-origin MSD and replica-level statistics. The **complete enabled list and atom selectors live in the YAML**, not here.
-
-- Membrane-relative density: phospholipid phosphate midplane, equal leaflet weight, ±100 Å fixed grid for SDC4; follows translation, **not** tilt/undulation.
-- Local thickness/curvature: use comparable phospholipid anchors and supported planar geometry.
-- Environment SASA: ensure the whole target is appropriately imaged and clear of periodic faces.
-- Enabling a new fused output (for example lipid footprint or residue/HS hydration) on a completed project replays only the missing outputs, all in one trajectory pass; completed products are not rewritten. Re-finalize statistics afterwards.
+- Audit both topologies: water/ions, lipid anchors, HS attachments, configured motifs and analysis frames. Release-specific identities and measurements: [SDC4 analyses](analyses.md#syndecan-4-sdc4-mechanisms).
+- The YAML owns the enabled measurement list and atom selectors. Validate rebuilt topologies; missing motifs must remain unavailable.
+- Geometry/SASA assumptions: [Scientific contracts](developer/scientific-contracts.md).
+- Adding fused measurements to completed runs replays only missing outputs in one shared pass. Re-finalize statistics afterwards.
 
 ## Find and interpret results
 

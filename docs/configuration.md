@@ -4,31 +4,12 @@ Use [`synd4_full_mechanisms.yaml`](../synd4_full_mechanisms.yaml) for the comple
 
 ## Config paths, output location and relocation
 
-All relative paths in `project.output`, `systems.*.topology`,
-`systems.*.replicates[].trajectory` and optional `msd_trajectory` are
-resolved from the **YAML file's directory**, not the shell's working directory.
-Absolute paths are used as given. Both `mdscope validate CONFIG.yaml` and
-`mdscope plan CONFIG.yaml` display the absolute resolved output directory;
-`mdscope plan --format json` exposes `resolved_output_directory` without
-opening trajectories.
-
-**Relocating the YAML:** For an existing run, keep the original resolved input
-paths and `project.output` **string** unchanged. If `project.output` is
-already absolute, moving the YAML is safe for the output location, provided all
-relative input paths are also updated or continue resolving to the same files.
-However, changing any YAML path string can change the saved configuration hash.
-The supported no-migration method is to leave the original YAML in place and
-invoke it by absolute path from the new location, or move the whole directory
-containing the YAML and its relative paths **only when starting a new project**
-in a fresh output directory. A symbolic link to the original YAML also retains
-its original resolved parent on platforms that support symlinks.
-
-Do not edit `project.output` to point to an existing results directory and
-assume resume will work: `resolved_config.yaml` is hashed from resolved YAML
-options (including the raw output setting). A changed hash is rejected instead
-of reusing possibly incompatible numerical products. To intentionally change
-paths or move an existing results folder, start a new run in a separate output
-directory; no automated saved-product migration is provided.
+- Relative `project.output`, topology, trajectory and `msd_trajectory` paths resolve from the **YAML directory**, not the shell directory. Absolute paths stay unchanged.
+- `mdscope validate` and `mdscope plan` show the resolved output; JSON plans expose `resolved_output_directory` without reading trajectories.
+- **Existing runs:** keep the original resolved inputs and raw `project.output` string. Path-string edits can change the saved configuration hash; incompatible resume fails.
+- Invoke the original YAML by absolute path when working elsewhere. A symlink retains the original resolved parent where supported.
+- An absolute output path survives YAML relocation only if relative inputs still resolve correctly; edits to those strings may still invalidate the hash.
+- Move a YAML with its relative directory tree only for a **new project in fresh output**. Changing `project.output` is not a saved-product migration; no automated migration is provided.
 
 ## Frames, time and coordinate cache
 
@@ -60,43 +41,15 @@ cache: {aligned_coordinates: true, dtype: float32}
 
 ## YAML contract for generalization
 
-Every new user-selectable scientific choice must be expressible in the validated
-YAML and runnable from the CLI. Studio authors that same configuration. Optional
-presets supply tested defaults; explicit supported selections and overrides remain
-available. Internal module extraction alone does not require new configuration.
+- Expose new user-selectable science in the shared validated YAML and CLI; Studio uses the same configuration. Internal extraction alone needs no new option.
+- Declare defaults, schema, units, ranges and semantic validation. Preserve omitted versus explicit-empty selections; reject unsupported options.
+- Configure selections, motif/chain scope, lipid naming, glycan attachments and supported physical references through implemented fields. Named runs work only for analyses that support them.
+- Preserve SDC4 CLI/YAML/output contracts, configured motifs, domains, HS identities, lipid anchors/classes and reference models.
+- Resolve presets/overrides once. Expose effective settings, prerequisites and provenance; preserve Studio import/export. Groups/presets must not enable unrelated work.
+- Verify non-SDC4 behavior and applicable SDC4 numerical references. Keep all three `synd4_*.yaml` configurations loading and round-tripping; document necessary migrations and equivalent requested work.
+- Examples must use implemented keys. Schema validity and naming presets do not validate chemistry, geometry or numerical parity.
 
-For generalization PRs:
-
-- Define supported enable/disable controls and scientific choices in the existing
-  defaults/schema/semantic validation, with units and valid ranges. Preserve
-  omitted versus explicit-empty selections; reject unsupported options clearly.
-- Configure target/fit/environment selections, motif/chain scope, lipid naming,
-  glycan attachments and validated reference models through appropriate existing
-  fields or explicitly implemented extensions. Prefer named runs only for analyses
-  that support them. Keep biological interpretation distinct from generic kernels.
-- Preserve chosen SDC4 analyses and their current CLI/YAML/output contracts.
-  Generalization makes those analyses reusable; it does not remove SDC4-specific
-  measurements or silently replace configured motifs, PROA/PROB domains, HS
-  attachment identities, lipid anchors/classes or physical references.
-- Resolve presets and overrides once through the existing loader. Expose effective
-  choices, prerequisites and provenance in planning/saved results; preserve them
-  through Studio import, no-op export and subsequent edits. Selecting a group or
-  preset must not silently enable unrelated analyses, statistics or figures.
-- Verify a non-SDC4 configuration and applicable SDC4 numerical references. Keep
-  `synd4_baseline.yaml`, `synd4_full_mechanisms.yaml` and
-  `synd4_full_mechanisms_finalize_fast.yaml` resolving and round-tripping; if a real
-  migration is necessary, document it and demonstrate equivalent requested work.
-  Schema validation alone does not establish topology chemistry or numerical parity.
-- Include runnable YAML examples only after their keys are implemented. Keep
-  unsupported reference geometries/chemistries explicit; naming presets do not
-  validate new physics.
-
-Existing controls include `selections.groups`, supported analysis-specific
-selection fields, `membrane_order.tail_preset`/`tails`/`lipid_overrides`, SDC4 TM/ectodomain,
-HS/motif/lipid definitions, `statistics.metric_selection` and exact `plots.include`.
-These are not universal keys accepted by every analysis. Shared motif definitions and saved state-feature sources are configured below.
-Residue-response discovery is controlled by `statistics.residue_response`; see
-the validated options below. Do not advertise proposed fields as supported.
+Existing controls include groups, analysis-specific selections, membrane-order tail mappings, SDC4 domain/HS/motif/lipid definitions, metric selection and exact figure IDs. These are not universal keys. Shared motifs/states and residue-response controls are documented below.
 
 ### Groups vs named runs
 
@@ -226,42 +179,20 @@ analyses:
     n_states: 2
 ```
 
-Merge this fragment with your project/systems configuration and disable unrelated
-analyses when unnecessary. Water names and motif sequences must match your
-system; they are not inferred from its name. Preview with
-`mdscope validate analysis.yaml` or Studio's topology preflight before a run.
-`mdscope plan analysis.yaml` includes state inputs and shared motif definitions;
-the authoring catalog lists summary/solvation candidates and source prerequisites.
-Topology-dependent hydration/bridge/lipid identities remain explicit templates
-until the saved reader validates their actual identities; they are not claimed
-as measured. Topology preflight adds ordered residue indices, residue numbers/names, segment
-identity and chain labels. Studio uses these same YAML mappings.
+- Merge the fragment with project/systems settings; disable unrelated analyses. Match water names and sequences to the topology.
+- Preview with `mdscope validate` or Studio preflight. `mdscope plan` exposes motif definitions, state inputs and source prerequisites.
+- Hydration/bridge/lipid identities remain templates until saved readers verify them. Preflight reports ordered residue indices/numbers/names, segments and chain labels.
 
-Motif membership uses topology residue indices, never ambiguous residue numbers.
-Matches stay within contiguous selected fragments and segments; unknown or
-modified residues cannot become wildcard matches. `sequence` accepts uppercase
-standard amino acids; `pattern` accepts a consuming regular expression. Chain
-labels are chainIDs, falling back to segids. Omission uses all chains; an empty
-chain list with `missing: allow` previews an unavailable motif. Solvation requires
-at least one match for every requested motif target: absence cannot count as
-zero hydration. Overlapping discoveries are previewable with `overlap: true`,
-but solvation rejects shared target atoms to prevent double counting.
-`selections.motifs: {}` defines none; lists/null are invalid.
+### Motif identity and consumers
 
-Solvation saves one count per matched instance and frame, then averages instances
-within each solvent/target-class/site-label in `species_timeseries.parquet`.
-For chain-specific state features, declare separate chain-scoped motifs/labels.
-
-`analyses.local_environment.motifs` uses the same matcher. Each entry is either a
-regex matched within `protein_selection` (non-overlapping; zero matches allowed) or
-`{motif: <selections.motifs name>}`, which keeps that definition's own selection,
-chain scope and policies. Unset, it uses `nxip: N.IP`, `gxxxg: G...G` and
-`hs_candidate: SG`; `{}` measures no motifs. Group names stay
-`motif_<label>_<segid>_<first resid>`. Topologies without chainID or segid labels
-must set `motifs: {}`.
-A reference does not change this aggregation, RDF normalization, water identity
-or heavy-atom selection. Membership is saved in solvation `metadata.json` and
-atom/residue target tables.
+- Membership uses topology residue indices within contiguous selected fragments/segments. Unknown/modified residues cannot match wildcards.
+- `sequence`: uppercase standard amino acids. `pattern`: consuming Python regex. Chain labels use chainID, then segid.
+- Omitted chains means all; `chains: []` with `missing: allow` previews unavailable. `selections.motifs` must be a mapping; `{}` defines none.
+- Solvation requires every requested motif target to match. Absence is not zero hydration. `overlap: true` permits discovery previews, but solvation rejects shared target atoms.
+- Solvation counts each instance/frame, then averages instances per solvent/target-class/site-label in `species_timeseries.parquet`. Use separate chain-scoped labels for chain-specific state features.
+- `local_environment.motifs` accepts regexes within `protein_selection` (nonoverlapping, zero matches allowed) or `{motif: name}` references preserving the shared definition's scope/policies.
+- Local-environment defaults: `nxip: N.IP`, `gxxxg: G...G`, `hs_candidate: SG`; `{}` measures none. Without chainID/segid labels, set `{}`. Group names remain `motif_<label>_<segid>_<first resid>`.
+- References preserve aggregation, RDF normalization, water identity and heavy-atom selection. Solvation saves membership in `metadata.json` and target tables.
 
 | State source | Saved scalar identity (`group`, `metric`) |
 |---|---|
@@ -271,33 +202,16 @@ atom/residue target tables.
 | `solvation_bridges` | Existing bridge-pair group identity from the saved scalar catalog; supported numerical bridge column |
 | `lipid_contacts` | `lipid_contacts/<leaflet>/<species_a>/<species_b>`; `neighbors_per_molecule` or `enrichment` |
 
-With `preset: null`, feature aliases must exactly match `feature_sources` keys.
-Every source declares its logical product, exact metric/group and units. Units
-are recorded declarations, not conversions or a chemistry validation. Source
-readers are the same ones used by saved time-series statistics. Features within
-a replicate must share **exactly** the same finite, unique time grid; there is no
-interpolation, nearest-time matching or row-position join. Replicas may differ
-in length and sampling window. Missing/nonfinite feature values retain their
-observation positions; only complete vectors enter the model. The default
-`min_complete_fraction: 0.90` rejects excessive loss. Gaps/irregular sampling
-disable temporal block intervals; transitions never bridge dropped rows.
+### State fitting and outputs
 
-One median/std scaler and seeded k-means model use equal training-frame counts
-per replicate (`training_frames_per_replicate: 2000` maximum). Standardization
-gives every selected feature equal scale; correlated/redundant features can
-still weight a physical property more heavily. Constant/all-missing features,
-missing products, mismatched times and too few distinct vectors fail. No model
-is fit if disabled. With the SDC4 preset, omitted/null `features` uses its six
-legacy geometric columns; explicit `features: []` is an error. Generic mode
-requires a nonempty explicit selection and does not enable SDC4.
-
-Results retain `project_summary/shared_states/` tables. `model.json` records
-sources, declared units, effective preset, scaling, complete-frame windows and
-training counts. A successful rerun archives the previous directory under
-`project_summary/archive/shared_states*`; failed preparation leaves it intact.
-SDC4-only conditioning products are produced solely for the SDC4 preset.
-States are geometric k-means groups, **not** established kinetic/metastable
-states or evidence of causation; short fixtures do not establish convergence.
+- Generic mode (`preset: null`) requires nonempty features exactly matching `feature_sources` aliases; it does not enable SDC4. Each source declares product, exact group/metric and units. Units are declarations, not conversions or chemical validation.
+- Readers match saved time-series statistics. Features within a replica require the **same finite, unique time grid**; no interpolation, nearest-time or row-position joins. Replica lengths/windows may differ.
+- Missing values retain observation positions; fit complete vectors only. `min_complete_fraction: 0.90` rejects excessive loss. Irregular/gapped data disable temporal block intervals; transitions never bridge dropped rows.
+- One median/std scaler and seeded k-means model train on equal frame counts per replica (at most `training_frames_per_replicate: 2000`). Correlated features can overweight one property despite standardization.
+- Constant/all-missing features, missing products, mismatched times and insufficient distinct vectors fail. Disabled analysis fits nothing.
+- SDC4 preset: omitted/null `features` uses six legacy columns; `features: []` fails.
+- `project_summary/shared_states/model.json` records sources, units, preset, scaling, complete windows and training counts. Successful reruns archive old results under `project_summary/archive/shared_states*`; preparation failures preserve them.
+- SDC4 conditioning products require the SDC4 preset. Clusters do not establish metastability, causation or convergence.
 
 ## Shared glycan definitions
 
@@ -391,43 +305,22 @@ plots:
 
 Per-figure `plots.options.<plot ID>.dpi` is supported for resolution overrides (integer 50–600); it does not change scientific results, axis definitions or statistical estimands. Unsupported per-plot keys fail configuration validation.
 
-Plot IDs are matched exactly, not by wildcard or substring. Unrecognized figure IDs fail YAML validation. An enabled ID does **not** generate missing statistical inputs; source data and the corresponding family prerequisites remain necessary. The plot ID format is checked during YAML validation; data-dependent metrics, run IDs, species and systems are verified only when persisted inputs exist. An unknown data-derived identifier cannot be rejected merely from its syntax. When selecting solvation by an explicit ID, no separate `plots.families.solvation` opt-in is needed. `plots.include: []` disables all figures.
+- IDs match exactly; no wildcards/substrings. Invalid formats and unknown static IDs fail validation.
+- Saved inputs and family prerequisites are still required; enabling a figure does not compute missing statistics.
+- Data-dependent metrics/runs/species/systems are verified against existing products, not syntax alone.
+- Explicit solvation IDs need no extra family opt-in. `plots.include: []` disables all figures.
 
 ### Compact statistics-table PDFs
 
-Enable `plots.table_reports_pdf: true` to collect existing bootstrap and
-between-condition comparison tables into one multipage
-`statistics_tables.pdf` **per figure directory** (time_series, profiles,
-and each interaction type). When `plots.bootstrap_tables: true`, bootstrap
-pages are included; comparison pages still depend on available statistics.
+- `plots.table_reports_pdf: true` collects existing bootstrap/comparison tables into one multipage `statistics_tables.pdf` per figure directory (time_series, profiles, each interaction kind). Default `false` keeps table PNGs.
+- `plots.bootstrap_tables` controls bootstrap pages; comparison pages remain eligible independently. Exact includes and family switches still apply; saved statistics are required.
+- After successful PDF publication, superseded table PNGs move to `.archives/figure_tables/`. Other figures and full-precision Parquet remain unchanged.
+- Each PDF's `statistics_tables.manifest.json` records ordered page identities, count, completion and digest. Inventory includes PDFs and PNGs; `formats=('png',)` restricts it.
+- Rerenders archive each superseded PDF/manifest together under `.archives/figure_tables/pdf_reports/<figure directory>/<UTC timestamp>/`.
+- Empty/unselected/disabled sessions archive stale PDFs and leave a manifest with status, old identities and archive path. Repeated runs preserve that state without archiving twice; `include_rejected=True` exposes it. Inventory paths are project-relative POSIX paths.
+- Publication failure preserves the previous PDF/metadata. Use one table-report writer per project; overlapping plotting sessions are unsupported.
+- `plots.enabled: false` renders nothing; inventory marks its products disabled. PDFs are presentation, not numerical exports.
 
-The report replaces individual `*__bootstrap_table.png` and
-`*__comparison_table.png` outputs. Previously generated PNG tables in
-the same directories are moved to
-`<project_output>/.archives/figure_tables/` only after the new PDF
-has been written successfully. Other PNG figures and the full-precision
-Parquet statistics are retained. `plots.include` and disabled families
-continue to control which tables appear. The PDF is for reading and
-sharing; it is not a substitute for numerical data exports. `table_reports_pdf: false`
-(default) preserves individual table PNGs.
-
-Each PDF has a `statistics_tables.manifest.json` with ordered page identities,
-page count, completion state and integrity digest. Inventory includes PNG and
-PDF products; `formats=('png',)` retains PNG-only callers. Comparison pages
-remain eligible when bootstrap-table display is disabled.
-
-Successful rerenders archive each superseded PDF together with its manifest in
-one generation directory,
-`.archives/figure_tables/pdf_reports/<figure directory>/<UTC timestamp>/`.
-Empty, unselected or disabled report sessions archive prior PDFs rather than
-advertising stale reports. The remaining manifest then has no pages and records
-the status (`empty`, `unselected` or `disabled`), the superseded page identities
-and the `archive` directory; repeated runs keep that status and do not archive
-it again. Inventory exposes these with `include_rejected=True`, and inventory
-paths are POSIX paths relative to the project. Rendering/publication failures preserve
-the prior committed PDF and metadata. Only one table-report writer per project
-is supported; do not overlap plotting sessions. The master `plots.enabled: false`
-performs no rendering, and inventory treats its products as disabled.
 ### Suppressing uninformative lipid-footprint traces
 
 A lipid-footprint metric whose available sampled values are **all exactly
@@ -445,9 +338,7 @@ table reports remain available regardless of figure suppression.
 
 ### Time-series rolling averages
 
-The standard per-replica time-series traces can show a trailing, time-based
-rolling mean. The window is measured using the saved `time_ps` timestamps,
-not a fixed frame count, so irregular sampling does not change its duration.
+Use a trailing window measured in saved `time_ps`, not a fixed frame count:
 
 ```yaml
 plots:
@@ -456,13 +347,9 @@ plots:
   time_series_rolling_window_ns: 100
 ```
 
-`null` (default) plots the unsmoothed values. A positive finite number
-enables the trailing average over `(t - window, t]`; the initial part of
-each trace uses the available samples. Missing/nonfinite observations do
-not contribute to the mean; an entirely missing window is not plotted.
-Each replicate is smoothed separately. This is **display-only**:
-distributions, autocorrelation, bootstrap statistics, CIs and saved
-trajectory-derived quantities remain unchanged.
+- `null` (default): raw traces. Positive finite ns: mean over `(t - window, t]`, using available initial samples.
+- Smooth each replica independently; exclude nonfinite values. Entirely missing windows stay missing.
+- Display only: distributions, ACFs, bootstrap/CIs and saved measurements are unchanged.
 
 ## Plot and statistics controls
 
@@ -531,6 +418,48 @@ relative_tolerance: 0.05
 - A 3+3 exact two-sided unpaired permutation test has minimum p = 0.10. CI exclusion is **not** FDR-adjusted significance.
 - Rerunning statistics archives old family tables/manifests under `.archives/statistics`. The active manifest is `running` until complete.
 
+## Selective metric inference
+
+Use exact **saved** metric identities. Omitting `statistics.metric_selection`
+preserves legacy inference; a family set to `[]` skips its statistics without
+disabling raw analyses.
+
+```yaml
+statistics:
+  metric_selection:
+    time_series:
+      - {group: PROA, metric: rmsd_A, ci: true, hypothesis_tests: false}
+      - {metric: membrane_thickness_A, inference: false}
+    interactions:
+      - {kind: salt_bridges, metric: occupancy}
+    profiles:
+      - {profile: rmsf}
+    solvation_rdfs:
+      - {solvent: water, target_class: protein, site_class: acidic}
+    diffusion:
+      - {metric: DOPC}
+    coupling:
+      - {mechanism: membrane_coupling}
+plots:
+  include: ["time_series:rmsd_A:bootstrap_table"]
+```
+
+| Family | Identity | Selectable inference |
+|---|---|---|
+| `time_series` | `group`, `metric` | CI, hypothesis tests |
+| `interactions` | `kind`, optional `interaction`, optional `metric` | CI, hypothesis tests |
+| `profiles` | `profile` | CI, hypothesis tests |
+| `solvation_rdfs` | `solvent`, `target_class`, `site_class` | Shell contrast |
+| `diffusion` | `metric` | Replicate contrast |
+| `coupling` | `mechanism` | Replicate contrast |
+| `lipid_contacts` | `level`, `leaflet`, `species_a`, `species_b`, `metric` | CI |
+
+- Default `inference: true`; `false` keeps descriptive statistics with null CIs/p/q values. The first three families allow separate `ci`/`hypothesis_tests` switches; unsupported combinations fail.
+- Requested identities must exist in saved data; example IDs are illustrative. Omitted interaction identity selects every identity of that kind; omitted metric selects all five interaction statistics. Occupancy screening still applies.
+- `mdscope plan` previews candidates, identity fields, estimator eligibility, conditional files and figure patterns without XTCs. `mdscope.planning.inspect_saved_statistics(root)` reads actual saved schemas/IDs with a bounded identity limit.
+- Analyses, metric inference and figures are independent controls. Replica-level uncertainty and pairing remain unchanged.
+- Selective Monte Carlo streams are identity-stable; changing the hypothesis family can change BH q-values. Reruns archive previous statistics.
+
 ## Preview the work without analyzing a trajectory
 
 ```bash
@@ -540,9 +469,11 @@ mdscope plan analysis.yaml --check-topology   # real topology selections/counts
 mdscope plan analysis.yaml --check-inputs     # require TPR and trajectory paths
 ```
 
-The plan reads the existing observer output registry and identifies required per-replica artifacts, named analysis runs, optional extra trajectory passes, enabled statistics families and figure families. Paths are **relative to each replica**; nothing is created or executed. Schema-only mode still validates YAML options and analysis constraints but does not prove that selections, chemistry, files, or PBC assumptions are valid. Topology mode inspects the topology only, not XTC frames, and also runs the optional-backend check described below; schema-only mode does not check the Python environment.
-
-This is a **partial** catalog: many raw/cache outputs, exact Parquet/NPZ schemas, and individual plot IDs are not yet registered. A listed statistics or plot family is conditional on available saved inputs, not a promise of a nonempty result or a confidence interval. Use `mdscope validate` before production runs.
+- Plans list registered artifacts, named runs, extra passes, statistics and figure families. Paths are replica-relative; nothing runs or is created.
+- Schema-only planning validates options/constraints without checking files, selections, chemistry, PBC or optional backends.
+- Topology mode inspects topology and required backends, never XTC frames.
+- The catalog is partial: some raw/cache outputs, exact schemas and plot IDs are unregistered. Listed families remain conditional on saved inputs; they do not guarantee results or CIs.
+- Run `mdscope validate` before production.
 
 ## Validate before long runs
 
@@ -557,9 +488,10 @@ pytest -q -s -m benchmark tests/test_performance_benchmarks.py
 
 Preflight first confirms optional backends required by enabled analyses (FreeSASA for `sasa`: `python -m pip install 'mdscope[sasa]'`) and exits nonzero with that install hint before reading a topology. It then checks topology selections, group/alignment sizes, lipid-anchor ownership, SASA references, paths, run IDs, valid frame ranges and paired replica labels **before** replacing outputs. Overlapping protein groups are allowed; competing lipid species anchors are not.
 
-Expected input mistakes (YAML syntax/options, missing config/topology/trajectory files, missing optional backends, topology-selection preflight, out-of-range `--index`, and `mdscope init` stdin ending before all prompts are answered) print `mdscope: error: ...` to stderr and exit 2. Any other exception is a fault and keeps its traceback. `mdscope --debug <command>` or `MDSCOPE_DEBUG=1` shows the traceback for expected errors too.
-
-`mdscope report STATISTICS_DIR` requires a **complete** manifest and contrast coverage table. Block settings live under `statistics.block.*`; retired aliases and `analyses.autocorrelation` / `analyses.distribution_statistics` must not be used.
+- Expected YAML/options/path/backend/preflight/index errors and interrupted `init` prompts print `mdscope: error: ...` to stderr and exit 2. Unexpected faults retain tracebacks.
+- `mdscope --debug <command>` or `MDSCOPE_DEBUG=1` also traces expected errors.
+- `report STATISTICS_DIR` requires a complete manifest and contrast coverage.
+- Use `statistics.block.*`; retired aliases, `analyses.autocorrelation` and `analyses.distribution_statistics` are unsupported.
 
 [Scientific estimators](analyses.md) · [Workflow and restart](workflows.md) · [Scientific contracts](developer/scientific-contracts.md)
 
@@ -611,20 +543,10 @@ selection-adjusted region intervals.
 
 ## Existing results and readiness
 
-Studio inspection and offline finalization share registered-product validation,
-summary time-grid checks, available checkpoint identity/frame counts and derived
-prerequisites. Saved reuse additionally requires compatible saved scientific
-configuration and completed stage markers. Reporting labels/options and source
-revision changes alone do not invalidate compatible scientific data; changed
-sampling, source identity, selections or selected-run settings do.
-
-Inspected saved-only analysis/run sources are available to downstream catalogs
-and readers only when every configured condition/replica is verified. Reusing
-these sources does not enable trajectory tasks or change the editable YAML;
-finalization records the effective analysis inputs in its statistics manifest.
-Unavailable/unregistered products are not promoted to verified by file existence.
-Inspection reads saved numerical products and can take time on large projects;
-it does not prove chemistry, sampling convergence or source-file content hashes.
+- Studio and offline finalization share registered-product, time-grid, checkpoint identity/frame-count and prerequisite checks.
+- Reuse requires compatible scientific settings and completed stages. Reporting labels/options or source revision alone do not invalidate data; changed sampling, source identity, selections or run settings do.
+- Saved-only sources enter downstream catalogs only after **every configured replica** is verified. Reuse neither schedules trajectory work nor edits YAML; statistics records effective inputs.
+- Existence cannot verify unregistered/unavailable products. Inspection can be expensive and does not certify chemistry, convergence or source content hashes.
 
 The CLI rechecks inputs at execution, before replacing provenance or archived
 results. Keep all intended source paths, condition/replica/run identities,

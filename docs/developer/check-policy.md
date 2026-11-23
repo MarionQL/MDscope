@@ -1,68 +1,60 @@
 # Check policy
 
-Run checks for the behavior changed, not every available workflow.
+Run checks for changed behavior after a coherent milestone; do not repeat heavy checks for small edits.
 
 | Change | Local evidence | Before merge |
 |---|---|---|
-| Docs/comments only | Review links/examples; compile if executable snippets changed | Automatic Python checks; no heavy dispatch |
-| Studio/planning/schema metadata | Studio/planner/config tests; verify contract against actual producer | Automatic Python matrix; no real-data run unless execution/preflight semantics changed |
-| Scientific kernels, selections, coordinates, streaming or recovery | Affected independent references and entry-point/restart tests | Python matrix + relevant local real-data check (`scripts/run_real_data_checks.sh`) |
-| Statistics estimators, selection or aggregation | Reference and family/dispatcher tests; missingness/replica checks | Python matrix; real-data validation if affected data path needs it |
-| Renderer, figure routing, layout or labels | Production-renderer synthetic previews; inspect selected figures | Python matrix + dispatched figure review, visually inspect artifact |
-| Packaging/dependencies/CLI | Installed import/CLI checks outside checkout | Existing matrix/build/wheel/sdist checks; heavy jobs only if their runtime is affected |
-| Performance claim or major hot-path change | Numerical parity first; representative measured comparison | Relevant local benchmark (`performance`, `solvation`, `finalization`); record CPU/RSS/I/O, not just toy timing |
+| Docs/comments | Links/examples; compile changed executable snippets | Automatic Python checks; no heavy dispatch |
+| Studio/planning/schema metadata | Studio/planner/config tests; check against actual producer | Python matrix; real data only if execution/preflight changes |
+| Kernels/selections/coordinates/streaming/recovery | Independent references and entry-point/restart tests | Python matrix + relevant local real-data check |
+| Statistics | Reference/family/dispatcher tests; missingness/replica checks | Python matrix; real data where the affected path requires it |
+| Figures/routing/layout/labels | Inspect production-renderer synthetic previews | Python matrix + dispatched figure review |
+| Packaging/dependencies/CLI | Installed import/CLI outside checkout | Matrix, wheel and sdist checks |
+| Performance/hot paths | Numerical parity, representative comparison | Relevant benchmark; record CPU, RSS and I/O |
+
+## Development commands
+
+```bash
+python -m pip install -e '.[test]'  # add sasa for native FreeSASA
+python -m pytest -q tests          # default excludes benchmark tests
+ruff check src tests scripts      # CI-blocking E9/F rules
+ruff check --select F,I,C90,SIM,RET,UP .
+vulture . --exclude ".venv,venv,.git,build,dist" --min-confidence 80
+git ls-files -z '*.sh' | xargs -0 shellcheck
+pytest -q -s -m benchmark tests/test_performance_benchmarks.py
+```
+
+- Review broader Ruff/Vulture findings within scope; remove confirmed dead code after checking callers and public contracts.
+- Intentional re-exports: `import name as name`.
+- Keep shell/checksum files LF (`.gitattributes`); Slurm rejects CRLF. On Windows, write with `newline="\n"`.
 
 ## Automation
 
-- `MDscope checks` stays automatic: Python 3.11/3.12/3.13 regressions and existing
-  packaging checks protect cross-module integration. Superseded runs cancel.
-  Every job runs `bash -n` on each tracked `*.sh`. The 3.11 job also runs
-  blocking ShellCheck and Ruff syntax/pyflakes rules (`pyproject.toml`; make
-  intentional re-exports explicit with `import name as name`), and uploads the
-  `mdscope-coverage` artifact (no minimum).
-- Workflows default to `contents: read`; external actions are pinned to commit
-  SHAs with version comments and updated through Dependabot PRs. Review each
-  bump's release notes before merging.
-- Figure review is the only **workflow_dispatch** job: Actions → MDscope figure
-  review → Run workflow → select PR branch.
-  Figure review compares against the branch's merge base with `main` unless
-  `base_ref` names another commit, branch or tag; the gallery records both SHAs.
-- **Real GROMACS data checks run locally**; the trajectories are not hosted on
-  GitHub. Keep the four `test-data-v1` TPR/XTC files in git-ignored
-  `examples/data/` (never commit or upload trajectories), activate an
-  environment with `pip install -e '.[sasa]'`, then run
-  `scripts/run_real_data_checks.sh CHECK` (`smoke`, `hbond`, `solvation`,
-  `performance`, `finalization`, `box-sweep`, `box-clearance` or `all`). It
-  verifies the files against `tests/data/real_test_data.sha256`; outputs go to
-  git-ignored `real_test_results/`. FreeSASA has no Windows wheel,
-  so run `smoke` on Linux/WSL or ARC. Record commit, environment and the final
-  `PASS` line in the PR.
-- For faster iteration, `python scripts/stride_real_data.py --stride 5` writes
-  `examples/data/stride5/` (41/40 frames at 50 ns, every smoke step's frame window
-  intact, with `provenance.json` and `SHA256SUMS`); run it with
-  `MDSCOPE_REAL_DATA=examples/data/stride5`. It allows `smoke`/`hbond` only and is
-  **not** merge evidence: use the full files before merging.
-- Other existing manual scientific audits remain manual. No scheduled production
-  computation is added by this policy.
-- Run heavy checks once a coherent change is ready for review. Do not run a
-  full trajectory download for every small authoring or documentation commit.
+- `MDscope checks`: Python 3.11–3.13, 3.11 minimum dependencies, packaging and `bash -n` for tracked shell scripts. Superseded runs cancel.
+- The 3.11 job also runs ShellCheck/Ruff and publishes `mdscope-coverage` (no minimum).
+- Workflows use `contents: read`; external actions are SHA-pinned and updated by Dependabot. Review release notes before merging bumps.
+- Figure review is the only `workflow_dispatch` job: Actions → MDscope figure review → Run workflow → PR branch. Review instructions: [Contributing](contributing.md#visual-review).
+- Real-data checks run locally; other scientific audits remain manual. No scheduled production computation.
+- PR path filters see the cumulative diff, so a later docs-only push cannot reliably suppress earlier code-related jobs.
 
-GitHub PR path filters use the cumulative PR diff, not just the last commit.
-They cannot reliably express “this push only changed Studio” once the PR has
-also touched config/runner files. Explicit dispatch avoids that repeated work.
+## Real GROMACS checks
 
-## Reuse and reporting
+```bash
+python -m pip install -e '.[sasa]'  # Linux/WSL or ARC; no Windows FreeSASA wheel
+scripts/run_real_data_checks.sh smoke
+# Other checks: hbond solvation performance finalization box-sweep box-clearance all
+```
 
-- Record checked commit, command/workflow, outcome and limitations in the PR.
-- Reuse passed evidence while its relevant implementation, dependencies and test
-  inputs remain unchanged. After edits, rerun affected tests; broaden for failures,
-  integration changes or unresolved risks. Do not repeat the full local suite
-  merely because targeted tests passed; CI already covers the Python matrix.
-- A later docs/UI-only commit does not invalidate numerical evidence from the
-  same unchanged kernels. A changed numerical path does: rerun its real/reference
-  checks. Visual changes similarly invalidate the affected visual evidence.
-- A skipped/manual job is not a pass. Explain why a heavy check was not applicable.
-  Required checks in the table remain merge obligations even when dispatch is manual.
-- Before workflow-filter changes merge, verify repository-required status checks
-  do not demand a now-manual job; adjust requirements explicitly if necessary.
-  Never use skip markers or weaken assertions to bypass a failing relevant check.
+- Full inputs belong in git-ignored `examples/data/`; outputs default to git-ignored `real_test_results/`. Overrides: `MDSCOPE_REAL_DATA`, `MDSCOPE_REAL_OUTPUT`.
+- The runner checks full inputs against `tests/data/real_test_data.sha256`.
+- [GitHub test-data assets](https://github.com/MarionQL/MDscope/releases/tag/v0.1.0) include restored short XTCs (41/40 frames, 50 ns spacing). They differ from the full-resolution checksum pins and cannot establish full performance/release validation. Do not replace the pins with short-input hashes.
+- For derived smoke iteration, `python scripts/stride_real_data.py --stride 5` writes `examples/data/stride5/`, `provenance.json` and `SHA256SUMS`. Use `MDSCOPE_REAL_DATA=examples/data/stride5`; only `smoke`/`hbond` are allowed. Short inputs do not replace full-data merge evidence.
+- Record commit, environment, command, result and input qualification in the PR. Full benchmark windows must fit the source trajectory.
+
+## Evidence reuse
+
+- Reuse passed evidence while relevant code, dependencies and inputs are unchanged.
+- After edits, rerun affected checks; broaden for failures, integration changes or unresolved risks. CI covers the Python matrix; targeted success alone does not warrant repeating the full local suite.
+- Docs/UI-only edits do not invalidate unchanged numerical evidence. Numerical or visual changes invalidate their affected evidence.
+- Report failed, skipped, unavailable and resource-blocked checks explicitly; none counts as a pass. Required checks remain merge obligations.
+- Before changing workflow filters, check required statuses. Never bypass a relevant failure with skip markers or weaker assertions.

@@ -1,6 +1,6 @@
 # Architecture
 
-How `src/mdscope/` is organized, why, and where each decision lives. Design criteria and the rejected alternatives are recorded in [ADR-0002](adr/0002-evidence-first-architecture.md); control-flow diagrams are in [Pipeline graphs](pipeline-graphs.md). **Internal module aliases are not retained**: CLI commands, YAML keys, `mdscope plan --format json` and persisted outputs are the public contracts.
+How `src/mdscope/` is organized, why, and where each decision lives. Design criteria and the rejected alternatives are recorded in [ADR-0002](adr/0002-evidence-first-architecture.md). **Internal module aliases are not retained**: CLI commands, YAML keys, `mdscope plan --format json` and persisted outputs are the public contracts.
 
 ## Data flow
 
@@ -87,12 +87,7 @@ flowchart TD
 - `config/ + config_schema.py` import each other and are drawn as one node.
 <!-- END GENERATED package dependencies -->
 
-**Why this layout and not another** ([ADR-0002](adr/0002-evidence-first-architecture.md)):
-
-- **Role packages, not one folder per analysis.** A scientific analysis legitimately has several owners (YAML, kernel, output contract, scheduling, statistics, figures) that change for different reasons. The goal is that each *fact* has one owner, not that each analysis has one folder. A mandatory `analyses/`, `engine/`, `interfaces/` migration was evaluated and rejected: it moved files without reducing the number of edits a new analysis needs.
-- **Cohesion over small files.** Modules are split where ownership, dependencies or change lifecycles differ, never to reduce line counts. The large SDC4 observer, `reporting/plotting.py` and `mechanisms/state_outcomes.py` were reviewed and kept whole: no independently changing seam was found.
-- **System-specific science sits above generic science.** `systems/sdc4/` configures and extends generic analyses; it does not import `pipeline/`. A new system adds a `systems/<name>/` entry instead of editing shared kernels.
-- **Measurement is separate from scheduling.** `observables/`, `interactions/`, `mechanisms/` and `systems/` define *what* is computed; `pipeline/` decides *when*, and owns trajectory traversal, checkpoints and recovery.
+Design rationale: [ADR-0002](adr/0002-evidence-first-architecture.md). Keep role-based packages, one owner per fact, system-specific science above generic kernels, and scheduling separate from measurement.
 
 ## One owner per fact
 
@@ -126,6 +121,21 @@ Static statistics schemas, identities, estimator capabilities and candidate file
 5. **Summary** consolidates saved chunks; `finalize_project` runs statistics from saved products.
 
 The primary stream and fused replay close their readers; MDAnalysis keeps Universes reachable, and an open reader locks the file on Windows. Measured on real data, deleting three products from a completed project and resuming decodes 44 frames in one pass instead of 126 frames in four passes, with identical outputs ([#279](https://github.com/MarionQL/MDscope/issues/279)).
+
+## Failure boundaries
+
+- Invalid existing primary/companion artifacts fail before replacement; absence can schedule missing work.
+- Completed checkpoints must pass inventory validation. Incomplete lipid footprints without a commit reference can be rebuilt; SDC4 residue occlusion supports companion-only completion.
+- Replay checks the saved frame grid when available, stages scratch chunks separately and removes them after successful publication. Completed sibling runs remain untouched.
+- Topology preflight reads no XTC; statistics and plotting read saved products.
+
+| Boundary | Condition | What to inspect / safe next action |
+|---|---|---|
+| `validate`, `plan --check-topology`, `replicate` | Unreadable topology or invalid/empty MDAnalysis selection | Check the reported topology path, system and selection; correct the YAML/topology before running |
+| `replicate` resume | Corrupt checkpoint or committed chunk inventory | Inspect the reported replica checkpoint and committed artifacts; archive the affected replica before any clean restart rather than deleting chunks to bypass validation |
+| `statistics` / `finalize` | Missing, invalid or nonmonotonic saved replica summary/required companion | Finish or inspect the named replica and file; never interpret missing data as zero or silently overwrite earlier results |
+| `plotting` | Selected statistical figure lacks completed statistics | Complete statistics first, or select a descriptive-only figure supported by the saved replicas; plotting does not infer missing CIs |
+| `report STATISTICS_DIR` | Missing/invalid manifest or contrast-coverage file | Inspect the named statistics directory; complete the statistical export before regenerating findings; preserve existing findings |
 
 ## Adding an analysis
 
@@ -205,20 +215,8 @@ python scripts/architecture_map.py --write-docs                         # regene
 
 ## Memory and integrity reuse
 
-Shared persistence streams saved Parquet chunks in record batches and publishes
-NPZ archives atomically. Fused H-bond tabulation operates one committed chunk at
-a time. Large individual order profiles use disk-backed staging; ordinary
-profiles retain the existing batched fast path. Derived scientific aggregations
-may still materialize their required tables; this does not claim constant memory
-for every postprocessor.
+- Persistence streams Parquet record batches and publishes NPZ archives atomically; H-bond tabulation processes one committed chunk at a time.
+- Large individual order profiles use disk-backed staging; normal profiles retain the batched fast path. Other scientific derivatives may still materialize tables.
+- Bootstrap weights preserve eight-key eviction and RNG scheduling, with a 128 MiB memory budget and disk-backed overflow. Batched reductions avoid whole-matrix float temporaries.
 
-Interaction bootstrap weights retain the eight-key eviction and RNG schedule.
-The in-memory cache has a 128 MiB budget; additional arrays use unnamed disk-backed
-mappings. Reductions operate in batches rather than converting an entire mapped
-weight matrix into floating-point temporaries.
-
-Replica preflight and the final audit share successful integrity scans only
-within that invocation, while device/inode, size, modification and change times
-remain identical. Changed files are rescanned; missing products and schema/time
-checks still fail before completion is recorded. No integrity cache survives a
-run or replaces scientific validation.
+- Preflight/final audit reuse successful integrity scans only within one invocation while device/inode, size, mtime and ctime match. Changed files are rescanned; schema/time/missing-product checks remain mandatory. No cache persists across runs.
