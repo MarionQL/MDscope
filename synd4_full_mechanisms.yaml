@@ -247,6 +247,8 @@ analyses:
     enabled: true
     axis: z
     protein_selection: "protein"
+    # Primary discovery uses all protein residues: partner occlusion/hydration,
+    # whole-protomer contact pairs, DSSP and SASA. Motifs below annotate sites.
     residue_occlusion: true
     interprotomer_contacts: true  # whole PROA-PROB interface, all protein residues
     tm_local_tilt: true  # both TM helix axes versus locally fitted phosphate normals

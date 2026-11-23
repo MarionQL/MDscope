@@ -33,8 +33,8 @@ from ...core.lipid_geometry import (
     aligned_leaflets,
     anchor_groups,
     circular_axis_mean,
-    periodic_center,
     local_leaflet_normal,
+    periodic_center,
 )
 from ...core.persistence import (
     atomic_json,
@@ -45,10 +45,11 @@ from ...core.persistence import (
 )
 from ...core.progress import track
 from ...core.sequence import AA3, sequence_matches
-from ...mechanisms.mechanistic_common import heavy, nearest, selected, unit
 from ...mechanisms.ceramide_scaffold import pool_ceramide_scaffolds
+from ...mechanisms.mechanistic_common import heavy, nearest, selected, unit
 from ...mechanisms.protomer_contacts import (
-    InterprotomerContacts, summarize_interprotomer_contacts,
+    InterprotomerContacts,
+    summarize_interprotomer_contacts,
 )
 from ...mechanisms.residue_occlusion import (
     OCCLUSION_FILE,
@@ -278,6 +279,83 @@ def _order_by_residue(o, box, axis):
     )
 
 
+
+def validate_sdc4_protein_domains(protein, tm_chains, ectodomains, *, system=None):
+    """Require each selected structural domain to belong to the protein."""
+    protein_residues = set(map(int, protein.resindices))
+    for kind, groups in (("tm_chains", tm_chains), ("ectodomains", ectodomains)):
+        for label, atoms in groups.items():
+            if not set(map(int, atoms.resindices)).issubset(protein_residues):
+                prefix = f"{system}: " if system else ""
+                raise ValueError(
+                    f"{prefix}SDC4 {kind}.{label} includes residues outside "
+                    "the configured protein selection"
+                )
+
+
+def resolve_sdc4_gxxxg(universe, tm_chains, *, required=False):
+    """Resolve both TM motifs once using the shared sequence matcher.
+
+    Used by topology preflight and execution; topology selections, not fixed
+    residue numbers, define the available motif. Returns (atoms, sequences).
+    """
+    motifs, sequences = {}, {}
+    for chain, tm in tm_chains.items():
+        ca = tm.select_atoms("name CA")
+        if not len(ca):
+            raise ValueError(f"TM selection for {chain} must contain CA atoms")
+        matches = sequence_matches(ca, {"GGIVG": "GGIVG"})
+        if len(matches) > 1:
+            raise ValueError(
+                f"TM chain {chain} has ambiguous GGIVG mapping ({len(matches)} matches); "
+                "select one protein chain and one TM motif"
+            )
+        sequence = "".join(AA3.get(atom.resname.upper(), "X") for atom in ca)
+        sequences[chain] = sequence
+        if not matches and required:
+            raise ValueError(
+                f"No GGIVG found in TM chain {chain} (sequence={sequence!r}); "
+                "verify topology chain IDs and TM residue range"
+            )
+        indices = np.concatenate(list(matches.values())) if matches else np.empty(0, int)
+        motifs[chain] = heavy(universe.atoms[np.isin(universe.atoms.resindices, indices)])
+    return motifs, sequences
+
+
+def _tm_contact_metrics(pairs, tm_heavy, gxxxg, names):
+    """Aggregate TM and GGIVG labels from the measured interprotomer residue pairs.
+
+    The whole-protein contact table is the primary observable. Motifs only
+    filter its residue identities; no additional distance search is necessary.
+    """
+    first, second = names
+    a = pairs["topology_residue_index_A"].to_numpy(dtype=int)
+    b = pairs["topology_residue_index_B"].to_numpy(dtype=int)
+    atom_pairs = pairs["atom_contact_pairs"].to_numpy(dtype=int)
+    tm_a = np.isin(a, tm_heavy[first].resindices)
+    tm_b = np.isin(b, tm_heavy[second].resindices)
+    subset = tm_a & tm_b
+    motif_a = np.isin(a, gxxxg[first].resindices)
+    motif_b = np.isin(b, gxxxg[second].resindices)
+    both_mapped = bool(len(gxxxg[first]) and len(gxxxg[second]))
+    joint = motif_a & motif_b
+    return {
+        "sdc4_tm_interface_residue_pairs": int(subset.sum()),
+        f"sdc4_gxxxg_{first}_to_other_tm_residue_pairs": (
+            int((motif_a & tm_b).sum()) if len(gxxxg[first]) else np.nan
+        ),
+        f"sdc4_gxxxg_{second}_to_other_tm_residue_pairs": (
+            int((tm_a & motif_b).sum()) if len(gxxxg[second]) else np.nan
+        ),
+        "sdc4_gxxxg_interface_atom_contacts": (
+            int(atom_pairs[joint].sum()) if both_mapped else np.nan
+        ),
+        "sdc4_gxxxg_interface_residue_pairs": (
+            int(joint.sum()) if both_mapped else np.nan
+        ),
+    }
+
+
 class SDC4Mechanisms:
     def __init__(self, universe, cfg, repout, *, cache_dir=None):
         self.u, self.cfg, self.repout = universe, cfg, Path(repout)
@@ -430,6 +508,7 @@ class SDC4Mechanisms:
             universe, s.get("protein_selection") or cfg["selections"]["protein"],
             required=True,
         ))
+        validate_sdc4_protein_domains(self.protein, self.tm, self.ecto)
         self.interprotomer = (
             InterprotomerContacts(self.protein, self.tm, s.get("contact_cutoff_A", 5.))
             if s.get("interprotomer_contacts", False) else None
@@ -486,31 +565,9 @@ class SDC4Mechanisms:
         # topology's actual sequence does not contain the motif.
         if s.get("require_motifs", True) and not self.motifs:
             raise ValueError("No NxIP motif matched; verify the mature SDC4 sequence/chain selections")
-        self.gxxxg = {}
-        self.gxxxg_sequences = {}
-        for chain, tm in self.tm.items():
-            ca_tm = tm.select_atoms("name CA")
-            if not len(ca_tm):
-                raise ValueError(f"TM selection for {chain} must contain CA atoms")
-            # Match the known SDC4 GGIVG sequence; generic G...G matches can
-            # select an unrelated glycine pair and mask a wrong TM selection.
-            matches = sequence_matches(ca_tm, {"GGIVG": "GGIVG"})
-            if len(matches) > 1:
-                raise ValueError(
-                    f"TM chain {chain} has ambiguous GGIVG mapping ({len(matches)} matches); "
-                    "select one protein chain and one TM motif"
-                )
-            indices = np.unique(np.concatenate(list(matches.values()))) if matches else np.empty(0, int)
-            sequence = "".join(
-                AA3.get(atom.resname.upper(), "X") for atom in ca_tm
-            )
-            self.gxxxg_sequences[chain] = sequence
-            if not len(indices) and s.get("require_gxxxg", False):
-                raise ValueError(
-                    f"No GGIVG found in TM chain {chain} (sequence={sequence!r}); "
-                    "verify topology chain IDs and TM residue range"
-                )
-            self.gxxxg[chain] = heavy(universe.atoms[np.isin(universe.atoms.resindices, indices)])
+        self.gxxxg, self.gxxxg_sequences = resolve_sdc4_gxxxg(
+            universe, self.tm, required=s.get("require_gxxxg", False),
+        )
         self.local_order = _normal_order_setup(universe, s.get("local_order") or {},
                                                cfg["analyses"].get("membrane_order"))
         self.extent = float(s.get("map_extent_A", 40.))
@@ -599,6 +656,7 @@ class SDC4Mechanisms:
         t = time_ps(ts, frame_index, self.cfg)
         if self.residue_occlusion is not None:
             self.rows["residue_occlusion"].append(self.residue_occlusion.frame(box))
+        pair_frame = None
         if self.interprotomer is not None:
             pair_frame, residue_frame = self.interprotomer.frame(box, t)
             self.rows["interprotomer_pairs"].append(pair_frame)
@@ -760,32 +818,29 @@ class SDC4Mechanisms:
             float(np.sign(np.dot(cross, separation)))
             if np.all(np.isfinite(cross)) else np.nan
         )
-        tm1, tm2 = self.tm_heavy[first], self.tm_heavy[second]
-        interface_hits = _contacts(tm1, tm2, self.contact_A, box)
-        row["sdc4_tm_interface_residue_pairs"] = (
-            len(np.unique(np.column_stack((
-                tm1.resindices[interface_hits[:, 0]],
-                tm2.resindices[interface_hits[:, 1]],
-            )), axis=0)) if len(interface_hits) else 0
-        )
-        g1, g2 = self.gxxxg[first], self.gxxxg[second]
-        for name, motif, opposite in (
-            (first, g1, tm2), (second, g2, tm1)
-        ):
-            motif_hits = _contacts(motif, opposite, self.contact_A, box)
-            row[f"sdc4_gxxxg_{name}_to_other_tm_residue_pairs"] = (
-                len(np.unique(np.column_stack((
-                    motif.resindices[motif_hits[:, 0]],
-                    opposite.resindices[motif_hits[:, 1]],
-                )), axis=0)) if len(motif_hits) else 0 if len(motif) else np.nan
-            )
-        ghits = _contacts(g1, g2, self.contact_A, box)
-        row["sdc4_gxxxg_interface_atom_contacts"] = len(ghits) if len(g1) and len(g2) else np.nan
-        row["sdc4_gxxxg_interface_residue_pairs"] = (
-            len(np.unique(np.column_stack((
-                g1.resindices[ghits[:, 0]], g2.resindices[ghits[:, 1]]
-            )), axis=0)) if len(ghits) else 0 if len(g1) and len(g2) else np.nan
-        )
+        if pair_frame is None:
+            # When complete contacts are disabled, perform just one TM–TM
+            # search and reduce it exactly as the whole-interface pair table.
+            tm1, tm2 = self.tm_heavy[first], self.tm_heavy[second]
+            hits = _contacts(tm1, tm2, self.contact_A, box)
+            if len(hits):
+                residue_pairs, contact_counts = np.unique(
+                    np.column_stack((
+                        tm1.resindices[hits[:, 0]],
+                        tm2.resindices[hits[:, 1]],
+                    )), axis=0, return_counts=True,
+                )
+            else:
+                residue_pairs = np.empty((0, 2), dtype=int)
+                contact_counts = np.empty(0, dtype=int)
+            pair_frame = pd.DataFrame({
+                "topology_residue_index_A": residue_pairs[:, 0],
+                "topology_residue_index_B": residue_pairs[:, 1],
+                "atom_contact_pairs": contact_counts,
+            })
+        row.update(_tm_contact_metrics(
+            pair_frame, self.tm_heavy, self.gxxxg, self.chain_names,
+        ))
         for label, (phi_atoms, psi_atoms) in self.proline_torsions.items():
             for suffix, atom_group in (("phi_deg", phi_atoms), ("psi_deg", psi_atoms)):
                 value = np.nan

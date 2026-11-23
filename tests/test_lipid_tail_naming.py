@@ -27,7 +27,6 @@ from MDAnalysis.coordinates.memory import MemoryReader
 from mdscope.config import DEFAULTS, resolve_config
 from mdscope.core.provenance import config_hash
 from mdscope.errors import ConfigError
-from mdscope.systems.sdc4.mechanisms import _normal_order_setup
 from mdscope.observables.membrane_order import (
     _order_sites,
     _tail_spec,
@@ -37,6 +36,7 @@ from mdscope.observables.membrane_order import (
 from mdscope.pipeline.fused_membrane import FusedMembrane
 from mdscope.pipeline.preflight import validate_selections
 from mdscope.planning import build_plan
+from mdscope.systems.sdc4.mechanisms import _normal_order_setup
 
 CHAIN_LENGTH = {"sn1": 16, "sn2": 18}  # palmitoyl, oleoyl
 DOUBLE_BOND = {"sn2": (9, 10)}
@@ -48,9 +48,18 @@ MACROG_TAILS = {
 }
 
 
-# Only the configuration/preflight contract is exercised: domains are lipid atoms.
-SDC4_DOMAINS = {"tm_chains": {"A": "resid 1", "B": "resid 2"},
-                "ectodomains": {"A": "resid 3", "B": "resid 4"}}
+# Four ectodomain and five GGIVG-containing TM residues per synthetic protomer.
+# Lipid-order assertions still select only POPC atoms.
+SDC4_DOMAINS = {
+    "tm_chains": {
+        "A": "protein and chainID A and resid 9:13 and name CA",
+        "B": "protein and chainID B and resid 18:22 and name CA",
+    },
+    "ectodomains": {
+        "A": "protein and chainID A and resid 5:8 and name CA",
+        "B": "protein and chainID B and resid 14:17 and name CA",
+    },
+}
 
 
 def _candidate_sites(universe, spec):
@@ -372,7 +381,16 @@ def test_leaflet_anchor_must_cover_every_order_lipid():
 
 
 def _validated(tmp_path, builder, raw_order, *, local_order=None):
+    if local_order is not None:
+        for x in (0., 10.):
+            for position, name in enumerate(
+                ("ALA",) * 4 + ("GLY", "GLY", "ILE", "VAL", "GLY")
+            ):
+                residue = builder.residue(name)
+                builder.atom(residue, "CA", "C", [x, 0., 40. - position])
     u = builder.universe(frames=1)
+    if local_order is not None:
+        u.atoms[-18:].chainIDs = ["A"] * 9 + ["B"] * 9
     topology = tmp_path / "bilayer.pdb"
     with mda.Writer(str(topology), n_atoms=len(u.atoms), bonds="all") as writer:
         writer.write(u.atoms)
@@ -381,12 +399,14 @@ def _validated(tmp_path, builder, raw_order, *, local_order=None):
     analyses["membrane_order"] = {"enabled": True, **raw_order}
     if local_order is not None:
         analyses["sdc4_mechanisms"] = {
-            "enabled": True, **SDC4_DOMAINS, "require_motifs": False, "motif_selection": "name CA",
+            "enabled": True, **SDC4_DOMAINS, "require_motifs": False, "require_gxxxg": True,
+            "motif_selection": "name CA",
             "lipid_contact_selection": "resname POPC",
             "lipid_anchors": {"POPC": "resname POPC and name P P8"}, "local_order": local_order}
     raw = {"systems": {"s": {"topology": topology.name,
                              "replicates": [{"trajectory": topology.name}]}},
-           "selections": {"protein": "resname POPC"}, "analyses": analyses}
+           "selections": {"protein": "protein" if local_order is not None else "resname POPC"},
+           "analyses": analyses}
     path = tmp_path / "analysis.yaml"
     path.write_text(yaml.safe_dump(raw))
     cfg = resolve_config(raw, base=tmp_path)
@@ -446,7 +466,22 @@ def test_sdc4_local_order_uses_membrane_order_naming(tmp_path):
     _, _, counts, text = _validated(tmp_path, bilayer("macrog"), {"tails": MACROG_TAILS,
                                     "lipid_selection": "resname POPC"}, local_order=local)
     assert "SDC4 local_order POPC sn2: 4/4 lipids, positions 2-18" in text
+    assert "SDC4 TM A: sequence=GGIVG" in text
+    assert "SDC4 TM B: sequence=GGIVG" in text
     assert counts["s"]["sdc4_local_order"]["lipids_without_anchor"] == 0
+
+
+@pytest.mark.parametrize("domain", ["tm_chains", "ectodomains"])
+def test_sdc4_preflight_rejects_lipid_residues_as_protein_domains(tmp_path, domain):
+    cfg, _, _, _ = _validated(
+        tmp_path, bilayer("macrog"),
+        {"tails": MACROG_TAILS, "lipid_selection": "resname POPC"},
+        local_order={"enabled": True, "lipid_selection": "resname POPC"},
+    )
+    # The old fixture used POPC residues as fake protein domains.
+    cfg["analyses"]["sdc4_mechanisms"][domain]["A"] = "resid 1"
+    with pytest.raises(ConfigError, match=rf"SDC4 {domain}\.A includes residues outside"):
+        validate_selections(cfg, tmp_path)
 
 
 def test_tail_preset_resolution_precedence_and_round_trip():
