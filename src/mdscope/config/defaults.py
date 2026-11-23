@@ -185,6 +185,7 @@ DEFAULTS = {
         "enabled": True,
         "residue_response": {"enabled": True, "profiles": None, "chains": None,
                              "min_length": 3, "minimum_cosine": 0.7},
+        "residue_correlations": {"enabled": False, "pairs": None, "min_frames": 30},
         "bootstrap_draws": 2000,
         "ci": 0.95,
         "seed": 2026,
