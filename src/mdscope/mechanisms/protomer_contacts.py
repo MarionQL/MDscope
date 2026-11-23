@@ -173,3 +173,38 @@ def summarize_interprotomer_contacts(outdir: Path, pair_parts, residue_parts, ti
         by_pair["mean_atom_pairs_per_frame"] = by_pair.total_atom_pairs / n_frames
         by_pair = by_pair.drop(columns="total_atom_pairs")
     atomic_parquet(outdir / "interprotomer_pair_summary.parquet", by_pair)
+
+
+def temporal_interprotomer_profiles(repout: Path, cfg: dict) -> dict:
+    """Expose full-protomer residue response to the existing profile statistics."""
+    spec = cfg.get("analyses", {}).get("sdc4_mechanisms", {})
+    path = Path(repout) / "extensions/sdc4_mechanisms/interprotomer_residue_frames.parquet"
+    if not spec.get("enabled") or not spec.get("interprotomer_contacts") or not path.is_file():
+        return {}
+    data = pd.read_parquet(path, columns=[
+        "time_ps", "topology_residue_index", "residue", "any_contact",
+        "opposite_partner_residues", "contacting_heavy_atom_fraction", "cutoff_A",
+    ])
+    if data.empty or not data.cutoff_A.eq(float(spec.get("contact_cutoff_A", 5.))).all():
+        raise ValueError(f"{path}: empty or incompatible contact cutoff")
+    if data.duplicated(["time_ps", "topology_residue_index"]).any():
+        raise ValueError(f"{path}: duplicate residue frames")
+    labels = data[["topology_residue_index", "residue"]].drop_duplicates()
+    if labels.duplicated("topology_residue_index").any():
+        raise ValueError(f"{path}: ambiguous residue labels")
+    labels = labels.set_index("topology_residue_index")["residue"]
+    outputs = {}
+    for key, column in (
+        ("interprotomer_contact_occupancy", "any_contact"),
+        ("interprotomer_partner_count", "opposite_partner_residues"),
+        ("interprotomer_atom_contact_fraction", "contacting_heavy_atom_fraction"),
+    ):
+        pivot = data.pivot(index="time_ps", columns="topology_residue_index", values=column)
+        outputs[key] = {
+            "times": pivot.index.to_numpy(float),
+            "positions": np.arange(len(pivot.columns), dtype=float),
+            "labels": labels.loc[pivot.columns].to_numpy(str),
+            "values": pivot.to_numpy(float),
+            "reducer": "mean",
+        }
+    return outputs
