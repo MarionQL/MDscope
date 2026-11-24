@@ -8,7 +8,7 @@ import pandas as pd
 from MDAnalysis.analysis.dssp import DSSP
 
 from ..core.persistence import atomic_parquet, ensure_dir
-from ..core.profiling import _residue_label
+from ..core.sequence import residue_label
 
 
 def _run_dssp(universe, cfg: dict, repout: Path):
@@ -66,6 +66,6 @@ def _run_dssp(universe, cfg: dict, repout: Path):
     atomic_parquet(out / "assignments.parquet", pd.DataFrame({
         "time_ps": np.repeat(times, nres),
         "topology_residue_index": np.tile([int(r.ix) for r in residues], nframes),
-        "residue": np.tile([_residue_label(r) for r in residues], nframes),
+        "residue": np.tile([residue_label(r) for r in residues], nframes),
         "dssp": codes.ravel(),
     }))
