@@ -412,15 +412,15 @@ def test_production_plotting_inventories_each_pdf_once_with_page_identity(tmp_pa
     before = figure_snapshot(tmp_path, repouts)
     plotting.plot_all(cfg, tmp_path, repouts)
     record_generated_figures(cfg, tmp_path, repouts, before)
-    series = "project_summary/figures/time_series/statistics_tables.pdf"
-    profiles = "project_summary/figures/profiles/statistics_tables.pdf"
+    series = "project_summary/figures/statistical_reports/rmsd/statistics_tables.pdf"
+    profiles = "project_summary/figures/statistical_reports/membrane_order/statistics_tables.pdf"
     inventory = figure_inventory(tmp_path, repouts, cfg)
     reports = inventory.loc[inventory["format"] == "pdf"].set_index("figure_id")
-    assert sorted(reports.index) == [profiles, series]
+    assert sorted(reports.index) == [profiles,
+        "project_summary/figures/statistical_reports/radius_of_gyration/statistics_tables.pdf", series]
     assert set(reports["status"]) == {"valid"}
     assert set(reports["kind"]) == {"table_report"}
     assert json.loads(reports.loc[series, "page_ids"]) == [
-        "time_series:radius_of_gyration_A:comparison_table",
         "time_series:rmsd_A:comparison_table"]
     assert json.loads(reports.loc[profiles, "page_ids"]) == [
         "profiles:lipid_order__POPC__sn1:comparison_table"]

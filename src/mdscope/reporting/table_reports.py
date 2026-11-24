@@ -85,8 +85,10 @@ class TableReports:
         self.open_reports = {}
         self.pending = {}
         self.pages = {}
+        self.companions = {}
+        self.metadata = {}
 
-    def add(self, fig, figure_path: Path, *, identifier=None):
+    def add(self, fig, figure_path: Path, *, identifier=None, source_ids=None):
         from .plot_ids import id_from_figure_path
         figure_path = Path(figure_path).resolve()
         figure_path.relative_to(self.root / 'project_summary/figures')
@@ -99,10 +101,20 @@ class TableReports:
             self.open_reports[report] = PdfPages(temporary, metadata={
                 'Title': f'MDscope statistics tables - {report.parent.name}', 'Creator':'MDscope'})
             self.pages[report] = []
-        self.open_reports[report].savefig(fig, bbox_inches='tight')
+        self.open_reports[report].savefig(fig, bbox_inches=None if source_ids else 'tight')
         self.pages[report].append({'page':len(self.pages[report])+1,
                                   'figure_id':identifier or id_from_figure_path(figure_path),
-                                  'figure_path':figure_path.relative_to(self.root).as_posix()})
+                                  'figure_path':figure_path.relative_to(self.root).as_posix(),
+                                  **({'source_ids':source_ids} if source_ids else {})})
+
+    def add_data(self, report, dataframe, metadata):
+        report = Path(report)
+        fd, temporary = tempfile.mkstemp(prefix='.statistics_tables.', suffix='.pending.csv', dir=report.parent)
+        os.close(fd)
+        self.pending[report.with_suffix('.csv')] = Path(temporary)
+        dataframe.to_csv(temporary, index=False, na_rep='N/A')
+        self.companions[report] = report.with_suffix('.csv')
+        self.metadata[report] = metadata
 
     def _empty_status(self, report, superseded):
         """Classify a report without pages from the pages it last published."""
@@ -111,7 +123,7 @@ class TableReports:
                 {**self.cfg, 'plots':{**self.cfg.get('plots', {}), 'include':None}}, figure_family(report))):
             return 'disabled'
         if self.cfg is not None:
-            ids = [page.get('figure_id') for page in superseded if page.get('figure_id')]
+            ids = report_source_ids({'pages':superseded})
             if ids and not any(table_page_enabled(self.cfg, identifier) for identifier in ids):
                 return ('unselected' if not any(figure_enabled(self.cfg, identifier) for identifier in ids)
                         else 'disabled')
@@ -142,7 +154,7 @@ class TableReports:
             # Existing target -> archive directory, or None for a status-only
             # sidecar that is set aside only until publication succeeds.
             retired = {}
-            for report in existing | set(self.pending):
+            for report in existing | set(self.pages):
                 pages = self.pages.get(report, [])
                 sidecar = report.with_name(MANIFEST_NAME)
                 generation = None
@@ -153,9 +165,17 @@ class TableReports:
                     retired[report] = generation
                 if sidecar.exists():
                     retired[sidecar] = generation
+                csv = report.with_suffix('.csv')
+                if csv.exists():
+                    retired[csv] = generation
                 if pages:
                     manifests[report] = {'status':'complete', 'format':'pdf', 'pages':pages,
-                                         'page_count':len(pages), 'sha256':pdf_digest(self.pending[report])}
+                                         'page_count':len(pages), 'sha256':pdf_digest(self.pending[report]),
+                                         **self.metadata.get(report, {})}
+                    if report in self.companions:
+                        csv = self.companions[report]
+                        manifests[report]['csv'] = csv.relative_to(self.root).as_posix()
+                        manifests[report]['csv_sha256'] = file_digest(self.pending[csv])
                     continue
                 prior = report_manifest(report) or {}
                 superseded = prior.get('pages') or prior.get('superseded_pages', [])
@@ -177,9 +197,12 @@ class TableReports:
             # Selected legacy table PNGs move only after PDF rendering succeeds.
             for pages in self.pages.values():
                 for page in pages:
-                    png = self.root / page['figure_path']
-                    if png.is_file():
-                        retired[png] = self.root / '.archives/figure_tables' / png.parent.relative_to(self.root)
+                    from ..contracts.plot_validation import describe_plot
+                    identifiers = page.get('source_ids') or [page.get('figure_id')]
+                    for identifier in identifiers:
+                        png = self.root / describe_plot(identifier)['destination']
+                        if png.is_file():
+                            retired[png] = self.root / '.archives/figure_tables' / png.parent.relative_to(self.root)
             backups = {}
             published = []
             try:
@@ -238,10 +261,38 @@ def table_report_session(root: Path, *, enabled: bool, cfg=None):
         lock.unlink(missing_ok=True)
 
 
-def add_table_page(fig, path: Path, *, identifier=None):
+def add_table_page(fig, path: Path, *, identifier=None, source_ids=None):
     """Return True when the selected table was routed to the PDF writer."""
     session = _ACTIVE.get()
     if session is None:
         return False
-    session.add(fig, path, identifier=identifier)
+    session.add(fig, path, identifier=identifier, source_ids=source_ids)
     return True
+
+
+def file_digest(path):
+    with Path(path).open('rb') as handle:
+        return hashlib.file_digest(handle, 'sha256').hexdigest()
+
+
+def report_source_ids(report):
+    """Legacy single-source pages and consolidated pages share one reader."""
+    return list(dict.fromkeys(identifier for page in report.get('pages', [])
+                              for identifier in (page.get('source_ids') or [page.get('figure_id')])
+                              if identifier))
+
+
+def add_report_data(report, dataframe, metadata):
+    session = _ACTIVE.get()
+    if session is None:
+        raise RuntimeError('Consolidated reports require an active publication session')
+    session.add_data(report, dataframe, metadata)
+
+
+def table_selection(cfg):
+    """Settings that determine the exact population of a consolidated report."""
+    plots = cfg.get('plots', {})
+    return {key: (sorted(plots[key]) if key == 'include' and plots.get(key) is not None else plots.get(key, default))
+            for key, default in (('include', None), ('bootstrap_tables', True), ('families', {}),
+                                 ('time_series', True), ('profiles', True), ('interactions', True),
+                                 ('interaction_exclude_kinds', []))}

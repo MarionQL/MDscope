@@ -226,7 +226,7 @@ def create_fixture(root: Path):
         vals = 0.24 + 0.025 * system_index + .006 + 0.065 * np.sin(positions / 2.5)
         condition_rows.extend({
             "system": system, "profile": "lipid_order__POPC__sn1",
-            "position": float(p), "mean": float(val),
+            "position": float(p), "position_label": f"C{int(p)}", "mean": float(val),
             "mean_ci_low": float(val - .025),
             "mean_ci_high": float(val + .025),
         } for p, val in zip(positions, vals))
@@ -307,6 +307,7 @@ def render_preview(root: Path, *, include: list[str] | None = None):
         raise FileExistsError(f"Refusing to replace preview or results in nonempty {root}")
     root.mkdir(parents=True, exist_ok=True)
     cfg, system_repouts = create_fixture(root)
+    cfg["plots"]["table_reports_pdf"] = True
     if include is not None:
         cfg["plots"]["include"] = list(include)
     # These are the same plotting functions used by runner.finalize_project.
@@ -347,6 +348,7 @@ def render_preview(root: Path, *, include: list[str] | None = None):
         "input_data_kind": "deterministic synthetic Parquet",
         "requested_plot_ids": include,
         "plots": [str(path.relative_to(root)) for path in figures],
+        "reports": [path.relative_to(root).as_posix() for path in sorted(root.rglob("statistics_tables.pdf"))],
         "table_previews": tables,
         "table_inventory_csv": "table_previews/table_inventory.csv",
         "plot_ids": {},

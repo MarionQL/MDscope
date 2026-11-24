@@ -212,3 +212,26 @@ def statistics_output_contract(family):
             "row_grain": grain, "independent_units": "simulation_replicates",
             "sample_rows": [{column: "illustrative placeholder" for column in columns} for _ in range(2)],
             "limitations": "Conditional file; unavailable CI/p/q remain nullable. No illustrative values are estimates. Full chemistry/provenance columns depend on configuration."}
+
+# Dynamic writer namespaces missing from the pre-run concrete variable catalog.
+# Ownership belongs here alongside saved statistical identities, not in a renderer.
+DYNAMIC_VARIABLE_OWNERS = (
+    ('profiles', 'sasa_mean', 'sasa', 'nm^2'),
+    ('profiles', 'sasa_buried_nm2__', 'sasa', 'nm^2'),
+    ('profiles', 'dssp_', 'dssp', 'fraction'),
+    ('time_series', 'local_', 'local_environment', 'counts; see metric identity'),
+    ('profiles', 'lipid_order__', 'membrane_order', '-S_CH'),
+    ('profiles', 'residue_occlusion__', 'sdc4_mechanisms', 'fraction'),
+    ('profiles', 'residue_water_coordination__', 'sdc4_mechanisms', 'water molecules'),
+    ('time_series', 'lipid_order_', 'membrane_order', '-S_CH'),
+    ('time_series', 'lipid_footprint_', 'lipid_enrichment', 'producer-defined; see metric suffix'),
+    ('time_series', 'sdc4_', 'sdc4_mechanisms', 'producer-defined; see metric suffix'),
+    ('time_series', 'total_sasa_nm2', 'sasa', 'nm^2'),
+)
+GROUP_VARIABLE_UNITS = {
+    'mean_n_solvent': 'molecules', 'hydrated_fraction': 'fraction',
+    'unique_water_count': 'molecules', 'unique_water_per_site': 'molecules/site',
+    'bridge_entity_count': 'entities', 'bridge_present_fraction': 'fraction',
+    'observed_minus_spatial_bridge_fraction': 'fraction',
+    'neighbors_per_molecule': 'neighbors/molecule', 'enrichment': 'ratio',
+}

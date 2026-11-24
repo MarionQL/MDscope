@@ -73,6 +73,31 @@ def snapshot(source: Path, inputs: dict[str, str]) -> dict:
     return json.loads(process.stdout)
 
 
+
+def legacy_plan_projection(historical, current):
+    """Validate the additive #298 report descriptors without waiving old fields.
+
+    Exact source IDs and legacy destinations stay public. New destinations are
+    additive metadata for the already-existing PDF switch, not changed science.
+    """
+    additions = {
+        'consolidated_destination': 'project_summary/figures/statistical_reports/{registered_analysis}/statistics_tables.pdf',
+        'csv_companion': 'statistics_tables.csv',
+        'selection_semantics': 'Exact source rows within one analysis report; legacy PNG destination applies only with table_reports_pdf: false',
+    }
+    if isinstance(historical, dict) and isinstance(current, dict):
+        result = {}
+        for key, value in current.items():
+            if key not in historical and key in additions:
+                if value != additions[key] or not current.get('id', '').endswith((':bootstrap_table', ':comparison_table')):
+                    raise ValueError(f'Unexpected additive reporting metadata: {key}={value!r}')
+            else:
+                result[key] = legacy_plan_projection(historical.get(key), value)
+        return result
+    if isinstance(historical, list) and isinstance(current, list) and len(historical) == len(current):
+        return [legacy_plan_projection(before, after) for before, after in zip(historical, current)]
+    return current
+
 def main() -> int:
     maintained = sorted(REPO.glob("synd4_*.yaml"))
     if not maintained:
@@ -151,7 +176,7 @@ def main() -> int:
             ).hexdigest()[:16]
             if before[name]["hash"] != legacy_hash:
                 problems.append(f"{name}: legacy config hash differs from main")
-            if before[name]["plan"] != after[name]["plan"]:
+            if before[name]["plan"] != legacy_plan_projection(before[name]["plan"], after[name]["plan"]):
                 problems.append(f"{name}: legacy plan differs from main")
             print(f"{name}: {'MATCH' if not any(p.startswith(name + ':') for p in problems) else 'DIFF'}")
 

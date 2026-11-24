@@ -55,14 +55,13 @@ def figure_inventory(root, system_repouts, cfg=None, include_rejected=False, *, 
         if cfg is not None and status not in {'valid', 'legacy_unverified'} and not include_rejected:
             continue
         record = records.get(_relative(path, root),{})
-        from .table_reports import report_manifest
+        from .table_reports import report_manifest, report_source_ids
         try:
             report = report_manifest(path) if path.suffix == '.pdf' else None
         except (OSError, ValueError, TypeError):
             report = None
-        pages = report.get('pages', []) if report else []
         rows.append({"format":path.suffix[1:], "page_count":report.get('page_count') if report else None,
-                     "page_ids":json.dumps([page.get('figure_id') for page in pages if isinstance(page, dict)]),
+                     "page_ids":json.dumps(report_source_ids(report or {})),
                      "figure_id":_relative(path, root),
                      "display_label":record.get('display_label', path.stem.replace('_',' ')),
                      "source_metric":record.get('source_metric'),"units":record.get('units'),
@@ -172,12 +171,13 @@ def record_generated_figures(cfg, root, system_repouts, before):
             generated_at=datetime.now(UTC).isoformat(), sampling=sampling,
             format=path.suffix[1:])
         if path.suffix == '.pdf':
-            from .table_reports import report_manifest
+            from .table_reports import report_manifest, report_source_ids
             report = report_manifest(path)
             if report is not None:
                 records[name].update(page_count=report['page_count'], pages=report['pages'],
                                      sha256=report['sha256'],
-                                     page_ids=[page['figure_id'] for page in report['pages']])
+                                     page_ids=report_source_ids(report),
+                                     source_files=[source['path'] for source in report.get('sources', [])] or records[name]['source_files'])
     atomic_json(dest,records)
 
 
@@ -221,10 +221,10 @@ def figure_status(path, cfg, root, system_repouts, records=None):
     # advertise stale legacy PNGs as active, and never delete user artifacts.
     if family == "sdc4" and "extensions" in path.parts and "sdc4_mechanisms" in path.parts:
         return 'disabled'
-    if not plot_enabled(cfg, family):
+    if path.suffix != '.pdf' and not plot_enabled(cfg, family):
         return 'disabled'
     if path.suffix == '.pdf':
-        from .table_reports import pdf_digest, report_manifest, table_page_enabled
+        from .table_reports import file_digest, pdf_digest, report_manifest, report_source_ids, table_page_enabled, table_selection
         if not cfg.get('plots', {}).get('table_reports_pdf', False):
             return 'disabled'
         try:
@@ -242,10 +242,28 @@ def figure_status(path, cfg, root, system_repouts, records=None):
                     [page.get('page') for page in pages] != list(range(1, len(pages)+1)) or
                     any(not isinstance(page.get('figure_id'), str) for page in pages)):
                 return 'invalid_manifest'
-            if any(not table_page_enabled(cfg, page['figure_id']) for page in pages):
+            if any(not table_page_enabled(cfg, identifier) for identifier in report_source_ids(report)):
                 return 'disabled'
             if digest != report.get('sha256'):
                 return 'invalid_figure'
+            if 'selection' in report and report['selection'] != table_selection(cfg):
+                return 'stale_configuration'
+            if ('alpha' in report and report['alpha'] != cfg.get('statistics', {}).get('hypothesis_tests', {}).get('alpha', .05)):
+                return 'stale_configuration'
+            for source in report.get('sources', []):
+                saved = root / source['path']
+                if not saved.is_file():
+                    return 'missing_source'
+                if file_digest(saved) != source['sha256']:
+                    return 'stale_source'
+            if report.get('csv'):
+                csv = root / report['csv']
+                if not csv.is_file() or file_digest(csv) != report.get('csv_sha256'):
+                    return 'invalid_companion'
+            for identifier in report.get('source_ids', []):
+                state = statistics_status(cfg, root, identifier.split(':', 1)[0])
+                if state not in {'valid', 'legacy_unverified'}:
+                    return state
         except (OSError, ValueError, TypeError, KeyError, AttributeError):
             return 'invalid_figure'
     if path.suffix != '.pdf' and cfg.get("plots", {}).get("include") is not None:

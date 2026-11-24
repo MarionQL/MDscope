@@ -187,7 +187,7 @@ def _change_group(document, old_id, new_id=None, *, duplicate=False, choices=Non
                 if item["profile"] not in profile_mapping
                 or profile_mapping[item["profile"]] is not None
             ]
-        from ..reporting.plot_ids import safe_plot_stem
+        from ..contracts.plot_validation import safe_plot_stem
         old_scalars = {
             figure["id"]: (item["analysis"], figure["id"].rsplit(":", 1)[-1])
             for item in before["scalars"] if item["group"] == old_id

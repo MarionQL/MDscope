@@ -10,7 +10,7 @@ from matplotlib.patches import Rectangle
 from ..config import figure_enabled
 from ..core.persistence import ensure_dir
 from .figure_inventory import current_statistics
-from .plot_ids import safe_plot_stem
+from ..contracts.plot_validation import safe_plot_stem
 
 
 def plot_residue_response(cfg: dict, root: Path) -> None:
