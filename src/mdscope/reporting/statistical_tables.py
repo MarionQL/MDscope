@@ -93,8 +93,11 @@ def collect_statistical_reports(cfg, root):
                 table_page_enabled(cfg, identifier) for identifier in selected):
             continue
         directory = root / 'project_summary/statistics' / family
+        # Full lag curves/episodes are separate products, not bootstrap summary
+        # rows. Their integrated diagnostics already live in replica statistics.
+        auxiliary = {'autocorrelation.parquet', 'hs_contact_episodes.parquet', 'residue_regions.parquet'}
         paths = [directory / name for name in STATISTICS_CANDIDATES[family]
-                 if (directory / name).is_file()]
+                 if name not in auxiliary and (directory / name).is_file()]
         if not current_statistics(cfg, root, family):
             if paths and statistics_status(cfg, root, family) not in {'disabled', 'unavailable'}:
                 raise ValueError(f'Cannot publish tables from {statistics_status(cfg, root, family)} statistics: {directory}')
@@ -114,7 +117,7 @@ def collect_statistical_reports(cfg, root):
         required = {'profiles': {'profile'}, 'time_series': {'metric'},
                     'interactions': {'interaction_type', 'metric', 'interaction'}}[family]
         for filename, data in tables.items():
-            if data.empty or filename in {'residue_regions.parquet', 'hs_contact_episodes.parquet'}:
+            if data.empty:
                 continue
             if not required <= set(data):
                 raise ValueError(f'Malformed saved statistics {directory / filename}: missing identity columns {sorted(required - set(data))}')

@@ -181,3 +181,16 @@ def test_interval_classification_uses_finite_ordered_bounds_and_configured_alpha
     assert data.ci_excludes_zero.tolist() == [True, False, True, False, False, False, False]
     assert not data.q_below_alpha.any()
     assert data.condition_1_mean.isna().all()  # unsupported is never filled with zero
+
+
+def test_report_reads_integrated_diagnostics_without_expanding_full_lag_curves(tmp_path):
+    from mdscope.reporting.statistical_tables import collect_statistical_reports
+    cfg, folder = small_fixture(tmp_path)
+    cfg['plots']['bootstrap_tables'] = True
+    pd.DataFrame([dict(system='A', replicate='rep1', metric='rmsd_A', group='chain_A',
+                       mean=.2, median=.1, tau_int_frames=5., effective_n=22., block_length_frames=10)]).to_parquet(folder / 'replicate_statistics.parquet')
+    # A full lag product can be huge; this report must not open it at all.
+    (folder / 'autocorrelation.parquet').write_bytes(b'not a summary table')
+    rows = collect_statistical_reports(cfg, tmp_path)
+    assert rows.loc[rows.section == 'replica', 'tau_int_frames'].tolist() == [5.]
+    assert 'lag_frames' not in rows
