@@ -25,7 +25,7 @@ from ..core.persistence import (
     atomic_parquet_parts,
     ensure_dir,
 )
-from ..core.profiling import _residue_label
+from ..core.sequence import residue_label
 from ..interactions.hydrogen_bonds import write_hydrogen_bonds
 from ..interactions.lipid_hydrogen_bonds import (
     lipid_molecule_map,
@@ -285,7 +285,7 @@ class FusedExtensions:
                 pd.DataFrame({
                     "time_ps": np.repeat(entry["times"], nres),
                     "topology_residue_index": np.tile([int(r.ix) for r in residues], nframes),
-                    "residue": np.tile([_residue_label(r) for r in residues], nframes),
+                    "residue": np.tile([residue_label(r) for r in residues], nframes),
                     "dssp": codes.ravel(),
                 })
             )
