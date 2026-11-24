@@ -31,6 +31,34 @@ def finite(values) -> np.ndarray:
     return x[np.isfinite(x)]
 
 
+def supported_reduce(values, reducer="mean", *, axis=None, q=None):
+    """NaN-aware reduction; empty slices are explicitly undefined.
+
+    Reduce supported slices with NumPy's existing algorithm/order. This does
+    not turn missing observations into zeros or change bootstrap eligibility.
+    """
+    values = np.asarray(values, float)
+    if axis is None:
+        values = values.reshape(-1)
+        axis = 0
+    supported = (~np.isnan(values)).any(axis=axis)
+    reduce = np.nanmedian if reducer == "median" else np.nanmean
+    if supported.all() and supported.size:
+        return (np.nanquantile(values, q, axis=axis) if q is not None
+                else reduce(values, axis=axis))
+    prefix = np.asarray(q).shape if q is not None else ()
+    result = np.full(prefix + supported.shape, np.nan)
+    if supported.any():
+        # Boolean indexing selects only supported slices. Flattening a moved
+        # replica axis first would copy the entire hierarchical draw tensor.
+        sample = np.moveaxis(values, axis, 0)[:, supported]
+        if q is not None:
+            result[..., supported] = np.nanquantile(sample, q, axis=0)
+        else:
+            result[supported] = reduce(sample, axis=0)
+    return result
+
+
 def autocorrelation(values, max_lag=None) -> np.ndarray:
     # FFT autocorrelation is O(N log N), much faster than correlating
     # every lag directly for long MD trajectories.
@@ -125,7 +153,7 @@ def _block_bootstrap(
     if np.isfinite(values).all() and values.size:
         reduce = np.median if reducer == "median" else np.mean
     else:
-        reduce = np.nanmedian if reducer == "median" else np.nanmean
+        reduce = lambda values, axis: supported_reduce(values, reducer, axis=axis)
     workers = min(_bootstrap_workers(), max(1, math.ceil(draws / batch)))
     # Generate indices on the calling thread, in exactly the same order as
     # the serial implementation. Workers only perform deterministic reductions.
@@ -210,7 +238,7 @@ def _hierarchical(
     ) if resample else np.broadcast_to(np.arange(nrep), (draws, nrep))
     draw_idx = rng.integers(0, stack.shape[1], size=(draws, nrep))
     selected = stack[reps, draw_idx]
-    return (np.nanmedian if reducer == "median" else np.nanmean)(selected, axis=1)
+    return supported_reduce(selected, reducer, axis=1)
 
 
 def _hierarchical_difference(
@@ -243,8 +271,7 @@ def _hierarchical_difference(
         stack_b[selected_reps, draw_b]
         - stack_a[selected_reps, draw_a]
     )
-    reduce = np.nanmedian if reducer == "median" else np.nanmean
-    return reduce(differences, axis=1)
+    return supported_reduce(differences, reducer, axis=1)
 
 
 def _ci(draws, level: float) -> tuple[float, float]:

@@ -38,19 +38,9 @@ def _run_dssp(universe, cfg: dict, repout: Path):
         if spec.get("n_parts") is not None:
             kwargs["n_parts"] = int(spec["n_parts"])
     analysis.run(verbose=bool(cfg.get("progress",{}).get("enabled",True)),**kwargs)
-    residues = list(atoms.select_atoms("protein").residues)
-    resids = np.asarray(analysis.results.resids)
-    if len(residues) != len(resids):
-        mapped, used = [], set()
-        for resid in resids:
-            candidates = [r for r in residues if r.resid == resid and r.ix not in used]
-            if not candidates:
-                raise RuntimeError(
-                    "Could not map DSSP residues back to topology residues"
-                )
-            mapped.append(candidates[0])
-            used.add(candidates[0].ix)
-        residues = mapped
+    # DSSP's CA group retains exact topology membership after its filtering.
+    # Resid numbers alone cannot identify chains with repeated numbering.
+    residues = list(analysis._heavy_atoms["CA"].residues)
     codes = np.asarray(analysis.results.dssp).astype(str)
     codes[codes == "-"] = "C"
     times = np.asarray(analysis.times, float)

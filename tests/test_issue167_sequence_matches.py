@@ -1,6 +1,7 @@
 """Regression coverage for shared topology-aware sequence motif matching (#167)."""
 from dataclasses import dataclass
 
+import MDAnalysis as mda
 import pytest
 
 from mdscope.core.sequence import sequence_matches
@@ -63,3 +64,25 @@ def test_missing_motif_and_invalid_topology_selection():
         sequence_matches([CA(0, 1, "ALA", name="CB")], {"a": "A"})
     with pytest.raises(ValueError, match="Invalid motif regex"):
         sequence_matches([CA(0, 1, "ALA")], {"broken": "["})
+
+
+@pytest.mark.parametrize("chains,segments,expected", [
+    (None, None, ["?:ALA1", "?:ALA1"]),
+    (None, ["PROA", "PROB"], ["PROA:ALA1", "PROB:ALA1"]),
+    (["", "  "], ["PROA", "PROB"], ["PROA:ALA1", "PROB:ALA1"]),
+    (["A", "B"], ["same", "same"], ["A:ALA1", "B:ALA1"]),
+    (["A", "B"], None, ["A:ALA1", "B:ALA1"]),
+])
+def test_atom_and_residue_labels_share_topology_identity(chains, segments, expected):
+    from mdscope.core.sequence import residue_label
+    u = mda.Universe.empty(2, n_residues=2, n_segments=2,
+                           atom_resindex=[0, 1], residue_segindex=[0, 1])
+    u.add_TopologyAttr("resnames", ["ALA", "ALA"])
+    u.add_TopologyAttr("resids", [1, 1])
+    if chains is not None:
+        u.add_TopologyAttr("chainIDs", chains)
+    if segments is not None:
+        u.add_TopologyAttr("segids", segments)
+    assert [residue_label(a) for a in u.atoms] == expected
+    assert [residue_label(r) for r in u.residues] == expected
+    assert list(u.residues.ix) == [0, 1]

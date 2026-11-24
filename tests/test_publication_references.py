@@ -181,3 +181,35 @@ def test_moving_block_boundary_and_median_independent_enumeration():
     np.testing.assert_array_equal(_block_bootstrap([0.,2.,8.], 2, 4, Enumeration(), "median"), [0.,2.,2.,2.])
     # A block longer than the trace is clipped and cannot randomly wrap.
     np.testing.assert_array_equal(_block_bootstrap([0.,2.,8.], 99, 4, np.random.default_rng(9)), [10/3]*4)
+
+
+@pytest.mark.parametrize("reducer", ["mean", "median"])
+def test_unsupported_reductions_preserve_supported_bootstrap_and_rng(reducer):
+    import warnings
+
+    from mdscope.statistics.common import supported_reduce
+    values = np.column_stack([np.arange(8.), np.zeros(8), np.full(8, np.nan)])
+    rng = np.random.default_rng(17)
+    reference_rng = np.random.default_rng(17)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        actual = _block_bootstrap(values, 2, 65, rng, reducer)
+        hierarchy = _hierarchical([actual, actual], 65, rng, reducer)
+        paired = _hierarchical_difference({"r": actual}, {"r": actual + 2}, 65, rng, reducer)
+        intervals = supported_reduce(actual, axis=0, q=[.025, .975])
+        empty = supported_reduce(np.empty((0, 3)), axis=0)
+        mixed = supported_reduce([[np.nan, 0., 1.], [np.nan, np.nan, 3.]], reducer, axis=0)
+    reference = _block_bootstrap(values[:, :2], 2, 65, reference_rng, reducer)
+    np.testing.assert_array_equal(actual[:, :2], reference)
+    # Check immediately after temporal draws; hierarchy above uses a separate stream.
+    reference_rng = np.random.default_rng(17)
+    other_rng = np.random.default_rng(17)
+    _block_bootstrap(values[:, :2], 2, 65, reference_rng, reducer)
+    _block_bootstrap(values, 2, 65, other_rng, reducer)
+    assert reference_rng.random() == other_rng.random()
+    assert np.isnan(actual[:, 2]).all() and np.isnan(hierarchy[:, 2]).all()
+    assert np.isnan(paired[:, 2]).all() and np.isnan(intervals[:, 2]).all()
+    assert np.isnan(empty).all()
+    np.testing.assert_allclose(mixed, [np.nan, 0., 2.], equal_nan=True)
+    np.testing.assert_allclose(paired[:, 1], 2.)
+    np.testing.assert_array_equal(actual[:, 1], 0.)

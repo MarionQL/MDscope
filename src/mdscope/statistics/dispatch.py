@@ -79,6 +79,21 @@ def analyze_project(cfg, root, system_repouts, *, output_root=None):
             "input_inventory", _input_snapshot, root, manifest["replicate_paths"]
         )
         atomic_json(dest / "manifest.json", manifest)
+    # Exploratory correlations are raw within-replica summaries, not a CI family.
+    from ..config.validators.statistics import residue_correlations_settings
+    correlation_settings = residue_correlations_settings(cfg)
+    corr_folder = dest / "residue_correlations"
+    if corr_folder.exists():
+        archive_output(corr_folder, output_root / ".archives/statistics/residue_correlations",
+                       "previous")
+    manifest["derived"] = {"residue_correlations": "disabled"}
+    if correlation_settings["enabled"]:
+        from .residue_correlations import write_raw_residue_correlations
+        with stage_progress("Statistics raw residue correlations", enabled=verbose):
+            count = profiler.call("residue_correlations", write_raw_residue_correlations,
+                                  cfg, output_root, system_repouts)
+        manifest["derived"]["residue_correlations"] = "complete"
+        manifest["residue_correlation_rows"] = count
     for family in STATISTICS_FAMILIES:
         folder = STATISTICS_FAMILIES[family]
         if (dest / folder).exists():
@@ -103,21 +118,6 @@ def analyze_project(cfg, root, system_repouts, *, output_root=None):
                 "matched_time_series", analyze_time_series, matched_cfg, output_root,
                 system_repouts, output_name="matched_time_series",
             )
-    # Exploratory correlations are raw within-replica summaries, not a CI family.
-    from ..config.validators.statistics import residue_correlations_settings
-    correlation_settings = residue_correlations_settings(cfg)
-    corr_folder = dest / "residue_correlations"
-    if corr_folder.exists():
-        archive_output(corr_folder, output_root / ".archives/statistics/residue_correlations",
-                       "previous")
-    manifest["derived"] = {"residue_correlations": "disabled"}
-    if correlation_settings["enabled"]:
-        from .residue_correlations import write_raw_residue_correlations
-        with stage_progress("Statistics raw residue correlations", enabled=verbose):
-            count = profiler.call("residue_correlations", write_raw_residue_correlations,
-                                  cfg, output_root, system_repouts)
-        manifest["derived"]["residue_correlations"] = "complete"
-        manifest["residue_correlation_rows"] = count
     # Save an equal-replica, descriptive contrast for chemically matched
     # ceramide scaffold populations when that opt-in measurement is present.
     scaffold_folder = dest / "ceramide_scaffold"

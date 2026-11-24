@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mdscope.statistics.residue_correlations import correlate_replica
 from mdscope.config.validators.statistics import residue_correlations_settings
+from mdscope.statistics.residue_correlations import correlate_replica
 
 
 def _write(path, frame):
@@ -54,6 +54,8 @@ def test_missing_metric_does_not_turn_into_zero(tmp_path):
                                min_frames=3)
     assert len(result) == 1
     assert result.status.iloc[0] == "missing_metric"
+    assert result.n_frames_x.iloc[0] == 3
+    assert result.n_frames_y.iloc[0] == 0
     assert np.isnan(result.pearson_r.iloc[0])
 
 
@@ -95,3 +97,30 @@ def test_raw_water_correlations_exclude_residues_without_polar_sites(tmp_path):
     assert result.loc[2, "status"] == "insufficient_paired_frames"
     assert result.loc[3, "n_paired_frames"] == 3
     assert result.loc[3, "pearson_r"] == pytest.approx(1.)
+
+
+def test_conflict_names_metrics_files_replica_and_topology_index(tmp_path):
+    base = pd.DataFrame({"time_ps": [0., 1.], "topology_residue_index": [7, 7],
+                         "residue": ["PROA:ALA1"] * 2, "water_count": [1., 2.]})
+    _write(tmp_path / "extensions/sdc4_mechanisms/residue_occlusion.parquet", base)
+    sasa = base.drop(columns="water_count").assign(residue="PROB:ALA1", sasa_nm2=[2., 3.])
+    _write(tmp_path / "profiles/sasa/isolated/residue_sasa.parquet", sasa)
+    with pytest.raises(ValueError) as error:
+        correlate_replica(tmp_path, [("water_count", "sasa_isolated")])
+    for text in (str(tmp_path), "water_count", "sasa_isolated", "residue_occlusion.parquet",
+                 "residue_sasa.parquet", "PROA:ALA1", "PROB:ALA1", "topology index 7"):
+        assert text in str(error.value)
+
+
+def test_partially_overlapping_times_and_residue_coverage(tmp_path):
+    base = pd.DataFrame({"time_ps": [0., 1., 2., 3.], "topology_residue_index": [1] * 4,
+                         "residue": ["PROA:ALA1"] * 4, "water_count": [0., 1., 2., 3.]})
+    _write(tmp_path / "extensions/sdc4_mechanisms/residue_occlusion.parquet", base)
+    sasa = pd.DataFrame({"time_ps": [1., 2., 3., 4., 1.], "topology_residue_index": [1]*4+[2],
+                         "residue": ["PROA:ALA1"]*4+["PROB:ALA1"], "sasa_nm2": [2., 4., 6., 8., 0.]})
+    _write(tmp_path / "profiles/sasa/isolated/residue_sasa.parquet", sasa.iloc[::-1])
+    result = correlate_replica(tmp_path, [("water_count", "sasa_isolated")], min_frames=3).set_index("topology_residue_index")
+    assert result.loc[1, "n_paired_frames"] == 3
+    assert result.loc[1, "pearson_r"] == pytest.approx(1.)
+    assert result.loc[2, "status"] == "insufficient_paired_frames"
+    assert result.loc[2, "n_paired_frames"] == 0

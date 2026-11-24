@@ -148,3 +148,42 @@ def test_reruns_archive_empty_or_disabled_outputs_and_reject_partial_statistics(
     with pytest.raises(RuntimeError,match="injected"): analyze_project(cfg,tmp_path,paths)
     assert not current_statistics(cfg,tmp_path,"time_series")
     assert json.loads((tmp_path/"project_summary/statistics/manifest.json").read_text())["status"] == "running"
+
+
+@pytest.mark.parametrize("design", ["independent", "paired"])
+def test_all_missing_profiles_report_observation_support_without_warnings(tmp_path, monkeypatch, design):
+    import warnings
+    cfg, paths = fixture(tmp_path / "input", design=design)
+    profiles = _profiles(paths)
+    for rep, source in profiles.items():
+        item = source["profile"]
+        missing = np.full((len(item["times"]), 1), np.nan)
+        item["values"] = np.column_stack([item["values"], missing, np.zeros_like(missing)])
+        item["positions"] = np.r_[item["positions"], 2., 3.]
+        item["labels"] = np.concatenate([item["labels"], ["missing", "zero"]])
+    monkeypatch.setattr("mdscope.statistics.profiles.collect_temporal_profiles", lambda rep, cfg: profiles[rep])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        analyze_profiles(cfg, tmp_path, paths)
+    folder = tmp_path / "project_summary/statistics/profiles"
+    table = pd.read_parquet(folder / "system_profiles.parquet")
+    missing = table[table.position_label == "missing"]
+    assert missing["mean"].isna().all() and missing.mean_ci_low.isna().all()
+    assert missing.n_replicates.eq(3).all()
+    assert missing.n_replicates_observed.eq(0).all()
+    assert missing.n_replicates_temporal_valid.eq(0).all()
+    zero = table[table.position_label == "zero"]
+    assert zero["mean"].eq(0).all() and zero.mean_ci_low.eq(0).all()
+    assert zero.n_replicates_observed.eq(3).all()
+
+
+def test_dssp_profile_keeps_absent_observation_distinct_from_nonhelix(tmp_path):
+    from mdscope.observables.structure_profiles import temporal_structure_profiles
+    path = tmp_path / "profiles/dssp/assignments.parquet"
+    path.parent.mkdir(parents=True)
+    pd.DataFrame({"time_ps": [0., 1., 0.], "topology_residue_index": [0, 0, 1],
+                  "residue": ["PROA:ALA1", "PROA:ALA1", "PROB:ALA1"],
+                  "dssp": ["H", "C", "C"]}).to_parquet(path)
+    profile = temporal_structure_profiles(tmp_path, {"analyses": {}})["dssp_helix_occupancy"]
+    np.testing.assert_array_equal(profile["labels"], ["PROA:ALA1", "PROB:ALA1"])
+    np.testing.assert_allclose(profile["values"], [[1., 0.], [0., np.nan]], equal_nan=True)

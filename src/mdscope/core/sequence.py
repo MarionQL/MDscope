@@ -18,8 +18,15 @@ AA3.update({name: "H" for name in ("HSD", "HSE", "HSP", "HID", "HIE", "HIP")})
 
 
 def chain_label(atom) -> str:
-    """Atom chain identity, with the historical segment/unknown fallback."""
-    return str(getattr(atom, "chainID", "") or getattr(atom, "segid", "") or "?")
+    """Nonblank atom chainID, then segid; unknown identity is explicit."""
+    for attribute in ("chainID", "segid"):
+        try:
+            value = str(getattr(atom, attribute, "") or "").strip()
+        except NoDataError:
+            continue
+        if value:
+            return value
+    return "?"
 
 
 def residue_label(entity) -> str:
@@ -30,17 +37,8 @@ def residue_label(entity) -> str:
 
 def sequence_chain_label(atom):
     """Use a nonblank chainID, otherwise a nonblank segment label."""
-    try:
-        chain = str(getattr(atom, "chainID", "") or "").strip()
-    except NoDataError:
-        chain = ""
-    try:
-        segid = str(getattr(atom, "segid", "") or "").strip()
-    except NoDataError:
-        segid = ""
-    if not chain:
-        chain = segid
-    if not chain:
+    chain = chain_label(atom)
+    if chain == "?":
         raise ValueError("Motif and glycan chain labels require chainID or segid")
     return chain
 

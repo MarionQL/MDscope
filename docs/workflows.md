@@ -135,3 +135,29 @@ mdscope statistics analysis.yaml --results-dir PATH   # finalize results stored 
 Changing `analyses.lipid_contacts.classes` or `statistics.residue_response` settings affects only these offline products, not the per-frame observers. Rerun the replica pipeline only for genuinely missing measurement products. Definitions of these products: [Analyses](analyses.md#residue-response-heatmap) and [lipid contacts](analyses.md#lipid-contact-classes-and-statistics).
 
 [Configuration](configuration.md) · [Analysis definitions](analyses.md) · [Scientific audit](developer/scientific-audit.md)
+
+### Clean rerun after residue identity corrections
+
+Use a new `project.output`; do not combine historical residue profiles with corrected producers. From the updated checkout and activated ARC environment:
+
+```bash
+git fetch origin
+git switch fix/finalize-residue-identity-missingness
+git pull --ff-only origin fix/finalize-residue-identity-missingness
+python -m pip install -e '.[sasa]'
+python - <<'PYCONFIG'
+from pathlib import Path
+import yaml
+cfg = yaml.safe_load(Path("synd4_full_mechanisms.yaml").read_text())
+cfg["project"]["output"] = "results_residue_identity_clean"
+Path("synd4_residue_identity_clean.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+PYCONFIG
+mdscope validate synd4_residue_identity_clean.yaml
+mdscope plan synd4_residue_identity_clean.yaml --check-topology
+mkdir -p slurm-out/mdscope
+analysis_job=$(sbatch --parsable slurm/run_mdscope.sh synd4_residue_identity_clean.yaml)
+finalize_job=$(sbatch --parsable --dependency=afterok:"${analysis_job}" slurm/finalize_mdscope.sh synd4_residue_identity_clean.yaml)
+sbatch --dependency=afterok:"${finalize_job}" slurm/plotting_mdscope.sh synd4_residue_identity_clean.yaml
+```
+
+The analysis job runs the replica array; dependent finalize computes statistics, then the plotting job renders saved products. If statistics fails, fix the reported cause and resubmit only finalize. For a separate plotting rerun: `mdscope plotting synd4_residue_identity_clean.yaml`. Check configured topology/trajectory paths and ensure the new output directory is unused before submitting.

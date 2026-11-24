@@ -588,3 +588,50 @@ def test_finalization_restores_previous_summary_when_completion_record_fails(tmp
         runner.finalize_project(tmp_path / "analysis.yaml", cfg=cfg, root=root)
     assert (old / "previous.txt").read_bytes() == b"previous complete generation"
     assert not list(root.glob(".finalization-*"))
+
+
+def test_correlation_failure_preserves_publication_then_offline_retry_succeeds(tmp_path, monkeypatch):
+    from mdscope.pipeline import runner
+    from mdscope.statistics.manifest import read_statistics_manifest
+    _, cfg, root, rep, summary = saved_project(tmp_path)
+    cfg["statistics"]["enabled"] = True
+    cfg["progress"] = {"enabled": False}
+    cfg["statistics"]["bootstrap_draws"] = 32
+    cfg["statistics"]["residue_correlations"] = {
+        "enabled": True, "pairs": [["sasa_isolated", "helix_state"]], "min_frames": 3,
+    }
+    repout = summary.parent.parent
+    dssp = repout / "profiles/dssp/assignments.parquet"
+    dssp.parent.mkdir()
+    table = pd.DataFrame({"time_ps": [0., 1., 2.], "topology_residue_index": [0]*3,
+                          "residue": ["wrong:ALA1"]*3, "dssp": ["H", "C", "H"]})
+    table.to_parquet(dssp)
+    # Keep required analysis configuration unchanged; the raw consumer also
+    # consumes the saved isolated SASA run.
+    isolated = repout / "profiles/sasa/isolated/residue_sasa.parquet"
+    isolated.parent.mkdir()
+    isolated.write_bytes((repout / "profiles/sasa/residue_sasa.parquet").read_bytes())
+    previous = root / "project_summary/previous.txt"
+    previous.parent.mkdir()
+    previous.write_text("published generation")
+    products = {p: p.read_bytes() for p in repout.rglob("*") if p.is_file()}
+    def forbidden(*args, **kwargs):
+        raise AssertionError("finalization opened a trajectory")
+    monkeypatch.setattr("MDAnalysis.Universe", forbidden)
+    with pytest.raises(ValueError, match="residue identity differs"):
+        runner.finalize_project(tmp_path / "analysis.yaml", cfg=cfg, root=root)
+    assert previous.read_text() == "published generation"
+    assert all(p.read_bytes() == data for p, data in products.items())
+    assert json.loads((root / ".state/finalization.json").read_text())["status"] != "complete"
+    assert not read_statistics_manifest(root / "project_summary/statistics/manifest.json").complete
+    table["residue"] = "A:ALA1"
+    table.to_parquet(dssp)
+    products[dssp] = dssp.read_bytes()
+    runner.finalize_project(tmp_path / "analysis.yaml", cfg=cfg, root=root)
+    assert not previous.exists()
+    assert all(p.read_bytes() == data for p, data in products.items())
+    manifest = json.loads((root / "project_summary/statistics/manifest.json").read_text())
+    assert manifest["status"] == "complete"
+    assert manifest["derived"]["residue_correlations"] == "complete"
+    corr = pd.read_parquet(root / "project_summary/statistics/residue_correlations/replicate_correlations.parquet")
+    assert set(corr.status) == {"ok"}

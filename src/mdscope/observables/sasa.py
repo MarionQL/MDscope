@@ -8,8 +8,8 @@ import pandas as pd
 
 from ..config import time_ps
 from ..core.persistence import atomic_parquet, ensure_dir
-from ..core.sequence import residue_label
 from ..core.progress import track
+from ..core.sequence import residue_label
 from ..errors import MissingBackendError
 
 FREESASA_INSTALL_HINT = "python -m pip install 'mdscope[sasa]'"
@@ -152,6 +152,7 @@ def sasa_instances(universe, cfg, *, validate_only=False):
             "selected_atom_resindices": target.resindices[atom_positions],
             "selected_atom_names": target.names[atom_positions],
             "residues": residues, "mapping": mapping, "params": params,
+            "residue_identities": [(int(r.ix), residue_label(r)) for r in residues],
             "library": freesasa, "periodic": bool(spec.get("periodic", False)),
             "reference_run": spec.get("reference_run"),
             "target_atoms": np.asarray(target.indices, dtype=int),
@@ -289,8 +290,8 @@ def sasa_residue_rows(state, time, atom_sink=None):
     values = np.bincount(
         state["mapping"], weights=areas, minlength=len(state["residues"])
     ) / 100.0
-    return [(time, int(res.ix), residue_label(res), float(area))
-            for res, area in zip(state["residues"], values)]
+    return [(time, index, label, float(area))
+            for (index, label), area in zip(state["residue_identities"], values)]
 
 
 def _run_sasa(universe, cfg: dict, repout: Path):
