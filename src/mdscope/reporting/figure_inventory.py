@@ -225,7 +225,7 @@ def figure_status(path, cfg, root, system_repouts, records=None):
         return 'disabled'
     if path.suffix == '.pdf':
         from .table_reports import file_digest, pdf_digest, report_manifest, report_source_ids, table_page_enabled, table_selection
-        if not cfg.get('plots', {}).get('table_reports_pdf', True):
+        if not cfg.get('plots', {}).get('table_reports_pdf', False):
             return 'disabled'
         try:
             report = report_manifest(path)

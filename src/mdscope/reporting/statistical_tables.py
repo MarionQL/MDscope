@@ -56,6 +56,30 @@ def _condition_join(comparisons, conditions, family):
     return result
 
 
+
+def _lipid_identity(profile):
+    parts = profile.split('__')[1:]
+    leaflet = parts.pop() if parts[-1] in {'upper', 'lower'} else 'combined'
+    tail = parts.pop()
+    return '__'.join(parts) or 'all lipids', tail, leaflet
+
+
+def _profile_identity_columns(data):
+    if 'profile' not in data:
+        return data
+    lipid = data.profile.str.startswith('lipid_order__')
+    if lipid.any():
+        identities = [_lipid_identity(profile) for profile in data.loc[lipid, 'profile']]
+        for i, column in enumerate(('lipid', 'tail', 'leaflet')):
+            data.loc[lipid, column] = [identity[i] for identity in identities]
+    if 'position_label' in data:
+        residues = data.position_label.astype('string').str.extract(
+            r'^(?P<chain>[^:]+):(?P<residue_name>[A-Z]+)(?P<residue_number>-?[0-9]+)$')
+        for column in residues:
+            if residues[column].notna().any():
+                data[column] = residues[column]
+    return data
+
 def collect_statistical_reports(cfg, root):
     """Return selected full-precision rows, with exact-key condition joins."""
     root = Path(root)
@@ -111,6 +135,7 @@ def collect_statistical_reports(cfg, root):
             ownership = {tuple(None if pd.isna(value) else value for value in row.values()): statistical_variable_owner(cfg, family, row)
                          for row in data[identity_columns].drop_duplicates().to_dict('records')}
             owners = [ownership[tuple(None if pd.isna(value) else value for value in row.values())] for row in data[identity_columns].to_dict('records')]
+            data = _profile_identity_columns(data)
             data['analysis'] = [item[0] for item in owners]
             data['units'] = [item[1] for item in owners]
             data['family'] = family
@@ -161,12 +186,15 @@ def _pages(frame, title, path, identifiers, *, alpha=.05, columns_per_page=7):
         shown = frame[chosen]
         wrapped = [[textwrap.fill(_display(value), width=24, break_long_words=True)
                     for value in row] for row in shown.itertuples(index=False, name=None)]
+        headers = [textwrap.fill(column.replace('_', ' ') if column[:1].islower() else column, width=22) for column in chosen]
+        header_height = max(h.count('\n') + 1 for h in headers)
+        line_budget = 52 - header_height
         start = 0
         while start < len(wrapped):
             end, lines = start, 0
             while end < len(wrapped):
                 height = max(cell.count('\n') + 1 for cell in wrapped[end])
-                if end > start and lines + height > 48:
+                if end > start and lines + height > line_budget:
                     break
                 lines += height
                 end += 1
@@ -176,9 +204,7 @@ def _pages(frame, title, path, identifiers, *, alpha=.05, columns_per_page=7):
                 ax.axis('off')
                 fig.text(.035, .955, title.replace('_', ' '), fontsize=15, weight='bold')
                 fig.text(.035, .922, f'Rows {start + 1}-{end} / {len(frame)} | Columns {band + 1}-{min(band + columns_per_page, len(columns))} / {len(columns)}', fontsize=10)
-                headers = [textwrap.fill(column.replace('_', ' ') if column[:1].islower() else column, width=22) for column in chosen]
                 heights = [max(cell.count('\n') + 1 for cell in row) for row in wrapped[start:end]]
-                header_height = max(h.count('\n') + 1 for h in headers)
                 total = sum(heights) + header_height
                 table = ax.table(cellText=wrapped[start:end], colLabels=headers,
                                  cellLoc='left', bbox=[0, 1 - total / 54, 1, total / 54],
@@ -217,10 +243,7 @@ def _lipid_matrix(data):
         return pd.DataFrame()
     rows, red_cells = {}, {}
     for source in comp.to_dict('records'):
-        parts = source['profile'].split('__')[1:]
-        leaf = parts.pop() if parts[-1] in {'upper', 'lower'} else 'combined'
-        tail = parts.pop()
-        species = '__'.join(parts) or 'all lipids'
+        species, tail, leaf = _lipid_identity(source['profile'])
         key = (species, source.get('position'), source.get('position_label'), source['system_1'], source['system_2'])
         row = rows.setdefault(key, dict(lipid=species, position=source.get('position'),
                                        position_label=source.get('position_label'),
@@ -232,7 +255,7 @@ def _lipid_matrix(data):
     columns = ['lipid', 'position', 'position_label', 'system_1', 'system_2']
     columns += [f'{leaf} {tail}' for tail in ('sn1', 'sn2', 'n_acyl', 'sphingosine')
                 for leaf in ('Lower', 'Upper', 'Combined') if tail in {'sn1', 'sn2'} or
-                any(f'{leaf} {tail}' in row for row in rows.values())]
+                any(any(column.endswith(f' {tail}') for column in row) for row in rows.values())]
     matrix = matrix.reindex(columns=columns)
     matrix.attrs['red_cells'] = {(i, column): flag for (key, column), flag in red_cells.items()
                                 for i, current in enumerate(rows) if current == key}

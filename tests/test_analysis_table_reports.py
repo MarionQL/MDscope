@@ -47,6 +47,8 @@ def test_consolidated_report_preserves_all_rows_and_full_precision(tmp_path):
     report = reports[0]
     saved = pd.read_csv(report.with_suffix('.csv'))
     assert len(saved) == 1080
+    assert set(saved['tail']) == {'sn1', 'sn2', 'n_acyl', 'sphingosine'}
+    assert set(saved.leaflet) == {'lower', 'upper', 'combined'}
     assert saved['condition_1_mean'].eq(.2).all()
     assert set(saved.condition_2_n_replicates) == {1, 2}
     assert saved.loc[saved.position == 1, 'difference_ci_low'].eq(1e-12).all()

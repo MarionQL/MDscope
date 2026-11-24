@@ -379,7 +379,7 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
                         fig.suptitle(f"{title} autocorrelation")
                         _save_selected(fig, out / f"{stem}__autocorrelation.png", cfg, f"time_series:{stem}:autocorrelation")
 
-        if not cfg.get("plots", {}).get("table_reports_pdf", True):
+        if not cfg.get("plots", {}).get("table_reports_pdf", False):
             if cfg.get("plots", {}).get("bootstrap_tables", True) and not rep_stats.empty:
                 r = (
                     rep_stats[
@@ -608,7 +608,7 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
             ax.set_title(f"{profile_title}: system differences")
             ax.legend(frameon=False)
             _save_selected(fig, out / f"{stem}__system_difference.png", cfg, f"profiles:{stem}:system_difference")
-            if not cfg.get("plots", {}).get("table_reports_pdf", True):
+            if not cfg.get("plots", {}).get("table_reports_pdf", False):
                 rank_col = "q_value" if "q_value" in comp else "p_value"
                 ranked = comp.sort_values(rank_col, na_position="last").head(16)
                 shown = pd.DataFrame({
@@ -633,7 +633,7 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
                     max_rows=16,
                 )
 
-        if not cfg.get("plots", {}).get("table_reports_pdf", True):
+        if not cfg.get("plots", {}).get("table_reports_pdf", False):
             table_rows = []
             rep_subset = (
                 rep_summary[
@@ -950,7 +950,7 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
             _save_selected(fig, kind_out / "lifetime_distribution.png", cfg,
                            f"interactions:{_safe(kind)}:lifetime_distribution")
 
-        if not cfg.get("plots", {}).get("table_reports_pdf", True) and not stats.empty:
+        if not cfg.get("plots", {}).get("table_reports_pdf", False) and not stats.empty:
             subset = stats[stats.interaction_type == kind]
             for metric in subset.metric.drop_duplicates():
                 metric_data = subset[subset.metric == metric].sort_values(
@@ -1044,7 +1044,7 @@ def plot_all(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
     if not cfg.get("plots", {}).get("enabled", True):
         return
     configure_plot_style(cfg)
-    with table_report_session(root, enabled=cfg.get("plots", {}).get("table_reports_pdf", True), cfg=cfg):
+    with table_report_session(root, enabled=cfg.get("plots", {}).get("table_reports_pdf", False), cfg=cfg):
         if plot_enabled(cfg, "time_series"):
             plot_time_series(cfg, root, system_repouts)
         if plot_enabled(cfg, "profiles"):
@@ -1055,6 +1055,6 @@ def plot_all(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
         if plot_enabled(cfg, "interactions"):
             plot_interactions(cfg, root, system_repouts)
 
-        if cfg.get("plots", {}).get("table_reports_pdf", True):
+        if cfg.get("plots", {}).get("table_reports_pdf", False):
             from .statistical_tables import render_statistical_reports
             render_statistical_reports(cfg, root)

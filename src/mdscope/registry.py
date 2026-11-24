@@ -226,7 +226,7 @@ def structural_scalar_contracts(cfg: dict) -> list[dict]:
                 "alignment_selection": fit,
                 "coordinate_source": "fitted" if fitted else "source",
                 "statistics_selector": {"metric": metric, "group": group},
-                "figures": [describe_plot(f"time_series:{stem}:{variant}")
+                "figures": [describe_plot(f"time_series:{stem}:{variant}", table_reports_pdf=cfg.get("plots", {}).get("table_reports_pdf", False))
                             for variant in ("timeseries", "distribution", "autocorrelation",
                                             "bootstrap_table", "comparison_table")],
             })
@@ -290,7 +290,7 @@ def scalar_contracts(cfg):
             "group_selection": None, "selection_semantics": "producer-defined population; see scientific contracts",
             "alignment_selection": None, "coordinate_source": "source",
             "statistics_selector": {"metric": metric, "group": None},
-            "figures": [describe_plot(f"time_series:{metric}:{variant}")
+            "figures": [describe_plot(f"time_series:{metric}:{variant}", table_reports_pdf=cfg.get("plots", {}).get("table_reports_pdf", False))
                         for variant in ("timeseries", "distribution", "autocorrelation", "bootstrap_table", "comparison_table")],
         })
     return result

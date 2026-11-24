@@ -100,7 +100,7 @@ def safe_plot_stem(value) -> str:
                    for ch in str(value)).strip("_")
 
 
-def describe_plot(identifier: str) -> dict:
+def describe_plot(identifier: str, *, table_reports_pdf=False) -> dict:
     """Describe prerequisites for one supported plot without loading data."""
     validate_plot_ids([identifier])
     parts = identifier.split(":")
@@ -201,7 +201,7 @@ def describe_plot(identifier: str) -> dict:
     return {
         **({'consolidated_destination': 'project_summary/figures/statistical_reports/{registered_analysis}/statistics_tables.pdf',
             'csv_companion': 'statistics_tables.csv',
-            'selection_semantics': 'Exact source rows within one analysis report; legacy PNG destination applies only with table_reports_pdf: false'} if table_source else {}),
+            'selection_semantics': 'Exact source rows within one analysis report; legacy PNG destination applies only with table_reports_pdf: false'} if table_source and table_reports_pdf else {}),
         "label": label,
         "id": identifier, "family": family,
         "renderer": {

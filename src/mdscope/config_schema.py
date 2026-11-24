@@ -183,6 +183,7 @@ def option_schema(defaults):
                               "lipid_contacts": [{"level": None, "leaflet": None,
                                                   "species_a": None, "species_b": None,
                                                   "metric": None, "inference": None, "ci": None}]})
+    stats["hypothesis_tests"]["alpha"] = None
     stats["hierarchy"]["enabled"] = None
     family = {
         "enabled": None, "bootstrap": None, "bootstrap_draws": None,

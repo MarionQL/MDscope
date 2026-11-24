@@ -597,3 +597,16 @@ def test_analysis_metadata_names_only_owned_families():
     for name, (_, statistics, figures) in ANALYSIS_METADATA.items():
         assert set(statistics) <= set(STATISTICS_FAMILIES), name
         assert set(figures) <= set(FIGURE_FAMILIES), name
+
+
+def test_reporting_plan_additions_do_not_waive_existing_contract_fields():
+    """The compatibility gate admits only the exact new table metadata."""
+    from runpy import run_path
+    probe = run_path(str(Path(__file__).resolve().parents[1] / 'scripts/check_config_parity.py'))
+    project = probe['legacy_plan_projection']
+    historical = {'id': 'profiles:lipid_order__POPC__sn1:comparison_table', 'destination': 'legacy.png'}
+    current = {**historical, 'csv_companion': 'statistics_tables.csv'}
+    assert project(historical, current) == historical
+    assert project(historical, {**current, 'destination': 'changed.png'}) != historical
+    with pytest.raises(ValueError, match='Unexpected additive reporting metadata'):
+        project(historical, {**current, 'csv_companion': 'anything.csv'})
