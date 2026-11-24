@@ -8,7 +8,7 @@ import pandas as pd
 
 from ..config import time_ps
 from ..core.persistence import atomic_parquet, ensure_dir
-from ..core.profiling import _residue_label
+from ..core.sequence import residue_label
 from ..core.progress import track
 from ..errors import MissingBackendError
 
@@ -289,7 +289,7 @@ def sasa_residue_rows(state, time, atom_sink=None):
     values = np.bincount(
         state["mapping"], weights=areas, minlength=len(state["residues"])
     ) / 100.0
-    return [(time, int(res.ix), _residue_label(res), float(area))
+    return [(time, int(res.ix), residue_label(res), float(area))
             for res, area in zip(state["residues"], values)]
 
 
