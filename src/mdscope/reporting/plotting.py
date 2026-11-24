@@ -23,7 +23,7 @@ from ..statistics.common import finite
 from .figure_inventory import current_statistics
 from .labels import _metric_meta
 from .plot_ids import figure_dpi, id_from_figure_path
-from .plot_ids import safe_plot_stem as _safe
+from ..contracts.plot_validation import safe_plot_stem as _safe
 from .shared_scales import synchronize_y_axes
 from .table_reports import add_table_page, table_page_enabled, table_report_session
 
@@ -379,88 +379,89 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
                         fig.suptitle(f"{title} autocorrelation")
                         _save_selected(fig, out / f"{stem}__autocorrelation.png", cfg, f"time_series:{stem}:autocorrelation")
 
-        if cfg.get("plots", {}).get("bootstrap_tables", True) and not rep_stats.empty:
-            r = (
-                rep_stats[
-                    (rep_stats.metric == metric) & (rep_stats.group.fillna("") == (group_id or ""))
-                ].copy()
-            )
-            s = (
-                sys_stats[
-                    (sys_stats.metric == metric) & (sys_stats.group.fillna("") == (group_id or ""))
-                ].copy() if not sys_stats.empty else pd.DataFrame()
-            )
-            rows = []
-            for _, row in r.iterrows():
-                rows.append({
-                    "level": f"{row.system}/{row.replicate}", "mean": row["mean"],
-                    "mean CI": f"{row.mean_ci_low:.3g}-{row.mean_ci_high:.3g}",
-                    "median": row["median"],
-                    "tau(fr)": row.tau_int_frames, "tau(ps)": row.tau_int_ps,
-                    "N_eff": row.effective_n,
-                    "block(fr)": int(row.block_length_frames),
-                    "blocks/pseudo": int(row.blocks_per_pseudostudy),
-                })
-            for _, row in s.iterrows():
-                rows.append({
-                    "level": f"{row.system} (system)", "mean": row["mean"],
-                    "mean CI": f"{row.mean_ci_low:.3g}-{row.mean_ci_high:.3g}",
-                    "median": row["median"],
-                    "tau(fr)": (
-                        f"{row.tau_int_frames_median:.3g} "
-                        f"[{row.tau_int_frames_min:.3g},"
-                        f"{row.tau_int_frames_max:.3g}]"
-                    ),
-                    "tau(ps)": "replicate-specific", "N_eff": np.nan,
-                    "block(fr)": "replicate-specific",
-                    "blocks/pseudo": (
-                        f"{row.blocks_per_pseudostudy_median:.3g} "
-                        f"[{int(row.blocks_per_pseudostudy_min)},"
-                        f"{int(row.blocks_per_pseudostudy_max)}]"
-                    ),
-                })
-            _table_figure(
-                f"{title}: hierarchical bootstrap statistics",
-                pd.DataFrame(rows),
-                out / f"{stem}__bootstrap_table.png",
-                cfg,
-            )
-
-        if not comp_stats.empty:
-            c = (
-                comp_stats[
-(
-                        comp_stats.metric == metric
-                    ) & (comp_stats.group.fillna("") == (group_id or ""))
-                ].copy()
-            )
-            if not c.empty:
-                shown = pd.DataFrame({
-                    "comparison": c.apply(
-                        lambda r: (
-                            f"{system_label(cfg, r.system_2)} - "
-                            f"{system_label(cfg, r.system_1)}"
+        if not cfg.get("plots", {}).get("table_reports_pdf", True):
+            if cfg.get("plots", {}).get("bootstrap_tables", True) and not rep_stats.empty:
+                r = (
+                    rep_stats[
+                        (rep_stats.metric == metric) & (rep_stats.group.fillna("") == (group_id or ""))
+                    ].copy()
+                )
+                s = (
+                    sys_stats[
+                        (sys_stats.metric == metric) & (sys_stats.group.fillna("") == (group_id or ""))
+                    ].copy() if not sys_stats.empty else pd.DataFrame()
+                )
+                rows = []
+                for _, row in r.iterrows():
+                    rows.append({
+                        "level": f"{row.system}/{row.replicate}", "mean": row["mean"],
+                        "mean CI": f"{row.mean_ci_low:.3g}-{row.mean_ci_high:.3g}",
+                        "median": row["median"],
+                        "tau(fr)": row.tau_int_frames, "tau(ps)": row.tau_int_ps,
+                        "N_eff": row.effective_n,
+                        "block(fr)": int(row.block_length_frames),
+                        "blocks/pseudo": int(row.blocks_per_pseudostudy),
+                    })
+                for _, row in s.iterrows():
+                    rows.append({
+                        "level": f"{row.system} (system)", "mean": row["mean"],
+                        "mean CI": f"{row.mean_ci_low:.3g}-{row.mean_ci_high:.3g}",
+                        "median": row["median"],
+                        "tau(fr)": (
+                            f"{row.tau_int_frames_median:.3g} "
+                            f"[{row.tau_int_frames_min:.3g},"
+                            f"{row.tau_int_frames_max:.3g}]"
                         ),
-                        axis=1,
-                    ),
-                    "mean delta": c.mean_difference_system2_minus_system1,
-                    "95% CI": c.apply(
-                        lambda r: (
-                            f"{r.mean_difference_ci_low:.3g}-"
-                            f"{r.mean_difference_ci_high:.3g}"
+                        "tau(ps)": "replicate-specific", "N_eff": np.nan,
+                        "block(fr)": "replicate-specific",
+                        "blocks/pseudo": (
+                            f"{row.blocks_per_pseudostudy_median:.3g} "
+                            f"[{int(row.blocks_per_pseudostudy_min)},"
+                            f"{int(row.blocks_per_pseudostudy_max)}]"
                         ),
-                        axis=1,
-                    ),
-                    "P(delta>0)": c.mean_probability_difference_gt_0,
-                    "p": c.mean_p_value,
-                    "q": c["mean_q_value"] if "mean_q_value" in c else np.nan,
-                })
+                    })
                 _table_figure(
-                    f"{title}: system comparison statistics",
-                    shown,
-                    out / f"{stem}__comparison_table.png",
+                    f"{title}: hierarchical bootstrap statistics",
+                    pd.DataFrame(rows),
+                    out / f"{stem}__bootstrap_table.png",
                     cfg,
                 )
+
+            if not comp_stats.empty:
+                c = (
+                    comp_stats[
+    (
+                            comp_stats.metric == metric
+                        ) & (comp_stats.group.fillna("") == (group_id or ""))
+                    ].copy()
+                )
+                if not c.empty:
+                    shown = pd.DataFrame({
+                        "comparison": c.apply(
+                            lambda r: (
+                                f"{system_label(cfg, r.system_2)} - "
+                                f"{system_label(cfg, r.system_1)}"
+                            ),
+                            axis=1,
+                        ),
+                        "mean delta": c.mean_difference_system2_minus_system1,
+                        "95% CI": c.apply(
+                            lambda r: (
+                                f"{r.mean_difference_ci_low:.3g}-"
+                                f"{r.mean_difference_ci_high:.3g}"
+                            ),
+                            axis=1,
+                        ),
+                        "P(delta>0)": c.mean_probability_difference_gt_0,
+                        "p": c.mean_p_value,
+                        "q": c["mean_q_value"] if "mean_q_value" in c else np.nan,
+                    })
+                    _table_figure(
+                        f"{title}: system comparison statistics",
+                        shown,
+                        out / f"{stem}__comparison_table.png",
+                        cfg,
+                    )
 
 
 def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
@@ -607,77 +608,79 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
             ax.set_title(f"{profile_title}: system differences")
             ax.legend(frameon=False)
             _save_selected(fig, out / f"{stem}__system_difference.png", cfg, f"profiles:{stem}:system_difference")
-            rank_col = "q_value" if "q_value" in comp else "p_value"
-            ranked = comp.sort_values(rank_col, na_position="last").head(16)
-            shown = pd.DataFrame({
-                "comparison": ranked.apply(
-                    lambda r: (
-                        f"{system_label(cfg, r.system_2)} - "
-                        f"{system_label(cfg, r.system_1)}"
+            if not cfg.get("plots", {}).get("table_reports_pdf", True):
+                rank_col = "q_value" if "q_value" in comp else "p_value"
+                ranked = comp.sort_values(rank_col, na_position="last").head(16)
+                shown = pd.DataFrame({
+                    "comparison": ranked.apply(
+                        lambda r: (
+                            f"{system_label(cfg, r.system_2)} - "
+                            f"{system_label(cfg, r.system_1)}"
+                        ),
+                        axis=1,
                     ),
-                    axis=1,
-                ),
-                "position": ranked.position_label,
-                "delta": ranked.difference_system2_minus_system1,
-                "CI low": ranked.difference_ci_low, "CI high": ranked.difference_ci_high,
-                "P(delta>0)": ranked.probability_difference_gt_0, "p": ranked.p_value,
-                "q": ranked["q_value"] if "q_value" in ranked else np.nan,
-            })
-            _table_figure(
-                f"{profile_title}: pointwise comparison statistics",
-                shown,
-                out / f"{stem}__comparison_table.png",
-                cfg,
-                max_rows=16,
-            )
+                    "position": ranked.position_label,
+                    "delta": ranked.difference_system2_minus_system1,
+                    "CI low": ranked.difference_ci_low, "CI high": ranked.difference_ci_high,
+                    "P(delta>0)": ranked.probability_difference_gt_0, "p": ranked.p_value,
+                    "q": ranked["q_value"] if "q_value" in ranked else np.nan,
+                })
+                _table_figure(
+                    f"{profile_title}: pointwise comparison statistics",
+                    shown,
+                    out / f"{stem}__comparison_table.png",
+                    cfg,
+                    max_rows=16,
+                )
 
-        table_rows = []
-        rep_subset = (
-            rep_summary[
-                rep_summary.profile == profile_id
-            ] if not rep_summary.empty else pd.DataFrame()
-        )
-        for _, row in rep_subset.iterrows():
-            table_rows.append({
-                "level": (
-                    f"{system_label(cfg, row.system)}/"
-                    f"{replicate_label(cfg, row.system, row.replicate)}"
-                ),
-                "mean profile": row["mean"],
-                "profile CI": f"{row.mean_profile_ci_low:.3g}-{row.mean_profile_ci_high:.3g}",
-                "tau(fr)": row.tau_int_frames, "tau(ps)": row.tau_int_ps, "N_eff": row.effective_n,
-                "block(fr)": int(row.block_length_frames),
-                "blocks/pseudo": int(row.blocks_per_pseudostudy),
-            })
-        global_subset = (
-            global_stats[
-                global_stats.profile == profile_id
-            ] if not global_stats.empty else pd.DataFrame()
-        )
-        for _, row in global_subset.iterrows():
-            table_rows.append({
-                "level": f"{system_label(cfg, row.system)} (system)",
-                "mean profile": row.mean_profile_value,
-                "profile CI": f"{row.mean_profile_ci_low:.3g}-{row.mean_profile_ci_high:.3g}",
-                "tau(fr)": (
-                    f"{row.tau_int_frames_median:.3g} "
-                    f"[{row.tau_int_frames_min:.3g},"
-                    f"{row.tau_int_frames_max:.3g}]"
-                ),
-                "tau(ps)": "replicate-specific", "N_eff": np.nan,
-                "block(fr)": "replicate-specific",
-                "blocks/pseudo": (
-                    f"{row.blocks_per_pseudostudy_median:.3g} "
-                    f"[{int(row.blocks_per_pseudostudy_min)},"
-                    f"{int(row.blocks_per_pseudostudy_max)}]"
-                ),
-            })
-        _table_figure(
-            f"{profile_title}: hierarchical bootstrap statistics",
-            pd.DataFrame(table_rows),
-            out / f"{stem}__bootstrap_table.png",
-            cfg,
-        )
+        if not cfg.get("plots", {}).get("table_reports_pdf", True):
+            table_rows = []
+            rep_subset = (
+                rep_summary[
+                    rep_summary.profile == profile_id
+                ] if not rep_summary.empty else pd.DataFrame()
+            )
+            for _, row in rep_subset.iterrows():
+                table_rows.append({
+                    "level": (
+                        f"{system_label(cfg, row.system)}/"
+                        f"{replicate_label(cfg, row.system, row.replicate)}"
+                    ),
+                    "mean profile": row["mean"],
+                    "profile CI": f"{row.mean_profile_ci_low:.3g}-{row.mean_profile_ci_high:.3g}",
+                    "tau(fr)": row.tau_int_frames, "tau(ps)": row.tau_int_ps, "N_eff": row.effective_n,
+                    "block(fr)": int(row.block_length_frames),
+                    "blocks/pseudo": int(row.blocks_per_pseudostudy),
+                })
+            global_subset = (
+                global_stats[
+                    global_stats.profile == profile_id
+                ] if not global_stats.empty else pd.DataFrame()
+            )
+            for _, row in global_subset.iterrows():
+                table_rows.append({
+                    "level": f"{system_label(cfg, row.system)} (system)",
+                    "mean profile": row.mean_profile_value,
+                    "profile CI": f"{row.mean_profile_ci_low:.3g}-{row.mean_profile_ci_high:.3g}",
+                    "tau(fr)": (
+                        f"{row.tau_int_frames_median:.3g} "
+                        f"[{row.tau_int_frames_min:.3g},"
+                        f"{row.tau_int_frames_max:.3g}]"
+                    ),
+                    "tau(ps)": "replicate-specific", "N_eff": np.nan,
+                    "block(fr)": "replicate-specific",
+                    "blocks/pseudo": (
+                        f"{row.blocks_per_pseudostudy_median:.3g} "
+                        f"[{int(row.blocks_per_pseudostudy_min)},"
+                        f"{int(row.blocks_per_pseudostudy_max)}]"
+                    ),
+                })
+            _table_figure(
+                f"{profile_title}: hierarchical bootstrap statistics",
+                pd.DataFrame(table_rows),
+                out / f"{stem}__bootstrap_table.png",
+                cfg,
+            )
 
 
 def _plot_residue_distance_heatmaps(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
@@ -947,7 +950,7 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
             _save_selected(fig, kind_out / "lifetime_distribution.png", cfg,
                            f"interactions:{_safe(kind)}:lifetime_distribution")
 
-        if not stats.empty:
+        if not cfg.get("plots", {}).get("table_reports_pdf", True) and not stats.empty:
             subset = stats[stats.interaction_type == kind]
             for metric in subset.metric.drop_duplicates():
                 metric_data = subset[subset.metric == metric].sort_values(
@@ -1041,7 +1044,7 @@ def plot_all(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
     if not cfg.get("plots", {}).get("enabled", True):
         return
     configure_plot_style(cfg)
-    with table_report_session(root, enabled=cfg.get("plots", {}).get("table_reports_pdf", False), cfg=cfg):
+    with table_report_session(root, enabled=cfg.get("plots", {}).get("table_reports_pdf", True), cfg=cfg):
         if plot_enabled(cfg, "time_series"):
             plot_time_series(cfg, root, system_repouts)
         if plot_enabled(cfg, "profiles"):
@@ -1052,3 +1055,6 @@ def plot_all(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
         if plot_enabled(cfg, "interactions"):
             plot_interactions(cfg, root, system_repouts)
 
+        if cfg.get("plots", {}).get("table_reports_pdf", True):
+            from .statistical_tables import render_statistical_reports
+            render_statistical_reports(cfg, root)

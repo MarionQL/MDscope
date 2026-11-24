@@ -193,7 +193,7 @@ def structural_scalar_contracts(cfg: dict) -> list[dict]:
     when a groups list is supplied; lists filter grouped rows only.
     """
     from .config import analysis_groups
-    from .reporting.plot_ids import describe_plot, safe_plot_stem
+    from .contracts.plot_validation import describe_plot, safe_plot_stem
 
     groups = analysis_groups(cfg)
     result = []
@@ -256,7 +256,7 @@ def structural_profile_contracts(cfg):
 
 def scalar_contracts(cfg):
     """Deterministic pre-run scalar identities, including membrane and DSSP."""
-    from .reporting.plot_ids import describe_plot
+    from .contracts.plot_validation import describe_plot
     result = structural_scalar_contracts(cfg)
     specs = []
     membrane = cfg["analyses"]["membrane"]
@@ -384,6 +384,7 @@ def state_feature_catalog(cfg):
             candidates.append({"source": "summary", "group": scalar["group"],
                 "metric": scalar["metric"], "units": scalar["units"][scalar["metric"]],
                 "analysis": scalar["analysis"], "availability": "conditional_on_saved_data"})
+    from .contracts.statistics import GROUP_VARIABLE_UNITS
     solvation = cfg["analyses"].get("solvation", {})
     if solvation.get("enabled"):
         solvents = (["water"] if solvation.get("water_selection") else [])
@@ -393,15 +394,16 @@ def state_feature_catalog(cfg):
         for kind, targets in (solvation.get("targets") or {}).items():
             for label in targets:
                 for solvent in solvents:
-                    for metric, units in (("mean_n_solvent", "molecules"), ("hydrated_fraction", "fraction")):
+                    for metric in ("mean_n_solvent", "hydrated_fraction"):
+                        units = GROUP_VARIABLE_UNITS[metric]
                         candidates.append({"source": "solvation",
                             "group": f"solvation/{solvent}/{kind}/{label}", "metric": metric,
                             "units": units, "analysis": "solvation",
                             "availability": "conditional_on_saved_data"})
     hydration = cfg["analyses"].get("hydration", {})
     for name in (hydration.get("glycans") or []) if hydration.get("enabled") else []:
-        for metric, units in (("unique_water_count", "molecules"),
-                              ("unique_water_per_site", "molecules/site")):
+        for metric in ("unique_water_count", "unique_water_per_site"):
+            units = GROUP_VARIABLE_UNITS[metric]
             candidates.append({"source": "hydration", "group": f"hydration/{name}/total/all",
                                "metric": metric, "units": units, "analysis": "hydration",
                                "availability": "conditional_on_saved_data"})
@@ -426,3 +428,36 @@ def state_feature_catalog(cfg):
         source["identity_status"] = "template_until_saved_product_validation"
     return {"candidates": candidates, "sources": sources,
             "time_requirement": "Exact common time grid within each replicate; complete feature vectors only"}
+
+
+def statistical_variable_owner(cfg, family, identity):
+    """Resolve saved dynamic variables against the producer-owned catalog.
+
+    Unknown identities deliberately remain unmapped; a display label is never
+    evidence of analysis ownership. Configured run IDs are matched verbatim.
+    """
+    from .config.defaults import DEFAULTS, merge
+    from .contracts.statistics import DYNAMIC_VARIABLE_OWNERS, GROUP_VARIABLE_UNITS, INTERACTION_METRICS
+    config = merge(DEFAULTS, cfg)
+    variable = str(identity.get('profile' if family == 'profiles' else 'metric', ''))
+    if family == 'interactions':
+        kind = identity.get('interaction_type')
+        return (kind, {'occupancy': 'fraction', 'event_rate_per_ns': '1/ns'}.get(
+            variable, 'ps' if variable.endswith('_ps') else 'unspecified')) if kind in config['analyses'] and variable in INTERACTION_METRICS else ('unmapped', 'unspecified')
+    descriptors = (configured_profile_variables(config, include_optional=True)
+                   if family == 'profiles' else scalar_contracts(config))
+    key = 'profile' if family == 'profiles' else 'metric'
+    for item in descriptors:
+        if item[key] == variable:
+            unit = item['units'] if family == 'profiles' else item['units'][variable]
+            return item['analysis'], unit
+    group = str(identity.get('group') or '')
+    if family == 'time_series' and '/' in group:
+        source = group.split('/', 1)[0]
+        analysis = 'solvation' if source == 'solvation_bridges' else source
+        if source in {'solvation', 'hydration', 'solvation_bridges', 'lipid_contacts'} and variable in GROUP_VARIABLE_UNITS:
+            return analysis, GROUP_VARIABLE_UNITS.get(variable, 'unspecified')
+    for owner_family, prefix, analysis, unit in DYNAMIC_VARIABLE_OWNERS:
+        if family == owner_family and variable.startswith(prefix):
+            return analysis, unit
+    return 'unmapped', 'unspecified'

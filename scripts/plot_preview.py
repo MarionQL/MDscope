@@ -226,7 +226,7 @@ def create_fixture(root: Path):
         vals = 0.24 + 0.025 * system_index + .006 + 0.065 * np.sin(positions / 2.5)
         condition_rows.extend({
             "system": system, "profile": "lipid_order__POPC__sn1",
-            "position": float(p), "mean": float(val),
+            "position": float(p), "position_label": f"C{int(p)}", "mean": float(val),
             "mean_ci_low": float(val - .025),
             "mean_ci_high": float(val + .025),
         } for p, val in zip(positions, vals))

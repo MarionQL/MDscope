@@ -9,7 +9,8 @@ from PIL import Image
 
 from mdscope.config import DEFAULTS, figure_enabled, load_config, plot_enabled
 from mdscope.reporting.figure_inventory import figure_status
-from mdscope.reporting.plot_ids import id_from_figure_path, validate_plot_ids
+from mdscope.reporting.plot_ids import id_from_figure_path
+from mdscope.contracts.plot_validation import validate_plot_ids
 from mdscope.reporting.plotting import plot_all, plot_interactions
 
 
@@ -292,7 +293,7 @@ def test_per_plot_options_reject_bad_keys_and_values(options, diagnostic, tmp_pa
 
 
 def test_describe_plot_uses_declared_renderers_and_saved_input_contracts():
-    from mdscope.reporting.plot_ids import describe_plot
+    from mdscope.contracts.plot_validation import describe_plot
 
     for identifier, expected in (
         ("time_series:rmsd_A:timeseries", "summary/timeseries.parquet"),
@@ -319,7 +320,8 @@ def test_describe_plot_uses_declared_renderers_and_saved_input_contracts():
 
 
 def test_figure_preview_manifest_can_describe_exact_output_ids(tmp_path):
-    from mdscope.reporting.plot_ids import describe_plot, id_from_figure_path
+    from mdscope.contracts.plot_validation import describe_plot
+    from mdscope.reporting.plot_ids import id_from_figure_path
 
     cfg, repouts = _fake_data(tmp_path)
     cfg["plots"]["include"] = ["time_series:rmsd_A:timeseries"]

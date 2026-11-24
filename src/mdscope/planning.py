@@ -37,7 +37,7 @@ from .registry import (
     state_feature_catalog,
     structural_profile_contracts,
 )
-from .reporting.plot_ids import (
+from .contracts.plot_validation import (
     SDC4_CONDITION_STEMS,
     STATIC_IDS,
     describe_plot,

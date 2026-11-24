@@ -93,6 +93,9 @@ def validate_statistics(cfg):
     if max_acf_lag is not None and int(max_acf_lag) < 1:
         raise ValueError("statistics.block.max_acf_lag must be null or >= 1")
     tests = stats.get("hypothesis_tests", {}) or {}
+    alpha = tests.get("alpha", .05)
+    if isinstance(alpha, bool) or not 0 < float(alpha) < 1:
+        raise ValueError("statistics.hypothesis_tests.alpha must be between 0 and 1")
     tests_active = tests.get("enabled", True) or any(
         isinstance(option, dict) and option.get("enabled", True) and option.get("hypothesis_tests", False)
         for option in families.values())

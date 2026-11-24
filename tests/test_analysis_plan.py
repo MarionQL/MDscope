@@ -330,7 +330,7 @@ def test_saved_statistics_catalog_reads_real_parquet_schema_and_bounds_identitie
 
 
 def test_plan_uses_production_registry_for_configured_plot_ids(tmp_path, project):
-    from mdscope.reporting.plot_ids import describe_plot
+    from mdscope.contracts.plot_validation import describe_plot
     path, root = project("plan_figure_ids")
     cfg = yaml.safe_load(path.read_text())
     cfg["plots"]["enabled"] = True

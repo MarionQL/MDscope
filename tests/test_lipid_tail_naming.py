@@ -544,3 +544,38 @@ def test_documented_user_defined_example_is_the_tested_mapping():
     block = section[section.index("```yaml") + 7:section.index("```", section.index("```yaml") + 7)]
     order = yaml.safe_load(block)["analyses"]["membrane_order"]
     assert order["tails"] == MACROG_TAILS
+
+
+def test_production_order_statistics_feed_six_column_analysis_report(tmp_path, monkeypatch):
+    """Real order writer -> profile inference -> offline reporting, no relabeling."""
+    from mdscope.reporting.statistical_tables import collect_statistical_reports
+    from mdscope.statistics.profiles import analyze_profiles
+    cfg = _resolved({'tail_preset': 'charmm36', 'lipid_selection': 'resname POPC PSM',
+                     'leaflet_anchor_selection': 'name P'})
+    cfg['statistics'].update(bootstrap_draws=8, hypothesis_tests={'enabled': False})
+    cfg['progress'] = {'enabled': False}
+    reps = {}
+    for system, count in [('A', 2), ('B', 1), ('C', 1)]:
+        reps[system] = []
+        for i in range(count):
+            rep = tmp_path / system / f'rep{i}'
+            _run_order(bilayer('charmm36', extra=(_psm,)).universe(), cfg, rep)
+            reps[system].append(rep)
+    analyze_profiles(cfg, tmp_path, reps)
+    wanted = [f'lipid_order__POPC__{tail}{leaf}' for tail in ('sn1', 'sn2')
+              for leaf in ('__lower', '__upper', '')]
+    cfg['plots'].update(enabled=True, bootstrap_tables=False,
+                        include=[f'profiles:{profile}:comparison_table' for profile in wanted])
+    # Plotting/collection cannot reopen trajectories or rerun inference.
+    monkeypatch.setattr(mda, 'Universe', lambda *a, **k: pytest.fail('reporting opened a trajectory'))
+    rows = collect_statistical_reports(cfg, tmp_path)
+    assert set(rows.profile) == set(wanted)
+    assert rows.analysis.unique().tolist() == ['membrane_order']
+    assert set(zip(rows.system_1, rows.system_2)) == {('A', 'B'), ('A', 'C'), ('B', 'C')}
+    assert set(rows.condition_1_n_replicates) == {1, 2}
+    assert len(rows) > 40
+    for tail in ('sn1', 'sn2'):
+        positions, expected = expected_minus_sch(tail)
+        actual = rows.loc[(rows.profile == f'lipid_order__POPC__{tail}') &
+                          (rows.system_1 == 'A') & (rows.system_2 == 'B')].sort_values('position')
+        np.testing.assert_allclose(actual.condition_1_mean, expected, atol=1e-5)

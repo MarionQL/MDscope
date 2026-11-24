@@ -525,7 +525,8 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
             # With an exact allowlist, raw-data plots can be regenerated before
             # statistics. Check their actual source contracts, not plot names.
             from ..config import figure_enabled
-            from ..reporting.plot_ids import describe_plot, requires_finalization
+            from ..contracts.plot_validation import describe_plot
+            from ..reporting.plot_ids import requires_finalization
             requires_statistics = any(
                 describe_plot(identifier)["requires_statistics"]
                 for identifier in selected_figures if figure_enabled(cfg, identifier)
