@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from ..core.persistence import atomic_parquet, ensure_dir
+from ..core.sequence import chain_label as chain_label, residue_label as residue_label
 
 INTERACTION_KEY_COLUMNS = {
     "salt_bridges": ["residue_1", "residue_2", "interaction_class"],
@@ -64,14 +65,6 @@ def interaction_key_columns(kind: str, table: pd.DataFrame | None = None) -> lis
         "occupancy",
     }
     return [column for column in table.columns if column not in excluded]
-
-
-def chain_label(atom) -> str:
-    return str(getattr(atom, "chainID", "") or getattr(atom, "segid", "") or "?")
-
-
-def residue_label(atom) -> str:
-    return f"{chain_label(atom)}:{atom.resname}{atom.resid}"
 
 
 def atom_label(atom) -> str:
