@@ -545,5 +545,5 @@ plots:
   distributions: false
   autocorrelation: false
   bootstrap_tables: true
-  table_reports_pdf: true  # multipage statistics_tables.pdf per figure folder
+  table_reports_pdf: true  # consolidated PDF/CSV per analysis from saved statistics
   dpi: 200

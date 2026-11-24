@@ -3,6 +3,7 @@ import json
 
 import numpy as np
 import pandas as pd
+import pytest
 from pypdf import PdfReader
 
 from mdscope.reporting.table_reports import table_report_session
@@ -55,7 +56,10 @@ def test_consolidated_report_preserves_all_rows_and_full_precision(tmp_path):
     assert not saved.loc[saved.position == 0, 'ci_excludes_zero'].any()
     assert saved.loc[saved.position == 1, 'ci_excludes_zero'].all()
     assert not saved.loc[saved.position == 2, 'q_below_alpha'].any()
-    text = '\n'.join(page.extract_text() for page in PdfReader(report).pages)
+    pages = PdfReader(report).pages
+    assert all(float(page.mediabox.width) == pytest.approx(16.54 * 72) for page in pages)
+    assert all(float(page.mediabox.height) == pytest.approx(11.69 * 72) for page in pages)
+    text = '\n'.join(page.extract_text() for page in pages)
     assert 'Lower sn1' in text and 'Combined sn2' in text
     assert 'sphingosine' in text and 'n_acyl' in text
     assert '44' in text
@@ -161,3 +165,19 @@ def test_malformed_selected_statistics_preserve_reports(tmp_path):
         with table_report_session(tmp_path, enabled=True, cfg=cfg):
             render_statistical_reports(cfg, tmp_path)
     assert {p: p.read_bytes() for p in report.parent.iterdir()} == before
+
+
+def test_interval_classification_uses_finite_ordered_bounds_and_configured_alpha(tmp_path):
+    from mdscope.reporting.statistical_tables import collect_statistical_reports
+    cfg, folder = small_fixture(tmp_path)
+    cfg['statistics'] = {'hypothesis_tests': {'alpha': .02}}
+    base = pd.read_parquet(folder / 'system_comparisons.parquet').iloc[0].to_dict()
+    bounds = [(-1., -.5), (0., .1), (1e-13, .1), (np.nan, 1.), (1., np.inf), (2., 1.), (-.1, 0.)]
+    rows = [{**base, 'group': f'case_{i}', 'mean_difference_ci_low': lo,
+             'mean_difference_ci_high': hi, 'mean_q_value': .03}
+            for i, (lo, hi) in enumerate(bounds)]
+    pd.DataFrame(rows).to_parquet(folder / 'system_comparisons.parquet')
+    data = collect_statistical_reports(cfg, tmp_path)
+    assert data.ci_excludes_zero.tolist() == [True, False, True, False, False, False, False]
+    assert not data.q_below_alpha.any()
+    assert data.condition_1_mean.isna().all()  # unsupported is never filled with zero

@@ -79,6 +79,16 @@ def build_gallery(base: Path, head: Path, output: Path, *, only_name: str | None
         rows.append(f'<section><h2>{escape(name)}</h2>{metadata}<div class="row">'
                     f'{"".join(panels)}{diff}</div></section>')
 
+    if only_name is None:
+        reports = []
+        for label, directory, manifest in (("Previous code", base, base_manifest), ("Updated code", head, head_manifest)):
+            for name in manifest.get('reports', []):
+                path = directory / name
+                if path.is_file():
+                    reports.append(f'<li>{label}: <a href="{relative(path)}">{escape(name)}</a></li>')
+        if reports:
+            rows.insert(0, '<section><h2>Saved statistical reports (PDF)</h2><ul>' + ''.join(reports) + '</ul></section>')
+
     revision_note = (f'<strong>Compared: {escape(revisions)}.</strong>' if revisions else '')
     html = '''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>MDscope figure review</title>

@@ -101,7 +101,7 @@ class TableReports:
             self.open_reports[report] = PdfPages(temporary, metadata={
                 'Title': f'MDscope statistics tables - {report.parent.name}', 'Creator':'MDscope'})
             self.pages[report] = []
-        self.open_reports[report].savefig(fig, bbox_inches='tight')
+        self.open_reports[report].savefig(fig, bbox_inches=None if source_ids else 'tight')
         self.pages[report].append({'page':len(self.pages[report])+1,
                                   'figure_id':identifier or id_from_figure_path(figure_path),
                                   'figure_path':figure_path.relative_to(self.root).as_posix(),

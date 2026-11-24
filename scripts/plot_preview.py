@@ -307,6 +307,7 @@ def render_preview(root: Path, *, include: list[str] | None = None):
         raise FileExistsError(f"Refusing to replace preview or results in nonempty {root}")
     root.mkdir(parents=True, exist_ok=True)
     cfg, system_repouts = create_fixture(root)
+    cfg["plots"]["table_reports_pdf"] = True
     if include is not None:
         cfg["plots"]["include"] = list(include)
     # These are the same plotting functions used by runner.finalize_project.
@@ -347,6 +348,7 @@ def render_preview(root: Path, *, include: list[str] | None = None):
         "input_data_kind": "deterministic synthetic Parquet",
         "requested_plot_ids": include,
         "plots": [str(path.relative_to(root)) for path in figures],
+        "reports": [path.relative_to(root).as_posix() for path in sorted(root.rglob("statistics_tables.pdf"))],
         "table_previews": tables,
         "table_inventory_csv": "table_previews/table_inventory.csv",
         "plot_ids": {},
