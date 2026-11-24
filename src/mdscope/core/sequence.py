@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 
 import numpy as np
+from MDAnalysis.core.groups import Residue
 from MDAnalysis.exceptions import NoDataError
 
 AA3 = dict(zip(
@@ -16,19 +17,28 @@ AA3 = dict(zip(
 AA3.update({name: "H" for name in ("HSD", "HSE", "HSP", "HID", "HIE", "HIP")})
 
 
+def chain_label(atom) -> str:
+    """Nonblank atom chainID, then segid; unknown identity is explicit."""
+    for attribute in ("chainID", "segid"):
+        try:
+            value = str(getattr(atom, attribute, "") or "").strip()
+        except NoDataError:
+            continue
+        if value:
+            return value
+    return "?"
+
+
+def residue_label(entity) -> str:
+    """Use the same atom-derived identity for atoms and topology residues."""
+    atom = entity.atoms[0] if isinstance(entity, Residue) else entity
+    return f"{chain_label(atom)}:{entity.resname}{entity.resid}"
+
+
 def sequence_chain_label(atom):
     """Use a nonblank chainID, otherwise a nonblank segment label."""
-    try:
-        chain = str(getattr(atom, "chainID", "") or "").strip()
-    except NoDataError:
-        chain = ""
-    try:
-        segid = str(getattr(atom, "segid", "") or "").strip()
-    except NoDataError:
-        segid = ""
-    if not chain:
-        chain = segid
-    if not chain:
+    chain = chain_label(atom)
+    if chain == "?":
         raise ValueError("Motif and glycan chain labels require chainID or segid")
     return chain
 

@@ -13,15 +13,14 @@ import pandas as pd
 
 from ..config import statistics_family_config
 from ..core.persistence import atomic_parquet, ensure_dir
-from ..observables.hydration import temporal_hs_hydration_profiles
-from ..mechanisms.residue_occlusion import temporal_residue_occlusion_profiles
 from ..mechanisms.protomer_contacts import temporal_interprotomer_profiles
+from ..mechanisms.residue_occlusion import temporal_residue_occlusion_profiles
 from ..observables.density_1d import align_density_profiles, temporal_density_profiles
+from ..observables.hydration import temporal_hs_hydration_profiles
 from ..observables.membrane_order import temporal_membrane_order_profiles
 from ..observables.residue_membrane_distance import temporal_residue_membrane_profiles
 from ..observables.rmsf import temporal_rmsf_profiles
 from ..observables.structure_profiles import temporal_structure_profiles
-from .selection import metric_estimator_enabled, simple_family_selection
 from .common import (
     _block_bootstrap,
     _block_weights,
@@ -37,8 +36,10 @@ from .common import (
     _regular_times,
     _temporal,
     selected_rng,
+    supported_reduce,
 )
 from .residue_regions import scan_residue_regions
+from .selection import metric_estimator_enabled, simple_family_selection
 
 
 def _rmsf_profile(
@@ -121,23 +122,26 @@ def _prepare_profile(spec: dict, cfg: dict, draws: int, rng: np.random.Generator
         complete = np.all(np.isfinite(values), axis=0)
         if not complete.all() and np.isinf(values).any():
             values = np.where(np.isfinite(values), values, np.nan)
-        if complete.all():
+        if complete.all() and values.size:
             # Retain the established reduction order for complete profiles.
             signal = np.sqrt(np.nanmean((values - np.nanmean(values, axis=0)) ** 2, axis=1))
         else:
             signal_values = values[:, complete]
             signal = (np.sqrt(np.mean((signal_values - np.mean(signal_values, axis=0)) ** 2, axis=1))
-                      if complete.any() else np.zeros(len(times)))
+                      if complete.any() and len(times) else np.zeros(len(times)))
         meta = _temporal(signal, times, cfg)
         if not regular or not complete.any():
             meta.update(tau_int_frames=np.nan, tau_int_ps=np.nan, effective_n=np.nan)
-        boot = (_block_bootstrap(values, meta["block_length_frames"], draws, rng, reducer)
-                if regular and complete.any() and draws else np.full((draws, values.shape[1]), np.nan))
-        boot[:, ~complete] = np.nan
+        boot = np.full((draws, values.shape[1]), np.nan)
+        if regular and complete.any() and draws:
+            # Column selection does not alter temporal index draws/RNG state.
+            boot[:, complete] = _block_bootstrap(
+                values[:, complete], meta["block_length_frames"], draws, rng, reducer,
+            )
         return {
             "positions": np.asarray(spec["positions"], float),
             "labels": np.asarray(spec["labels"], str),
-                "point": (np.nanmedian if reducer == "median" else np.nanmean)(values, axis=0),
+                "point": supported_reduce(values, reducer, axis=0),
                 "draws": boot, "temporal": meta,
                 "temporal_valid": complete & regular}
     coords = np.asarray(spec["coords"], np.float32)
@@ -360,20 +364,22 @@ def analyze_profiles(
                 item["point"][indices]
                 for item, indices in zip(items, column_indices)
             ]
-            boot = _hierarchical(
-                aligned_draws,
-                local_system_draws,
-                profile_rng,
-                "mean",
-                resample,
+            point = supported_reduce(np.stack(aligned_points), axis=0)
+            observed_replicas = np.isfinite(aligned_points).sum(axis=0)
+            valid_replicas = np.stack([
+                item["temporal_valid"][indices]
+                for item, indices in zip(items, column_indices)
+            ]).sum(axis=0)
+            complete = (valid_replicas == len(items)) & (len(items) == len(reps))
+            boot = np.full((local_system_draws, len(labels)), np.nan)
+            # Hierarchical index draws depend on replica/draw counts, not
+            # column count; even zero eligible columns retain the RNG schedule.
+            boot[:, complete] = _hierarchical(
+                [values[:, complete] for values in aligned_draws],
+                local_system_draws, profile_rng, "mean", resample,
             )
-            point = np.nanmean(np.stack(aligned_points), axis=0)
-            complete = np.all(np.stack([item["temporal_valid"][indices]
-                                       for item, indices in zip(items, column_indices)]), axis=0)
-            complete &= len(items) == len(reps)
-            boot[:, ~complete] = np.nan
             alpha = (1 - level) / 2
-            low, high = (np.nanquantile(boot, [alpha, 1 - alpha], axis=0)
+            low, high = (supported_reduce(boot, q=[alpha, 1 - alpha], axis=0)
                          if local_system_draws else np.full((2, len(labels)), np.nan))
             for index, (position, label) in enumerate(zip(positions, labels)):
                 sys_points.append({
@@ -382,9 +388,11 @@ def analyze_profiles(
                     "position": float(position),
                     "position_label": str(label),
                     "n_replicates": len(items),
+                    "n_replicates_observed": int(observed_replicas[index]),
+                    "n_replicates_temporal_valid": int(valid_replicas[index]),
                     "mean": float(point[index]),
                     "median": float(
-                        np.nanmedian([values[index] for values in aligned_points])
+                        supported_reduce([values[index] for values in aligned_points], "median")
                     ),
                     "mean_ci_low": float(low[index]),
                     "mean_ci_high": float(high[index]),
@@ -397,7 +405,7 @@ def analyze_profiles(
                 "system": system,
                 "profile": profile,
                 "n_replicates": len(items),
-                "mean_profile_value": float(np.nanmean(point)),
+                "mean_profile_value": float(supported_reduce(point)),
                 "mean_profile_ci_low": glo,
                 "mean_profile_ci_high": ghi,
                 **_range_meta(temporal_rows),
@@ -437,16 +445,17 @@ def analyze_profiles(
                 stats.get("hypothesis_tests", {}).get("design", "independent")
                 == "paired"
             )
+            complete = sys_1["temporal_valid"][idx_1] & sys_2["temporal_valid"][idx_2]
             if paired:
                 rep_draws_1 = {
-                    rep: values[:, idx_1]
+                    rep: values[:, idx_1[complete]]
                     for rep, values in sys_1["rep_draws"].items()
                 }
                 rep_draws_2 = {
-                    rep: values[:, idx_2]
+                    rep: values[:, idx_2[complete]]
                     for rep, values in sys_2["rep_draws"].items()
                 }
-                delta = _hierarchical_difference(
+                paired_delta = _hierarchical_difference(
                     rep_draws_1,
                     rep_draws_2,
                     local_system_draws,
@@ -454,17 +463,19 @@ def analyze_profiles(
                     "mean",
                     resample,
                 )
+                delta = np.full((local_system_draws, len(common_labels)), np.nan)
+                if len(paired_delta):
+                    delta[:, complete] = paired_delta
             else:
                 delta = (
                     sys_2["draws"][:, idx_2]
                     - sys_1["draws"][:, idx_1]
                 )
-            complete = sys_1["temporal_valid"][idx_1] & sys_2["temporal_valid"][idx_2]
             if not len(delta):
                 delta = np.empty((0, len(common_labels)))
             delta[:, ~complete] = np.nan
             alpha = (1 - level) / 2
-            low, high = (np.nanquantile(delta, [alpha, 1 - alpha], axis=0)
+            low, high = (supported_reduce(delta, q=[alpha, 1 - alpha], axis=0)
                          if len(delta) else np.full((2, len(common_labels)), np.nan))
 
             label_maps = {key: _profile_label_map(item) for key, item in prepared.items()}
@@ -491,7 +502,7 @@ def analyze_profiles(
                     "position": position,
                     "position_label": label,
                     "difference_system2_minus_system1": float(
-                        np.nanmean(delta[:, index]) if len(delta) and complete[index]
+                        supported_reduce(delta[:, index]) if len(delta) and complete[index]
                         else _point_difference(amap, bmap, paired)
                     ),
                     "difference_ci_low": float(low[index]),

@@ -11,7 +11,7 @@ from MDAnalysis.lib.distances import USED_OPENMP, capped_distance, distance_arra
 
 from ..config import DEFAULT_INSTANCE_ID, analysis_groups, analysis_runs, profile_dir, time_ps
 from ..core.persistence import atomic_parquet, ensure_dir
-from ..core.profiling import _residue_label
+from ..core.sequence import residue_label
 from ..core.progress import track
 
 DEFAULT_LIPID_RESNAMES = [
@@ -291,7 +291,7 @@ def run_residue_membrane_distance(
         "segid": [str(getattr(res, "segid", "") or "?") for res in residues],
         "resid": [int(res.resid) for res in residues],
         "resname": [str(res.resname) for res in residues],
-        "residue": [_residue_label(res) for res in residues],
+        "residue": [residue_label(res) for res in residues],
         "n_selected_atoms": selected_counts,
     })
     atomic_parquet(out / "residues.parquet", metadata)

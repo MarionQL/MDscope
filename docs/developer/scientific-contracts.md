@@ -96,6 +96,11 @@ For a sampled contact starting at `i`, ending at `j`:
 
 ## Replicate statistics and identity
 
+- `core.sequence.residue_label` uses the residue's first topology atom: nonblank `chainID`, then `segid`, then `?`, followed by `:RESNAMEresid`. Atom and residue callers share this owner. Topology indices remain separate identifiers; repeated residue numbers in PROA/PROB stay distinct.
+- Released TPRs have atom chainIDs `PROA`/`PROB` and segids `seg_0_PROA`/`seg_1_PROB`. Rerun trajectory analysis into a fresh output directory after this label correction; mixed historical/new labels are rejected, never reconciled.
+- Raw residue correlations join exact saved `(time_ps, topology_residue_index)` observations, validate labels across sources and reject duplicate observations. They run before bootstrap families, use no trajectories or condition inference, and report constant/insufficient series explicitly.
+- Unsupported mean/median/quantile slices remain NaN without invoking an empty reduction. Measured zeros remain zero; partial descriptive support does not imply temporal uncertainty. Profile `n_replicates` counts available tables; `n_replicates_observed` counts finite points and `n_replicates_temporal_valid` counts supported temporal series at each position. Full configured-replica support is still required for CIs.
+
 - Condition-level independent units = **simulation replicas**. Paired inference matches replica labels; irregular/missing trajectory frames are not independent resamples.
 - Scalar/profile/interactions: block within replica, hierarchy across replicas, exact/Monte Carlo permutations and BH FDR when configured. RDF bins are descriptive mean/SD; shell-integrated RDF and shared-lag diffusion use **replica-level** contrasts.
 - Nonfinite/gapped/irregular series retain supported descriptive points but **not** unsupported temporal CIs or ACFs. Missing required replicas/coordinates cannot be silently omitted.

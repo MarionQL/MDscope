@@ -56,7 +56,8 @@ def test_sasa_fused_vs_independent(monkeypatch, tmp_path):
     )
     u.add_TopologyAttr("names", ["N", "CA", "C"] * 2)
     u.add_TopologyAttr("resnames", ["ALA", "ALA"])
-    u.add_TopologyAttr("resids", [1, 2])
+    u.add_TopologyAttr("resids", [1, 1])
+    u.add_TopologyAttr("chainIDs", ["PROA"] * 3 + ["PROB"] * 3)
     u.add_TopologyAttr("segids", ["SYSTEM"])
     first = np.arange(18, dtype=np.float32).reshape(6, 3) + 1
     frames = np.stack([first + i for i in range(4)])
@@ -86,6 +87,9 @@ def test_sasa_fused_vs_independent(monkeypatch, tmp_path):
         if (i + 1) % 2 == 0:
             observer.flush(i // 2)
     observer.finalize()
+    table = pd.read_parquet(independent / "profiles/sasa/residue_sasa.parquet")
+    assert set(table.residue) == {"PROA:ALA1", "PROB:ALA1"}
+    assert set(table.topology_residue_index) == {0, 1}
     pd.testing.assert_frame_equal(
         pd.read_parquet(independent / "profiles/sasa/residue_sasa.parquet"),
         pd.read_parquet(fused / "profiles/sasa/residue_sasa.parquet"),

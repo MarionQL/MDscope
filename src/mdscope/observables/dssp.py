@@ -8,7 +8,7 @@ import pandas as pd
 from MDAnalysis.analysis.dssp import DSSP
 
 from ..core.persistence import atomic_parquet, ensure_dir
-from ..core.profiling import _residue_label
+from ..core.sequence import residue_label
 
 
 def _run_dssp(universe, cfg: dict, repout: Path):
@@ -38,19 +38,9 @@ def _run_dssp(universe, cfg: dict, repout: Path):
         if spec.get("n_parts") is not None:
             kwargs["n_parts"] = int(spec["n_parts"])
     analysis.run(verbose=bool(cfg.get("progress",{}).get("enabled",True)),**kwargs)
-    residues = list(atoms.select_atoms("protein").residues)
-    resids = np.asarray(analysis.results.resids)
-    if len(residues) != len(resids):
-        mapped, used = [], set()
-        for resid in resids:
-            candidates = [r for r in residues if r.resid == resid and r.ix not in used]
-            if not candidates:
-                raise RuntimeError(
-                    "Could not map DSSP residues back to topology residues"
-                )
-            mapped.append(candidates[0])
-            used.add(candidates[0].ix)
-        residues = mapped
+    # DSSP's CA group retains exact topology membership after its filtering.
+    # Resid numbers alone cannot identify chains with repeated numbering.
+    residues = list(analysis._heavy_atoms["CA"].residues)
     codes = np.asarray(analysis.results.dssp).astype(str)
     codes[codes == "-"] = "C"
     times = np.asarray(analysis.times, float)
@@ -66,6 +56,6 @@ def _run_dssp(universe, cfg: dict, repout: Path):
     atomic_parquet(out / "assignments.parquet", pd.DataFrame({
         "time_ps": np.repeat(times, nres),
         "topology_residue_index": np.tile([int(r.ix) for r in residues], nframes),
-        "residue": np.tile([_residue_label(r) for r in residues], nframes),
+        "residue": np.tile([residue_label(r) for r in residues], nframes),
         "dssp": codes.ravel(),
     }))

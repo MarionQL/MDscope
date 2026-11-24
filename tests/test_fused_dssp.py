@@ -16,7 +16,9 @@ def test_dssp_fused_vs_independent(tmp_path):
     )
     u.add_TopologyAttr("names", ["N", "CA", "C", "O"] * nres)
     u.add_TopologyAttr("resnames", ["ALA"] * nres)
-    u.add_TopologyAttr("resids", list(range(1, nres + 1)))
+    u.add_TopologyAttr("resids", [1, 2, 3, 1, 2, 3, 4])
+    u.add_TopologyAttr("segids", ["SYSTEM"])
+    u.add_TopologyAttr("chainIDs", ["PROA"] * 12 + ["PROB"] * 16)
     coords = []
     for i in range(nres):
         # Synthetic extended backbone with realistic bond lengths.
@@ -58,3 +60,7 @@ def test_dssp_fused_vs_independent(tmp_path):
         pd.read_parquet(actual / "profiles/dssp/assignments.parquet"),
         check_dtype=False,
     )
+
+    table = pd.read_parquet(actual / "profiles/dssp/assignments.parquet")
+    assert set(table.loc[table.topology_residue_index == 3, "residue"]) == {"PROB:ALA1"}
+    assert set(table.loc[table.topology_residue_index == 0, "residue"]) == {"PROA:ALA1"}

@@ -78,6 +78,7 @@ def _series(repout: Path, metric: str, *, sasa_runs=None, cache=None):
     series = pd.Series(values.to_numpy(float), index=pd.MultiIndex.from_frame(
         frame[["time_ps", "topology_residue_index"]]
     ), name=metric)
+    series.attrs["source"] = str(path)
     return series, names
 
 
@@ -95,6 +96,7 @@ def correlate_replica(repout: Path, pairs=DEFAULT_PAIRS, *, min_frames=30,
     metrics = sorted({m for pair in pairs for m in pair})
     sources = {}
     labels = {}
+    owners = {}
     cache = {}
     for metric in metrics:
         series, mapping = _series(Path(repout), metric, sasa_runs=sasa_runs, cache=cache)
@@ -102,8 +104,14 @@ def correlate_replica(repout: Path, pairs=DEFAULT_PAIRS, *, min_frames=30,
             continue
         for index, name in mapping.items():
             if index in labels and labels[index] != name:
-                raise ValueError(f"{repout}: residue identity differs between sources at index {index}")
+                previous = owners[index]
+                raise ValueError(
+                    f"{repout}: residue identity differs between sources at topology index {index}: "
+                    f"{previous} ({sources[previous].attrs['source']}) label {labels[index]!r} "
+                    f"versus {metric} ({series.attrs['source']}) label {name!r}"
+                )
             labels[index] = name
+            owners[index] = metric
         sources[metric] = series
     if not sources:
         return pd.DataFrame(columns=COLUMNS)
@@ -113,8 +121,10 @@ def correlate_replica(repout: Path, pairs=DEFAULT_PAIRS, *, min_frames=30,
         times = group.index.get_level_values("time_ps").to_numpy(float)
         for x, y in pairs:
             if x not in sources or y not in sources:
+                nx = int(np.isfinite(group[x]).sum()) if x in sources else 0
+                ny = int(np.isfinite(group[y]).sum()) if y in sources else 0
                 rows.append(_row(int(residx), labels[int(residx)], x, y,
-                                 0, 0, 0, np.nan, np.nan, "missing_metric",
+                                 nx, ny, 0, np.nan, np.nan, "missing_metric",
                                  np.nan, np.nan))
                 continue
             a = group[x].to_numpy(float)
@@ -169,8 +179,8 @@ def write_raw_residue_correlations(cfg, root, system_repouts):
                 sasa_runs=sasa_runs,
             )
             if not table.empty:
-                table.insert(0, "replicate", Path(repout).name)
-                table.insert(0, "system", system)
+                table["replicate"] = Path(repout).name
+                table["system"] = system
                 rows.append(table)
     outdir = Path(root) / "project_summary/statistics/residue_correlations"
     outdir.mkdir(parents=True, exist_ok=True)

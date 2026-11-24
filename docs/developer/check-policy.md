@@ -33,8 +33,9 @@ pytest -q -s -m benchmark tests/test_performance_benchmarks.py
 - `MDscope checks`: Python 3.11–3.13, 3.11 minimum dependencies, packaging and `bash -n` for tracked shell scripts. Superseded runs cancel.
 - The 3.11 job runs blocking Ruff E9/F, plus review-only broader Ruff/Vulture diagnostics on PR-changed Python files; investigate candidates before deleting dynamic callers. It publishes `mdscope-coverage` (no minimum).
 - Workflows use `contents: read`; external actions are SHA-pinned and updated by Dependabot. Review release notes before merging bumps.
-- Figure review is the only `workflow_dispatch` job: Actions → MDscope figure review → Run workflow → PR branch. Review instructions: [Contributing](contributing.md#visual-review).
-- Real-data checks run locally; other scientific audits remain manual. No scheduled production computation.
+- Figure review: Actions → MDscope figure review → Run workflow → PR branch. Review instructions: [Contributing](contributing.md#visual-review).
+- `MDscope real-data regression`: add PR label `real-data-test` (remove/reapply to rerun), or manually dispatch on a branch. Label events run the current PR code; ordinary pushes do not run this job. SHA-pinned actions, read-only permissions, two numerical threads, 35-minute limit and uploaded logs/results.
+- This job checks short-release SHA256 pins separately in `tests/data/short_release_data.sha256`, then exercises both TPRs, fused/independent SASA/DSSP, raw correlations, offline finalization and saved-data plotting. Full-resolution pins remain unchanged. Other scientific audits remain manual; no scheduled production computation.
 - PR path filters see the cumulative diff, so a later docs-only push cannot reliably suppress earlier code-related jobs.
 
 ## Real GROMACS checks

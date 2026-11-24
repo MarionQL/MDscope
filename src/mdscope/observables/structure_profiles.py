@@ -224,7 +224,7 @@ def temporal_structure_profiles(repout: Path, cfg: dict) -> dict[str, dict]:
                     index="time_ps",
                     columns="topology_residue_index",
                     values="value"
-                ).reindex(columns=residues.topology_residue_index).fillna(0.0)
+                ).reindex(columns=residues.topology_residue_index)
                 out[f"dssp_{label}_occupancy"] = {
                     "times": pivot.index.to_numpy(float),
                     "values": pivot.to_numpy(float),

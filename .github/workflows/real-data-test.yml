@@ -1,0 +1,56 @@
+name: MDscope real-data regression
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: real-data-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  residue-finalize:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'real-data-test'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      MDSCOPE_REAL_DATA: examples/data/short
+      MDSCOPE_REAL_OUTPUT: real_test_results/short
+      MDSCOPE_STATS_WORKERS: "2"
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+      - name: Install analysis dependencies including FreeSASA
+        run: python -m pip install -e '.[test,sasa]'
+      - name: Download pinned short release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$MDSCOPE_REAL_DATA" "$MDSCOPE_REAL_OUTPUT"
+          gh release download v0.1.0 --repo "$GITHUB_REPOSITORY" --dir "$MDSCOPE_REAL_DATA" --pattern '*_test.xtc' --pattern '*.tpr'
+          (cd "$MDSCOPE_REAL_DATA" && sha256sum -c "$GITHUB_WORKSPACE/tests/data/short_release_data.sha256")
+      - name: Exercise production residue analysis and offline finalization
+        run: |
+          set -o pipefail
+          python -m pip freeze > "$MDSCOPE_REAL_OUTPUT/environment.txt"
+          /usr/bin/time -v python tests/real_data/real_residue_finalize.py 2>&1 | tee "$MDSCOPE_REAL_OUTPUT/run.log"
+      - name: Publish diagnostics and saved results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: short-release-residue-finalize
+          path: real_test_results/short/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Qualify evidence
+        if: always()
+        run: |
+          echo 'Short release trajectories (40/41 frames, 50 ns spacing): runtime, identity, integration and publication regression only. No full-resolution performance, convergence or biological claims.' >> "$GITHUB_STEP_SUMMARY"

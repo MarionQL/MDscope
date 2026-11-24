@@ -25,7 +25,7 @@ from ..core.persistence import (
     atomic_parquet_parts,
     ensure_dir,
 )
-from ..core.profiling import _residue_label
+from ..core.sequence import residue_label
 from ..interactions.hydrogen_bonds import write_hydrogen_bonds
 from ..interactions.lipid_hydrogen_bonds import (
     lipid_molecule_map,
@@ -187,18 +187,9 @@ class FusedExtensions:
             hydrogen_name=str(spec.get("hydrogen_name", "H HN HT1 HT2 HT3")),
         )
         dssp._prepare()
-        residues = list(atoms.select_atoms("protein").residues)
-        resids = np.asarray(dssp._heavy_atoms["CA"].resids)
-        if len(residues) != len(resids):
-            mapped, used = [], set()
-            for resid in resids:
-                candidates = [r for r in residues if r.resid == resid and r.ix not in used]
-                if not candidates:
-                    raise RuntimeError("Could not map DSSP residues back to topology residues")
-                mapped.append(candidates[0])
-                used.add(candidates[0].ix)
-            residues = mapped
-        self.dssp = {"analysis": dssp, "residues": residues, "times": []}
+        residues = list(dssp._heavy_atoms["CA"].residues)
+        self.dssp = {"analysis": dssp, "residues": residues, "times": [],
+                     "labels": [residue_label(r) for r in residues]}
 
     def _setup_sasa(self):
         # Validate every named run/reference against the original config,
@@ -285,7 +276,7 @@ class FusedExtensions:
                 pd.DataFrame({
                     "time_ps": np.repeat(entry["times"], nres),
                     "topology_residue_index": np.tile([int(r.ix) for r in residues], nframes),
-                    "residue": np.tile([_residue_label(r) for r in residues], nframes),
+                    "residue": np.tile(entry["labels"], nframes),
                     "dssp": codes.ravel(),
                 })
             )
