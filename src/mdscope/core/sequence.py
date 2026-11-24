@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 
 import numpy as np
+from MDAnalysis.core.groups import Residue
 from MDAnalysis.exceptions import NoDataError
 
 AA3 = dict(zip(
@@ -14,6 +15,17 @@ AA3 = dict(zip(
     "ARNDCQEGHILKMFPSTWYV",
 ))
 AA3.update({name: "H" for name in ("HSD", "HSE", "HSP", "HID", "HIE", "HIP")})
+
+
+def chain_label(atom) -> str:
+    """Atom chain identity, with the historical segment/unknown fallback."""
+    return str(getattr(atom, "chainID", "") or getattr(atom, "segid", "") or "?")
+
+
+def residue_label(entity) -> str:
+    """Use the same atom-derived identity for atoms and topology residues."""
+    atom = entity.atoms[0] if isinstance(entity, Residue) else entity
+    return f"{chain_label(atom)}:{entity.resname}{entity.resid}"
 
 
 def sequence_chain_label(atom):
