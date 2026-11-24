@@ -766,6 +766,49 @@ def _interaction_key(data: pd.DataFrame) -> pd.Series:
     return data[keys].astype(str).agg(" | ".join, axis=1)
 
 
+def _lipid_hbond_pair_matrix(tables):
+    """Mean simultaneous atom-level bonds by species pair, independently per replica.
+
+    Summing individual bond occupancies is the mean count per sampled frame,
+    not a probability. A species is known present if it participates in any
+    saved bond in that replica. Without a population inventory, absence and
+    unobserved species cannot be distinguished and remain masked.
+    """
+    pairs = sorted({
+        str(pair) for table in tables if table is not None
+        for pair in table["interaction_class"].dropna().unique()
+    })
+    matrix = np.full((len(pairs), len(tables)), np.nan)
+    for j, table in enumerate(tables):
+        if table is None or table.empty:
+            continue
+        counts = table.groupby("interaction_class")["occupancy"].sum()
+        species = {s for pair in counts.index for s in str(pair).split("__")}
+        for i, pair in enumerate(pairs):
+            if set(pair.split("__")).issubset(species):
+                matrix[i, j] = counts.get(pair, 0.0)
+    return pairs, matrix
+
+
+def _plot_lipid_hbond_pairs(cfg, kind_out, columns, tables):
+    pairs, matrix = _lipid_hbond_pair_matrix(tables)
+    if not pairs:
+        return
+    fig, ax = plt.subplots(figsize=(
+        max(8, 1.2 * len(columns)), max(4, 0.3 * len(pairs) + 2)
+    ))
+    cmap = plt.get_cmap("viridis").copy()
+    cmap.set_bad("lightgray")
+    image = ax.imshow(np.ma.masked_invalid(matrix), aspect="auto", vmin=0, cmap=cmap)
+    ax.set_xticks(np.arange(len(columns)), columns, rotation=30, ha="right")
+    ax.set_yticks(np.arange(len(pairs)), [pair.replace("__", " – ") for pair in pairs])
+    ax.set_title("Lipid hydrogen bonds by species pair")
+    ax.set_xlabel("Gray: species not observed or data unavailable")
+    fig.colorbar(image, ax=ax, label="Mean H-bonds per sampled frame")
+    _save_selected(fig, kind_out / "occupancy_heatmap.png", cfg,
+                   "interactions:lipid_hydrogen_bonds:occupancy_heatmap")
+
+
 def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
     if not plot_enabled(cfg, 'interactions'):
         return
@@ -832,6 +875,7 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
             continue
         kind_out = ensure_dir(out / _safe(kind))
         columns, occupancy_series, lifetime_sets, lifetime_labels = [], [], [], []
+        lipid_pair_tables = []
         for system, reps in system_repouts.items():
             for repout in reps:
                 kind_tables = tables[(system, repout.name)].get(kind, {})
@@ -840,7 +884,9 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
                     f"{system_label(cfg, system)}\n"
                     f"{replicate_label(cfg, system, repout.name)}"
                 )
-                if occ.empty:
+                if kind == "lipid_hydrogen_bonds":
+                    lipid_pair_tables.append(kind_tables.get("occupancy"))
+                elif occ.empty:
                     occupancy_series.append(pd.Series(dtype=float))
                 else:
                     occ = occ.copy()
@@ -854,6 +900,9 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
                     if len(values):
                         lifetime_sets.append(values)
                         lifetime_labels.append(columns[-1])
+
+        if kind == "lipid_hydrogen_bonds" and lipid_pair_tables:
+            _plot_lipid_hbond_pairs(cfg, kind_out, columns, lipid_pair_tables)
 
         union = (
             sorted(
