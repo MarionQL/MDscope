@@ -128,7 +128,7 @@ def _prepare_profile(spec: dict, cfg: dict, draws: int, rng: np.random.Generator
         else:
             signal_values = values[:, complete]
             signal = (np.sqrt(np.mean((signal_values - np.mean(signal_values, axis=0)) ** 2, axis=1))
-                      if complete.any() else np.zeros(len(times)))
+                      if complete.any() and len(times) else np.zeros(len(times)))
         meta = _temporal(signal, times, cfg)
         if not regular or not complete.any():
             meta.update(tau_int_frames=np.nan, tau_int_ps=np.nan, effective_n=np.nan)

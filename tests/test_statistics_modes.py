@@ -187,3 +187,17 @@ def test_dssp_profile_keeps_absent_observation_distinct_from_nonhelix(tmp_path):
     profile = temporal_structure_profiles(tmp_path, {"analyses": {}})["dssp_helix_occupancy"]
     np.testing.assert_array_equal(profile["labels"], ["PROA:ALA1", "PROB:ALA1"])
     np.testing.assert_allclose(profile["values"], [[1., 0.], [0., np.nan]], equal_nan=True)
+
+
+@pytest.mark.parametrize("reducer", ["mean", "median"])
+def test_empty_profile_has_no_observations_or_uncertainty(reducer):
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        item = _prepare_profile({"times": [], "values": np.empty((0, 2)),
+                                 "positions": [0, 1], "labels": ["A", "B"],
+                                 "reducer": reducer}, {"statistics": {}}, 10,
+                                np.random.default_rng(8))
+    assert np.isnan(item["point"]).all()
+    assert np.isnan(item["draws"]).all()
+    assert not item["temporal_valid"].any()
