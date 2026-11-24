@@ -77,6 +77,14 @@ No contacts anywhere → undefined fold; present species → zero contact fracti
 
 Other lipid outputs: `extensions/bilayer_normal/`, `extensions/lipid_footprint/`, `interactions/lipid_hydrogen_bonds/`. Framewise ratios enter ordinary replicate-aware statistics. Check grid resolution, slab width, disk radius and anchor chemistry before interpreting small differences.
 
+### Lipid hydrogen-bond heatmap
+
+- Rows are unordered lipid species pairs; columns are independent replicas.
+- Values are sums of individual bond occupancies, equivalent to mean simultaneous atom-level H-bonds per sampled frame. They may exceed one and are not abundance-normalized.
+- All saved bonds contribute, regardless of the generic individual-bond plot occupancy threshold.
+- Zero denotes no observed pair bonds when both species participate in other saved bonds in that replica. Gray denotes an unobserved species or unavailable data; occupancy tables alone do not prove species absence.
+- The existing figure ID and filename are retained. Individual bond occupancies and lifetimes remain available in the replica tables.
+
 ### Lipid-contact classes and statistics
 
 
