@@ -205,6 +205,7 @@ def option_schema(defaults):
                  "lipid_enrichment", "lipid_contacts", "overview", "other"):
         plots[name] = None
     plots["include"] = None
+    plots["presets"] = None
     plots["options"] = {"*": {"dpi": None, "title": None, "annotations": None}}
     plots["families"] = {"*": None}  # Existing validator checks family names.
     plots["interaction_exclude_kinds"] = None

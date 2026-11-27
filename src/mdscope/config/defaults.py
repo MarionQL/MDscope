@@ -214,7 +214,6 @@ DEFAULTS = {
     "plots": {
         "enabled": False,
         "include": None,
-        "presets": None,
         "options": {},
         "min_occupancy": 0.05,
         "time_series": True,
