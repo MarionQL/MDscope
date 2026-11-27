@@ -14,7 +14,7 @@ import pandas as pd
 from ..config import figure_enabled, plot_enabled
 from ..core.persistence import ensure_dir
 from .figure_inventory import current_statistics
-from .plot_ids import figure_dpi
+from .plot_ids import figure_dpi, figure_path, save_figure
 
 
 def plot_lipid_enrichment_matrix(cfg,root):
@@ -71,7 +71,7 @@ def plot_lipid_enrichment_matrix(cfg,root):
         fig.subplots_adjust(left=min(.42, max(.19, .09 + .007 * longest)),
                             right=.88, bottom=.20, top=.90)
         dest=ensure_dir(Path(root)/"project_summary"/"figures"/"membrane")
-        fig.savefig(dest/filename,dpi=figure_dpi(cfg, f"lipid_enrichment:{Path(filename).stem}",
+        save_figure(fig, cfg, figure_path(cfg, dest/filename),dpi=figure_dpi(cfg, f"lipid_enrichment:{Path(filename).stem}",
                                                   int(cfg.get("plots",{}).get("dpi",250))))
         plt.close(fig)
 
@@ -105,41 +105,37 @@ def plot_lipid_contacts(cfg, root, system_repouts):
     if cfg.get("plots", {}).get("include") is None:
         replicas.to_csv(dest / 'replicate_matrices.csv', index=False)
 
+    limits = {}
+    panels = []
+
     def draw(values, title, metric, filename, *, difference=False):
         if not figure_enabled(cfg, f"lipid_contacts:{Path(filename).stem}"):
             return
         if values.empty or not np.isfinite(values.to_numpy(float)).any():
             return
-        longest = max((len(str(v)) for v in (*values.index, *values.columns)), default=0)
-        size = max(7, min(16, 3 + .7 * max(values.shape)))
-        fig, ax = plt.subplots(figsize=(size + min(4, .08 * longest), size))
-        cmap = plt.get_cmap('RdBu_r' if difference else 'viridis').with_extremes(bad='lightgrey')
-        scale = {}
-        if difference:
-            finite = np.abs(values.to_numpy()[np.isfinite(values.to_numpy())])
-            limit = float(finite.max()) if len(finite) and finite.max() > 0 else 1.
-            scale = dict(vmin=-limit, vmax=limit)
-        image = ax.imshow(values, cmap=cmap, **scale)
-        ax.set_xticks(range(len(values.columns)), values.columns, rotation=55, ha="right")
-        ax.set_yticks(range(len(values)), values.index)
-        ax.tick_params(axis="both", labelsize=max(7, min(11, 13 - .18 * max(values.shape))))
-        ax.set_xlabel('Neighbor species B')
-        ax.set_ylabel('Reference species A')
-        ax.set_title(f'{title}: {metric.replace("_", " ")}')
+        from .templates import heatmap_pages
+        matrix = values.to_numpy(float)
+        limit = limits[(metric, difference)]
+        vmin, vmax = (-limit, limit) if difference else (0., limit)
         units = 'Neighbors per molecule' if metric == 'neighbors_per_molecule' else 'Contact share / possible-pair share'
-        fig.colorbar(image, ax=ax, label=f'Difference in {units.lower()}' if difference else units)
-        fig.subplots_adjust(left=min(.4, max(.17, .09 + .008 * longest)),
-                            right=.88, bottom=min(.38, max(.17, .10 + .008 * longest)),
-                            top=.9)
-        fig.savefig(dest / filename, dpi=figure_dpi(cfg, f"lipid_contacts:{Path(filename).stem}",
-                                                    int(cfg.get('plots', {}).get('dpi', 180))))
-        plt.close(fig)
+        for fig, ax, rs, cs, page in heatmap_pages(matrix, list(values.index), list(values.columns),
+                title=f'{title}: {metric.replace("_", " ")}', units=('Difference in ' if difference else '') + units,
+                vmin=vmin, vmax=vmax, cmap='RdBu_r' if difference else 'viridis'):
+            ax.set_xlabel('Neighbor species B')
+            ax.set_ylabel('Reference species A')
+            path = figure_path(cfg, dest / filename)
+            if len(values) > 36 or len(values.columns) > 24:
+                path = path.with_stem(path.stem + f'@page_{page:03d}')
+            fig.tight_layout()
+            save_figure(fig, cfg, path, dpi=figure_dpi(cfg, f"lipid_contacts:{Path(filename).stem}",
+                                                   int(cfg.get('plots', {}).get('dpi', 180))), bbox_inches='tight')
+            plt.close(fig)
 
     for (system, leaflet), group in replicas.groupby(['system', 'leaflet']):
         for metric in metrics:
             values = group.groupby(['species_a', 'species_b'])[metric].mean().unstack()
-            draw(values, f'{system} / {leaflet}', metric,
-                 f'lipid_contact_matrix_{system}_{leaflet}_{metric}.png')
+            panels.append((values, f'{system} / {leaflet}', metric,
+                           f'lipid_contact_matrix_{system}_{leaflet}_{metric}.png', False))
 
     # Report a contrast only when every configured replica contributes a
     # finite estimate and contains both species in the corresponding leaflet.
@@ -151,14 +147,19 @@ def plot_lipid_contacts(cfg, root, system_repouts):
         for system, paths in system_repouts.items() if system in means.index.get_level_values('system')
     }
     for first, second in combinations(condition, 2):
-        delta = condition[first] - condition[second]
+        delta = condition[second] - condition[first]
         for leaflet, group in delta.groupby(level='leaflet'):
             for metric in metrics:
                 values = group.droplevel('leaflet')[metric].unstack()
                 if values.notna().any().any():
-                    draw(values, f'{first} minus {second} / {leaflet}', metric,
-                         f'lipid_contact_difference_{first}__{second}_{leaflet}_{metric}.png',
-                         difference=True)
+                    panels.append((values, f'{second} minus {first} / {leaflet}', metric,
+                                   f'lipid_contact_difference_{first}__{second}_{leaflet}_{metric}.png', True))
+    for values, _, metric, _, difference in panels:
+        finite = values.to_numpy(float)
+        finite = np.abs(finite[np.isfinite(finite)])
+        limits[(metric, difference)] = max(limits.get((metric, difference), 1e-12), float(finite.max()) if len(finite) else 1e-12)
+    for values, title, metric, filename, difference in panels:
+        draw(values, title, metric, filename, difference=difference)
 
 def plot_project_diffusion(cfg, root):
     """Render independent replica estimates from the saved numerical summary."""
@@ -187,6 +188,6 @@ def plot_project_diffusion(cfg, root):
     ax.set_ylabel("Lateral diffusion coefficient (nm²/ns)")
     ax.set_title("Single-origin MSD replicate estimates")
     fig.tight_layout()
-    fig.savefig(out / "diffusion_coefficients.png", dpi=figure_dpi(
+    save_figure(fig, cfg, figure_path(cfg, out / "diffusion_coefficients.png"), dpi=figure_dpi(
         cfg, "diffusion:diffusion_coefficients", int(cfg.get("plots", {}).get("dpi", 250))))
     plt.close(fig)

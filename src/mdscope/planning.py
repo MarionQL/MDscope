@@ -18,7 +18,12 @@ from .config import (
     project_root,
     statistics_family_config,
 )
-from .contracts.plot_validation import FIGURE_FAMILIES
+from .contracts.plot_validation import (
+    FIGURE_FAMILIES,
+    SDC4_CONDITION_STEMS,
+    STATIC_IDS,
+    safe_plot_stem,
+)
 from .contracts.state_feature_spec import SDC4_FEATURES
 from .contracts.statistics import (
     ESTIMATOR_FLAGS,
@@ -32,16 +37,11 @@ from .registry import (
     artifact_schema,
     configured_profile_variables,
     density_output_contracts,
+    figure_descriptor,
     required_artifacts,
     scalar_contracts,
     state_feature_catalog,
     structural_profile_contracts,
-)
-from .contracts.plot_validation import (
-    SDC4_CONDITION_STEMS,
-    STATIC_IDS,
-    describe_plot,
-    safe_plot_stem,
 )
 
 # Interpretation of coordinates, not a claim about PBC or bulk density.
@@ -395,6 +395,10 @@ def build_plan(cfg: dict, config_path: str | Path, *,
                     plots.get("families", {}).get("solvation", False)))
         if include is None:
             ids = sorted(id for id in STATIC_IDS if id.startswith(f"{family}:"))
+            if family == "overview":
+                ids.extend(f"overview:{owner}:{variant}"
+                           for owner in sorted({item['analysis'] for item in scalar_contracts(cfg)})
+                           for variant in ("distributions", "effects"))
             if family == "profiles":
                 # The renderer creates one distance heatmap per configured run
                 # and system. No topology/trajectory inspection is required.
@@ -416,9 +420,11 @@ def build_plan(cfg: dict, config_path: str | Path, *,
                    if identifier.startswith(f"{family}:")]
         figures = []
         for identifier in ids:
-            descriptor = describe_plot(identifier, table_reports_pdf=cfg.get("plots", {}).get("table_reports_pdf", False))
+            descriptor = figure_descriptor(cfg, identifier)
+            from .config import figure_enabled
+            descriptor['selected'] = figure_enabled(cfg, identifier)
             descriptor["availability"] = (
-                "conditional_on_saved_data" if enabled else "disabled_by_configuration"
+                "conditional_on_saved_data" if enabled and descriptor['selected'] else "disabled_by_configuration"
             )
             if identifier.startswith("sdc4:"):
                 _, system, _ = identifier.split(":")
@@ -787,7 +793,7 @@ def inspect_saved_plot_ids(cfg: dict, root: str | Path, config_path: str | Path,
     chosen = cfg.get("plots", {}).get("include")
     candidates = []
     for identifier in sorted(found):
-        meta = describe_plot(identifier, table_reports_pdf=cfg.get("plots", {}).get("table_reports_pdf", False))
+        meta = figure_descriptor(cfg, identifier)
         meta["availability"] = (
             "conditional_on_saved_data" if plot_enabled(cfg, meta["family"])
             else "disabled_by_configuration"
@@ -837,7 +843,7 @@ def analysis_figure_candidates(cfg, name):
                            for metric in ("neighbors_per_molecule", "enrichment"))
     if name == "membrane" and cfg["analyses"]["membrane"].get("msd", {}).get("enabled"):
         identifiers.append("diffusion:diffusion_coefficients")
-    return [dict(describe_plot(identifier, table_reports_pdf=cfg.get("plots", {}).get("table_reports_pdf", False)),
+    return [dict(figure_descriptor(cfg, identifier),
                  availability="conditional_on_saved_data") for identifier in identifiers]
 
 
@@ -858,7 +864,7 @@ def statistical_figure_candidates(cfg):
         identifiers.append("solvation:shell_rdf")
     if any(item.get("metric", "").startswith("lipid_footprint_") for item in selection.get("time_series", []) or []):
         identifiers.extend(["lipid_enrichment:lipid_enrichment_heatmap", "lipid_enrichment:lipid_area_density_heatmap"])
-    return [dict(describe_plot(identifier, table_reports_pdf=cfg.get("plots", {}).get("table_reports_pdf", False)),
+    return [dict(figure_descriptor(cfg, identifier),
                  availability="conditional_on_saved_data") for identifier in dict.fromkeys(identifiers)]
 
 
@@ -905,7 +911,9 @@ def authoring_catalog(cfg, *, include_inactive=False):
     for variable in profiles:
         for variant in sorted(DYNAMIC_VARIANTS["profiles"]):
             identifier = f"profiles:{safe_plot_stem(variable['profile'])}:{variant}"
-            figures.setdefault("statistics", {})[identifier] = describe_plot(identifier, table_reports_pdf=cfg.get("plots", {}).get("table_reports_pdf", False))
+            from .contracts.plot_validation import describe_plot
+            figures.setdefault("statistics", {})[identifier] = describe_plot(identifier,
+                analysis=variable['analysis'], table_reports_pdf=cfg.get('plots', {}).get('table_reports_pdf', False))
     for figure in statistical_figure_candidates(configured):
         figures.setdefault("statistics", {})[figure["id"]] = figure
     if not include_inactive:
@@ -920,8 +928,84 @@ def authoring_catalog(cfg, *, include_inactive=False):
         for figure in statistical_figure_candidates(configured):
             statistics[figure["id"]] = figure
         figures["statistics"] = statistics
+    overview_owners = {item['analysis'] for item in scalars}
+    overview_owners.update(name for name in ('sdc4_mechanisms', 'local_environment', 'solvation', 'hydration')
+                           if configured['analyses'].get(name, {}).get('enabled'))
+    for analysis in sorted(overview_owners):
+        from .config import statistics_family_config
+        variants = ['distributions']
+        if include_inactive or statistics_family_config(configured, 'time_series') is not None:
+            variants.append('effects')
+        for variant in variants:
+            identifier = f"overview:{analysis}:{variant}"
+            figures.setdefault(analysis, {})[identifier] = figure_descriptor(cfg, identifier)
     return {"scalars": scalars, "profiles": profiles,
             "motifs": configured["selections"].get("motifs", {}),
             "glycans": configured["selections"].get("glycans", {}),
             "state_features": state_feature_catalog(configured),
             "figures": {owner: list(items.values()) for owner, items in figures.items()}}
+
+
+def resolve_figure_presets(cfg, root, config_path):
+    """Expand tiers over saved and configured identities, preserving exact lists.
+
+    Availability is conservative: inference needs a completed eligible manifest;
+    a missing source is a reported omission, never a statistics rerun.
+    """
+    from copy import deepcopy
+
+    from .contracts.plot_validation import preset_plot_ids
+    from .statistics.manifest import read_statistics_manifest
+    options = cfg.get('plots', {})
+    if options.get('include') is not None or options.get('presets') is None:
+        return cfg, []
+    discovered = inspect_saved_plot_ids(cfg, root, config_path, max_identities=1_000_000)
+    if discovered['truncated']:
+        raise ValueError('Saved figure catalog exceeds preset discovery capacity; use exact IDs')
+    discovered_ids = {item['id'] for item in discovered['figures']}
+    candidates = set(discovered_ids) | set(STATIC_IDS)
+    for identifier in discovered_ids:
+        if identifier.startswith('time_series:'):
+            owner = figure_descriptor(cfg, identifier)['analysis']
+            if owner != 'unmapped':
+                candidates.update(f'overview:{owner}:{variant}' for variant in ('distributions', 'effects'))
+    candidates.update(item['id'] for items in authoring_catalog(cfg)['figures'].values() for item in items)
+    facts = read_statistics_manifest(Path(root) / 'project_summary/statistics/manifest.json')
+    omissions, selected = [], []
+    for identifier in preset_plot_ids(candidates, options['presets']):
+        meta = figure_descriptor(cfg, identifier)
+        family = meta['family']
+        reason = None
+        if not plot_enabled(cfg, family):
+            reason = 'disabled_figure_family'
+        if identifier == 'profiles:residue_response:heatmap':
+            from .reporting.figure_inventory import residue_response_status
+            state = residue_response_status(cfg, root)
+            if state not in {'valid', 'legacy_unverified'}:
+                reason = 'unavailable_residue_response_' + state
+        owner = meta['analysis']
+        spec = cfg.get('analyses', {}).get(owner)
+        if isinstance(spec, dict) and not spec.get('enabled', False):
+            reason = 'disabled_analysis'
+        if meta['requires_statistics']:
+            statistical_family = {'solvation': 'solvation_rdfs', 'overview': 'time_series',
+                                  'lipid_enrichment': 'time_series'}.get(family, family)
+            from .config import statistics_family_config
+            if (not facts.complete or facts.family_disabled(statistical_family) or
+                    statistics_family_config(cfg, statistical_family) is None):
+                reason = 'unavailable_completed_statistics'
+        # Dynamic inspection proves source identity. Static/overview candidates
+        # additionally need at least one saved source path, never an XTC read.
+        if identifier not in discovered_ids:
+            import glob
+            patterns = [value.replace('{system}', '*').replace('{replicate}', '*')
+                        for value in meta['source_candidates']]
+            if not any(glob.glob(str(Path(root) / pattern)) for pattern in patterns):
+                reason = 'missing_saved_source'
+        if reason:
+            omissions.append(dict(id=identifier, analysis=owner, tier=meta['tier'], reason=reason))
+        else:
+            selected.append(identifier)
+    result = deepcopy(cfg)
+    result['plots']['include'] = selected
+    return result, omissions

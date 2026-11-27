@@ -10,7 +10,7 @@ import pandas as pd
 from .shared_scales import synchronize_y_axes
 
 
-def solvation_rdf_figure(root, system_repouts, *, max_panels=6, dpi=150):
+def solvation_rdf_figure(root, system_repouts, *, max_panels=6, dpi=150, page=0, options=None):
     path=Path(root)/"project_summary"/"statistics"/"solvation"/"system_rdf.parquet"
     if not path.exists():
         return None
@@ -24,7 +24,9 @@ def solvation_rdf_figure(root, system_repouts, *, max_panels=6, dpi=150):
     if rdf.empty:
         return None
     groups=list(rdf.groupby(["solvent","target_class","site_class"],sort=True))
-    groups=groups[:max_panels]
+    groups=groups[page*max_panels:(page+1)*max_panels]
+    if not groups:
+        return None
     n=len(groups)
     fig,axes=plt.subplots(n,1,figsize=(7.2,max(2.4,2.15*n)),squeeze=False)
     for ax,(key,group) in zip(axes.flat,groups):
@@ -50,13 +52,15 @@ def solvation_rdf_figure(root, system_repouts, *, max_panels=6, dpi=150):
     axes[-1,0].set_xlabel("Distance (Å)")
     fig.tight_layout()
     buf=BytesIO()
+    from .plot_ids import apply_figure_options
+    apply_figure_options(fig, options or {})
     fig.savefig(buf,format="png",dpi=dpi)
     plt.close(fig)
     buf.seek(0)
     return buf,len(groups),len(list(rdf.groupby(["solvent","target_class","site_class"])))
 
 
-def solvation_timeseries_figure(system_repouts, *, max_panels=4, dpi=150):
+def solvation_timeseries_figure(system_repouts, *, max_panels=4, dpi=150, page=0, options=None):
     data=[]
     for system,reps in system_repouts.items():
         for rep in reps:
@@ -76,7 +80,9 @@ def solvation_timeseries_figure(system_repouts, *, max_panels=4, dpi=150):
     if df.empty:
         return None
     groups=list(df.groupby(["solvent","target_class","site_class"],sort=True))
-    selected=groups[:max_panels]
+    selected=groups[page*max_panels:(page+1)*max_panels]
+    if not selected:
+        return None
     fig,axes=plt.subplots(len(selected),1,figsize=(7.2,max(2.6,2.25*len(selected))),
                           squeeze=False)
     for ax,(key,group) in zip(axes.flat,selected):
@@ -91,13 +97,15 @@ def solvation_timeseries_figure(system_repouts, *, max_panels=4, dpi=150):
     axes[-1,0].set_xlabel("Time (ns)")
     fig.tight_layout()
     buf=BytesIO()
+    from .plot_ids import apply_figure_options
+    apply_figure_options(fig, options or {})
     fig.savefig(buf,format="png",dpi=dpi)
     plt.close(fig)
     buf.seek(0)
     return buf,len(selected),len(groups)
 
 
-def solvation_survival_figure(system_repouts, *, max_curves=8, dpi=150):
+def solvation_survival_figure(system_repouts, *, max_curves=8, dpi=150, page=0, options=None):
     """Show descriptive censored contact-survival curves, if recorded."""
     import pyarrow.parquet as pq
     curves=[]
@@ -114,14 +122,14 @@ def solvation_survival_figure(system_repouts, *, max_curves=8, dpi=150):
             keys=[k for k in ("solvent","target_id") if k in df]
             groups=df.groupby(keys,sort=False) if keys else [((),df)]
             for key,group in groups:
-                if len(curves)>=max_curves:
-                    break
                 curves.append((f"{system}/{rep.name}/{key}",group))
     curves = [
         (label, df) for label, df in curves
         if np.isfinite(pd.to_numeric(df["survival_probability"], errors="coerce")).any()
         and np.isfinite(pd.to_numeric(df["duration_ps"], errors="coerce")).any()
     ]
+    total = len(curves)
+    curves = curves[page*max_curves:(page+1)*max_curves]
     if not curves:
         return None
     import matplotlib
@@ -144,10 +152,12 @@ def solvation_survival_figure(system_repouts, *, max_curves=8, dpi=150):
               bbox_to_anchor=(1.02, 1), borderaxespad=0)
     fig.tight_layout()
     buf=BytesIO()
+    from .plot_ids import apply_figure_options
+    apply_figure_options(fig, options or {})
     fig.savefig(buf,format="png",dpi=dpi,bbox_inches="tight")
     plt.close(fig)
     buf.seek(0)
-    return buf,len(curves)
+    return buf,len(curves),total
 
 
 
@@ -156,7 +166,7 @@ def plot_solvation(cfg, root, system_repouts):
     from ..config import figure_enabled, plot_enabled
     from ..core.persistence import ensure_dir
     from .figure_inventory import current_statistics
-    from .plot_ids import figure_dpi
+    from .plot_ids import figure_dpi, figure_path
 
     opts = cfg.get("plots", {})
     if (not plot_enabled(cfg, "solvation")
@@ -165,18 +175,27 @@ def plot_solvation(cfg, root, system_repouts):
         return
     # Dispatch selected figures lazily: do not read unnecessary saved tables.
     figures = {
-        "shell_rdf": lambda: solvation_rdf_figure(
-            root, system_repouts, dpi=figure_dpi(cfg, "solvation:shell_rdf", 150))
+        "shell_rdf": lambda page: solvation_rdf_figure(
+            root, system_repouts, page=page, options=opts.get("options", {}).get("solvation:shell_rdf", {}), dpi=figure_dpi(cfg, "solvation:shell_rdf", 150))
         if current_statistics(cfg, root, "solvation_rdfs") else None,
-        "water_and_ions": lambda: solvation_timeseries_figure(
-            system_repouts, dpi=figure_dpi(cfg, "solvation:water_and_ions", 150)),
-        "contact_survival": lambda: solvation_survival_figure(
-            system_repouts, dpi=figure_dpi(cfg, "solvation:contact_survival", 150)),
+        "water_and_ions": lambda page: solvation_timeseries_figure(
+            system_repouts, page=page, options=opts.get("options", {}).get("solvation:water_and_ions", {}), dpi=figure_dpi(cfg, "solvation:water_and_ions", 150)),
+        "contact_survival": lambda page: solvation_survival_figure(
+            system_repouts, page=page, options=opts.get("options", {}).get("solvation:contact_survival", {}), dpi=figure_dpi(cfg, "solvation:contact_survival", 150)),
     }
     for name, make in figures.items():
         if not figure_enabled(cfg, f"solvation:{name}"):
             continue
-        figure = make()
-        if figure is not None:
+        page = 0
+        while True:
+            figure = make(page)
+            if figure is None:
+                break
             directory = ensure_dir(Path(root) / "project_summary/figures/solvation")
-            (directory / f"{name}.png").write_bytes(figure[0].getvalue())
+            path = figure_path(cfg, directory / f"{name}.png")
+            if figure[2] > figure[1] or page:
+                path = path.with_stem(path.stem + f"@page_{page+1:03d}")
+            path.write_bytes(figure[0].getvalue())
+            page += 1
+            if figure[1] == figure[2]:
+                break

@@ -17,7 +17,7 @@ mdscope-studio
 1. **Project & systems:** project, conditions, replicas, paths, sampling and reusable groups.
 2. **Selections & analyses:** global/analysis settings and named runs. Group fitting belongs under RMSD. Group RMSD intersects `selections.features`; group Rg intersects its own selection. Group filters retain the global scalar.
 3. **Statistics:** choose inference and exact metric identities.
-4. **Figures:** select bootstrap/replicate summaries, condition comparisons and autocorrelation independently, or edit exact IDs.
+4. **Figures:** browse analysis → primary/secondary/tertiary; use **Use primary baseline**, then optionally **Add secondary details** or **Add tertiary diagnostics**. Statistical-type controls and exact IDs remain available. New projects stay opt-in.
 5. **Review & export:** run explicit production preflight when topology-verified export is enabled. Background metadata does not replace it.
 
 ### Topology inspection

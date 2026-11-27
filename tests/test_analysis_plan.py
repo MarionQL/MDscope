@@ -349,7 +349,8 @@ def test_plan_uses_production_registry_for_configured_plot_ids(tmp_path, project
         "time_series:rmsd_A:comparison_table",
     }
     for identifier, row in by_id.items():
-        assert row["destination"] == describe_plot(identifier)["destination"]
+        from mdscope.registry import figure_descriptor
+        assert row["destination"] == figure_descriptor(load_config(path, check_paths=False), identifier)["destination"]
         assert row["source_candidates"] == describe_plot(identifier)["source_candidates"]
         assert row["availability"] == "conditional_on_saved_data"
     assert by_id["time_series:rmsd_A:timeseries"]["requires_statistics"] is False
@@ -374,7 +375,7 @@ def test_plan_lists_only_known_static_candidates_without_an_include_list(tmp_pat
         for family in families.values()
         for item in family["specific_figures"]
     }
-    assert ids == STATIC_IDS
+    assert ids - {identifier for identifier in ids if identifier.startswith("overview:")} == STATIC_IDS
     assert families["time_series"]["specific_figures"] == []
     assert "dynamic" in families["time_series"]["specific_figures_status"]
     assert not root.exists()

@@ -146,7 +146,7 @@ def test_exported_distribution_runs_through_production(project):
             saved = root / replica["system"] / replica["id"] / item["path_within_replica"]
             assert list(pd.read_parquet(saved).columns) == item["columns"]
     finalize_project(path, phase="plotting")
-    assert [file.name for file in root.rglob("*.png")] == ["rmsd_A__distribution.png"]
+    assert [file.name for file in root.rglob("*.png")] == ["time_series@rmsd_A@distribution.png"]
 
 
 def test_stale_group_figures_and_unrelated_statistics_are_removed(tmp_path):
@@ -399,8 +399,8 @@ def test_exact_figure_export_reaches_production_renderer(tmp_path):
                   "rmsd_A": [1., 1.2, 1.5, 1.3, 1.4]}).to_parquet(
                       rep / "summary" / "timeseries.parquet")
     plot_time_series(cfg, root, {"condition1": [rep]})
-    assert (root / "project_summary/figures/time_series/rmsd_A__distribution.png").is_file()
-    assert not (root / "project_summary/figures/time_series/rmsd_A__timeseries.png").exists()
+    assert (root / "project_summary/figures/rmsd/secondary/time_series@rmsd_A@distribution.png").is_file()
+    assert not (root / "project_summary/figures/rmsd/secondary/time_series@rmsd_A@timeseries.png").exists()
 
 
 def test_app_exact_figures_override_imported_disabled_family(tmp_path, monkeypatch):

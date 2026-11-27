@@ -19,6 +19,11 @@ def validate_plots(cfg):
             or any(not isinstance(value, bool) for value in families.values())):
         raise ValueError("plots.families must map known families to booleans")
     from ...contracts.plot_validation import validate_figure_options, validate_plot_ids
+    presets = plots.get("presets")
+    if presets is not None and (not isinstance(presets, list) or
+            any(value not in {"primary", "secondary", "tertiary"} for value in presets) or
+            len(set(presets)) != len(presets)):
+        raise ValueError("plots.presets must be null or a unique list of primary, secondary, tertiary")
     validate_plot_ids(plots.get("include"))
     validate_figure_options(plots.get("options", {}))
     excluded = plots.get("interaction_exclude_kinds", [])

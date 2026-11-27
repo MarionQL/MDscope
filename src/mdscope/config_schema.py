@@ -202,10 +202,10 @@ def option_schema(defaults):
 
     plots = schema["plots"]
     for name in ("solvation", "sdc4", "shared_states", "diffusion",
-                 "lipid_enrichment", "lipid_contacts", "other"):
+                 "lipid_enrichment", "lipid_contacts", "overview", "other"):
         plots[name] = None
     plots["include"] = None
-    plots["options"] = {"*": {"dpi": None}}
+    plots["options"] = {"*": {"dpi": None, "title": None, "annotations": None}}
     plots["families"] = {"*": None}  # Existing validator checks family names.
     plots["interaction_exclude_kinds"] = None
 

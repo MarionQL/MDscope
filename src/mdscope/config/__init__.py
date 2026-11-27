@@ -114,6 +114,8 @@ def plot_enabled(cfg, family):
             or not options.get(family, True)):
         return False
     selected = options.get("include")
+    if family == "overview" and selected is None and options.get("presets") is None:
+        return False
     return selected is None or any(item.startswith(f"{family}:") for item in selected)
 
 
@@ -122,7 +124,11 @@ def figure_enabled(cfg, plot_id):
     if not plot_enabled(cfg, plot_id.split(":", 1)[0]):
         return False
     selected = cfg.get("plots", {}).get("include")
-    return selected is None or plot_id in selected
+    if selected is not None:
+        return plot_id in selected
+    from ..contracts.plot_validation import plot_tier
+    presets = cfg.get("plots", {}).get("presets")
+    return presets is None or plot_tier(plot_id) in presets
 
 
 def statistics_family_config(cfg, family):

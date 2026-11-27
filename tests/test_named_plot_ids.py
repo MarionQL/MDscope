@@ -8,9 +8,9 @@ import yaml
 from PIL import Image
 
 from mdscope.config import DEFAULTS, figure_enabled, load_config, plot_enabled
+from mdscope.contracts.plot_validation import validate_plot_ids
 from mdscope.reporting.figure_inventory import figure_status
 from mdscope.reporting.plot_ids import id_from_figure_path
-from mdscope.contracts.plot_validation import validate_plot_ids
 from mdscope.reporting.plotting import plot_all, plot_interactions
 
 
@@ -63,7 +63,7 @@ def test_only_selected_time_series_is_saved(tmp_path):
     cfg["plots"]["include"] = ["time_series:rmsd_A:timeseries"]
     plot_all(cfg, tmp_path, repouts)
     produced = sorted((tmp_path / "project_summary/figures").rglob("*.png"))
-    assert [path.name for path in produced] == ["rmsd_A__timeseries.png"]
+    assert [path.name for path in produced] == ["time_series@rmsd_A@timeseries.png"]
     assert id_from_figure_path(produced[0]) == "time_series:rmsd_A:timeseries"
     with Image.open(produced[0]) as figure:
         figure.verify()
@@ -75,7 +75,7 @@ def test_selected_distribution_does_not_write_time_series(tmp_path):
     cfg["plots"]["distributions"] = True
     plot_all(cfg, tmp_path, repouts)
     produced = sorted((tmp_path / "project_summary/figures").rglob("*.png"))
-    assert [path.name for path in produced] == ["rmsd_A__distribution.png"]
+    assert [path.name for path in produced] == ["time_series@rmsd_A@distribution.png"]
 
 
 def test_interaction_filter_is_pushed_before_loading_tables(tmp_path, monkeypatch):
@@ -96,7 +96,7 @@ def test_interaction_filter_is_pushed_before_loading_tables(tmp_path, monkeypatc
 def test_old_generated_figure_excluded_when_no_longer_selected(tmp_path):
     rep = tmp_path / "condition" / "rep1"
     rep.mkdir(parents=True)
-    dest = tmp_path / "project_summary/figures/time_series/rmsd_A__timeseries.png"
+    dest = tmp_path / "project_summary/figures/rmsd/secondary/time_series@rmsd_A@timeseries.png"
     dest.parent.mkdir(parents=True)
     Image.new("RGB", (80, 50), "white").save(dest)
     cfg = {"plots": {"enabled": True, "include": [
@@ -142,11 +142,11 @@ def test_sdc4_condition_selection_does_not_open_unselected_maps(tmp_path):
         "analyses": {"sdc4_mechanisms": {"enabled": True}},
     }
     plot_sdc4_mechanisms(cfg, tmp_path, {"condition": [rep]})
-    output = tmp_path / "project_summary/figures/sdc4/condition"
-    assert (output / "nxip_height_occlusion_joint.png").is_file()
+    output = tmp_path / "project_summary/figures/sdc4_mechanisms/secondary"
+    assert (output / "sdc4@condition@nxip_height_occlusion_joint.png").is_file()
     assert not (output / "vvhplvpl_proline_ramachandran.png").exists()
     assert not list(folder.glob("*.png"))
-    assert id_from_figure_path(output / "nxip_height_occlusion_joint.png") == (
+    assert id_from_figure_path(output / "sdc4@condition@nxip_height_occlusion_joint.png") == (
         "sdc4:condition:nxip_height_occlusion_joint")
 
 
@@ -167,7 +167,7 @@ def test_shared_state_sampling_only_does_not_require_populations(tmp_path):
         "analyses": {"sdc4_mechanisms": {"enabled": True}},
     }
     plot_sdc4_mechanisms(cfg, tmp_path, {"condition": []})
-    assert (out / "state_sampling_diagnostics.png").is_file()
+    assert (tmp_path / "project_summary/figures/shared_states/tertiary/shared_states@state_sampling_diagnostics.png").is_file()
     assert not (out / "state_populations.png").exists()
 
 
@@ -193,9 +193,9 @@ def test_lipid_contact_include_one_exact_heatmap(tmp_path):
     }
     plot_lipid_contacts(cfg, tmp_path, {"condition": [rep]})
     dest = tmp_path / "project_summary/figures/lipid_contacts"
-    names = sorted(p.name for p in dest.iterdir())
-    assert names == ["lipid_contact_matrix_condition_upper_enrichment.png"]
-    assert id_from_figure_path(dest / names[0]) == cfg["plots"]["include"][0]
+    names = sorted(p.name for p in dest.rglob("*.png"))
+    assert names == ["lipid_contacts@lipid_contact_matrix_condition_upper_enrichment.png"]
+    assert id_from_figure_path(next(dest.rglob("*.png"))) == cfg["plots"]["include"][0]
 
 
 def test_specialized_figure_ids_are_validated():
@@ -232,7 +232,7 @@ def test_single_metric_ignores_unselected_solvation_and_lipid_tables(tmp_path):
     plot_all(cfg, tmp_path, repouts)
     assert sorted(path.name for path in (
         tmp_path / "project_summary/figures").rglob("*.png")) == [
-        "rmsd_A__timeseries.png"
+        "time_series@rmsd_A@timeseries.png"
     ]
 
 
@@ -255,7 +255,7 @@ def test_selected_lipid_contact_time_series_still_reads_needed_matrix(tmp_path):
     plot_all(cfg, tmp_path, repouts)
     produced = [path.name for path in (
         tmp_path / "project_summary/figures").rglob("*.png")]
-    assert produced == ["enrichment__group_lipid_contacts_upper_POPC_DOPC__timeseries.png"]
+    assert produced == ["time_series@enrichment__group_lipid_contacts_upper_POPC_DOPC@timeseries.png"]
 
 
 def test_individual_dpi_changes_only_selected_visual_resolution(tmp_path):
@@ -263,7 +263,7 @@ def test_individual_dpi_changes_only_selected_visual_resolution(tmp_path):
     cfg, repouts = _fake_data(root_base)
     cfg["plots"]["include"] = ["time_series:rmsd_A:timeseries"]
     plot_all(cfg, root_base, repouts)
-    image_path = "project_summary/figures/time_series/rmsd_A__timeseries.png"
+    image_path = "project_summary/figures/rmsd/secondary/time_series@rmsd_A@timeseries.png"
     with Image.open(root_base / image_path) as image:
         base_pixels = image.size
 
@@ -313,14 +313,13 @@ def test_describe_plot_uses_declared_renderers_and_saved_input_contracts():
         assert "dpi" in record["available_overrides"]
         assert any(expected in source for source in record["source_candidates"])
         if identifier.startswith("sdc4:"):
-            assert record["destination"].startswith("project_summary/figures/sdc4/")
+            assert record["destination"].startswith("project_summary/figures/sdc4_mechanisms/")
 
     with pytest.raises(ValueError, match="unsupported plot ID"):
         describe_plot("sdc4:condition_A:unsupported")
 
 
 def test_figure_preview_manifest_can_describe_exact_output_ids(tmp_path):
-    from mdscope.contracts.plot_validation import describe_plot
     from mdscope.reporting.plot_ids import id_from_figure_path
 
     cfg, repouts = _fake_data(tmp_path)
@@ -328,8 +327,9 @@ def test_figure_preview_manifest_can_describe_exact_output_ids(tmp_path):
     plot_all(cfg, tmp_path, repouts)
     figure = next((tmp_path / "project_summary/figures").rglob("*.png"))
     identifier = id_from_figure_path(figure)
-    record = describe_plot(identifier)
-    assert record["destination"] == "project_summary/figures/time_series/rmsd_A__timeseries.png"
+    from mdscope.registry import figure_descriptor
+    record = figure_descriptor(cfg, identifier)
+    assert record["destination"] == "project_summary/figures/rmsd/secondary/time_series@rmsd_A@timeseries.png"
 
 
 def test_single_time_series_does_not_read_unselected_statistics(tmp_path):
@@ -338,7 +338,7 @@ def test_single_time_series_does_not_read_unselected_statistics(tmp_path):
     stat.write_bytes(b"invalid statistics file that must remain unread")
     cfg["plots"]["include"] = ["time_series:rmsd_A:timeseries"]
     plot_all(cfg, tmp_path, repouts)
-    assert (tmp_path / "project_summary/figures/time_series/rmsd_A__timeseries.png").exists()
+    assert (tmp_path / "project_summary/figures/rmsd/secondary/time_series@rmsd_A@timeseries.png").exists()
 
 
 def test_single_profile_does_not_read_unselected_contrast(tmp_path):
@@ -347,7 +347,7 @@ def test_single_profile_does_not_read_unselected_contrast(tmp_path):
     contrast.write_bytes(b"invalid contrast that must remain unread")
     cfg["plots"]["include"] = ["profiles:lipid_order__POPC__sn1:profile"]
     plot_all(cfg, tmp_path, repouts)
-    assert (tmp_path / "project_summary/figures/profiles/lipid_order__POPC__sn1__profile.png").exists()
+    assert (tmp_path / "project_summary/figures/membrane_order/primary/profiles@lipid_order__POPC__sn1@profile.png").exists()
 
 
 def test_selected_occupancy_skips_event_presence_and_lifetimes(tmp_path):
@@ -360,7 +360,7 @@ def test_selected_occupancy_skips_event_presence_and_lifetimes(tmp_path):
     cfg["plots"]["include"] = ["interactions:salt_bridges:occupancy_heatmap"]
     plot_all(cfg, tmp_path, repouts)
     assert (tmp_path /
-            "project_summary/figures/interactions/salt_bridges/occupancy_heatmap.png").is_file()
+            "project_summary/figures/salt_bridges/primary/interactions@salt_bridges@occupancy_heatmap.png").is_file()
 
 
 def test_selected_interaction_kind_honors_explicit_exclusion(tmp_path):
@@ -399,11 +399,8 @@ def test_sdc4_condition_figures_keep_replica_traces_separate(tmp_path, monkeypat
     monkeypatch.setattr(module, "_save", check_legend)
     plot_sdc4_mechanisms(cfg, tmp_path, repouts)
 
-    root = tmp_path / "project_summary/figures/sdc4/condition_A"
-    assert sorted(path.name for path in root.glob("*.png")) == [
-        "lipid_density_maps.png", "lipid_region_mean_contact_fraction.png",
-        "nxip_height_occlusion_joint.png",
-    ]
+    root = tmp_path / "project_summary/figures/sdc4_mechanisms"
+    assert sorted(id_from_figure_path(path) for path in root.rglob("*.png")) == sorted(cfg['plots']['include'])
     assert observed
     assert not (tmp_path / "project_summary/figures/sdc4/condition_B").exists()
     for paths in repouts.values():
@@ -462,7 +459,7 @@ def test_descriptive_plotting_does_not_require_completed_statistics(tmp_path, pr
 
     finalize_project(path, phase="plotting")
     figures = sorted((root / "project_summary/figures").rglob("*.png"))
-    assert [figure.name for figure in figures] == ["rmsd_A__timeseries.png"]
+    assert [figure.name for figure in figures] == ["time_series@rmsd_A@timeseries.png"]
     assert not (root / "project_summary/statistics/manifest.json").exists()
 
 
@@ -516,7 +513,8 @@ def test_exact_descriptive_lipid_matrix_can_render_without_statistics(tmp_path, 
     path.write_text(yaml.safe_dump(options))
     run_one(path, 0)
     finalize_project(path, phase="plotting")
-    assert (root / "project_summary/figures/lipid_contacts" / (identifier.split(":")[1] + ".png")).is_file()
+    from mdscope.registry import figure_descriptor
+    assert (root / figure_descriptor(options, identifier)["destination"]).is_file()
     assert not (root / "project_summary/statistics/manifest.json").exists()
     plan = build_plan(load_config(path), path)
     figure = next(f for family in plan["figure_families"] for f in family["specific_figures"] if f["id"] == identifier)

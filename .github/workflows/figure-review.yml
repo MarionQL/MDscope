@@ -2,6 +2,17 @@ name: MDscope figure review
 
 # Dispatch when required by docs/developer/check-policy.md.
 on:
+  pull_request:
+    paths:
+      - 'src/mdscope/reporting/**'
+      - 'src/mdscope/contracts/plot_validation.py'
+      - 'src/mdscope/planning.py'
+      - 'src/mdscope/registry.py'
+      - 'src/mdscope/config/**'
+      - 'src/mdscope/studio/**'
+      - 'scripts/*preview*.py'
+      - 'scripts/figure_gallery.py'
+      - '.github/workflows/figure-review.yml'
   workflow_dispatch:
     inputs:
       base_ref:

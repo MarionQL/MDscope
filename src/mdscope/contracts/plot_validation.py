@@ -2,7 +2,7 @@
 # Figure families accepted by plots.families and catalogued by planning.
 FIGURE_FAMILIES = (
     "time_series", "profiles", "interactions", "solvation", "sdc4",
-    "shared_states", "diffusion", "lipid_enrichment", "lipid_contacts", "other",
+    "shared_states", "diffusion", "lipid_enrichment", "lipid_contacts", "overview", "other",
 )
 DYNAMIC_VARIANTS = {
     "time_series": frozenset({
@@ -49,6 +49,9 @@ def validate_plot_ids(include):
     if len(set(include)) != len(include):
         raise ValueError("plots.include must not contain repeated plot IDs")
     for identifier in include:
+        if (identifier.startswith("overview:") and len(identifier.split(":")) == 3
+                and identifier.split(":")[1] and identifier.split(":")[2] in {"distributions", "effects"}):
+            continue
         if identifier in STATIC_IDS:
             continue
         parts = identifier.split(":")
@@ -81,13 +84,18 @@ def validate_plot_ids(include):
 
 
 def validate_figure_options(options):
-    """Only presentation resolution is configurable per ID for now."""
+    """Presentation-only controls; measured values and axis units stay unchanged."""
     if not isinstance(options, dict):
         raise ValueError("plots.options must map named plot IDs to option mappings")
     for identifier, spec in options.items():
         validate_plot_ids([identifier])
-        if not isinstance(spec, dict) or set(spec) - {"dpi"}:
-            raise ValueError(f"plots.options.{identifier} supports only dpi")
+        if not isinstance(spec, dict) or set(spec) - {"dpi", "title", "annotations"}:
+            raise ValueError(f"plots.options.{identifier} supports only dpi, title and annotations")
+        if 'title' in spec and not isinstance(spec['title'], str):
+            raise ValueError(f"plots.options.{identifier}.title must be a string")
+        if 'annotations' in spec and (not isinstance(spec['annotations'], list) or
+                any(not isinstance(text, str) for text in spec['annotations'])):
+            raise ValueError(f"plots.options.{identifier}.annotations must be a list of strings")
         if "dpi" in spec and (type(spec["dpi"]) is not int or
                               not 50 <= spec["dpi"] <= 600):
             raise ValueError(f"plots.options.{identifier}.dpi must be an integer from 50 to 600")
@@ -100,7 +108,7 @@ def safe_plot_stem(value) -> str:
                    for ch in str(value)).strip("_")
 
 
-def describe_plot(identifier: str, *, table_reports_pdf=False) -> dict:
+def describe_plot(identifier: str, *, table_reports_pdf=False, analysis=None) -> dict:
     """Describe prerequisites for one supported plot without loading data."""
     validate_plot_ids([identifier])
     parts = identifier.split(":")
@@ -109,7 +117,13 @@ def describe_plot(identifier: str, *, table_reports_pdf=False) -> dict:
     destination = None
     requires_statistics = False
     unit_notes = "Metric-dependent units shown on output axes"
-    if family == "time_series":
+    if family == "overview":
+        analysis = parts[1]
+        requires_statistics = parts[2] == "effects"
+        source = (["project_summary/statistics/time_series/system_comparisons.parquet"]
+                  if requires_statistics else ["{system}/{replicate}/summary/timeseries.parquet"])
+        destination = None
+    elif family == "time_series":
         stem, variant = parts[1:]
         source = ["{system}/{replicate}/summary/timeseries.parquet",
                   "{system}/{replicate}/summary/group_timeseries.parquet"]
@@ -118,7 +132,13 @@ def describe_plot(identifier: str, *, table_reports_pdf=False) -> dict:
             source.append("project_summary/statistics/time_series/")
         destination = f"project_summary/figures/time_series/{stem}__{variant}.png"
     elif family == "profiles":
-        if len(parts) == 4 and parts[-1] == "distance_heatmap":
+        if identifier == "profiles:residue_response:heatmap":
+            requires_statistics = True
+            source = ["project_summary/statistics/profiles/residue_response_matrix.parquet",
+                      "project_summary/statistics/profiles/residue_response_manifest.json"]
+            destination = "project_summary/figures/profiles/residue_response/{contrast_chain}__heatmap.png"
+            unit_notes = "Standardized condition difference; raw-unit profiles are separate"
+        elif len(parts) == 4 and parts[-1] == "distance_heatmap":
             source = [f"{{system}}/{{replicate}}/profiles/residue_membrane_distance/"
                       f"{parts[1].removeprefix('residue_membrane_distance__')}/"
                       "distance_matrix_A.npy"]
@@ -198,13 +218,30 @@ def describe_plot(identifier: str, *, table_reports_pdf=False) -> dict:
     if len(parts) >= 3:
         label += " · " + parts[1].replace("__group_", " / group ").replace("_", " ")
     table_source = parts[-1] in {'bootstrap_table', 'comparison_table'}
+    static_owners = {"solvation": "solvation", "diffusion": "membrane",
+                     "lipid_enrichment": "lipid_enrichment", "lipid_contacts": "lipid_contacts",
+                     "shared_states": "shared_states", "sdc4": "sdc4_mechanisms"}
+    analysis = analysis or static_owners.get(family, "unmapped")
+    if identifier == "profiles:residue_response:heatmap":
+        analysis = "integrative"
+    if family == "interactions":
+        analysis = parts[1]
+    if len(parts) == 4 and parts[-1] == "distance_heatmap":
+        analysis = "residue_membrane_distance"
+    tier = plot_tier(identifier)
+    legacy_destination = destination
+    destination = canonical_figure_destination(identifier, analysis)
     return {
-        **({'consolidated_destination': 'project_summary/figures/statistical_reports/{registered_analysis}/statistics_tables.pdf',
+        "analysis": analysis, "tier": tier,
+        "legacy_destination": legacy_destination,
+        "prerequisites": source,
+        **({'consolidated_destination': f'project_summary/figures/{analysis}/secondary/statistics_tables.pdf',
             'csv_companion': 'statistics_tables.csv',
             'selection_semantics': 'Exact source rows within one analysis report; legacy PNG destination applies only with table_reports_pdf: false'} if table_source and table_reports_pdf else {}),
         "label": label,
         "id": identifier, "family": family,
         "renderer": {
+            "overview": "reporting.overview.plot_overviews",
             "time_series": "reporting.plotting.plot_time_series",
             "profiles": "reporting.plotting.plot_profiles",
             "interactions": "reporting.plotting.plot_interactions",
@@ -220,6 +257,41 @@ def describe_plot(identifier: str, *, table_reports_pdf=False) -> dict:
         "destination": destination,
         "units_note": unit_notes,
         "status": "conditional_on_saved_data",
-        "available_overrides": ["dpi"],
+        "available_overrides": ["dpi", "title", "annotations"],
     }
 
+
+
+def plot_tier(identifier):
+    """Purpose, independent of storage family or inference eligibility."""
+    parts = identifier.split(":")
+    variant = parts[-1]
+    if variant in {"autocorrelation", "state_sampling_diagnostics"}:
+        return "tertiary"
+    if parts[0] == "overview" or variant in {
+            "profile", "system_difference", "occupancy_heatmap", "heatmap",
+            "state_populations", "diffusion_coefficients", "shell_rdf",
+            "lipid_enrichment_heatmap", "lipid_area_density_heatmap"}:
+        return "primary"
+    if parts[0] == "lipid_contacts":
+        return "primary" if variant.endswith("_enrichment") else "secondary"
+    if parts[0] == "sdc4" and variant in {
+            "lipid_region_mean_matched_local_contact_fraction",
+            "lipid_region_mean_matched_local_enrichment"}:
+        return "primary"
+    return "secondary"
+
+
+def canonical_figure_destination(identifier, analysis):
+    from urllib.parse import quote
+    # Encode every identity component reversibly; no filename-prefix guessing.
+    name = "@".join(quote(part, safe="-_.") for part in identifier.split(":"))
+    owner = quote(analysis, safe="-_.")
+    if owner in {".", ".."}:
+        owner = owner.replace(".", "%2E")
+    return f"project_summary/figures/{owner}/{plot_tier(identifier)}/{name}.png"
+
+
+def preset_plot_ids(identifiers, presets):
+    """Stable expansion over a caller's eligible catalog; no new measurements."""
+    return sorted({identifier for identifier in identifiers if plot_tier(identifier) in presets})

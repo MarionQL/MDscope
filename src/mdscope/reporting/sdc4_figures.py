@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import figure_enabled, plot_enabled
-from .plot_ids import figure_dpi
+from .plot_ids import figure_dpi, figure_path, save_figure
 from .sdc4_condition_figures import plot_sdc4_condition_figures
 
 
@@ -41,7 +41,7 @@ def _plot_shared_state_figures(cfg, root):
                 ax.set_title("Shared-state populations\n(points = independent replicates)")
                 ax.legend()
                 fig.tight_layout()
-                fig.savefig(state_dir / "state_populations.png",
+                save_figure(fig, cfg, figure_path(cfg, state_dir / "state_populations.png"),
                             dpi=figure_dpi(cfg, "shared_states:state_populations", 200))
                 plt.close(fig)
 
@@ -57,7 +57,7 @@ def _plot_shared_state_figures(cfg, root):
                 ax.set_ylabel("Jensen–Shannon divergence (bits)")
                 ax.set_title("First- vs second-half state populations")
                 fig.tight_layout()
-                fig.savefig(state_dir / "state_sampling_diagnostics.png",
+                save_figure(fig, cfg, figure_path(cfg, state_dir / "state_sampling_diagnostics.png"),
                             dpi=figure_dpi(cfg, "shared_states:state_sampling_diagnostics", 200))
                 plt.close(fig)
 

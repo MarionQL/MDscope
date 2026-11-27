@@ -267,6 +267,15 @@ def create_fixture(root: Path):
         summary_root / "shared_states/replicate_populations.parquet", index=False)
     pd.DataFrame(diagnostics_rows).to_parquet(
         summary_root / "shared_states/sampling_diagnostics.parquet", index=False)
+    # Explicitly invented saved intervals exercise the production forest renderer;
+    # these are fixture constants, never estimates from the synthetic traces.
+    pd.DataFrame([
+        dict(metric='rmsd_A', group=group, system_1='condition_A', system_2='condition_B',
+             mean_difference_system2_minus_system1=value, mean_difference_ci_low=low,
+             mean_difference_ci_high=high, mean_probability_difference_gt_0=.6,
+             p_value=.5, q_value=.9, ci_level=.95)
+        for group, value, low, high in ((None, .15, .08, .22), ('chain_A', -.05, -.12, .02), ('chain_B', 0., 0., 0.))
+    ]).to_parquet(statistics / 'time_series/system_comparisons.parquet', index=False)
     cfg["statistics"]["enabled"] = True
     cfg["analyses"] = {
         "lipid_contacts": {"enabled": True},
@@ -301,13 +310,34 @@ def mark_synthetic(path: Path):
     captioned.save(path)
 
 
-def render_preview(root: Path, *, include: list[str] | None = None):
+def render_preview(root: Path, *, include: list[str] | None = None, presets=None, generic=False):
     root = Path(root)
     if root.exists() and any(root.iterdir()):
         raise FileExistsError(f"Refusing to replace preview or results in nonempty {root}")
     root.mkdir(parents=True, exist_ok=True)
     cfg, system_repouts = create_fixture(root)
     cfg["plots"]["table_reports_pdf"] = True
+    if generic:
+        cfg['analyses']['sdc4_mechanisms']['enabled'] = False
+        cfg['plots']['families']['sdc4'] = False
+    if presets is not None:
+        from mdscope.config import DEFAULTS, merge
+        cfg = merge(DEFAULTS, cfg)
+        for name in ('rmsd', 'radius_of_gyration', 'membrane', 'membrane_order', 'salt_bridges', 'solvation', 'shared_states'):
+            cfg['analyses'][name]['enabled'] = True
+        cfg['selections']['groups'] = {name: {'selection': 'protein', 'label': name}
+                                       for name in ('chain_A', 'chain_B')}
+        for system in cfg['systems'].values():
+            system['topology'] = 'SYNTHETIC_NO_TOPOLOGY.pdb'
+            for replica in system['replicates']:
+                replica['trajectory'] = 'SYNTHETIC_NO_TRAJECTORY.xtc'
+        if generic:
+            cfg['analyses']['sdc4_mechanisms']['enabled'] = False
+            cfg['plots']['families']['sdc4'] = False
+        cfg['plots']['presets'] = list(presets)
+        from mdscope.planning import resolve_figure_presets
+        cfg, omissions = resolve_figure_presets(cfg, root, root / 'synthetic.yaml')
+        (root / 'preset_omissions.json').write_text(json.dumps(omissions, indent=2))
     if include is not None:
         cfg["plots"]["include"] = list(include)
     # These are the same plotting functions used by runner.finalize_project.
@@ -330,7 +360,7 @@ def render_preview(root: Path, *, include: list[str] | None = None):
         if ("project_summary" in path.parts or
             ("extensions" in path.parts and "sdc4_mechanisms" in path.parts))
     )
-    minimum = 1 if include is not None else 15
+    minimum = 1 if include is not None or presets is not None else 15
     if len(figures) < minimum:
         raise RuntimeError(f"Expected at least {minimum} figure preview(s); got {len(figures)}")
     for path in figures:
@@ -371,8 +401,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--include", action="append", help="Select exact plot ID (repeatable)")
+    parser.add_argument("--preset", action="append", choices=("primary", "secondary", "tertiary"))
+    parser.add_argument("--generic", action="store_true", help="Exclude SDC4 biological presentation")
     args = parser.parse_args()
-    record = render_preview(args.output, include=args.include)
+    record = render_preview(args.output, include=args.include, presets=args.preset, generic=args.generic)
     print(f"Rendered {len(record['plots'])} marked synthetic previews in {args.output}")
 
 

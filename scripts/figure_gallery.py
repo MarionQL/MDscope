@@ -20,15 +20,33 @@ def build_gallery(base: Path, head: Path, output: Path, *, only_name: str | None
     base_manifest = json.loads((base / "preview_manifest.json").read_text())
     head_manifest = json.loads((head / "preview_manifest.json").read_text())
     base_paths, head_paths = base_manifest["plots"], head_manifest["plots"]
-    all_paths = sorted(set(base_paths) | set(head_paths))
+    # Match moved products by stable ID, keeping each companion page once.
+    remaining = set(base_paths)
+    base_by_id = {}
+    for name in sorted(base_paths):
+        identifier = base_manifest.get('plot_ids', {}).get(name)
+        if identifier:
+            base_by_id.setdefault(identifier, []).append(name)
+    base_alias, head_alias = {}, {}
+    for name in sorted(head_paths):
+        identifier = head_manifest.get('plot_ids', {}).get(name)
+        candidates = [path for path in base_by_id.get(identifier, []) if path in remaining]
+        previous = name if name in remaining else (candidates[0] if candidates else None)
+        head_alias[name] = name
+        if previous:
+            base_alias[name] = previous
+            remaining.remove(previous)
+    for name in remaining:
+        base_alias[name] = name
+    all_paths = sorted(set(base_alias) | set(head_alias))
     extra_note = ""
     if only_name is not None:
-        requested = [name for name in all_paths if Path(name).name == only_name]
+        requested = [name for name in all_paths if only_name in {Path(name).name, Path(base_alias.get(name, name)).name}]
         if len(requested) != 1:
             raise ValueError(f"Selection example {only_name!r} must match one figure")
         all_paths = requested
-        previous_extra = len(base_paths) - sum(name in base_paths for name in requested)
-        updated_extra = len(head_paths) - sum(name in head_paths for name in requested)
+        previous_extra = len(base_paths) - sum(name in base_alias for name in requested)
+        updated_extra = len(head_paths) - sum(name in head_alias for name in requested)
         extra_note = (f'<p>One-figure selection test: requested <strong>{escape(only_name)}</strong>. '
                       f'Previous code generated {previous_extra} other figure(s); '
                       f'updated code generated {updated_extra} other figure(s). '
@@ -44,7 +62,7 @@ def build_gallery(base: Path, head: Path, output: Path, *, only_name: str | None
 
     rows = []
     for index, name in enumerate(all_paths):
-        left, right = base / name, head / name
+        left, right = base / base_alias.get(name, name), head / head_alias.get(name, name)
         panels = []
         for label, path in (("Previous code", left), ("Updated code", right)):
             if path.is_file():

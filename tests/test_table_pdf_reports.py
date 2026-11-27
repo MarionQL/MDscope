@@ -84,7 +84,7 @@ def test_legacy_png_mode_preserved(tmp_path):
     with table_report_session(tmp_path, enabled=False):
         _table_figure("Legacy", pd.DataFrame({"value": [1.]}),
                       folder / "rmsd_A__bootstrap_table.png", _cfg())
-    assert (folder / "rmsd_A__bootstrap_table.png").is_file()
+    assert (tmp_path / "project_summary/figures/rmsd/secondary/time_series@rmsd_A@bootstrap_table.png").is_file()
     assert not (folder / "statistics_tables.pdf").exists()
 
 

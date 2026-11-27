@@ -4,13 +4,12 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.colors import TwoSlopeNorm
 from matplotlib.patches import Rectangle
 
 from ..config import figure_enabled
+from ..contracts.plot_validation import safe_plot_stem
 from ..core.persistence import ensure_dir
 from .figure_inventory import current_statistics
-from ..contracts.plot_validation import safe_plot_stem
 
 
 def plot_residue_response(cfg: dict, root: Path) -> None:
@@ -47,46 +46,28 @@ def plot_residue_response(cfg: dict, root: Path) -> None:
         supported = group.pivot(index="profile", columns="resid",
                                 values="ci_excludes_zero").reindex(
                                     index=values.index, columns=values.columns)
-        figure_width = max(11., min(30., 6. + .08 * len(values.columns)))
-        figure_height = max(4.5, min(24., 2. + .45 * len(values.index)))
-        fig, ax = plt.subplots(figsize=(figure_width, figure_height))
-        image = ax.imshow(np.ma.masked_invalid(np.clip(matrix, -3, 3)),
-                          interpolation="nearest", aspect="auto", cmap="RdBu_r",
-                          norm=TwoSlopeNorm(vmin=-3, vcenter=0, vmax=3))
-        ax.set_facecolor("#ececec")
-        x = np.arange(len(values.columns))
-        y = np.arange(len(values.index))
-        # A small marker indicates that the existing pointwise bootstrap
-        # interval excluded zero; it is not a post-clustering interval.
-        points_y, points_x = np.where(supported.fillna(False).to_numpy(bool) &
-                                      np.isfinite(matrix))
-        ax.scatter(points_x, points_y, marker=".", s=5, color="black", alpha=.75)
-        ticks = np.unique(np.r_[0, np.arange(0, len(x), max(1, len(x)//15)),
-                                len(x)-1])
-        ax.set_xticks(ticks, [str(values.columns[i]) for i in ticks], rotation=45)
-        ax.set_yticks(y, values.index)
-        ax.tick_params(axis="y", labelsize=max(7, min(11, 12 - .07 * len(y))))
-        ax.set_xlabel("Residue number (within chain)")
-        ax.set_ylabel("Residue-resolved observable")
-        ax.set_title(f"{chain}: {right} minus {left}\n"
-                     "Scaled by within-residue replica SD; dots: configured pointwise CI excludes zero")
-        region_ids = group.loc[group.region_id.notna(), "region_id"].unique()
-        for region_id in region_ids:
-            res = group.loc[group.region_id == region_id, "resid"].unique()
-            where = np.flatnonzero(np.isin(values.columns, res))
-            if len(where):
-                ax.add_patch(Rectangle((where.min() - .5, -.5), len(where),
-                                       len(values.index), fill=False,
-                                       edgecolor="black", linewidth=1.2))
-        fig.colorbar(image, ax=ax, label="Standardized condition difference (clipped ±3)")
-        fig.text(.5, .005, "Exploratory, data-selected regions; CI dots are pointwise, not region significance.",
-                 ha="center", fontsize=8)
-        # Long observable names need an explicit left margin; tight_layout
-        # alone can shrink the heatmap until values are unreadable.
-        longest = max(map(len, values.index.astype(str)), default=0)
-        fig.subplots_adjust(left=min(.38, max(.16, .09 + .004 * longest)),
-                            right=.89, top=.89, bottom=.13)
+        from urllib.parse import quote
+
+        from .plot_ids import figure_path, save_figure
+        from .templates import heatmap_pages
         stem = safe_plot_stem(f"{left}__{right}__{chain}")
-        fig.savefig(dest / f"{stem}__heatmap.png",
-                    dpi=int(cfg.get("plots", {}).get("dpi", 250)), bbox_inches="tight")
-        plt.close(fig)
+        for fig, ax, rs, cs, page in heatmap_pages(np.clip(matrix, -3, 3), list(values.index), list(values.columns),
+                title=f"{chain}: {right} minus {left}\nScaled by within-residue replica SD; dots: saved pointwise CI excludes zero",
+                units="Standardized condition difference (clipped ±3)", vmin=-3, vmax=3, cmap="RdBu_r"):
+            supported_page = supported.fillna(False).to_numpy(bool)[rs, cs]
+            points_y, points_x = np.where(supported_page & np.isfinite(matrix[rs, cs]))
+            ax.scatter(points_x, points_y, marker=".", s=5, color="black", alpha=.75)
+            ax.set_xlabel("Residue number (within chain)")
+            ax.set_ylabel("Residue-resolved observable")
+            for region_id in group.loc[group.region_id.notna(), "region_id"].unique():
+                residues = group.loc[group.region_id == region_id, "resid"].unique()
+                where = np.flatnonzero(np.isin(values.columns[cs], residues))
+                if len(where):
+                    ax.add_patch(Rectangle((where.min()-.5, -.5), len(where), len(values.index[rs]),
+                                           fill=False, edgecolor="black", linewidth=1.2))
+            fig.text(.5, .005, "Exploratory, data-selected regions; CI dots are pointwise, not region significance. Raw-unit profiles remain separate.", ha="center", fontsize=8)
+            canonical = figure_path(cfg, dest / f"{stem}__heatmap.png", identifier="profiles:residue_response:heatmap")
+            canonical = canonical.with_stem(canonical.stem + "@page_" + quote(stem, safe="-_.") + f"_{page:03d}")
+            fig.tight_layout(rect=(0, .04, 1, 1))
+            save_figure(fig, cfg, canonical, dpi=int(cfg.get("plots", {}).get("dpi", 250)), bbox_inches="tight")
+            plt.close(fig)

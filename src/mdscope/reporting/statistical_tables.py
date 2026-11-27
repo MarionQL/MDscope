@@ -13,10 +13,10 @@ import numpy as np
 import pandas as pd
 
 from ..config import plot_enabled
+from ..contracts.plot_validation import safe_plot_stem
 from ..contracts.statistics import STATISTICS_CANDIDATES
 from ..registry import statistical_variable_owner
 from .figure_inventory import current_statistics, statistics_status
-from ..contracts.plot_validation import safe_plot_stem
 from .table_reports import (
     REPORT_NAME,
     add_report_data,
@@ -278,7 +278,7 @@ def render_statistical_reports(cfg, root):
                  'position', 'position_label', 'source_table') if column in rows]
         rows = rows.sort_values(order, kind='stable', na_position='last').dropna(axis=1, how='all').reset_index(drop=True)
         identifiers = sorted(rows.source_id.unique())
-        path = root / 'project_summary/figures/statistical_reports' / safe_plot_stem(analysis) / 'consolidated.png'
+        path = root / 'project_summary/figures' / safe_plot_stem(analysis) / 'secondary' / 'consolidated.png'
         matrix = _lipid_matrix(rows) if 'profile' in rows else pd.DataFrame()
         if not matrix.empty:
             for tails in (('sn1', 'sn2'), ('n_acyl', 'sphingosine')):

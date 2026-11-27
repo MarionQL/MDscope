@@ -114,7 +114,7 @@ def test_difference_heatmap_uses_replica_means_and_masks_unavailable_species(tmp
     original = matplotlib.axes.Axes.imshow
 
     def observe(ax, values, **kwargs):
-        if 'vmin' in kwargs:
+        if kwargs.get('vmin', 0) < 0:
             deltas.append(values)
         return original(ax, values, **kwargs)
 
@@ -122,8 +122,9 @@ def test_difference_heatmap_uses_replica_means_and_masks_unavailable_species(tmp
     plot_lipid_contacts(cfg, tmp_path, paths)
     assert len(deltas) == 2
     for values in deltas:
-        assert values.loc['A', 'A'] == 2.
-        assert np.isnan(values.loc['A', 'B'])
+        # Canonical contrast follows the saved-statistics convention: treated − control.
+        assert values[0, 0] == -2.
+        assert np.ma.is_masked(values[0, 1])
 
 
 def test_lipid_contact_replay_preserves_stream_cache(tmp_path):

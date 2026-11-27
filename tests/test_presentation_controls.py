@@ -36,12 +36,12 @@ def test_readable_older_figures_survive_render_settings_changes(tmp_path):
     assert figure_status(fig, cfg, tmp_path, paths) == 'invalid_figure'
 
 
-def test_source_rewrite_keeps_figure_eligible_but_missing_source_does_not(tmp_path):
+def test_source_rewrite_marks_new_provenance_stale_and_missing_source_unavailable(tmp_path):
     cfg, paths, fig = _fixture(tmp_path)
     record_generated_figures(cfg, tmp_path, paths, {})
     source = paths['condition'][0] / 'summary/timeseries.parquet'
     pd.DataFrame({'time_ps': [0., 10.], 'rmsd_A': [7., 9.]}).to_parquet(source)
-    assert figure_status(fig, cfg, tmp_path, paths) == 'valid'
+    assert figure_status(fig, cfg, tmp_path, paths) == 'stale_source'
     source.unlink()
     assert figure_status(fig, cfg, tmp_path, paths) == 'missing_source'
 

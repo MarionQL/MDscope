@@ -520,6 +520,8 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
     else:
         if not cfg.get("plots", {}).get("enabled", False):
             raise ValueError("Set plots.enabled: true to generate diagnostic plots")
+        from ..planning import resolve_figure_presets
+        cfg, preset_omissions = resolve_figure_presets(cfg, root, config_path)
         selected_figures = cfg.get("plots", {}).get("include")
         if selected_figures is not None:
             # With an exact allowlist, raw-data plots can be regenerated before
@@ -645,8 +647,7 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
             return root
 
         from ..reporting.figure_inventory import (
-            figure_snapshot,
-            record_generated_figures,
+            figure_generation,
         )
         from ..reporting.membrane_figures import (
             plot_lipid_contacts,
@@ -657,14 +658,17 @@ def finalize_project(config_path: str | Path, cfg=None, root=None, state=None, p
         from ..reporting.sdc4_figures import plot_sdc4_mechanisms
         from ..reporting.solvation_figures import plot_solvation
 
-        figure_before = figure_snapshot(root, system_repouts)
-        timed("standard_plots", plot_all, cfg, root, system_repouts)
-        timed("lipid_enrichment_plots", plot_lipid_enrichment_matrix, cfg, root)
-        timed("sdc4_plots", plot_sdc4_mechanisms, cfg, root, system_repouts)
-        timed("lipid_contact_plots", plot_lipid_contacts, cfg, root, system_repouts)
-        timed("diffusion_plot", plot_project_diffusion, cfg, root)
-        timed("solvation_plots", plot_solvation, cfg, root, system_repouts)
-        record_generated_figures(cfg, root, system_repouts, figure_before)
+        with figure_generation(cfg, root, system_repouts) as figure_root:
+            if cfg.get('plots', {}).get('presets') is not None:
+                atomic_json(figure_root / 'project_summary/figures/preset_selection.json', {
+                    'presets': cfg['plots']['presets'], 'selected_ids': selected_figures,
+                    'omitted': preset_omissions})
+            timed("standard_plots", plot_all, cfg, figure_root, system_repouts)
+            timed("lipid_enrichment_plots", plot_lipid_enrichment_matrix, cfg, figure_root)
+            timed("sdc4_plots", plot_sdc4_mechanisms, cfg, figure_root, system_repouts)
+            timed("lipid_contact_plots", plot_lipid_contacts, cfg, figure_root, system_repouts)
+            timed("diffusion_plot", plot_project_diffusion, cfg, figure_root)
+            timed("solvation_plots", plot_solvation, cfg, figure_root, system_repouts)
         return root
 
 

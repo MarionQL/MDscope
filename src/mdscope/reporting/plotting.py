@@ -14,16 +14,21 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from ..config import figure_enabled, plot_enabled, replicate_label, replicate_specs, system_label
-from ..core.persistence import ensure_dir
-from ..core.persistence import archive_output
+from ..config import (
+    figure_enabled,
+    plot_enabled,
+    replicate_label,
+    replicate_specs,
+    system_label,
+)
+from ..contracts.plot_validation import safe_plot_stem as _safe
+from ..core.persistence import archive_output, ensure_dir
 from ..interactions import interaction_tables
-from ..statistics.time_series import collect_time_series
 from ..statistics.common import finite
+from ..statistics.time_series import collect_time_series
 from .figure_inventory import current_statistics
 from .labels import _metric_meta
-from .plot_ids import figure_dpi, id_from_figure_path
-from ..contracts.plot_validation import safe_plot_stem as _safe
+from .plot_ids import figure_dpi, figure_path, id_from_figure_path, save_figure
 from .shared_scales import synchronize_y_axes
 from .table_reports import add_table_page, table_page_enabled, table_report_session
 
@@ -41,10 +46,12 @@ def configure_plot_style(cfg: dict):
 
 
 def _save(fig, path: Path, cfg: dict):
+    if path.parent.name not in {"primary", "secondary", "tertiary"}:
+        path = figure_path(cfg, path)
     ensure_dir(path.parent)
     fig.tight_layout()
     dpi = figure_dpi(cfg, id_from_figure_path(path), cfg.get("plots", {}).get("dpi", 250))
-    fig.savefig(path, dpi=int(dpi), bbox_inches="tight")
+    save_figure(fig, cfg, path, dpi=int(dpi), bbox_inches="tight")
     plt.close(fig)
 
 
@@ -104,7 +111,14 @@ def _table_figure(title: str, dataframe: pd.DataFrame, path: Path, cfg: dict,
     # plot set and are easy to drop directly into slides/manuscripts.
     if dataframe.empty:
         return
-    shown = dataframe.head(max_rows).copy()
+    if len(dataframe) > max_rows:
+        for page, start in enumerate(range(0, len(dataframe), max_rows), 1):
+            canonical = figure_path(cfg, path)
+            paged = canonical.with_stem(canonical.stem + f"@page_{page:03d}")
+            _table_figure(title + f" · page {page}", dataframe.iloc[start:start+max_rows],
+                          paged, cfg, max_rows=max_rows, plot_id=identifier)
+        return
+    shown = dataframe.copy()
     from numbers import Real
     def display(value):
         if pd.isna(value):
@@ -234,6 +248,12 @@ def plot_time_series(cfg: dict, root: Path, system_repouts: dict[str, list[Path]
     comp_stats = (pd.read_parquet(comp_stats_path) if comp_stats_path.exists()
                   and stats_allowed and needs_comparisons else pd.DataFrame())
 
+    stems = {}
+    for group, metric in keys:
+        stem = _safe(metric + (f"__group_{group}" if group is not None else ""))
+        if stem in stems and stems[stem] != (group, metric):
+            raise ValueError(f"Plot ID collision for {stem}: {stems[stem]!r} and {(group, metric)!r}; rename the groups")
+        stems[stem] = (group, metric)
     for group_id, metric in sorted(keys, key=lambda x: (str(x[0]), x[1])):
         title, ylabel = _metric_meta(metric)
         suffix = f"__group_{group_id}" if group_id is not None else ""
@@ -610,7 +630,7 @@ def plot_profiles(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
             _save_selected(fig, out / f"{stem}__system_difference.png", cfg, f"profiles:{stem}:system_difference")
             if not cfg.get("plots", {}).get("table_reports_pdf", False):
                 rank_col = "q_value" if "q_value" in comp else "p_value"
-                ranked = comp.sort_values(rank_col, na_position="last").head(16)
+                ranked = comp.sort_values(rank_col, na_position="last")
                 shown = pd.DataFrame({
                     "comparison": ranked.apply(
                         lambda r: (
@@ -922,19 +942,16 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
             if len(labels):
                 order = np.argsort(-np.max(matrix, axis=1))
                 matrix, labels = matrix[order], labels[order]
-                max_rows = min(40, len(labels))
-                matrix, labels = matrix[:max_rows], labels[:max_rows]
-                fig, ax = plt.subplots(figsize=(
-                    max(8, 1.2 * len(columns)),
-                    max(4, 0.3 * len(labels) + 2)
-                ))
-                image = ax.imshow(matrix, aspect="auto", vmin=0, vmax=1, cmap="viridis")
-                ax.set_xticks(np.arange(len(columns)), columns, rotation=30, ha="right")
-                ax.set_yticks(np.arange(len(labels)), labels)
-                ax.set_title(f"{kind.replace('_', ' ').title()} occupancy")
-                fig.colorbar(image, ax=ax, label="Occupancy")
-                _save_selected(fig, kind_out / "occupancy_heatmap.png", cfg,
-                               f"interactions:{_safe(kind)}:occupancy_heatmap")
+                from .templates import heatmap_pages
+                identifier = f"interactions:{_safe(kind)}:occupancy_heatmap"
+                if figure_enabled(cfg, identifier):
+                    for fig, ax, rs, cs, page in heatmap_pages(matrix, labels, columns,
+                            title=f"{kind.replace('_', ' ').title()} occupancy",
+                            units="Occupancy fraction", vmin=0, vmax=1):
+                        path = figure_path(cfg, kind_out / "occupancy_heatmap.png")
+                        if len(labels) > 36 or len(columns) > 24:
+                            path = path.with_stem(path.stem + f"@page_{page:03d}")
+                        _save(fig, path, cfg)
 
         if lifetime_sets:
             fig, ax = plt.subplots(figsize=(max(8, 1.1 * len(lifetime_sets)), 5))
@@ -956,7 +973,7 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
                 metric_data = subset[subset.metric == metric].sort_values(
                     "mean",
                     ascending=False
-                ).head(12)
+                )
                 if metric_data.empty:
                     continue
                 shown = pd.DataFrame({
@@ -1014,7 +1031,7 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
                     )
                     if not c.empty:
                         rank_col = "q_value" if "q_value" in c else "p_value"
-                        c = c.sort_values(rank_col, na_position="last").head(12)
+                        c = c.sort_values(rank_col, na_position="last")
                         comparison = pd.DataFrame({
                             "comparison": c.apply(
                         lambda r: (
@@ -1041,10 +1058,16 @@ def plot_interactions(cfg: dict, root: Path, system_repouts: dict[str, list[Path
 
 
 def plot_all(cfg: dict, root: Path, system_repouts: dict[str, list[Path]]):
+    if cfg.get("plots", {}).get("include") == []:
+        return
     if not cfg.get("plots", {}).get("enabled", True):
         return
     configure_plot_style(cfg)
-    with table_report_session(root, enabled=cfg.get("plots", {}).get("table_reports_pdf", False), cfg=cfg):
+    from .overview import plot_overviews
+    plot_overviews(cfg, root, system_repouts)
+    selected = cfg.get('plots', {}).get('include')
+    tables_selected = selected is None or any(identifier.endswith((':bootstrap_table', ':comparison_table')) for identifier in selected)
+    with table_report_session(root, enabled=cfg.get("plots", {}).get("table_reports_pdf", False) and tables_selected, cfg=cfg):
         if plot_enabled(cfg, "time_series"):
             plot_time_series(cfg, root, system_repouts)
         if plot_enabled(cfg, "profiles"):
