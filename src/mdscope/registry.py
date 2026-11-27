@@ -185,7 +185,7 @@ STRUCTURAL_SCALAR_METRICS = {"rmsd": "rmsd_A",
                              "radius_of_gyration": "radius_of_gyration_A"}
 
 
-def structural_scalar_contracts(cfg: dict) -> list[dict]:
+def structural_scalar_contracts(cfg: dict, *, include_figures=True) -> list[dict]:
     """Configured scalar identities from the shared streaming summary writer.
 
     Group RMSD measures the intersection with selections.features. Rg uses
@@ -226,9 +226,9 @@ def structural_scalar_contracts(cfg: dict) -> list[dict]:
                 "alignment_selection": fit,
                 "coordinate_source": "fitted" if fitted else "source",
                 "statistics_selector": {"metric": metric, "group": group},
-                "figures": [describe_plot(f"time_series:{stem}:{variant}", table_reports_pdf=cfg.get("plots", {}).get("table_reports_pdf", False))
+                "figures": [describe_plot(f"time_series:{stem}:{variant}", table_reports_pdf=cfg.get("plots", {}).get("table_reports_pdf", False), analysis=analysis)
                             for variant in ("timeseries", "distribution", "autocorrelation",
-                                            "bootstrap_table", "comparison_table")],
+                                            "bootstrap_table", "comparison_table")] if include_figures else [],
             })
     return result
 
@@ -254,10 +254,10 @@ def structural_profile_contracts(cfg):
     return result
 
 
-def scalar_contracts(cfg):
+def scalar_contracts(cfg, *, include_figures=True):
     """Deterministic pre-run scalar identities, including membrane and DSSP."""
     from .contracts.plot_validation import describe_plot
-    result = structural_scalar_contracts(cfg)
+    result = structural_scalar_contracts(cfg, include_figures=include_figures)
     specs = []
     membrane = cfg["analyses"]["membrane"]
     if membrane.get("enabled"):
@@ -290,8 +290,8 @@ def scalar_contracts(cfg):
             "group_selection": None, "selection_semantics": "producer-defined population; see scientific contracts",
             "alignment_selection": None, "coordinate_source": "source",
             "statistics_selector": {"metric": metric, "group": None},
-            "figures": [describe_plot(f"time_series:{metric}:{variant}", table_reports_pdf=cfg.get("plots", {}).get("table_reports_pdf", False))
-                        for variant in ("timeseries", "distribution", "autocorrelation", "bootstrap_table", "comparison_table")],
+            "figures": [describe_plot(f"time_series:{metric}:{variant}", table_reports_pdf=cfg.get("plots", {}).get("table_reports_pdf", False), analysis=analysis)
+                        for variant in ("timeseries", "distribution", "autocorrelation", "bootstrap_table", "comparison_table")] if include_figures else [],
         })
     return result
 
@@ -437,7 +437,11 @@ def statistical_variable_owner(cfg, family, identity):
     evidence of analysis ownership. Configured run IDs are matched verbatim.
     """
     from .config.defaults import DEFAULTS, merge
-    from .contracts.statistics import DYNAMIC_VARIABLE_OWNERS, GROUP_VARIABLE_UNITS, INTERACTION_METRICS
+    from .contracts.statistics import (
+        DYNAMIC_VARIABLE_OWNERS,
+        GROUP_VARIABLE_UNITS,
+        INTERACTION_METRICS,
+    )
     config = merge(DEFAULTS, cfg)
     variable = str(identity.get('profile' if family == 'profiles' else 'metric', ''))
     if family == 'interactions':
@@ -445,7 +449,7 @@ def statistical_variable_owner(cfg, family, identity):
         return (kind, {'occupancy': 'fraction', 'event_rate_per_ns': '1/ns'}.get(
             variable, 'ps' if variable.endswith('_ps') else 'unspecified')) if kind in config['analyses'] and variable in INTERACTION_METRICS else ('unmapped', 'unspecified')
     descriptors = (configured_profile_variables(config, include_optional=True)
-                   if family == 'profiles' else scalar_contracts(config))
+                   if family == 'profiles' else scalar_contracts(config, include_figures=False))
     key = 'profile' if family == 'profiles' else 'metric'
     for item in descriptors:
         if item[key] == variable:
@@ -461,3 +465,51 @@ def statistical_variable_owner(cfg, family, identity):
         if family == owner_family and variable.startswith(prefix):
             return analysis, unit
     return 'unmapped', 'unspecified'
+
+
+def figure_descriptor(cfg, identifier):
+    """Join plot presentation with exact producer-owned variable identities."""
+    from .config.defaults import DEFAULTS, merge
+    from .contracts.plot_validation import describe_plot, safe_plot_stem
+    config = merge(DEFAULTS, cfg)
+    from .config import normalize_analysis_booleans
+    normalize_analysis_booleans(config)
+    parts = identifier.split(":")
+    # Ownership does not change when the user disables a producer. Eligibility
+    # is checked separately by planning and execution.
+    ownership_config = config
+    for spec in ownership_config['analyses'].values():
+        if isinstance(spec, dict):
+            spec['enabled'] = True
+    owner = None
+    if parts[0] in {"time_series", "profiles"} and len(parts) == 3:
+        profiles = parts[0] == "profiles"
+        descriptors = (configured_profile_variables(ownership_config, include_optional=True)
+                       if profiles else scalar_contracts(ownership_config, include_figures=False))
+        matches = []
+        for item in descriptors:
+            variable = item["profile" if profiles else "metric"]
+            group = item.get("group")
+            stem = safe_plot_stem(variable + (f"__group_{group}" if group else ""))
+            if stem == parts[1]:
+                matches.append(item["analysis"])
+        if len(matches) > 1:
+            raise ValueError(f"Ambiguous plot ownership for {identifier}")
+        if matches:
+            owner = matches[0]
+        else:
+            # The existing statistics owner handles explicitly contracted dynamic
+            # prefixes; unknown identities stay visible as unmapped.
+            owner, _ = statistical_variable_owner(ownership_config, parts[0], {
+                "profile" if profiles else "metric": parts[1]})
+    descriptor = describe_plot(identifier, analysis=owner,
+                               table_reports_pdf=config["plots"].get("table_reports_pdf", False))
+    if parts[0] == 'overview' and parts[-1] == 'distributions':
+        sources = sorted({"{system}/{replicate}/" + item['path_within_replica']
+                          for item in scalar_contracts(config, include_figures=False)
+                          if item['analysis'] == parts[1]})
+        if parts[1] in FUSED_OUTPUTS:
+            sources.append('{system}/{replicate}/' + FUSED_OUTPUTS[parts[1]])
+        descriptor['source_candidates'] = descriptor['prerequisites'] = sorted(set(sources))
+        descriptor['units_note'] = 'Metric-specific raw units; one frame distribution and mean per replica'
+    return descriptor

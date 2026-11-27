@@ -197,12 +197,14 @@ class TableReports:
             # Selected legacy table PNGs move only after PDF rendering succeeds.
             for pages in self.pages.values():
                 for page in pages:
-                    from ..contracts.plot_validation import describe_plot
                     identifiers = page.get('source_ids') or [page.get('figure_id')]
                     for identifier in identifiers:
-                        png = self.root / describe_plot(identifier)['destination']
-                        if png.is_file():
-                            retired[png] = self.root / '.archives/figure_tables' / png.parent.relative_to(self.root)
+                        from ..registry import figure_descriptor
+                        descriptor = figure_descriptor(self.cfg or {}, identifier)
+                        for relative in (descriptor['destination'], descriptor['legacy_destination']):
+                            png = self.root / relative
+                            if png.is_file():
+                                retired[png] = self.root / '.archives/figure_tables' / png.parent.relative_to(self.root)
             backups = {}
             published = []
             try:

@@ -872,6 +872,18 @@ def main():
         def changed_figure():
             state["figure:tree:edited"] = True
             sync_parents()
+        def select_tier(tier, replace=False):
+            if replace:
+                set_figures(all_ids, False)
+            ids = [fig["id"] for entries in figures_by_family.values() for _, fig in entries
+                   if fig.get("tier") == tier]
+            set_figures(ids, True)
+        if all_ids:
+            buttons = st.columns(3)
+            buttons[0].button("Use primary baseline", on_click=lambda: select_tier("primary", True),
+                              help="Replace the selection with eligible primary overviews.")
+            buttons[1].button("Add secondary details", on_click=lambda: select_tier("secondary"))
+            buttons[2].button("Add tertiary diagnostics", on_click=lambda: select_tier("tertiary"))
         if all_ids:
             st.checkbox("Select All", value=all(selected(i) for i in all_ids),
                         key="figure:tree:all",
@@ -891,11 +903,17 @@ def main():
         by_category = {}
         for family, entries in figures_by_family.items():
             for owner, fig in entries:
-                category = "Statistics" if owner == "statistics" else analysis_category(owner)
-                method = figure_stat_type(fig["id"]) if owner == "statistics" else "Analysis figures"
+                owner = fig.get("analysis", owner)
+                category = analysis_category(owner)
+                method = fig.get("tier", "unmapped").title()
                 by_category.setdefault(category, {}).setdefault(method, {}).setdefault(owner, {}).setdefault(family, []).append(fig)
 
-        stat_entries = by_category.get("Statistics", {})
+        stat_entries = {}
+        for entries in figures_by_family.values():
+            for _, fig in entries:
+                if fig.get('requires_statistics'):
+                    method = figure_stat_type(fig['id'])
+                    stat_entries.setdefault(method, {}).setdefault(fig.get('analysis', 'unmapped'), {}).setdefault(fig['family'], []).append(fig)
         if stat_entries:
             st.markdown("**Select by statistical output type**")
             st.caption("Toggle an entire class of figures. Bootstrap summaries and hypothesis-test comparisons are independent; autocorrelation is a diagnostic, not a hypothesis test.")
@@ -916,9 +934,8 @@ def main():
                         for families in owners.values() for figs in families.values())
             with st.expander(f"{category} · {count} figures"):
                 for method, owners in methods.items():
-                    method_context = (st.expander(f"{method} · " + str(sum(
+                    method_context = st.expander(f"{method} · " + str(sum(
                         len(figs) for families in owners.values() for figs in families.values())))
-                        if category == "Statistics" else st.container())
                     with method_context:
                         for owner, families in owners.items():
                             with st.expander(analysis_title(owner)):

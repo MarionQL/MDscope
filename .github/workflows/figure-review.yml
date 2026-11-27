@@ -2,6 +2,17 @@ name: MDscope figure review
 
 # Dispatch when required by docs/developer/check-policy.md.
 on:
+  pull_request:
+    paths:
+      - 'src/mdscope/reporting/**'
+      - 'src/mdscope/contracts/plot_validation.py'
+      - 'src/mdscope/planning.py'
+      - 'src/mdscope/registry.py'
+      - 'src/mdscope/config/**'
+      - 'src/mdscope/studio/**'
+      - 'scripts/*preview*.py'
+      - 'scripts/figure_gallery.py'
+      - '.github/workflows/figure-review.yml'
   workflow_dispatch:
     inputs:
       base_ref:
@@ -72,6 +83,19 @@ jobs:
             --head "$RUNNER_TEMP/mdscope-plot-review/current" \
             --output "$RUNNER_TEMP/mdscope-plot-review/review/index.html" \
             --revisions "$REVISIONS"
+          # Include the analysis-first baseline and non-SDC4 views in the same
+          # downloadable artifact, using production renderers and saved fixtures.
+          python scripts/plot_preview.py \
+            --output "$RUNNER_TEMP/mdscope-plot-review/primary" --preset primary
+          python scripts/plot_preview.py \
+            --output "$RUNNER_TEMP/mdscope-plot-review/generic-full" --generic
+          python scripts/plot_preview.py \
+            --output "$RUNNER_TEMP/mdscope-plot-review/generic-primary" --generic --preset primary
+          for fixture in primary generic-full generic-primary; do
+            python scripts/preview_gallery.py \
+              --preview "$RUNNER_TEMP/mdscope-plot-review/$fixture" \
+              --output "$RUNNER_TEMP/mdscope-plot-review/$fixture/index.html"
+          done
           # Deliberately probe the new allowlist: older base revisions
           # render extra figures, while plot-ID aware heads render only one.
           PYTHONPATH="$RUNNER_TEMP/mdscope-base/src" python scripts/plot_preview.py \
@@ -95,19 +119,26 @@ jobs:
           import json
           from pathlib import Path
           root = Path(__import__("os").environ["RUNNER_TEMP"]) / "mdscope-plot-review"
-          selected_name = "rmsd_A__timeseries.png"
+          selected_id = "time_series:rmsd_A:timeseries"
+          legacy_name = "rmsd_A__timeseries.png"
           for relative in ("review/previous", "review/previous-selected",
                            "review/updated-selected"):
               folder = root / relative
               manifest = folder / "preview_manifest.json"
               record = json.loads(manifest.read_text())
+              def selected(name):
+                  return (record.get("plot_ids", {}).get(name) == selected_id or
+                          Path(name).name == legacy_name)
               if relative.endswith("-selected"):
                   record["unselected_generated_plots"] = sum(
-                      Path(name).name != selected_name for name in record["plots"])
+                      not selected(name) for name in record["plots"])
                   record["plots"] = [
                       name for name in record["plots"]
-                      if Path(name).name == selected_name
+                      if selected(name)
                   ]
+                  if len(record["plots"]) != 1 or not (folder / record["plots"][0]).is_file():
+                      raise RuntimeError(f"Missing exact selected preview in {relative}")
+              retained_plots = set(record["plots"])
               record.pop("table_previews", None)
               record.pop("table_inventory_csv", None)
               manifest.write_text(json.dumps(record, indent=2) + "\n")
@@ -115,7 +146,7 @@ jobs:
                   if not file.is_file() or file == manifest:
                       continue
                   if file.suffix == ".png" and (
-                      not relative.endswith("-selected") or file.name == selected_name):
+                      not relative.endswith("-selected") or file.relative_to(folder).as_posix() in retained_plots):
                       continue
                   file.unlink()
               for directory in sorted(
@@ -128,6 +159,8 @@ jobs:
               "Start with index.html: one condition-centered preview, not a diff.\n"
               "current/: updated code's figures and synthetic numeric inputs.\n"
               "current/table_previews/table_inventory.csv: readable Parquet table index.\n"
+              "primary/index.html: recommended primary baseline.\n"
+              "generic-full/index.html and generic-primary/index.html: non-SDC4 fixtures.\n"
               "review/index.html: previous vs updated *source-code* figures.\n"
               "review/selection/index.html: one requested plot and counts of extras.\n"
               "review/previous*, review/updated-selected: rendered revision examples,\n"

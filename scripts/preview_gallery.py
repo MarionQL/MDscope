@@ -27,9 +27,11 @@ td{overflow-wrap:anywhere}a{color:#1b527e} .small{font-size:.86rem}
 """
 
 
-def _figure_group(name: str) -> tuple[str, str, str]:
+def _figure_group(name: str, identifier=None) -> tuple[str, str, str]:
     """Group by *condition*, not a replica folder's apparent scope."""
     parts = Path(name).parts
+    if identifier and identifier.startswith('sdc4:'):
+        return identifier.split(':')[1], parts[-1], 'all replicates'
     if len(parts) > 2 and parts[0].startswith("condition_"):
         return parts[0], parts[-1], parts[1]
     if len(parts) == 5 and parts[:3] == ("project_summary", "figures", "sdc4"):
@@ -42,7 +44,7 @@ def build_preview_gallery(preview: Path, output: Path) -> int:
     info = json.loads((preview / "preview_manifest.json").read_text())
     groups: dict[str, dict[str, list[tuple[str,str]]]] = defaultdict(lambda: defaultdict(list))
     for name in info["plots"]:
-        group, plot, replica = _figure_group(name)
+        group, plot, replica = _figure_group(name, info.get("plot_ids", {}).get(name))
         groups[group][plot].append((name, replica))
     if not groups:
         raise ValueError("No figures in preview manifest")

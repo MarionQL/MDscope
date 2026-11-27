@@ -75,7 +75,7 @@ def snapshot(source: Path, inputs: dict[str, str]) -> dict:
 
 
 def legacy_plan_projection(historical, current):
-    """Validate the additive #298 report descriptors without waiving old fields.
+    """Validate the #171 path migration and #298 additions without waiving science.
 
     Exact source IDs and legacy destinations stay public. New destinations are
     additive metadata for the already-existing PDF switch, not changed science.
@@ -85,6 +85,46 @@ def legacy_plan_projection(historical, current):
         'csv_companion': 'statistics_tables.csv',
         'selection_semantics': 'Exact source rows within one analysis report; legacy PNG destination applies only with table_reports_pdf: false',
     }
+    if isinstance(historical, dict) and isinstance(current, dict) and 'id' in historical and 'legacy_destination' in current:
+        from mdscope.contracts.plot_validation import canonical_figure_destination, plot_tier
+        identifier = current['id']
+        if historical['id'] != identifier:
+            raise ValueError(f'Unexpected figure migration identity: {identifier}')
+        if historical['destination'] != current['legacy_destination']:
+            # The historical residue-response descriptor was inaccurate; the
+            # matrix/manifest now explicitly name the actual saved screen.
+            if identifier != 'profiles:residue_response:heatmap':
+                raise ValueError(f'Unexpected figure migration identity: {identifier}')
+        expected = canonical_figure_destination(identifier, current['analysis'])
+        if current['destination'] != expected or current['tier'] != plot_tier(identifier):
+            raise ValueError(f'Unexpected canonical figure destination: {identifier}')
+        migrated = dict(current)
+        migrated['destination'] = historical['destination']
+        for key in ('analysis', 'tier', 'legacy_destination', 'prerequisites', 'selected'):
+            if key not in historical:
+                migrated.pop(key, None)
+        if migrated.get('available_overrides') == ['dpi', 'title', 'annotations']:
+            migrated['available_overrides'] = historical.get('available_overrides', ['dpi'])
+        if identifier == 'profiles:residue_response:heatmap':
+            if current['source_candidates'] != [
+                    'project_summary/statistics/profiles/residue_response_matrix.parquet',
+                    'project_summary/statistics/profiles/residue_response_manifest.json']:
+                raise ValueError('Unexpected residue-response prerequisite migration')
+            migrated['source_candidates'] = historical['source_candidates']
+            migrated['units_note'] = historical['units_note']
+        if 'consolidated_destination' in historical:
+            expected_report = f"project_summary/figures/{current['analysis']}/secondary/statistics_tables.pdf"
+            if migrated['consolidated_destination'] != expected_report:
+                raise ValueError('Unexpected analysis report destination')
+            migrated['consolidated_destination'] = historical['consolidated_destination']
+        current = migrated
+    if isinstance(historical, list) and isinstance(current, list):
+        additions_by_family = [item for item in current if isinstance(item, dict) and item.get('family') == 'overview']
+        if additions_by_family and not any(isinstance(item, dict) and item.get('family') == 'overview' for item in historical):
+            for item in additions_by_family:
+                if item.get('status') != 'disabled' or any(figure.get('selected') for figure in item.get('specific_figures', [])):
+                    raise ValueError('Legacy configuration unexpectedly selects overview figures')
+            current = [item for item in current if item not in additions_by_family]
     if isinstance(historical, dict) and isinstance(current, dict):
         result = {}
         for key, value in current.items():

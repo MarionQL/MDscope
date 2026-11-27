@@ -349,7 +349,8 @@ def test_plan_uses_production_registry_for_configured_plot_ids(tmp_path, project
         "time_series:rmsd_A:comparison_table",
     }
     for identifier, row in by_id.items():
-        assert row["destination"] == describe_plot(identifier)["destination"]
+        from mdscope.registry import figure_descriptor
+        assert row["destination"] == figure_descriptor(load_config(path, check_paths=False), identifier)["destination"]
         assert row["source_candidates"] == describe_plot(identifier)["source_candidates"]
         assert row["availability"] == "conditional_on_saved_data"
     assert by_id["time_series:rmsd_A:timeseries"]["requires_statistics"] is False
@@ -374,7 +375,7 @@ def test_plan_lists_only_known_static_candidates_without_an_include_list(tmp_pat
         for family in families.values()
         for item in family["specific_figures"]
     }
-    assert ids == STATIC_IDS
+    assert ids - {identifier for identifier in ids if identifier.startswith("overview:")} == STATIC_IDS
     assert families["time_series"]["specific_figures"] == []
     assert "dynamic" in families["time_series"]["specific_figures_status"]
     assert not root.exists()
@@ -610,3 +611,20 @@ def test_reporting_plan_additions_do_not_waive_existing_contract_fields():
     assert project(historical, {**current, 'destination': 'changed.png'}) != historical
     with pytest.raises(ValueError, match='Unexpected additive reporting metadata'):
         project(historical, {**current, 'csv_companion': 'anything.csv'})
+
+
+def test_tier_migration_parity_validates_paths_without_waiving_sources():
+    from runpy import run_path
+    from mdscope.registry import figure_descriptor
+    project = run_path(str(Path(__file__).resolve().parents[1] / 'scripts/check_config_parity.py'))['legacy_plan_projection']
+    current = figure_descriptor({}, 'time_series:rmsd_A:timeseries')
+    historical = {key: value for key, value in current.items()
+                  if key not in {'analysis', 'tier', 'legacy_destination', 'prerequisites'}}
+    historical['destination'] = current['legacy_destination']
+    historical['available_overrides'] = ['dpi']
+    assert project(historical, current) == historical
+    with pytest.raises(ValueError, match='canonical figure destination'):
+        project(historical, {**current, 'destination': 'arbitrary.png'})
+    with pytest.raises(ValueError, match='migration identity'):
+        project(historical, {**current, 'legacy_destination': 'different.png'})
+    assert project(historical, {**current, 'source_candidates': ['different.parquet']}) != historical

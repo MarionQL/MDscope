@@ -1,10 +1,16 @@
 """Stable plot identifiers and reporting-specific figure path presentation."""
 from __future__ import annotations
+
 from pathlib import Path
 
 from ..contracts.plot_validation import (
-    DYNAMIC_VARIANTS, SDC4_CONDITION_STEMS, STATIC_IDS,
-    validate_figure_options as validate_figure_options, describe_plot,
+    DYNAMIC_VARIANTS,
+    SDC4_CONDITION_STEMS,
+    STATIC_IDS,
+    describe_plot,
+)
+from ..contracts.plot_validation import (
+    validate_figure_options as validate_figure_options,
 )
 
 
@@ -24,6 +30,10 @@ def requires_finalization(identifier: str) -> bool:
 def figure_family(path):
     """Figure family of a saved figure path (one of FIGURE_FAMILIES)."""
     parts = Path(path).parts
+    if Path(path).parent.name in {"primary", "secondary", "tertiary"}:
+        identifier = id_from_figure_path(Path(path))
+        if identifier:
+            return identifier.split(":", 1)[0]
     for token, family in (('shared_states','shared_states'),('sdc4','sdc4'),('sdc4_mechanisms','sdc4'),
                           ('solvation','solvation'),('diffusion','diffusion'),
                           ('lipid_contacts','lipid_contacts'),('membrane','lipid_enrichment'),
@@ -41,6 +51,19 @@ def id_from_figure_path(path: Path) -> str | None:
         return None
     parts = path.parts
     name = path.stem
+    if len(parts) >= 3 and path.parent.name in {"primary", "secondary", "tertiary"}:
+        from urllib.parse import unquote
+
+        from ..contracts.plot_validation import validate_plot_ids
+        identifier = ":".join(unquote(part) for part in name.split("@"))
+        # Page identities are presentation companions of the same selected ID.
+        if identifier.rsplit(":", 1)[-1].startswith("page_"):
+            identifier = identifier.rsplit(":", 1)[0]
+        try:
+            validate_plot_ids([identifier])
+        except ValueError:
+            return None
+        return identifier
     if (path.parent.name.startswith("residue_membrane_distance__")
             and name.endswith("__distance_heatmap")):
         system = name.removesuffix("__distance_heatmap")
@@ -76,3 +99,42 @@ def id_from_figure_path(path: Path) -> str | None:
             return identifier
     return None
 
+
+
+def figure_path(cfg, path, *, identifier=None):
+    """Translate a renderer's legacy destination through the shared catalog."""
+    from ..registry import figure_descriptor
+    path = Path(path)
+    identifier = identifier or id_from_figure_path(path)
+    if identifier is None:
+        raise ValueError(f"Unmapped figure destination: {path}; declare a stable plot ID")
+    if 'project_summary' not in path.parts:
+        raise ValueError(f"Figure destination must be below project_summary: {path}")
+    index = path.parts.index('project_summary')
+    root = Path(*path.parts[:index])
+    destination = root / figure_descriptor(cfg, identifier)['destination']
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    return destination
+
+
+def apply_figure_options(fig, options):
+    """User-authored display text, never replacements for units or estimands."""
+    if 'title' in options:
+        fig.suptitle(options['title'])
+    annotations = options.get('annotations', [])
+    if annotations:
+        import textwrap
+        text = '\n'.join(textwrap.fill(item, width=110) for item in annotations)
+        fig.text(.01, .005, text, va='bottom', ha='left', fontsize=8)
+        fig.subplots_adjust(bottom=max(.16, .03 + .025 * len(text.splitlines())) )
+
+
+def save_figure(fig, cfg, path, *, identifier=None, **kwargs):
+    """One destination and presentation owner for all disk PNG writers."""
+    path = Path(path)
+    identifier = identifier or id_from_figure_path(path)
+    if path.parent.name not in {'primary', 'secondary', 'tertiary'}:
+        path = figure_path(cfg, path, identifier=identifier)
+    options = cfg.get('plots', {}).get('options', {}).get(identifier, {})
+    apply_figure_options(fig, options)
+    fig.savefig(path, **kwargs)

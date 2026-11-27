@@ -27,16 +27,10 @@ def test_synthetic_plot_preview_is_read_only_with_respect_to_trajectory(tmp_path
     report = preview["render_preview"](root)
     assert "SYNTHETIC" in report["notice"]
     assert report["plots"]
-    expected = {
-        "rmsd_A__timeseries.png",
-        "lipid_order__POPC__sn1__profile.png",
-        "lipid_order__POPC__sn1__system_difference.png",
-        "occupancy_heatmap.png", "lifetime_distribution.png",
-        "shell_rdf.png", "contact_survival.png", "water_and_ions.png",
-        "lipid_enrichment_heatmap.png", "diffusion_coefficients.png",
-        "state_populations.png", "nxip_height_occlusion_joint.png",
-    }
-    assert expected <= {Path(name).name for name in report["plots"]}
+    # Stable IDs survive the documented directory/filename migration.
+    expected_ids = {'time_series:rmsd_A:timeseries', 'profiles:lipid_order__POPC__sn1:profile', 'profiles:lipid_order__POPC__sn1:system_difference', 'interactions:salt_bridges:occupancy_heatmap', 'solvation:shell_rdf', 'solvation:contact_survival', 'shared_states:state_populations', 'diffusion:diffusion_coefficients', 'sdc4:condition_A:nxip_height_occlusion_joint'}
+    assert expected_ids <= set(report['plot_ids'].values())
+    assert len(report['plot_ids']) == len(report['plots'])
     assert len(report["plots"]) >= 30
     for name in report["plots"]:
         with Image.open(root / name) as im:
@@ -81,7 +75,7 @@ def test_html_gallery_displays_before_after_and_no_scientific_claims(tmp_path):
     assert n >= 4
     assert "SYNTHETIC EXAMPLES" in text
     assert "Previous code" in text and "Updated code" in text
-    assert "rmsd_A__timeseries.png" in text
+    assert "time_series@rmsd_A@timeseries.png" in text
     assert "Unchanged pixels" in text
     assert json.loads((base / "preview_manifest.json").read_text())["plots"] == (
         json.loads((head / "preview_manifest.json").read_text())["plots"]
@@ -151,12 +145,41 @@ def test_single_plot_developer_review_summarizes_extras_without_repeating_them(t
     after = preview["render_preview"](head, include=["time_series:rmsd_A:timeseries"])
     output = tmp_path / "review/selection/index.html"
     count = gallery["build_gallery"](
-        base, head, output, only_name="rmsd_A__timeseries.png")
+        base, head, output, only_name="time_series@rmsd_A@timeseries.png")
     html = output.read_text()
     assert count == 1
     assert f"Previous code generated {len(before['plots']) - 1} other figure(s)" in html
     assert f"updated code generated {len(after['plots']) - 1} other figure(s)" in html
     assert html.count("<section>") == 1
-    assert "rmsd_A__timeseries.png" in html
+    assert "time_series@rmsd_A@timeseries.png" in html
     assert "<h2>project_summary/figures/solvation/" not in html
 
+
+
+def test_ci_artifact_cleanup_keeps_selected_ids_after_path_migration(tmp_path, monkeypatch):
+    import yaml
+    workflow = yaml.safe_load((Path(__file__).parents[1] / '.github/workflows/figure-review.yml').read_text())
+    run = next(step['run'] for step in workflow['jobs']['before-after-plots']['steps']
+               if step.get('name') == 'Render identical synthetic inputs with base and head renderers')
+    cleanup = run.split("python - <<'PY'\n", 1)[1].rsplit('\nPY', 1)[0]
+    root = tmp_path/'mdscope-plot-review'
+    old = 'project_summary/figures/time_series/rmsd_A__timeseries.png'
+    new = 'project_summary/figures/rmsd/secondary/time_series@rmsd_A@timeseries.png'
+    for relative, selected in [('review/previous', old), ('review/previous-selected', old), ('review/updated-selected', new)]:
+        folder = root/relative
+        extra = 'extra.png'
+        for name in (selected, extra):
+            path = folder/name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b'png fixture')
+        (folder/'preview_manifest.json').write_text(json.dumps({'plots': [selected, extra],
+            'plot_ids': {selected: 'time_series:rmsd_A:timeseries', extra: 'other'}}))
+    monkeypatch.setenv('RUNNER_TEMP', str(tmp_path))
+    monkeypatch.setenv('REVISIONS', 'synthetic test')
+    exec(compile(cleanup, 'figure-review-cleanup', 'exec'), {})
+    folder = root/'review/updated-selected'
+    record = json.loads((folder/'preview_manifest.json').read_text())
+    assert record['plots'] == [new]
+    assert record['unselected_generated_plots'] == 1
+    assert (folder/new).is_file()
+    assert not (folder/'extra.png').exists()

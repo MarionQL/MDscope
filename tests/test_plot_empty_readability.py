@@ -30,11 +30,11 @@ def test_lipid_contact_bootstrap_keeps_finite_zero_and_long_labels(tmp_path):
         "species_a": "phosphatidylethanolamine",
         "species_b": "phosphatidylethanolamine", "mean": 0.,
     }])
-    _draw(_cfg(), tmp_path, group, ordered=["phosphatidylethanolamine"],
+    _draw(_cfg(), tmp_path / "project_summary/figures/lipid_contacts", group, ordered=["phosphatidylethanolamine"],
           value="mean", supported=False, title="Real measured zero",
-          stem="lipid_contact_class_matrix_zero", metric="pair_count_undirected",
+          stem="lipid_contact_class_matrix_zero_upper_pair_count_undirected", metric="pair_count_undirected",
           limit=1., comparison=False)
-    assert (tmp_path / "lipid_contact_class_matrix_zero.png").is_file()
+    assert (tmp_path / "project_summary/figures/lipid_contacts/secondary/lipid_contacts@lipid_contact_class_matrix_zero_upper_pair_count_undirected.png").is_file()
 
 
 def test_residue_response_skips_all_missing_effects(tmp_path):
@@ -164,8 +164,8 @@ def test_lipid_footprint_one_nonzero_replica_keeps_figure(tmp_path, monkeypatch)
     monkeypatch.setattr(plotting, "collect_time_series", collect)
     reps = {"control": [tmp_path / "control/rep1", tmp_path / "control/rep2"]}
     plotting.plot_time_series(cfg, tmp_path, reps)
-    assert (tmp_path / "project_summary/figures/time_series"
-            / f"{metric}__timeseries.png").is_file()
+    from mdscope.registry import figure_descriptor
+    assert (tmp_path / figure_descriptor(_cfg(), f"time_series:{metric}:timeseries")["destination"]).is_file()
 
 
 def test_zero_only_non_footprint_metric_remains_eligible(tmp_path, monkeypatch):
@@ -180,8 +180,7 @@ def test_zero_only_non_footprint_metric_remains_eligible(tmp_path, monkeypatch):
            "systems": {"control": {"replicates": [{"label": "rep1"}]}}}
     plotting.plot_time_series(cfg, tmp_path,
                               {"control": [tmp_path / "control/rep1"]})
-    assert (tmp_path / "project_summary/figures/time_series"
-            / "coordination_count__timeseries.png").is_file()
+    assert (tmp_path / "project_summary/figures/unmapped/secondary/time_series@coordination_count@timeseries.png").is_file()
 
 
 def test_zero_footprint_filter_preserves_missing_vs_zero_semantics():

@@ -282,7 +282,7 @@ Default geometric radii (Å): H 1.20; C 1.70; N 1.55; O 1.52; P/S 1.80; F 1.47; 
 
 ## Select individual figures
 
-When `plots.include` is absent, the existing family-level plot switches are unchanged. To produce **only** specific supported figures, provide exact plot IDs:
+When both `plots.include` and `plots.presets` are absent, the existing family-level plot switches are unchanged. To produce **only** specific supported figures, provide exact plot IDs:
 
 ```yaml
 plots:
@@ -300,19 +300,39 @@ plots:
 - **Distance heatmaps:** `profiles:residue_membrane_distance__<run_id>:<system_id>:distance_heatmap`.
 - **Named static figures:** `profiles:residue_response:heatmap`, `solvation:shell_rdf`, `solvation:water_and_ions`, `solvation:contact_survival`, `diffusion:diffusion_coefficients`, `lipid_enrichment:lipid_enrichment_heatmap`, `lipid_enrichment:lipid_area_density_heatmap`.
 - **Shared-state figures:** `shared_states:state_populations`, `shared_states:state_sampling_diagnostics`.
-- **SDC4 condition figures:** `sdc4:<system_id>:<figure_stem>`; supported stems include `nxip_height_occlusion_joint`, `vvhplvpl_proline_ramachandran`, `lipid_density_maps`, `lipid_enrichment_maps`, and the five `lipid_region_*` charts. A single PNG is saved under `project_summary/figures/sdc4/<system_id>/`; each independent replica appears as an explicitly labelled panel or trace. The *numerical* Parquet/NPZ measurements remain per replica in `<system_id>/<replicate>/extensions/sdc4_mechanisms/`. Previous per-rep diagnostic PNGs from older runs are not automatically deleted; archive them when regenerating plots. No trajectories or statistical CIs are pooled to draw these condition diagnostics.
+- **SDC4 condition figures:** `sdc4:<system_id>:<figure_stem>`; supported stems include `nxip_height_occlusion_joint`, `vvhplvpl_proline_ramachandran`, `lipid_density_maps`, `lipid_enrichment_maps`, and the five `lipid_region_*` charts. PNGs are saved under `project_summary/figures/sdc4_mechanisms/<tier>/`; each independent replica appears as an explicitly labelled panel or trace. The *numerical* Parquet/NPZ measurements remain per replica in `<system_id>/<replicate>/extensions/sdc4_mechanisms/`. Previous per-rep diagnostic PNGs from older runs are not automatically deleted; archive them when regenerating plots. No trajectories or statistical CIs are pooled to draw these condition diagnostics.
 - **Lipid-contact figures:** `lipid_contacts:<figure_stem>` for each saved `lipid_contact_matrix_*`, `lipid_contact_difference_*`, `lipid_contact_class_matrix_*` or `lipid_contact_class_difference_*` figure; valid endings are `_pair_count_undirected`, `_neighbors_per_molecule` or `_enrichment`.
 
-Per-figure `plots.options.<plot ID>.dpi` is supported for resolution overrides (integer 50–600); it does not change scientific results, axis definitions or statistical estimands. Unsupported per-plot keys fail configuration validation.
+Per-figure `plots.options.<plot ID>` accepts `dpi` (integer 50–600), `title` (display string), and `annotations` (list of caption strings). These controls preserve values, units and statistical estimands. Unsupported per-plot keys fail configuration validation.
 
 - IDs match exactly; no wildcards/substrings. Invalid formats and unknown static IDs fail validation.
 - Saved inputs and family prerequisites are still required; enabling a figure does not compute missing statistics.
 - Data-dependent metrics/runs/species/systems are verified against existing products, not syntax alone.
 - Explicit solvation IDs need no extra family opt-in. `plots.include: []` disables all figures.
 
+### Analysis-first tiers and presets
+
+```yaml
+plots:
+  enabled: true
+  presets: [primary]  # optionally add secondary and tertiary
+  options:
+    overview:rmsd:distributions:
+      title: Protein motion across conditions
+      annotations: ["Diamonds are independent replica means."]
+```
+
+- `primary`: analysis overviews, comparable profiles, signed condition differences and contact/species heatmaps. `overview:<analysis>:distributions` facets saved scalar metrics/groups without pooling replicas; `overview:<analysis>:effects` displays existing scalar contrast intervals, separated by units and contrast. Unsupported inference is never recomputed.
+- `secondary`: individual traces/distributions, focused mechanism panels and statistical tables. `tertiary`: autocorrelation and state-sampling diagnostics. ESS/block summaries remain available in saved tables; absent diagnostics are not invented.
+- Exact `include` overrides presets, including `include: []`. Presets filter eligible IDs deterministically and respect analysis, statistics and figure-family switches. Secondary and tertiary lists are additive only when listed together. Existing family/variant controls still apply.
+- PNG destinations are `project_summary/figures/<analysis>/<tier>/<encoded-ID>.png`. `@` separates reversibly encoded ID components; named runs, groups and conditions retain their exact plot identity. Companion pages append `@page_…`; there is no top-N display cutoff. Unknown saved metrics remain explicitly `unmapped`; residue-response screens are `integrative`.
+- `mdscope plotting CONFIG.yaml` expands presets against saved products. `mdscope plan CONFIG.yaml --format json` exposes configured/saved candidates and prerequisites. `figure_coverage.json` records requested/rendered/unavailable products; `preset_selection.json` records expansion and omissions. No trajectories, bootstrap or FDR run during plotting.
+- Figure publication stages renderers together, validates PNGs, then publishes figures/provenance with rollback. Successfully replaced selected legacy images and obsolete pages are archived; unrelated files survive. Numerical Parquet/NPY/NPZ locations are unchanged. Source fingerprints and display options detect newly stale PNGs; historical products retain their unverified status.
+- See the [migration audit](developer/figure-organization.md) for renderer coverage and reproducible previews.
+
 ### Compact statistics-table PDFs
 
-- `plots.table_reports_pdf: true` publishes one paginated PDF and full-precision CSV per analysis under `project_summary/figures/statistical_reports/<analysis>/statistics_tables.*`. Reports read saved Parquet statistics only; plot-only runs need no trajectories and perform no inference.
+- `plots.table_reports_pdf: true` publishes one paginated PDF and full-precision CSV per analysis under `project_summary/figures/<analysis>/secondary/statistics_tables.*`. Reports read saved Parquet statistics only; plot-only runs need no trajectories and perform no inference.
 - Historical `*:bootstrap_table` / `*:comparison_table` IDs select exact source rows within the consolidated report. Selecting multiple IDs produces one report with all selected sources; it does not expand to sibling metrics. `bootstrap_tables: false` suppresses descriptive/bootstrap and diagnostic sections while keeping comparisons. `table_reports_pdf: false` (the unchanged default) retains legacy per-metric PNGs. Enable PDF mode for consolidated reports.
 - Comparison tables join condition means/CIs and available replica support on exact saved identities. Separate sections retain condition/replica summaries and saved diagnostics. Integrated autocorrelation, effective N and block summaries are included; full lag curves remain in their original Parquet and dedicated autocorrelation plots rather than being copied into PDF tables. Unregistered metrics remain visible under `unmapped`; no top-N filter is applied. Lipid order has pointwise six-column tail/leaflet contrast-CI matrices, with N-acyl/sphingosine kept separate from sn1/sn2. Absent/unselected entries are N/A, not zero.
 - Red contrast intervals strictly exclude zero (finite, ordered bounds); bold q values fall below `statistics.hypothesis_tests.alpha` (default `0.05`). These criteria are distinct. PDF values are rounded for display; classification and CSV use full precision. The interval's saved `ci_level` is included; no fixed confidence level is assumed.

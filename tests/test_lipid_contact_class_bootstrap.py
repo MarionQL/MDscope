@@ -146,8 +146,7 @@ def test_bootstrap_exports_complete_replicas_leaflets_and_condition_differences(
     cfg["plots"] = {"enabled": True, "include": selected_ids, "dpi": 75}
     assert plot_lipid_contact_bootstrap(cfg, tmp_path)
     for plot_id in selected_ids:
-        path = tmp_path / "project_summary/figures/lipid_contacts" / (
-            plot_id.split(":", 1)[1] + ".png"
-        )
+        from mdscope.registry import figure_descriptor
+        path = tmp_path / figure_descriptor(cfg, plot_id)["destination"]
         assert path.read_bytes().startswith(b"\x89PNG")
         assert id_from_figure_path(path) == plot_id

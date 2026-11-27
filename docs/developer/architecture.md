@@ -63,7 +63,6 @@ flowchart TD
     studio["studio/"]
     systems["systems/"]
     cli -.-> pipeline
-    cli -.-> planning
     config_config_schema --> contracts
     config_config_schema --> core
     config_config_schema --> errors
@@ -71,7 +70,7 @@ flowchart TD
     mechanisms --> config_config_schema
     mechanisms --> interactions
     observables --> config_config_schema
-    pipeline -.-> reporting
+    pipeline -.-> planning
     pipeline --> systems
     planning -.-> reporting
     registry --> config_config_schema
@@ -80,7 +79,6 @@ flowchart TD
     statistics --> mechanisms
     statistics --> observables
     studio -.-> pipeline
-    studio --> planning
     systems --> mechanisms
     systems --> observables
 ```
@@ -102,7 +100,7 @@ Design rationale: [ADR-0002](adr/0002-evidence-first-architecture.md). Keep role
 | Configuration-dependent outputs and required companions | `registry.py` (`analysis_output_plan`, `fused_output_plan`, `saved_output_plan`, `required_artifacts`) | runner, planning, Studio |
 | Statistics families → output folders; figure families | `contracts/statistics.STATISTICS_FAMILIES`, `contracts/plot_validation.FIGURE_FAMILIES` | YAML validation, `statistics/dispatch.py`, planning |
 | Saved statistics catalog and analysis display metadata | `contracts/statistics.py` (statistics metadata), `planning.py` (`ANALYSIS_METADATA`, `authoring_catalog`) | `mdscope plan`, Studio |
-| Figure IDs and renderer destinations | `contracts/plot_validation.py` (IDs and metadata), `reporting/plot_ids.py` (saved-path identity) | plotting, inventory, planning |
+| Figure IDs and renderer destinations | `contracts/plot_validation.py` (IDs and metadata), `registry.figure_descriptor` (producer ownership), `reporting/plot_ids.py` (reversible saved-path identity) | plotting, inventory, planning |
 | Validity of existing outputs (schema, time grid, provenance) | `pipeline/persisted_inputs.py` | runner, Studio, finalization |
 | Atomic writes, archiving, checkpoint inventory | `core/persistence.py`, `core/checkpoints.py` | all producers (kernels never write files directly) |
 | Covalent glycan chains; sequence motifs | `core/glycans.py`; `core/motifs.py` + `core/sequence.py` | HS/SDC4, hydration, solvation, K-bridge audit, Studio |
@@ -193,7 +191,7 @@ Contrast coverage is written to `statistics/coverage/contrast_coverage.parquet`.
 
 ## Reporting and Studio
 
-- `contracts.plot_validation` owns figure prerequisites; descriptive lipid species matrices can use raw saved products, while class, pair-count and comparison figures require completed statistics.
+- `contracts.plot_validation` owns figure prerequisites, tiers and canonical path encoding; `registry.figure_descriptor` joins exact producer ownership; `plot_ids.save_figure` applies shared destinations and presentation text. `figure_generation` stages PNG/PDF/CSV writers, publishes with rollback, archives obsolete selected pages and preserves numerical products. Presets expand over saved identities through planning; descriptive lipid species matrices can use raw saved products, while class, pair-count and comparison figures require completed statistics.
 - `reporting/` renders saved results only. `table_reports` owns transactional PDF/CSV publication and its manifest; `statistical_tables` joins and paginates selected saved rows into analysis-owned reports using registry variable ownership; `record_generated_figures` alone writes `figure_provenance.json`; `figure_inventory` lists published figures and marks legacy PDFs without publication identity as unverified. Panels of the same observable share axis limits via `reporting.shared_scales`.
 - Studio authors YAML and never runs trajectories, inference or production rendering. `studio.model` owns the detached draft, group/run edits and export reconciliation; `studio.app` renders widgets; figure candidates come from `planning.authoring_catalog`, topology checks from `pipeline.preflight`, and saved-output checks from `pipeline.persisted_inputs`. User guide: [Studio](../studio.md).
 

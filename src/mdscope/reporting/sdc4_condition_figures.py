@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 
 from ..config import figure_enabled, system_label
 from ..core.persistence import archive_output
-from .plot_ids import figure_dpi
+from .plot_ids import figure_dpi, figure_path, save_figure
 from .sdc4_exports import export_region_replica_summaries
 from .shared_scales import synchronize_y_axes
 
@@ -42,9 +42,9 @@ CONDITION_STEMS = frozenset((*REGION_METRICS, MOIETY_STEM, *MAP_STEMS, *SERIES_S
 
 
 def _save(fig, cfg, out, system, stem, *, dpi=180):
-    destination = out / f"{stem}.png"
+    destination = figure_path(cfg, out / f"{stem}.png", identifier=f"sdc4:{system}:{stem}")
     out.mkdir(parents=True, exist_ok=True)
-    fig.savefig(destination, dpi=figure_dpi(cfg, f"sdc4:{system}:{stem}", dpi),
+    save_figure(fig, cfg, destination, dpi=figure_dpi(cfg, f"sdc4:{system}:{stem}", dpi),
                 bbox_inches="tight")
     plt.close(fig)
 

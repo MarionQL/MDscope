@@ -268,8 +268,8 @@ def test_yaml_motif_measurement_to_saved_state_finalize_and_figures(tmp_path):
     metadata = json.loads((root / "protein/rep1/extensions/solvation/metadata.json").read_text())
     assert metadata["motifs"]["patch"]["patch_A_1"]["resindices"] == [0, 1]
     finalize_project(path, phase="plotting")
-    assert (root / "project_summary/shared_states/state_populations.png").is_file()
-    assert (root / "project_summary/shared_states/state_sampling_diagnostics.png").is_file()
+    assert (root / "project_summary/figures/shared_states/primary/shared_states@state_populations.png").is_file()
+    assert (root / "project_summary/figures/shared_states/tertiary/shared_states@state_sampling_diagnostics.png").is_file()
 
 
 def test_replica_balanced_scaling_ignores_excess_length(tmp_path):

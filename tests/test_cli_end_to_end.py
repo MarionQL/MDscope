@@ -55,7 +55,7 @@ def test_replicate_finalize_and_report_cli(tmp_path, project):
     options["plots"] = {"enabled": True, "families": {"profiles": False, "interactions": False}}
     cfg.write_text(yaml.safe_dump(options))
     invoke(tmp_path, "plotting", cfg)
-    assert list((root / "project_summary" / "figures").rglob("*__timeseries.png"))
+    assert list((root / "project_summary" / "figures").rglob("*@timeseries.png"))
     assert (root / "resolved_config.yaml").read_bytes() == resolved
     assert findings.read_bytes() == content
 

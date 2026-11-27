@@ -278,9 +278,9 @@ def test_corrected_enrichment_figures_and_inventory(tmp_path):
     assert summary.mean_local_enrichment.item() == 3.
     assert summary.n_matched_enrichment_frames.item() == 1
     inventory = figure_inventory(tmp_path, paths).set_index("figure")
-    prefix = "project_summary/figures/sdc4/carb/lipid_region_"
-    assert inventory.loc[prefix + "mean_matched_local_enrichment.png", "kind"] == "primary"
-    assert inventory.loc[prefix + "mean_local_enrichment.png", "kind"] == "supplement"
+    prefix = "project_summary/figures/sdc4_mechanisms/"
+    assert inventory.loc[prefix + "primary/sdc4@carb@lipid_region_mean_matched_local_enrichment.png", "kind"] == "primary"
+    assert inventory.loc[prefix + "secondary/sdc4@carb@lipid_region_mean_local_enrichment.png", "kind"] == "secondary"
     assert not list(dest.glob("*.png")), "SDC4 PNGs should be condition-level only"
 
 
