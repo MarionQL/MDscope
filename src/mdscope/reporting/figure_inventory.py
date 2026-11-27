@@ -371,7 +371,16 @@ def figure_generation(cfg, root, system_repouts):
         if original.is_dir():
             for source in original.iterdir():
                 if source.name not in {'figures', 'reporting_exports'}:
-                    (summary / source.name).symlink_to(source.resolve(), target_is_directory=source.is_dir())
+                    target = summary / source.name
+                    try:
+                        target.symlink_to(source.resolve(), target_is_directory=source.is_dir())
+                    except OSError:
+                        # Windows can disallow unprivileged symlinks. Keep the
+                        # same read-only staging contract without requiring them.
+                        if source.is_dir():
+                            shutil.copytree(source, target)
+                        else:
+                            shutil.copy2(source, target)
         generated = summary / 'figures'
         if live.is_dir():
             shutil.copytree(live, generated)

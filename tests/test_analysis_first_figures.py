@@ -309,3 +309,15 @@ def test_missing_effect_group_is_labeled_global_across_pandas_versions(tmp_path,
     monkeypatch.setattr(overview, 'draw_effect_intervals', inspect)
     overview.plot_overviews(cfg, tmp_path, {})
     assert labels == ['rmsd_A · global']
+
+
+def test_staging_without_symlink_permission_preserves_saved_numbers(tmp_path, monkeypatch):
+    source = tmp_path/'project_summary/statistics/saved.bin'
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b'original saved numbers')
+    def unsupported(*args, **kwargs):
+        raise OSError('Unprivileged symlinks are unavailable')
+    monkeypatch.setattr(Path, 'symlink_to', unsupported)
+    with figure_generation({'plots': {'enabled': True, 'include': []}}, tmp_path, {}) as staging:
+        assert (staging/'project_summary/statistics/saved.bin').read_bytes() == source.read_bytes()
+    assert source.read_bytes() == b'original saved numbers'
