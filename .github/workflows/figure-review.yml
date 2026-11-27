@@ -83,6 +83,19 @@ jobs:
             --head "$RUNNER_TEMP/mdscope-plot-review/current" \
             --output "$RUNNER_TEMP/mdscope-plot-review/review/index.html" \
             --revisions "$REVISIONS"
+          # Include the analysis-first baseline and non-SDC4 views in the same
+          # downloadable artifact, using production renderers and saved fixtures.
+          python scripts/plot_preview.py \
+            --output "$RUNNER_TEMP/mdscope-plot-review/primary" --preset primary
+          python scripts/plot_preview.py \
+            --output "$RUNNER_TEMP/mdscope-plot-review/generic-full" --generic
+          python scripts/plot_preview.py \
+            --output "$RUNNER_TEMP/mdscope-plot-review/generic-primary" --generic --preset primary
+          for fixture in primary generic-full generic-primary; do
+            python scripts/preview_gallery.py \
+              --preview "$RUNNER_TEMP/mdscope-plot-review/$fixture" \
+              --output "$RUNNER_TEMP/mdscope-plot-review/$fixture/index.html"
+          done
           # Deliberately probe the new allowlist: older base revisions
           # render extra figures, while plot-ID aware heads render only one.
           PYTHONPATH="$RUNNER_TEMP/mdscope-base/src" python scripts/plot_preview.py \
