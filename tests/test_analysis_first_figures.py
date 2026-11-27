@@ -291,3 +291,21 @@ def test_coverage_counts_consolidated_pdf_sources_as_rendered(tmp_path):
     assert coverage['figures'][0]['id'] == identifier
     assert coverage['figures'][0]['status'] == 'rendered'
     assert coverage['figures'][0]['outputs'] == ['project_summary/figures/membrane_order/secondary/statistics_tables.pdf']
+
+
+def test_missing_effect_group_is_labeled_global_across_pandas_versions(tmp_path, monkeypatch):
+    from mdscope.reporting import overview
+    folder = tmp_path/'project_summary/statistics/time_series'
+    folder.mkdir(parents=True)
+    pd.DataFrame([dict(metric='rmsd_A', group=np.nan, system_1='A', system_2='B',
+                       mean_difference_system2_minus_system1=0., mean_difference_ci_low=-1.,
+                       mean_difference_ci_high=1.)]).to_parquet(folder/'system_comparisons.parquet')
+    cfg = merge(DEFAULTS, {'plots': {'enabled': True, 'include': ['overview:rmsd:effects']}})
+    labels = []
+    original = overview.draw_effect_intervals
+    def inspect(ax, rows, *, unit):
+        labels.extend(row['label'] for row in rows)
+        return original(ax, rows, unit=unit)
+    monkeypatch.setattr(overview, 'draw_effect_intervals', inspect)
+    overview.plot_overviews(cfg, tmp_path, {})
+    assert labels == ['rmsd_A · global']

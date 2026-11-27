@@ -167,6 +167,8 @@ def _effects(cfg, root):
         return
     facets = {}
     for row in data.to_dict('records'):
+        if pd.isna(row.get('group')):
+            row['group'] = None
         owner, unit = statistical_variable_owner(cfg, 'time_series', row)
         if owner == 'unmapped' or not figure_enabled(cfg, f'overview:{owner}:effects'):
             continue
@@ -182,7 +184,9 @@ def _effects(cfg, root):
         level = row.get('ci_level')
         level_label = f'{100*float(level):g}%' if level is not None and pd.notna(level) else 'unspecified level'
         key = (owner, unit, row['system_1'], row['system_2'], level_label, metric_facet)
-        facets.setdefault(key, []).append(dict(label=str(row['metric']) + ' · ' + str(row.get('group') or 'global'),
+        group = row.get('group')
+        group_label = str(group) if pd.notna(group) else 'global'
+        facets.setdefault(key, []).append(dict(label=str(row['metric']) + ' · ' + group_label,
                                                 **dict(zip(('effect', 'low', 'high'), [float(row[c]) for c in columns]))))
     pages = {}
     for (owner, unit, first, second, level, metric_facet), rows in sorted(facets.items()):
