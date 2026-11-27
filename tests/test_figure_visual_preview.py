@@ -154,3 +154,32 @@ def test_single_plot_developer_review_summarizes_extras_without_repeating_them(t
     assert "time_series@rmsd_A@timeseries.png" in html
     assert "<h2>project_summary/figures/solvation/" not in html
 
+
+
+def test_ci_artifact_cleanup_keeps_selected_ids_after_path_migration(tmp_path, monkeypatch):
+    import yaml
+    workflow = yaml.safe_load((Path(__file__).parents[1] / '.github/workflows/figure-review.yml').read_text())
+    run = next(step['run'] for step in workflow['jobs']['before-after-plots']['steps']
+               if step.get('name') == 'Render identical synthetic inputs with base and head renderers')
+    cleanup = run.split("python - <<'PY'\n", 1)[1].rsplit('\nPY', 1)[0]
+    root = tmp_path/'mdscope-plot-review'
+    old = 'project_summary/figures/time_series/rmsd_A__timeseries.png'
+    new = 'project_summary/figures/rmsd/secondary/time_series@rmsd_A@timeseries.png'
+    for relative, selected in [('review/previous', old), ('review/previous-selected', old), ('review/updated-selected', new)]:
+        folder = root/relative
+        extra = 'extra.png'
+        for name in (selected, extra):
+            path = folder/name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b'png fixture')
+        (folder/'preview_manifest.json').write_text(json.dumps({'plots': [selected, extra],
+            'plot_ids': {selected: 'time_series:rmsd_A:timeseries', extra: 'other'}}))
+    monkeypatch.setenv('RUNNER_TEMP', str(tmp_path))
+    monkeypatch.setenv('REVISIONS', 'synthetic test')
+    exec(compile(cleanup, 'figure-review-cleanup', 'exec'), {})
+    folder = root/'review/updated-selected'
+    record = json.loads((folder/'preview_manifest.json').read_text())
+    assert record['plots'] == [new]
+    assert record['unselected_generated_plots'] == 1
+    assert (folder/new).is_file()
+    assert not (folder/'extra.png').exists()
