@@ -278,3 +278,16 @@ def test_namespace_unit_notes_do_not_mix_incompatible_effects(tmp_path, monkeypa
     overview.plot_overviews(cfg, tmp_path, {})
     assert sorted(captured) == [(1, '1/Å'), (1, 'degrees'), (1, 'Å')]
     assert len(list((tmp_path/'project_summary/figures').rglob('*.png'))) == 3
+
+
+def test_coverage_counts_consolidated_pdf_sources_as_rendered(tmp_path):
+    from mdscope.reporting.plotting import plot_all
+    cfg, reps = fixture(tmp_path)
+    identifier = 'profiles:lipid_order__POPC__sn1:comparison_table'
+    cfg['plots'].update(include=[identifier], table_reports_pdf=True)
+    with figure_generation(cfg, tmp_path, reps) as staging:
+        plot_all(cfg, staging, reps)
+    coverage = json.loads((tmp_path/'project_summary/figures/figure_coverage.json').read_text())
+    assert coverage['figures'][0]['id'] == identifier
+    assert coverage['figures'][0]['status'] == 'rendered'
+    assert coverage['figures'][0]['outputs'] == ['project_summary/figures/membrane_order/secondary/statistics_tables.pdf']

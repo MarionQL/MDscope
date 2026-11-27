@@ -394,6 +394,17 @@ def figure_generation(cfg, root, system_repouts):
             identifier = id_from_figure_path(path)
             if identifier:
                 produced.setdefault(identifier, []).append(path.relative_to(staging).as_posix())
+        from .table_reports import REPORT_NAME, report_manifest, report_source_ids
+        for report_path in generated.rglob(REPORT_NAME):
+            try:
+                report = report_manifest(report_path)
+            except (OSError, ValueError, TypeError):
+                # Unselected user/legacy PDFs are preserved, not claimed as a
+                # successful product of this generation.
+                continue
+            if report and report.get('status') == 'complete':
+                for identifier in report_source_ids(report):
+                    produced.setdefault(identifier, []).append(report_path.relative_to(staging).as_posix())
         expected = cfg.get('plots', {}).get('include')
         atomic_json(generated / 'figure_coverage.json', {
             'requested_ids': expected,
